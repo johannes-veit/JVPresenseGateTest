@@ -519,7 +519,7 @@ class JVPresenceGateTest extends IPSModule
                 : null;
             if ($verifyGlobalType !== 'Normal') {
                 // Best effort sofort zurücksetzen, falls das Rücklesen nicht exakt stimmt.
-                $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => ($globalType === '' ? '0' : $globalType)]);
+                $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => $globalType]);
                 $this->setResult('FEHLER – Scene.Type=Normal wurde nach dem Schreiben nicht eindeutig zurückgelesen.');
                 $this->appendProtocol('SICHERHEITSABBRUCH: Scene.Type Readback=' . json_encode($verifyGlobalType));
                 return;
@@ -2197,8 +2197,9 @@ class JVPresenceGateTest extends IPSModule
             return;
         }
         $old = $this->ReadAttributeString('OriginalGlobalSceneType');
-        $restoreValue = $old === '' ? '0' : $old;
-        $r = $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => $restoreValue]);
+        // Exakten Ausgangswert zurückschreiben. Die Dahua-HTTP-API akzeptiert
+        // für "kein aktiver IVS-Smart-Plan" auch einen leeren Scene.Type-Wert.
+        $r = $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => $old]);
         $this->appendProtocol($r['ok']
             ? 'VideoAnalyseGlobal Scene.Type auf Ausgangswert zurückgesetzt.'
             : 'WARNUNG: Scene.Type konnte nicht zurückgesetzt werden: ' . $r['error']);
