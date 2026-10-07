@@ -74,3 +74,10 @@ Bei Dahua Web5 ist die erste `global.login`-Antwort häufig absichtlich `result=
 ## Automatischer RPC2-Writer
 
 Ab v0.1.7 legt das Modul die P05-Tripwire selbst über Dahua Web5/RPC2 an. Vorher wird die komplette IVS-Regeltabelle gesichert. Der Writer prüft zuerst mit einem unveränderten NO-OP-Write, ob die Firmware vollständige Tabellenwrites akzeptiert. Erst danach wird `P05_HOME_STREET` angefügt und vollständig zurückgelesen. Bei jeder Abweichung oder wenn die bestehende SMD-Personenerkennung beeinflusst wird, wird die Originaltabelle automatisch wiederhergestellt.
+
+
+## Konfigurations-Audit ohne Lauftest
+
+Ab v0.2.6 gibt es den Button **Kamera-Konfiguration prüfen (kein Lauftest)**. Er baut P05 vollständig auf, aktiviert die Dahua-IVS-Szene über `VideoAnalyseGlobal[0].Scene.Type=Normal` und liest anschließend alle kritischen Werte über CGI, RPC2 und Web5-Capabilities zurück. Der Zähler bleibt dabei absichtlich auf 0 und es ist kein Grenzübertritt nötig.
+
+Der normale Button **Test vorbereiten & starten** verwendet dieselbe Prüfung und startet den Lauftest erst, wenn das Audit erfolgreich war.
