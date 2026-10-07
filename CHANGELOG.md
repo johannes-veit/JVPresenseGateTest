@@ -1,3 +1,15 @@
+# v0.2.6
+
+- Nacht-/Konfigurations-Audit hinzugefügt: neuer Button `Kamera-Konfiguration prüfen (kein Lauftest)`.
+- Verifiziert die Dahua-Konfiguration ohne Grenzübertritt über drei unabhängige Wege: dokumentierte CGI-API, RPC2-Readback und Web5-`devVideoAnalyse.getCaps`.
+- Nutzt für die aktive IVS-Szene ausschließlich den von Dahua dokumentierten Befehl `VideoAnalyseGlobal[0].Scene.Type=Normal`; `Scene.TypeList` wird nicht mehr zur Aktivierung verwendet.
+- Scene.Type wird direkt nach dem Schreiben per CGI rückgelesen; bei Abweichung Sicherheitsabbruch und Best-Effort-Rollback.
+- Behebt die Restore-Logik: eine vom Modul gesetzte Scene.Type wird vor einem neuen Lauf zuerst auf den ursprünglichen Wert zurückgesetzt, bevor ein neuer Test aufgebaut wird.
+- P05-Audit prüft: Name/Typ/Enable/Direction/Class/Human, vollständige 5-Punkt-Linie über Schiebetor + Personentür, SMD bleibt aktiv, RPC2-Regel stimmt, keine Alarm-/Sirenen-/Record-/Snapshot-Nebenwirkung, Web5-Caps unterstützen Normal/CrossLine/Human und mindestens 5 Linienpunkte.
+- `TriggerPosition` bleibt aus der CrossLine-Regel entfernt, weil die Kamera-Caps ausdrücklich `TriggerPosition=false` melden.
+- Die fehlgeschlagene `getTemplateRule`-Abfrage ist nicht mehr Voraussetzung für die Freigabe; die Kamera-Caps und dokumentierten Config-Readbacks sind hierfür maßgeblich.
+- Der normale Lauftest bleibt erhalten und wird künftig erst nach erfolgreichem Konfigurations-Audit freigegeben.
+
 # v0.2.5
 
 - Ursache des weiter fehlenden CrossLine-Events weiter eingegrenzt: `Scene.TypeList=[Normal]` wird zwar gespeichert, aktiviert aber nicht die laufende IVS-Szene.
