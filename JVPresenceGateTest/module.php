@@ -539,10 +539,10 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('RuleCreatedByModule', $createdNow || $this->ReadAttributeBoolean('Rpc2RuleCreatedByModule'));
         $this->appendProtocol(($createdNow ? 'Neu erzeugte' : 'Vorhandene') . ' Tripwire wird verwendet: Index ' . $idx . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
 
-        // Realdiagnose v0.2.0: VideoAnalyseGlobal.Scene.TypeList war leer,
-        // obwohl Normal-Modul und CrossLine-Regel vorhanden waren. Dahua behandelt
-        // den Smart Plan als Master-Schalter für IVS. Aktivierung erfolgt daher
-        // jetzt kontrolliert über RPC2 und wird vollständig gesichert/verifiziert.
+        // Realdiagnose + externer Dahua-Referenzcode: Die aktive IVS-Szene wird
+        // über VideoAnalyseGlobal.Scene.Type gesteuert. TypeList allein aktiviert
+        // die Runtime nicht. Scene.Type=Normal wird kontrolliert gesetzt und
+        // vollständig gesichert/verifiziert.
         $smartPlanChangedNow = false;
         if ($createdNow) {
             $smartPlan = $this->enableNormalIvsSmartPlanViaRpc2();
@@ -1093,7 +1093,7 @@ class JVPresenceGateTest extends IPSModule
                     'MinSize' => [200, 200],
                     'Type' => 'ByLength'
                 ],
-                'TriggerPosition' => ['Center']
+                // Kamera-Caps melden TriggerPosition=false für CrossLineDetection.
             ],
             'Enable' => true,
             'EventHandler' => $eventHandler,
@@ -1408,26 +1408,23 @@ class JVPresenceGateTest extends IPSModule
             return ['ok' => false, 'error' => 'unerwartete VideoAnalyseGlobal-Struktur'];
         }
 
-        $currentList = $original[0]['Scene']['TypeList'] ?? [];
-        if ($currentList === null) {
-            $currentList = [];
-        }
-        if (!is_array($currentList)) {
-            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
-            return ['ok' => false, 'error' => 'Scene.TypeList hat unerwarteten Typ'];
-        }
-
-        if (in_array('Normal', $currentList, true)) {
-            $this->appendProtocol('IVS Smart Plan: Normal ist bereits in Scene.TypeList aktiv.');
+        // Dahua aktiviert die laufende IVS-Szene über Scene.Type.
+        // Scene.TypeList beschreibt nicht den aktiven Analysemodus. Der bisherige
+        // Ansatz TypeList=["Normal"] wurde zwar gespeichert, startete aber die
+        // IVS-Runtime nicht. Ein funktionierender Dahua-Client setzt explizit
+        // VideoAnalyseGlobal[0].Scene.Type=Normal.
+        $currentType = $original[0]['Scene']['Type'] ?? null;
+        if ($currentType === 'Normal') {
+            $this->appendProtocol('IVS Smart Plan: Scene.Type=Normal ist bereits aktiv.');
             $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
             return ['ok' => true, 'error' => '', 'changed' => false];
         }
 
-        // Keine fremde Smart-Plan-Auswahl automatisch überschreiben.
-        if ($currentList !== []) {
-            $this->appendProtocol('IVS Smart Plan Sicherheitsabbruch: vorhandene TypeList=' . json_encode($currentList, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        // Keine fremde aktive Szene automatisch überschreiben.
+        if ($currentType !== null && $currentType !== '') {
+            $this->appendProtocol('IVS Smart Plan Sicherheitsabbruch: vorhandene Scene.Type=' . json_encode($currentType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
-            return ['ok' => false, 'error' => 'bereits anderer Smart Plan aktiv'];
+            return ['ok' => false, 'error' => 'bereits andere IVS-Szene aktiv'];
         }
 
         $backup = json_encode($original, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -1449,7 +1446,7 @@ class JVPresenceGateTest extends IPSModule
         }
 
         $candidate = $original;
-        $candidate[0]['Scene']['TypeList'] = ['Normal'];
+        $candidate[0]['Scene']['Type'] = 'Normal';
 
         $write = $this->rpc2Call(
             $host, $port, $session, 42, 'configManager.setConfig',
@@ -1459,12 +1456,12 @@ class JVPresenceGateTest extends IPSModule
         if (!($write['ok'] ?? false)) {
             $this->rpc2Call($host, $port, $session, 43, 'configManager.setConfig', ['name' => 'VideoAnalyseGlobal', 'table' => $original, 'options' => []]);
             $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
-            return ['ok' => false, 'error' => 'Kamera hat TypeList=[Normal] abgelehnt'];
+            return ['ok' => false, 'error' => 'Kamera hat Scene.Type=Normal abgelehnt'];
         }
 
         $verify = $this->rpc2Call($host, $port, $session, 44, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
-        $verifiedList = $verify['json']['params']['table'][0]['Scene']['TypeList'] ?? null;
-        if (!($verify['ok'] ?? false) || !is_array($verifiedList) || !in_array('Normal', $verifiedList, true)) {
+        $verifiedType = $verify['json']['params']['table'][0]['Scene']['Type'] ?? null;
+        if (!($verify['ok'] ?? false) || $verifiedType !== 'Normal') {
             $rollback = $this->rpc2Call($host, $port, $session, 45, 'configManager.setConfig', ['name' => 'VideoAnalyseGlobal', 'table' => $original, 'options' => []]);
             $this->appendRpc2Result('SMARTPLAN ROLLBACK', $rollback);
             $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
@@ -1485,7 +1482,7 @@ class JVPresenceGateTest extends IPSModule
         }
 
         $this->WriteAttributeBoolean('Rpc2GlobalChangedByModule', true);
-        $this->appendProtocol('IVS Smart Plan erfolgreich aktiviert: Scene.TypeList=[Normal].');
+        $this->appendProtocol('IVS Smart Plan erfolgreich aktiviert: Scene.Type=Normal.');
         $this->appendProtocol('SmartMotionDetect nach Smart-Plan-Aktivierung: ' . ($smartAfter ?? '<nicht lesbar>'));
         $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
         return ['ok' => true, 'error' => '', 'changed' => true];
