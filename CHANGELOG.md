@@ -1,3 +1,11 @@
+# v0.2.3
+
+- Erweitert P05 gemäß der neuesten roten Markierung im Kamerabild nach links über die zusätzliche Personentür.
+- P05 ist jetzt eine echte Dahua-Polylinie mit fünf Stützpunkten statt nur einer Zweipunkt-Geraden.
+- Verwendete IVS-Koordinaten: `[[4858,925],[4922,936],[4959,1138],[5189,1529],[5887,2406]]`.
+- Rückleseprüfung verifiziert nun die komplette Polylinie, nicht nur Anfang und Ende.
+- Die Geometrie wird sowohl beim RPC2-Writer als auch bei der Web5-IVS-Diagnose identisch verwendet.
+
 # v0.2.2
 
 - Keine weiteren Laufversuche, bevor die echte moderne Dahua-Web5-IVS-API ausgewertet ist.
