@@ -1,3 +1,13 @@
+# v0.2.1
+
+- Die Runtime-Diagnose zeigt `VideoAnalyseGlobal.Scene.TypeList=[]`: Es ist kein IVS-Smart-Plan aktiv, obwohl Normal-Modul und P05-CrossLine-Regel vorhanden sind.
+- Aktiviert deshalb kontrolliert den Dahua-IVS-Smart-Plan über RPC2 mit `Scene.TypeList=["Normal"]`.
+- Vor der Änderung wird die komplette `VideoAnalyseGlobal`-Tabelle gesichert und ein NO-OP-Write verifiziert.
+- Fremde bereits aktive Smart-Pläne werden nicht überschrieben; dann erfolgt Sicherheitsabbruch.
+- Nach dem Write wird `TypeList` zurückgelesen und `SmartMotionDetect` kontrolliert. Bei Konflikt oder Abweichung erfolgt automatischer Rollback.
+- Vor einem neuen Test und über `Testkonfiguration entfernen` wird die ursprüngliche `VideoAnalyseGlobal`-Tabelle exakt wiederhergestellt.
+- Nach Smart-Plan-/P05-Änderungen wird der Dahua-Eventstream erneut aufgebaut.
+
 # v0.2.0
 
 - Realtest zeigt: `SmartMotionHuman` und `VideoMotion` kommen korrekt an, `CrossLineDetection` jedoch nicht. Damit sind Eventstream, Zugang und Personenerkennung nachweislich funktionsfähig; offen ist nur der IVS-Runtime-/Smart-Plan-Zustand.
