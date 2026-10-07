@@ -1,4 +1,4 @@
-# JV Presence Gate Test v0.1.0
+# JV Presence Gate Test v0.1.4
 
 Separates IP-Symcon-Testmodul für die erste reale Presence-Grenze **P05 HOME_CORE ↔ OUTSIDE am Schiebetor**.
 
@@ -54,3 +54,8 @@ Die Linie wurde anhand des bereitgestellten unveränderten Nachtbildes der Kamer
 - bestehende `AussenlichtAutomatik2`-Instanz `JV Hof Garage`
 - Dahua-Kamera erreichbar
 - `curl` in IP-Symcon (im vorhandenen SymBox-Backup bereits von anderen installierten Modulen genutzt)
+
+
+## Hinweis für IPC-PDW3849-A180-AS-PV / Taurus-Web5
+
+Diese Firmware kann vorhandene IVS-Regeln per CGI lesen und deren Events streamen, lehnt aber das Anlegen einer neuen CrossLineDetection über den alten `configManager.cgi`-Schreibweg ab. Deshalb wird einmalig im Kamera-Webinterface eine Tripwire angelegt. Danach erkennt das Modul sie automatisch und der eigentliche OUT/IN-Test bleibt vollständig automatisch.
