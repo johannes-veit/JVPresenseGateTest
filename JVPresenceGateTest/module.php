@@ -87,17 +87,64 @@ class JVPresenceGateTest extends IPSModule
         $sourceID = $this->resolveSourceInstance();
         $this->WriteAttributeInteger('SourceInstanceID', $sourceID);
         if ($sourceID <= 0) {
-            $this->SetValue('Result', 'NICHT BEREIT – bestehende Instanz JV Hof Garage wurde nicht gefunden.');
+            $this->setResult('NICHT BEREIT – bestehende Instanz JV Hof Garage wurde nicht gefunden.');
             return;
         }
 
         $this->syncParentSocket();
         $this->updateParentSubscription($this->getParentID());
-        $this->SetValue('Result', 'Installiert. Einmal „Test vorbereiten & starten“ drücken.');
+        $this->setResult('Installiert. Einmal „Test vorbereiten & starten“ drücken.');
 
         if ($this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
             $this->scheduleSocketRestart(500);
         }
+    }
+
+    public function GetConfigurationForm(): string
+    {
+        $raw = @file_get_contents(__DIR__ . '/form.json');
+        $form = json_decode((string) $raw, true);
+        if (!is_array($form)) {
+            return (string) $raw;
+        }
+
+        $sourceID = $this->ReadAttributeInteger('SourceInstanceID');
+        if ($sourceID <= 0 || !IPS_InstanceExists($sourceID)) {
+            $sourceID = $this->resolveSourceInstance();
+        }
+
+        $sourceCaption = 'Automatisch erkannt: NICHT GEFUNDEN';
+        if ($sourceID > 0 && IPS_InstanceExists($sourceID)) {
+            $host = '';
+            try {
+                $host = trim((string) IPS_GetProperty($sourceID, 'CameraHost'));
+            } catch (Throwable $e) {
+            }
+            $sourceCaption = 'Automatisch erkannt: ' . IPS_GetName($sourceID) . ' (#' . $sourceID . ')' . ($host !== '' ? ' – ' . $host : '');
+        }
+
+        $result = '';
+        $resultID = $this->GetIDForIdent('Result');
+        if ($resultID > 0 && IPS_VariableExists($resultID)) {
+            $result = (string) GetValue($resultID);
+        }
+        if ($result === '') {
+            $result = 'Noch kein Test gestartet.';
+        }
+
+        $live = [
+            [
+                'type' => 'Label',
+                'caption' => $sourceCaption
+            ],
+            [
+                'type' => 'Label',
+                'caption' => 'Aktueller Teststatus: ' . $result
+            ]
+        ];
+
+        array_splice($form['elements'], 1, 0, $live);
+        return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     public function GetConfigurationForParent(): string
@@ -172,7 +219,7 @@ class JVPresenceGateTest extends IPSModule
             }
 
             $this->WriteAttributeBoolean('AuthBlocked', true);
-            $this->SetValue('Result', 'FEHLER – Dahua-Digest-Anmeldung wurde abgewiesen.');
+            $this->setResult('FEHLER – Dahua-Digest-Anmeldung wurde abgewiesen.');
             return '';
         }
 
@@ -331,15 +378,29 @@ class JVPresenceGateTest extends IPSModule
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
         $this->scheduleSocketRestart(100);
-        $this->SetValue('Result', 'Eventstream wird neu aufgebaut …');
+        $this->setResult('Eventstream wird neu aufgebaut …');
     }
 
     public function PrepareAndStartTest(): void
     {
         $this->ResetTest();
+
+        // Bei jedem Tastendruck frisch auflösen. Dadurch funktioniert der Test auch,
+        // wenn die Instanz nach dem ersten ApplyChanges umbenannt/verschoben wurde
+        // oder der Anwender die Konfigurationsform ohne erneutes Übernehmen geöffnet hat.
+        $sourceID = $this->resolveSourceInstance();
+        $this->WriteAttributeInteger('SourceInstanceID', $sourceID);
+        if ($sourceID <= 0) {
+            $this->setResult('FEHLER – JV Hof Garage konnte nicht automatisch gefunden werden. Im Feld darunter kann die Instanz notfalls manuell gewählt werden.');
+            return;
+        }
+
+        $this->syncParentSocket();
+        $this->updateParentSubscription($this->getParentID());
+
         $cfg = $this->cameraConfiguration();
         if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
-            $this->SetValue('Result', 'FEHLER – Kamerakonfiguration konnte nicht automatisch aus JV Hof Garage übernommen werden.');
+            $this->setResult('FEHLER – Kamerakonfiguration konnte nicht automatisch aus JV Hof Garage übernommen werden.');
             return;
         }
 
@@ -349,7 +410,7 @@ class JVPresenceGateTest extends IPSModule
 
         $rulesRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
         if (!$rulesRaw['ok']) {
-            $this->SetValue('Result', 'FEHLER – IVS-Konfiguration konnte nicht gelesen werden: ' . $rulesRaw['error']);
+            $this->setResult('FEHLER – IVS-Konfiguration konnte nicht gelesen werden: ' . $rulesRaw['error']);
             return;
         }
 
@@ -381,7 +442,7 @@ class JVPresenceGateTest extends IPSModule
                     $this->appendProtocol('WARNUNG: Smart-Plan konnte nicht automatisch auf Normal gesetzt werden: ' . $setGlobal['error']);
                 }
             } elseif ($normalized !== 'normal') {
-                $this->SetValue('Result', 'STOP – Kamera nutzt bereits einen anderen AI-Smart-Plan (' . $globalType . '). Es wurde nichts umgestellt.');
+                $this->setResult('STOP – Kamera nutzt bereits einen anderen AI-Smart-Plan (' . $globalType . '). Es wurde nichts umgestellt.');
                 $this->appendProtocol('Abbruch zum Schutz vorhandener AI-Konfiguration.');
                 return;
             }
@@ -393,7 +454,7 @@ class JVPresenceGateTest extends IPSModule
         if ($idx === null) {
             $idx = GateTestLogic::firstFreeRuleIndex($rules, 10);
             if ($idx === null) {
-                $this->SetValue('Result', 'FEHLER – kein freier IVS-Regelplatz (0..9). Es wurde nichts überschrieben.');
+                $this->setResult('FEHLER – kein freier IVS-Regelplatz (0..9). Es wurde nichts überschrieben.');
                 return;
             }
             $created = true;
@@ -411,7 +472,7 @@ class JVPresenceGateTest extends IPSModule
         ];
         $set = $this->cameraSet($params);
         if (!$set['ok']) {
-            $this->SetValue('Result', 'FEHLER – P05-Tripwire konnte nicht eingerichtet werden: ' . $set['error']);
+            $this->setResult('FEHLER – P05-Tripwire konnte nicht eingerichtet werden: ' . $set['error']);
             return;
         }
 
@@ -434,14 +495,14 @@ class JVPresenceGateTest extends IPSModule
 
         $verify = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
         if (!$verify['ok']) {
-            $this->SetValue('Result', 'FEHLER – Tripwire wurde geschrieben, konnte aber nicht rückgelesen werden.');
+            $this->setResult('FEHLER – Tripwire wurde geschrieben, konnte aber nicht rückgelesen werden.');
             return;
         }
         $verifiedRules = GateTestLogic::parseRules($verify['body']);
         $rule = $verifiedRules[$idx] ?? [];
         if (strcasecmp((string) ($rule['Type'] ?? ''), 'CrossLineDetection') !== 0
             || strtolower((string) ($rule['Enable'] ?? 'false')) !== 'true') {
-            $this->SetValue('Result', 'FEHLER – P05-Regel ist nach Rücklesen nicht aktiv.');
+            $this->setResult('FEHLER – P05-Regel ist nach Rücklesen nicht aktiv.');
             return;
         }
 
@@ -455,7 +516,7 @@ class JVPresenceGateTest extends IPSModule
                 $this->appendProtocol('SICHERHEITSABBRUCH: SmartMotionDetect wurde durch IVS deaktiviert. Ausgangszustand wird zurückgesetzt.');
                 $this->cameraSet(["VideoAnalyseRule[0][$idx].Enable" => 'false']);
                 $this->restoreGlobalSceneType();
-                $this->SetValue('Result', 'STOP – IVS und bestehende SMD-Personenerkennung kollidieren auf dieser Firmware. Ausgangszustand wiederhergestellt.');
+                $this->setResult('STOP – IVS und bestehende SMD-Personenerkennung kollidieren auf dieser Firmware. Ausgangszustand wiederhergestellt.');
                 return;
             }
         }
@@ -464,7 +525,7 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('RuleCreatedByModule', $created);
         $this->WriteAttributeBoolean('TestActive', true);
         $this->SetValue('TestActive', true);
-        $this->SetValue('Result', 'REGEL BEREIT – Eventstream verbindet noch …');
+        $this->setResult('REGEL BEREIT – Eventstream verbindet noch …');
         $this->appendProtocol('P05-Regel aktiv: Index ' . $idx . ', Name=' . self::RULE_NAME);
         $this->appendProtocol('Tripwire: A(' . $this->ReadPropertyInteger('LineAX') . ',' . $this->ReadPropertyInteger('LineAY') . ') -> B(' . $this->ReadPropertyInteger('LineBX') . ',' . $this->ReadPropertyInteger('LineBY') . '), Direction=Both');
         $this->appendProtocol('TESTFOLGE: 1 OUT, 2 IN, 3 OUT, 4 IN. Jeweils normal vollständig über die Linie gehen.');
@@ -487,7 +548,7 @@ class JVPresenceGateTest extends IPSModule
         $this->SetValue('LastEvent', '');
         $this->SetValue('Protocol', '');
         $this->setReady(false);
-        $this->SetValue('Result', 'Zurückgesetzt. „Test vorbereiten & starten“ drücken.');
+        $this->setResult('Zurückgesetzt. „Test vorbereiten & starten“ drücken.');
     }
 
     public function CleanupCameraTestConfig(): void
@@ -503,7 +564,7 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('TestActive', false);
         $this->SetValue('TestActive', false);
         $this->setReady(false);
-        $this->SetValue('Result', 'Testregel deaktiviert / Smart-Plan soweit durch das Modul verändert zurückgesetzt.');
+        $this->setResult('Testregel deaktiviert / Smart-Plan soweit durch das Modul verändert zurückgesetzt.');
     }
 
     public function DumpState(): void
@@ -599,17 +660,17 @@ class JVPresenceGateTest extends IPSModule
 
                 if (($evaluation['valid'] ?? false) === true) {
                     $result = 'FERTIG – P05 eindeutig: OUT=' . $evaluation['outDirection'] . ', IN=' . $evaluation['inDirection'] . '. Testprotokoll hier hochladen.';
-                    $this->SetValue('Result', $result);
+                    $this->setResult($result);
                     $this->appendProtocol($result);
                 } else {
                     $result = 'TEST BEENDET, aber Zuordnung noch nicht eindeutig: ' . ($evaluation['message'] ?? 'unbekannt') . '. Testprotokoll hier hochladen.';
-                    $this->SetValue('Result', $result);
+                    $this->setResult($result);
                     $this->appendProtocol($result);
                 }
             } else {
                 $next = count($crossings) + 1;
                 $nextExpected = ($next % 2 === 1) ? 'OUT' : 'IN';
-                $this->SetValue('Result', 'Schritt ' . count($crossings) . '/4 erkannt. Als Nächstes: ' . $nextExpected . ' durch das Schiebetor.');
+                $this->setResult('Schritt ' . count($crossings) . '/4 erkannt. Als Nächstes: ' . $nextExpected . ' durch das Schiebetor.');
             }
         }
     }
@@ -732,7 +793,42 @@ class JVPresenceGateTest extends IPSModule
             } catch (Throwable $e) {
             }
         }
-        return $fallback;
+        if ($fallback > 0) {
+            return $fallback;
+        }
+
+        // Sicherheitsnetz: nicht nur nach Modul-GUID suchen. Damit bleibt die
+        // Ein-Klick-Erkennung auch dann funktionsfähig, wenn eine lokale Kopie
+        // des Außenlichtmoduls mit anderer GUID verwendet wird.
+        if (function_exists('IPS_GetInstanceList')) {
+            foreach (IPS_GetInstanceList() as $id) {
+                $id = (int) $id;
+                if ($id <= 0 || !IPS_InstanceExists($id)) {
+                    continue;
+                }
+
+                $name = trim((string) IPS_GetName($id));
+                if (strcasecmp($name, 'JV Hof Garage') === 0) {
+                    try {
+                        $host = trim((string) IPS_GetProperty($id, 'CameraHost'));
+                        if ($host !== '') {
+                            return $id;
+                        }
+                    } catch (Throwable $e) {
+                    }
+                }
+
+                try {
+                    $host = trim((string) IPS_GetProperty($id, 'CameraHost'));
+                    if ($host === '192.168.107.111') {
+                        return $id;
+                    }
+                } catch (Throwable $e) {
+                }
+            }
+        }
+
+        return 0;
     }
 
     /** @return array{host:string,port:int,username:string,password:string}|array{} */
@@ -846,7 +942,7 @@ class JVPresenceGateTest extends IPSModule
             IPS_SetProperty($parentID, 'Open', $this->ReadPropertyBoolean('Enabled'));
             IPS_ApplyChanges($parentID);
         } catch (Throwable $e) {
-            $this->SetValue('Result', 'Client Socket konnte nicht automatisch konfiguriert werden: ' . $e->getMessage());
+            $this->setResult('Client Socket konnte nicht automatisch konfiguriert werden: ' . $e->getMessage());
         }
     }
 
@@ -904,7 +1000,7 @@ class JVPresenceGateTest extends IPSModule
         $ready = $ruleReady && $stream && $active;
         $this->setReady($ready);
         if ($ready && $this->GetValue('CrossingCount') === 0) {
-            $this->SetValue('Result', 'BEREIT – jetzt OUT → IN → OUT → IN durch das Schiebetor gehen.');
+            $this->setResult('BEREIT – jetzt OUT → IN → OUT → IN durch das Schiebetor gehen.');
         }
     }
 
@@ -921,6 +1017,16 @@ class JVPresenceGateTest extends IPSModule
         $id = $this->GetIDForIdent('Ready');
         if ($id > 0 && GetValueBoolean($id) !== $value) {
             SetValueBoolean($id, $value);
+        }
+    }
+
+    private function setResult(string $text): void
+    {
+        $this->SetValue('Result', $text);
+        try {
+            $this->ReloadForm();
+        } catch (Throwable $e) {
+            // Die Ergebnisvariable bleibt auch dann korrekt gesetzt.
         }
     }
 
