@@ -1,4 +1,4 @@
-# JV Presence Gate Test v0.1.5
+# JV Presence Gate Test v0.1.6
 
 Separates IP-Symcon-Testmodul für die erste reale Presence-Grenze **P05 HOME_CORE ↔ OUTSIDE am Schiebetor**.
 
@@ -64,3 +64,8 @@ Diese Firmware kann vorhandene IVS-Regeln per CGI lesen und deren Events streame
 ## RPC2-Diagnose
 
 Wenn noch keine Tripwire vorhanden ist, führt v0.1.5 automatisch eine nur-lesende Web5/RPC2-Diagnose aus. Sie liest die aktuelle und die Default-`VideoAnalyseRule`-Tabelle aus der Kamera. Daraus kann der nächste Stand den sicheren automatischen Writer für genau diese Firmware ableiten. Bei der Diagnose wird nichts geschrieben.
+
+
+## RPC2-Login-Hinweis
+
+Bei Dahua Web5 ist die erste `global.login`-Antwort häufig absichtlich `result=false`, liefert aber bereits `session`, `realm` und `random` für den zweiten authentifizierten Login. v0.1.6 behandelt diesen Challenge-Schritt korrekt.
