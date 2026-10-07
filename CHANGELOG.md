@@ -1,3 +1,9 @@
+# v0.2.0
+
+- Realtest zeigt: `SmartMotionHuman` und `VideoMotion` kommen korrekt an, `CrossLineDetection` jedoch nicht. Damit sind Eventstream, Zugang und Personenerkennung nachweislich funktionsfähig; offen ist nur der IVS-Runtime-/Smart-Plan-Zustand.
+- Nach dem automatischen Anlegen von P05 werden nun vor weiteren Laufversuchen ausschließlich lesend `VideoAnalyseGlobal`, `VideoAnalyseModule` und `VideoAnalyseRule` jeweils als CURRENT/DEFAULT über RPC2 ausgelesen.
+- Der Test stoppt danach bewusst mit `IVS-DIAGNOSE ERFASST`; erneutes Durchlaufen ist bis zur Auswertung nicht nötig.
+
 # v0.1.9
 
 - Behebt den nächsten Realtest-Befund: Der Dahua-Eventstream war bereits verbunden, bevor P05 per RPC2 angelegt wurde.
