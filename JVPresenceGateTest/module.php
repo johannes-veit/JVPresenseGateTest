@@ -474,9 +474,13 @@ class JVPresenceGateTest extends IPSModule
         }
 
         if ($idx === null) {
-            $this->probeModernVideoAnalyse();
-            $this->setResult('EINMALIGE KAMERA-EINSTELLUNG NÖTIG – in JV Hof Garage unter KI/IVS eine Tripwire anlegen, Richtung Beide, Ziel Mensch. Danach hier erneut „Test vorbereiten & starten“ drücken.');
-            $this->appendProtocol('Keine CrossLineDetection vorhanden. Kamera bleibt unverändert. Bitte einmal im Dahua-Webinterface eine Tripwire anlegen.');
+            $this->appendProtocol('Keine CrossLineDetection vorhanden. Starte RPC2/Web5-Kompatibilitätsprüfung.');
+            $rpc = $this->probeRpc2VideoAnalyse();
+            if (($rpc['ok'] ?? false) === true) {
+                $this->setResult('RPC2-DIAGNOSE ERFOLGREICH – Web5-Zugriff auf VideoAnalyseRule funktioniert. Bitte Testprotokoll hier senden; daraus baue ich den sicheren automatischen Regel-Writer.');
+            } else {
+                $this->setResult('RPC2-DIAGNOSE FEHLGESCHLAGEN – Details stehen im Testprotokoll. Kamera wurde nicht verändert.');
+            }
             return;
         }
 
@@ -880,6 +884,220 @@ class JVPresenceGateTest extends IPSModule
             return ['ok' => false, 'body' => is_string($body) ? $body : '', 'error' => $error !== '' ? $error : ('HTTP ' . $http), 'http' => $http];
         }
         return ['ok' => true, 'body' => (string) $body, 'error' => '', 'http' => $http];
+    }
+
+    /** @return array{ok:bool,error:string} */
+    private function probeRpc2VideoAnalyse(): array
+    {
+        $cfg = $this->cameraConfiguration();
+        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
+            $this->appendProtocol('RPC2: Kamerakonfiguration fehlt.');
+            return ['ok' => false, 'error' => 'Kamerakonfiguration fehlt'];
+        }
+
+        $login = $this->rpc2Login(
+            (string) $cfg['host'],
+            (int) $cfg['port'],
+            (string) $cfg['username'],
+            (string) $cfg['password']
+        );
+        if (!($login['ok'] ?? false)) {
+            $this->appendProtocol('RPC2 LOGIN FEHLER: ' . (string) ($login['error'] ?? 'unbekannt'));
+            return ['ok' => false, 'error' => (string) ($login['error'] ?? 'Login fehlgeschlagen')];
+        }
+
+        $session = (string) ($login['session'] ?? '');
+        $this->appendProtocol('RPC2 LOGIN: OK, Session aufgebaut (ID wird nicht protokolliert).');
+
+        $current = $this->rpc2Call(
+            (string) $cfg['host'],
+            (int) $cfg['port'],
+            $session,
+            3,
+            'configManager.getConfig',
+            ['name' => 'VideoAnalyseRule']
+        );
+        $this->appendRpc2Result('getConfig VideoAnalyseRule', $current);
+
+        $default = $this->rpc2Call(
+            (string) $cfg['host'],
+            (int) $cfg['port'],
+            $session,
+            4,
+            'configManager.getDefault',
+            ['name' => 'VideoAnalyseRule']
+        );
+        $this->appendRpc2Result('getDefault VideoAnalyseRule', $default);
+
+        $global = $this->rpc2Call(
+            (string) $cfg['host'],
+            (int) $cfg['port'],
+            $session,
+            5,
+            'configManager.getConfig',
+            ['name' => 'VideoAnalyseGlobal']
+        );
+        $this->appendRpc2Result('getConfig VideoAnalyseGlobal', $global);
+
+        // Session höflich schließen; Fehler beim Logout ändert das Diagnoseergebnis nicht.
+        $logout = $this->rpc2Call(
+            (string) $cfg['host'],
+            (int) $cfg['port'],
+            $session,
+            6,
+            'global.logout',
+            null
+        );
+        $this->appendProtocol('RPC2 LOGOUT: ' . (($logout['ok'] ?? false) ? 'OK' : 'nicht bestätigt'));
+
+        $ok = ($current['ok'] ?? false) === true && ($default['ok'] ?? false) === true;
+        if ($ok) {
+            $this->appendProtocol('RPC2-DIAGNOSE: VideoAnalyseRule current+default erfolgreich gelesen. Es wurde NICHT geschrieben.');
+            return ['ok' => true, 'error' => ''];
+        }
+
+        $this->appendProtocol('RPC2-DIAGNOSE: mindestens ein notwendiger Read wurde abgelehnt. Es wurde NICHT geschrieben.');
+        return ['ok' => false, 'error' => 'RPC2-Read unvollständig'];
+    }
+
+    /** @return array{ok:bool,session?:string,error?:string} */
+    private function rpc2Login(string $host, int $port, string $username, string $password): array
+    {
+        $base = 'http://' . $host . ':' . $port;
+
+        $first = $this->rpc2Post($base . '/RPC2_Login', [
+            'method' => 'global.login',
+            'id' => 1,
+            'params' => [
+                'userName' => $username,
+                'password' => '',
+                'clientType' => 'Web5.0'
+            ]
+        ]);
+
+        if (!($first['ok'] ?? false) || !is_array($first['json'] ?? null)) {
+            return ['ok' => false, 'error' => 'Login-Challenge fehlgeschlagen: ' . (string) ($first['error'] ?? '')];
+        }
+
+        $j1 = $first['json'];
+        $session = (string) ($j1['session'] ?? '');
+        $realm = (string) ($j1['params']['realm'] ?? '');
+        $random = (string) ($j1['params']['random'] ?? '');
+        $authorityType = (string) (($j1['params']['encryption'] ?? '') ?: 'Default');
+        if ($session === '' || $realm === '' || $random === '') {
+            return ['ok' => false, 'error' => 'Login-Challenge unvollständig'];
+        }
+
+        $pwdHash = strtoupper(md5($username . ':' . $realm . ':' . $password));
+        $passHash = strtoupper(md5($username . ':' . $random . ':' . $pwdHash));
+
+        $second = $this->rpc2Post($base . '/RPC2_Login', [
+            'method' => 'global.login',
+            'id' => 2,
+            'session' => $session,
+            'params' => [
+                'userName' => $username,
+                'password' => $passHash,
+                'clientType' => 'Web5.0',
+                'realm' => $realm,
+                'random' => $random,
+                'passwordType' => 'Default',
+                'authorityType' => $authorityType
+            ]
+        ]);
+
+        if (!($second['ok'] ?? false) || !is_array($second['json'] ?? null) || (($second['json']['result'] ?? false) !== true)) {
+            $err = is_array($second['json'] ?? null) ? json_encode($second['json'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : (string) ($second['error'] ?? '');
+            return ['ok' => false, 'error' => 'Authentifizierung abgelehnt: ' . $err];
+        }
+
+        $session2 = (string) ($second['json']['session'] ?? $session);
+        if ($session2 === '') {
+            return ['ok' => false, 'error' => 'keine Session nach Login'];
+        }
+        return ['ok' => true, 'session' => $session2];
+    }
+
+    /** @return array{ok:bool,json?:array,error?:string,http?:int,raw?:string} */
+    private function rpc2Call(string $host, int $port, string $session, int $id, string $method, $params): array
+    {
+        $payload = [
+            'method' => $method,
+            'id' => $id,
+            'session' => $session
+        ];
+        if ($params !== null) {
+            $payload['params'] = $params;
+        }
+        return $this->rpc2Post('http://' . $host . ':' . $port . '/RPC2', $payload);
+    }
+
+    /** @param array<string,mixed> $payload
+     *  @return array{ok:bool,json?:array,error?:string,http?:int,raw?:string}
+     */
+    private function rpc2Post(string $url, array $payload): array
+    {
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'error' => 'curl_init fehlgeschlagen', 'http' => 0];
+        }
+
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $json,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json'],
+            CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_NOSIGNAL => true,
+            CURLOPT_FOLLOWLOCATION => false
+        ]);
+
+        $body = curl_exec($ch);
+        $error = curl_error($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($body === false) {
+            return ['ok' => false, 'error' => $error !== '' ? $error : 'curl_exec fehlgeschlagen', 'http' => $http];
+        }
+
+        $decoded = json_decode((string) $body, true);
+        if (!is_array($decoded)) {
+            return ['ok' => false, 'error' => 'Antwort ist kein JSON', 'http' => $http, 'raw' => (string) $body];
+        }
+
+        $result = ($decoded['result'] ?? null);
+        if ($http < 200 || $http >= 300 || $result === false) {
+            return [
+                'ok' => false,
+                'error' => 'HTTP ' . $http . ' / result=' . json_encode($result),
+                'http' => $http,
+                'json' => $decoded,
+                'raw' => (string) $body
+            ];
+        }
+
+        return ['ok' => true, 'http' => $http, 'json' => $decoded, 'raw' => (string) $body];
+    }
+
+    /** @param array<string,mixed> $result */
+    private function appendRpc2Result(string $label, array $result): void
+    {
+        $safe = $result['json'] ?? null;
+        $text = is_array($safe)
+            ? json_encode($safe, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            : (string) ($result['raw'] ?? ($result['error'] ?? '<leer>'));
+        if (strlen($text) > 30000) {
+            $text = substr($text, 0, 30000) . '…';
+        }
+        $this->appendProtocol(
+            'RPC2 ' . $label .
+            ': ok=' . (($result['ok'] ?? false) ? 'true' : 'false') .
+            ' HTTP=' . (int) ($result['http'] ?? 0) .
+            ' body=' . $this->singleLine($text)
+        );
     }
 
     private function probeModernVideoAnalyse(): void
