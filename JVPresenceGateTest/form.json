@@ -22,11 +22,11 @@
         {
           "type": "SelectInstance",
           "name": "SourceCameraInstanceID",
-          "caption": "Optional: bestehende AussenlichtAutomatik2-Instanz manuell wählen"
+          "caption": "Nur manuell, falls Automatik fehlschlägt"
         },
         {
           "type": "Label",
-          "caption": "Normalfall: nichts auswählen. Die bekannte JV-Hof-Garage-Instanz wird automatisch erkannt. Es werden keine Zugangsdaten in diesem Testmodul gespeichert."
+          "caption": "Normalfall: dieses Auswahlfeld bleibt leer. Direkt oberhalb wird nach dem Öffnen angezeigt, welche Kamera automatisch erkannt wurde. Nur bei 'NICHT GEFUNDEN' hier manuell JV Hof Garage auswählen."
         }
       ]
     },
