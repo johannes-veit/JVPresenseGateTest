@@ -1,3 +1,11 @@
+# v0.1.4
+
+- Für IPC-PDW3849-A180-AS-PV / Taurus-Web5 wird keine neue IVS-Regel mehr per Legacy-CGI erzwungen.
+- Vorhandene CrossLineDetection wird automatisch erkannt und für den Test wiederverwendet.
+- Falls noch keine Tripwire existiert, bleibt die Kamera unverändert und das Modul fordert genau eine manuelle IVS-Tripwire an.
+- Danach genügt erneut „Test vorbereiten & starten“; die Richtung OUT/IN wird weiterhin automatisch aus vier Durchgängen gelernt.
+- CrossLine-Events anderer Regelindizes werden beim Test ignoriert, soweit die Firmware einen Index liefert.
+
 # v0.1.3
 
 - Erkennt ältere vs. moderne Dahua-IVS-Konfigurationswege.
