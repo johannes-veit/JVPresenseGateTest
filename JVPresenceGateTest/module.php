@@ -449,12 +449,17 @@ class JVPresenceGateTest extends IPSModule
         }
 
         $rules = GateTestLogic::parseRules($rulesRaw['body']);
+        $this->appendProtocol('IVS-Regeln vor Test: ' . $this->summarizeRules($rules));
         $idx = GateTestLogic::findRuleIndex($rules, self::RULE_NAME);
         $created = false;
         if ($idx === null) {
-            $idx = GateTestLogic::firstFreeRuleIndex($rules, 10);
-            if ($idx === null) {
-                $this->setResult('FEHLER – kein freier IVS-Regelplatz (0..9). Es wurde nichts überschrieben.');
+            $used = array_map('intval', array_keys($rules));
+            $idx = $used === [] ? 0 : (max($used) + 1);
+            if ($idx > 9) {
+                $idx = GateTestLogic::firstFreeRuleIndex($rules, 10);
+            }
+            if ($idx === null || array_key_exists($idx, $rules)) {
+                $this->setResult('FEHLER – kein sicher nutzbarer freier IVS-Regelplatz (0..9). Es wurde nichts überschrieben.');
                 return;
             }
             $created = true;
@@ -470,9 +475,9 @@ class JVPresenceGateTest extends IPSModule
             "VideoAnalyseRule[0][$idx].Config.DetectLine[1][0]" => (string) $this->ReadPropertyInteger('LineBX'),
             "VideoAnalyseRule[0][$idx].Config.DetectLine[1][1]" => (string) $this->ReadPropertyInteger('LineBY')
         ];
-        $set = $this->cameraSet($params);
+        $set = $this->configureTripwireStepwise($idx, $params);
         if (!$set['ok']) {
-            $this->setResult('FEHLER – P05-Tripwire konnte nicht eingerichtet werden: ' . $set['error']);
+            $this->setResult('FEHLER – P05-Tripwire konnte nicht eingerichtet werden: ' . $set['error'] . ' – Details stehen im Testprotokoll.');
             return;
         }
 
@@ -892,6 +897,101 @@ class JVPresenceGateTest extends IPSModule
             return ['ok' => false, 'body' => is_string($body) ? $body : '', 'error' => $error !== '' ? $error : ('HTTP ' . $http), 'http' => $http];
         }
         return ['ok' => true, 'body' => (string) $body, 'error' => '', 'http' => $http];
+    }
+
+    /** @param array<int,array<string,mixed>> $rules */
+    private function summarizeRules(array $rules): string
+    {
+        $out = [];
+        foreach ($rules as $idx => $rule) {
+            $out[] = [
+                'index' => (int) $idx,
+                'name' => (string) ($rule['Name'] ?? ''),
+                'type' => (string) ($rule['Type'] ?? ''),
+                'enable' => (string) ($rule['Enable'] ?? '')
+            ];
+        }
+        return json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /** @param array<string,string> $params
+     *  @return array{ok:bool,body:string,error:string,http:int}
+     */
+    private function cameraSetTransport(array $params): array
+    {
+        if ($params === []) {
+            return ['ok' => true, 'body' => '', 'error' => '', 'http' => 200];
+        }
+        $parts = [];
+        foreach ($params as $key => $value) {
+            $parts[] = $key . '=' . rawurlencode($value);
+        }
+        return $this->cameraGet('/cgi-bin/configManager.cgi?action=setConfig&' . implode('&', $parts));
+    }
+
+    /** @param array<string,string> $allParams
+     *  @return array{ok:bool,body:string,error:string,http:int}
+     */
+    private function configureTripwireStepwise(int $idx, array $allParams): array
+    {
+        $steps = [
+            'Basis Name/Typ' => [
+                "VideoAnalyseRule[0][$idx].Name" => (string) ($allParams["VideoAnalyseRule[0][$idx].Name"] ?? self::RULE_NAME),
+                "VideoAnalyseRule[0][$idx].Type" => 'CrossLineDetection'
+            ],
+            'Geometrie/Richtung' => [
+                "VideoAnalyseRule[0][$idx].Config.Direction" => 'Both',
+                "VideoAnalyseRule[0][$idx].Config.DetectLine[0][0]" => (string) $this->ReadPropertyInteger('LineAX'),
+                "VideoAnalyseRule[0][$idx].Config.DetectLine[0][1]" => (string) $this->ReadPropertyInteger('LineAY'),
+                "VideoAnalyseRule[0][$idx].Config.DetectLine[1][0]" => (string) $this->ReadPropertyInteger('LineBX'),
+                "VideoAnalyseRule[0][$idx].Config.DetectLine[1][1]" => (string) $this->ReadPropertyInteger('LineBY')
+            ],
+            'Aktivieren' => [
+                "VideoAnalyseRule[0][$idx].Enable" => 'true'
+            ]
+        ];
+
+        foreach ($steps as $label => $params) {
+            $r = $this->cameraSetTransport($params);
+            $reply = $this->singleLine((string) ($r['body'] ?? ''));
+            $this->appendProtocol('IVS WRITE ' . $label . ': HTTP ' . (int) ($r['http'] ?? 0) . ' Antwort=' . ($reply === '' ? '<leer>' : $reply));
+            if (!$r['ok']) {
+                return ['ok' => false, 'body' => (string) ($r['body'] ?? ''), 'error' => $label . ': ' . (string) ($r['error'] ?? 'HTTP-Fehler'), 'http' => (int) ($r['http'] ?? 0)];
+            }
+
+            $verify = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
+            if (!$verify['ok']) {
+                return ['ok' => false, 'body' => '', 'error' => $label . ': Rücklesen fehlgeschlagen (' . $verify['error'] . ')', 'http' => $verify['http']];
+            }
+            $rules = GateTestLogic::parseRules($verify['body']);
+            $rule = $rules[$idx] ?? [];
+
+            if ($label === 'Basis Name/Typ') {
+                $ok = strcasecmp((string) ($rule['Name'] ?? ''), self::RULE_NAME) === 0
+                    && strcasecmp((string) ($rule['Type'] ?? ''), 'CrossLineDetection') === 0;
+            } elseif ($label === 'Geometrie/Richtung') {
+                $ok = strcasecmp((string) ($rule['Config.Direction'] ?? ''), 'Both') === 0
+                    && (string) ($rule['Config.DetectLine[0][0]'] ?? '') === (string) $this->ReadPropertyInteger('LineAX')
+                    && (string) ($rule['Config.DetectLine[0][1]'] ?? '') === (string) $this->ReadPropertyInteger('LineAY')
+                    && (string) ($rule['Config.DetectLine[1][0]'] ?? '') === (string) $this->ReadPropertyInteger('LineBX')
+                    && (string) ($rule['Config.DetectLine[1][1]'] ?? '') === (string) $this->ReadPropertyInteger('LineBY');
+            } else {
+                $ok = strtolower((string) ($rule['Enable'] ?? 'false')) === 'true';
+            }
+
+            if (!$ok) {
+                $this->appendProtocol('IVS VERIFY ' . $label . ' FEHLER: ' . json_encode($rule, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                return [
+                    'ok' => false,
+                    'body' => (string) ($r['body'] ?? ''),
+                    'error' => $label . ' wurde von der Kamera nicht übernommen; Antwort=' . ($reply === '' ? '<leer>' : $reply),
+                    'http' => (int) ($r['http'] ?? 0)
+                ];
+            }
+            $this->appendProtocol('IVS VERIFY ' . $label . ': OK');
+        }
+
+        return ['ok' => true, 'body' => 'verified', 'error' => '', 'http' => 200];
     }
 
     /** @param array<string,string> $params
