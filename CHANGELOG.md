@@ -1,3 +1,11 @@
+# v0.2.4
+
+- Auswertung des Web5-Protokolls: Zähler bleibt 0, weil weiterhin kein `CrossLineDetection`-Event von der Kamera kommt; Counter/Variable sind nicht die Ursache.
+- Kamera-Caps bestätigen `CrossLineDetection` in Szene `Normal` sowie Objektarten `Human` und `Vehicle`.
+- Die bisherigen `getTemplateRule`-Objektanfragen wurden mit Dahua-Fehler `-267976701` abgewiesen.
+- Ergänzt deshalb eine vollständig lesende Template-Abfrage mit `rule="CrossLineDetection"` sowie `Type`-Only-Fallback, um die exakte Regelvorlage dieser Firmware zu erhalten.
+- Keine zusätzliche Kameraänderung durch diese Diagnose.
+
 # v0.2.3
 
 - Erweitert P05 gemäß der neuesten roten Markierung im Kamerabild nach links über die zusätzliche Personentür.
