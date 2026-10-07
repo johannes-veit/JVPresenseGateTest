@@ -1,3 +1,10 @@
+# v0.1.6
+
+- Korrigiert den Dahua-Web5/RPC2-Zweistufenlogin.
+- Die erste Login-Challenge darf bei Dahua absichtlich `HTTP 200 + result=false` liefern; entscheidend sind `session`, `realm` und `random`.
+- Challenge-Details werden ohne Zugangsdaten im Testprotokoll protokolliert.
+- Danach werden aktuelle/default `VideoAnalyseRule` weiterhin ausschließlich lesend abgefragt.
+
 # v0.1.5
 
 - Fügt eine ausschließlich lesende Dahua-Web5/RPC2-Diagnose hinzu.
