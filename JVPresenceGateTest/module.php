@@ -114,7 +114,7 @@ class JVPresenceGateTest extends IPSModule
 
         $this->syncParentSocket();
         $this->updateParentSubscription($this->getParentID());
-        $this->setResult('Installiert. Einmal „Test vorbereiten & starten“ drücken.');
+        $this->setResult('Installiert. Nachts: „Kamera-Konfiguration prüfen“. Tagsüber: „Test vorbereiten & starten“.');
 
         if ($this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
             $this->scheduleSocketRestart(500);
