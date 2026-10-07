@@ -1,4 +1,4 @@
-# JV Presence Gate Test v0.1.4
+# JV Presence Gate Test v0.1.5
 
 Separates IP-Symcon-Testmodul für die erste reale Presence-Grenze **P05 HOME_CORE ↔ OUTSIDE am Schiebetor**.
 
@@ -59,3 +59,8 @@ Die Linie wurde anhand des bereitgestellten unveränderten Nachtbildes der Kamer
 ## Hinweis für IPC-PDW3849-A180-AS-PV / Taurus-Web5
 
 Diese Firmware kann vorhandene IVS-Regeln per CGI lesen und deren Events streamen, lehnt aber das Anlegen einer neuen CrossLineDetection über den alten `configManager.cgi`-Schreibweg ab. Deshalb wird einmalig im Kamera-Webinterface eine Tripwire angelegt. Danach erkennt das Modul sie automatisch und der eigentliche OUT/IN-Test bleibt vollständig automatisch.
+
+
+## RPC2-Diagnose
+
+Wenn noch keine Tripwire vorhanden ist, führt v0.1.5 automatisch eine nur-lesende Web5/RPC2-Diagnose aus. Sie liest die aktuelle und die Default-`VideoAnalyseRule`-Tabelle aus der Kamera. Daraus kann der nächste Stand den sicheren automatischen Writer für genau diese Firmware ableiten. Bei der Diagnose wird nichts geschrieben.
