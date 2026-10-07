@@ -518,6 +518,22 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeInteger('RuleIndex', $idx);
         $this->WriteAttributeBoolean('RuleCreatedByModule', $createdNow || $this->ReadAttributeBoolean('Rpc2RuleCreatedByModule'));
         $this->appendProtocol(($createdNow ? 'Neu erzeugte' : 'Vorhandene') . ' Tripwire wird verwendet: Index ' . $idx . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
+
+        // Nach den Realtests steht fest: Eventstream + SMD funktionieren,
+        // CrossLineDetection feuert aber nicht. Vor weiterem Laufen deshalb
+        // zuerst den tatsächlichen IVS-Runtime-/Smart-Plan-Zustand auslesen.
+        if ($createdNow) {
+            $diag = $this->probeIvsRuntimeViaRpc2();
+            if (!($diag['ok'] ?? false)) {
+                $this->setResult('IVS-DIAGNOSE FEHLGESCHLAGEN – Kamera wurde nicht weiter verändert. Testprotokoll senden.');
+                return;
+            }
+            $this->WriteAttributeBoolean('TestActive', false);
+            $this->SetValue('TestActive', false);
+            $this->setReady(false);
+            $this->setResult('IVS-DIAGNOSE ERFASST – nicht erneut laufen. Bitte Testprotokoll senden; daraus wird der fehlende Smart-Plan/Analyse-Modul-Schritt abgeleitet.');
+            return;
+        }
         // Prüfen, ob das Aktivieren von IVS die bestehende SmartMotion-Personenerkennung ausgeschaltet hat.
         if ($smartBefore !== null && strtolower($smartBefore) === 'true') {
             $smartAfterRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
@@ -1199,6 +1215,52 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('RuleCreatedByModule', false);
         $this->WriteAttributeInteger('RuleIndex', -1);
         return ['ok' => true, 'error' => ''];
+    }
+
+    /** @return array{ok:bool,error:string} */
+    private function probeIvsRuntimeViaRpc2(): array
+    {
+        $cfg = $this->cameraConfiguration();
+        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
+            return ['ok' => false, 'error' => 'Kamerakonfiguration fehlt'];
+        }
+
+        $login = $this->rpc2Login(
+            (string) $cfg['host'],
+            (int) $cfg['port'],
+            (string) $cfg['username'],
+            (string) $cfg['password']
+        );
+        if (!($login['ok'] ?? false)) {
+            $this->appendProtocol('IVS RUNTIME RPC2 LOGIN FEHLER: ' . (string) ($login['error'] ?? 'unbekannt'));
+            return ['ok' => false, 'error' => 'RPC2-Login fehlgeschlagen'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+
+        $queries = [
+            30 => ['CURRENT VideoAnalyseGlobal', 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']],
+            31 => ['DEFAULT VideoAnalyseGlobal', 'configManager.getDefault', ['name' => 'VideoAnalyseGlobal']],
+            32 => ['CURRENT VideoAnalyseModule', 'configManager.getConfig', ['name' => 'VideoAnalyseModule']],
+            33 => ['DEFAULT VideoAnalyseModule', 'configManager.getDefault', ['name' => 'VideoAnalyseModule']],
+            34 => ['CURRENT VideoAnalyseRule', 'configManager.getConfig', ['name' => 'VideoAnalyseRule']]
+        ];
+
+        $ok = true;
+        foreach ($queries as $id => $q) {
+            [$label, $rpcMethod, $params] = $q;
+            $r = $this->rpc2Call($host, $port, $session, $id, $rpcMethod, $params);
+            $this->appendRpc2Result('IVS ' . $label, $r);
+            if (!($r['ok'] ?? false)) {
+                $ok = false;
+            }
+        }
+
+        $this->rpc2Call($host, $port, $session, 39, 'global.logout', null);
+        $this->appendProtocol('IVS RUNTIME DIAGNOSE: ' . ($ok ? 'vollständig gelesen' : 'teilweise fehlgeschlagen') . '. Es wurde nichts zusätzlich geschrieben.');
+        return ['ok' => $ok, 'error' => $ok ? '' : 'mindestens ein Read fehlgeschlagen'];
     }
 
     /** @return array{ok:bool,error:string} */
