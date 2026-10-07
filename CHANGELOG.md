@@ -1,3 +1,11 @@
+# v0.1.1
+
+- Auto-Erkennung wird bei jedem Klick auf „Test vorbereiten & starten“ erneut ausgeführt.
+- Zusätzlicher Fallback findet JV Hof Garage auch per Instanzname bzw. Kamera-IP 192.168.107.111.
+- Konfigurationsformular zeigt jetzt die automatisch erkannte Quellinstanz und den aktuellen Teststatus direkt an.
+- Klarstellung: das Auswahlfeld ist nur eine manuelle Übersteuerung und bleibt bei funktionierender Automatik absichtlich leer.
+- Statusanzeige wird nach Aktionen automatisch aktualisiert.
+
 # Changelog
 
 ## 0.1.0
