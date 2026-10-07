@@ -1,3 +1,11 @@
+# v0.1.2
+
+- Dahua-IVS-Regel wird jetzt schrittweise geschrieben: Name/Typ → Geometrie/Richtung → Aktivierung.
+- Jeder Schritt wird sofort aus der Kamera zurückgelesen und verifiziert.
+- Kameraantwort (HTTP + Body) und vorhandene IVS-Regeln werden im Testprotokoll protokolliert.
+- Ein leeres oder abweichendes setConfig-Response-Body führt nicht mehr zu einer falschen Diagnose, sofern die Änderung real übernommen wurde.
+- Neue Regel wird bevorzugt hinter dem höchsten vorhandenen Regelindex angelegt, statt blind eine Lücke zu verwenden.
+
 # v0.1.1
 
 - Auto-Erkennung wird bei jedem Klick auf „Test vorbereiten & starten“ erneut ausgeführt.
