@@ -13,10 +13,18 @@ class JVPresenceGateTest extends IPSModule
     private const ALA2_MODULE_GUID = '{5E08D4EE-9727-4682-A23E-E8625EB2337E}';
     private const IM_CHANGESTATUS_ID = 10505;
     private const RULE_NAME = 'P05_HOME_STREET';
-    private const P05_AX = 4993;
-    private const P05_AY = 1342;
-    private const P05_BX = 5923;
-    private const P05_BY = 2294;
+    // Aktuelle rote P05-Grenzlinie aus dem Bild vom 07.10.2026:
+    // Sie deckt jetzt neben dem Schiebetor auch die links liegende Personentür ab.
+    // Bild 1536x691 px, per Skeleton/RDP auf die gezeichnete rote Polylinie reduziert.
+    // Pixel ca.: (911,78) -> (923,79) -> (930,96) -> (973,129) -> (1104,203)
+    // Dahua-IVS-Normkoordinaten 0..8191:
+    private const P05_LINE = [
+        [4858, 925],
+        [4922, 936],
+        [4959, 1138],
+        [5189, 1529],
+        [5887, 2406]
+    ];
 
     public function Create(): void
     {
@@ -28,14 +36,14 @@ class JVPresenceGateTest extends IPSModule
 
         // Exakt aus der vom Nutzer rot markierten P05-Linie im aktuellen JV-Hof-Garage-Bild abgeleitet.
         // Bild 1536x691 px -> Dahua-IVS-Koordinaten 0..8191.
-        // Sichtlinie: ca. Pixel A(936,113) -> B(1110,193).
+        // Aktuelle Polylinie umfasst Schiebetor + linke Personentür.
+        // Legacy-Endpunkt-Properties bleiben nur aus Kompatibilitätsgründen vorhanden;
+        // der RPC2-Writer verwendet ausschließlich self::P05_LINE.
         // Konzeptuell: OUT = Richtung Straße = rechts/oben; IN = links/unten.
-        // In Rohbildkoordinaten (Ursprung oben links) entspricht OUT damit +X/-Y.
-        // Die tatsächliche Dahua-Direction-Bezeichnung wird weiterhin im Realtest gelernt.
-        $this->RegisterPropertyInteger('LineAX', 4993);
-        $this->RegisterPropertyInteger('LineAY', 1342);
-        $this->RegisterPropertyInteger('LineBX', 5923);
-        $this->RegisterPropertyInteger('LineBY', 2294);
+        $this->RegisterPropertyInteger('LineAX', 4858);
+        $this->RegisterPropertyInteger('LineAY', 925);
+        $this->RegisterPropertyInteger('LineBX', 5887);
+        $this->RegisterPropertyInteger('LineBY', 2406);
 
         $this->RegisterAttributeInteger('SourceInstanceID', 0);
         $this->RegisterAttributeInteger('RegisteredParentID', 0);
@@ -1077,10 +1085,7 @@ class JVPresenceGateTest extends IPSModule
         $newRule = [
             'Class' => 'Normal',
             'Config' => [
-                'DetectLine' => [
-                    [self::P05_AX, self::P05_AY],
-                    [self::P05_BX, self::P05_BY]
-                ],
+                'DetectLine' => self::P05_LINE,
                 'Direction' => 'Both',
                 'LaneNumber' => null,
                 'SizeFilter' => [
@@ -1142,10 +1147,7 @@ class JVPresenceGateTest extends IPSModule
                     $line = $rule['Config']['DetectLine'] ?? null;
                     $objects = $rule['ObjectTypes'] ?? [];
                     $ok = is_array($line)
-                        && ($line[0][0] ?? null) === self::P05_AX
-                        && ($line[0][1] ?? null) === self::P05_AY
-                        && ($line[1][0] ?? null) === self::P05_BX
-                        && ($line[1][1] ?? null) === self::P05_BY
+                        && $line === self::P05_LINE
                         && strtolower((string) ($rule['Config']['Direction'] ?? '')) === 'both'
                         && in_array('Human', is_array($objects) ? $objects : [], true)
                         && (($rule['Enable'] ?? false) === true);
@@ -1203,7 +1205,7 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('RuleCreatedByModule', true);
         $this->WriteAttributeInteger('RuleIndex', $newIndex);
         $this->appendProtocol('RPC2 P05 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', Human=true, Direction=Both.');
-        $this->appendProtocol('P05 Geometrie: A(' . self::P05_AX . ',' . self::P05_AY . ') -> B(' . self::P05_BX . ',' . self::P05_BY . ').');
+        $this->appendProtocol('P05 Geometrie (Schiebetor + Personentür): ' . json_encode(self::P05_LINE, JSON_UNESCAPED_SLASHES) . '.');
         return ['ok' => true, 'error' => '', 'index' => $newIndex];
     }
 
@@ -1310,7 +1312,7 @@ class JVPresenceGateTest extends IPSModule
             'CURRENT' => [
                 'Class' => 'Normal',
                 'Config' => [
-                    'DetectLine' => [[self::P05_AX, self::P05_AY], [self::P05_BX, self::P05_BY]],
+                    'DetectLine' => self::P05_LINE,
                     'Direction' => 'Both'
                 ],
                 'Enable' => true,
