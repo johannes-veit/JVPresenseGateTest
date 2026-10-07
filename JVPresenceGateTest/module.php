@@ -543,7 +543,14 @@ class JVPresenceGateTest extends IPSModule
         $this->appendProtocol('TESTFOLGE: 1 OUT, 2 IN, 3 OUT, 4 IN. Jeweils normal vollständig über die Linie gehen.');
         $this->appendProtocol('Eventzuordnung: Dahua event.index ist Kanalindex 0 und wird nicht mit dem IVS-Regelindex verwechselt.');
 
-        if (!$this->ReadAttributeBoolean('Streaming')) {
+        // Wenn die Tripwire gerade neu angelegt wurde, MUSS der Dahua-
+        // Eventstream neu verbunden werden. Bei dieser Firmware wurde der Stream
+        // bisher bereits vor dem RPC2-ADD aufgebaut; ein laufendes codes=[All]
+        // Abonnement übernimmt neu hinzugekommene IVS-Regeln nicht zuverlässig.
+        if ($createdNow || !$this->ReadAttributeBoolean('Streaming')) {
+            if ($createdNow) {
+                $this->appendProtocol('Eventstream wird nach neu angelegter P05-Regel zwingend neu aufgebaut.');
+            }
             $this->Reconnect();
             $this->WriteAttributeBoolean('TestActive', true);
             $this->SetValue('TestActive', true);
@@ -604,7 +611,24 @@ class JVPresenceGateTest extends IPSModule
         $this->SetBuffer('EventCarry', $carry);
 
         foreach ($events as $event) {
-            if (strcasecmp((string) $event['code'], 'CrossLineDetection') !== 0) {
+            $code = (string) ($event['code'] ?? '');
+            if (strcasecmp($code, 'CrossLineDetection') !== 0) {
+                // Diagnose nur während des laufenden Tests: damit erkennen wir,
+                // ob der Eventstream nach dem Regelwechsel grundsätzlich weiter
+                // Personen-/Bewegungsereignisse liefert, auch falls IVS selbst
+                // noch nicht feuert.
+                if ($this->ReadAttributeBoolean('TestActive')) {
+                    $action = strtolower(trim((string) ($event['action'] ?? '')));
+                    if (in_array($action, ['start', 'on', 'pulse'], true)
+                        && in_array(strtolower($code), [
+                            'smartmotionhuman',
+                            'videomotion',
+                            'smartmotionvehicle',
+                            'crossregiondetection'
+                        ], true)) {
+                        $this->appendProtocol('DIAG EVENT code=' . $code . ' action=' . (string) ($event['action'] ?? '') . ' index=' . (string) ($event['index'] ?? ''));
+                    }
+                }
                 continue;
             }
 
