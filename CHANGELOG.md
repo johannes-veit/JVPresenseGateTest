@@ -1,3 +1,15 @@
+# v0.1.7
+
+- Nutzt den bestätigten Dahua-Web5/RPC2-Zugriff zum automatischen Anlegen von `P05_HOME_STREET`.
+- Vor dem echten Schreiben wird die aktuelle `VideoAnalyseRule`-Tabelle vollständig gesichert.
+- Ein semantisch identischer NO-OP-Write prüft zuerst, ob die Firmware vollständige RPC2-Tabellenwrites akzeptiert.
+- Erst danach wird eine neue `CrossLineDetection` mit der aus dem Nutzerbild abgeleiteten Linie A(4993,1342) → B(5923,2294), `Direction=Both` und `ObjectTypes=[Human]` angefügt.
+- Alarm-, Sirenen-, Mail-, Aufzeichnungs- und Snapshot-Verknüpfungen sind für die Testregel deaktiviert.
+- Nach dem Schreiben werden neue Regel, Linienkoordinaten, Richtung, Human-Filter sowie die drei vorhandenen Regeln rückgelesen und geprüft.
+- Bei jeder Abweichung erfolgt automatischer Rollback auf die gesicherte Originaltabelle.
+- Die bestehende SmartMotion-Personenerkennung wird nach dem Write nochmals kontrolliert; bei Konflikt ebenfalls Rollback.
+- `Testkonfiguration entfernen` stellt bei einer vom Modul erzeugten Regel die komplette ursprüngliche `VideoAnalyseRule`-Tabelle per RPC2 wieder her.
+
 # v0.1.6
 
 - Korrigiert den Dahua-Web5/RPC2-Zweistufenlogin.
