@@ -965,6 +965,10 @@ class JVPresenceGateTest extends IPSModule
     {
         $base = 'http://' . $host . ':' . $port;
 
+        // Dahua-Web5/RPC2 arbeitet beim ersten Login absichtlich zweistufig:
+        // Die Challenge-Antwort kann HTTP 200 + result=false enthalten und ist
+        // trotzdem ERFOLGREICH, sofern session/realm/random geliefert werden.
+        // Genau dieses Verhalten zeigt die installierte Firmware 3.140...21.R.
         $first = $this->rpc2Post($base . '/RPC2_Login', [
             'method' => 'global.login',
             'id' => 1,
@@ -973,9 +977,9 @@ class JVPresenceGateTest extends IPSModule
                 'password' => '',
                 'clientType' => 'Web5.0'
             ]
-        ]);
+        ], true);
 
-        if (!($first['ok'] ?? false) || !is_array($first['json'] ?? null)) {
+        if (!is_array($first['json'] ?? null)) {
             return ['ok' => false, 'error' => 'Login-Challenge fehlgeschlagen: ' . (string) ($first['error'] ?? '')];
         }
 
@@ -984,6 +988,13 @@ class JVPresenceGateTest extends IPSModule
         $realm = (string) ($j1['params']['realm'] ?? '');
         $random = (string) ($j1['params']['random'] ?? '');
         $authorityType = (string) (($j1['params']['encryption'] ?? '') ?: 'Default');
+        $this->appendProtocol(
+            'RPC2 CHALLENGE: HTTP ' . (int) ($first['http'] ?? 0) .
+            ', result=' . json_encode($j1['result'] ?? null) .
+            ', session=' . ($session !== '' ? 'vorhanden' : 'fehlt') .
+            ', realm=' . ($realm !== '' ? 'vorhanden' : 'fehlt') .
+            ', random=' . ($random !== '' ? 'vorhanden' : 'fehlt')
+        );
         if ($session === '' || $realm === '' || $random === '') {
             return ['ok' => false, 'error' => 'Login-Challenge unvollständig'];
         }
@@ -1035,7 +1046,7 @@ class JVPresenceGateTest extends IPSModule
     /** @param array<string,mixed> $payload
      *  @return array{ok:bool,json?:array,error?:string,http?:int,raw?:string}
      */
-    private function rpc2Post(string $url, array $payload): array
+    private function rpc2Post(string $url, array $payload, bool $allowResultFalse = false): array
     {
         $ch = curl_init($url);
         if ($ch === false) {
@@ -1069,7 +1080,7 @@ class JVPresenceGateTest extends IPSModule
         }
 
         $result = ($decoded['result'] ?? null);
-        if ($http < 200 || $http >= 300 || $result === false) {
+        if ($http < 200 || $http >= 300 || ($result === false && !$allowResultFalse)) {
             return [
                 'ok' => false,
                 'error' => 'HTTP ' . $http . ' / result=' . json_encode($result),
