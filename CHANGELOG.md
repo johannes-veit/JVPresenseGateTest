@@ -1,3 +1,11 @@
+# v0.2.2
+
+- Keine weiteren Laufversuche, bevor die echte moderne Dahua-Web5-IVS-API ausgewertet ist.
+- Nach P05 + Normal-Smart-Plan wird ausschließlich lesend `devVideoAnalyse.factory.instance` auf Kanal 0 aufgerufen.
+- Anschließend werden über das zurückgegebene Analyse-Objekt `devVideoAnalyse.getCaps` und mehrere `devVideoAnalyse.getTemplateRule`-Varianten für `CrossLineDetection` abgefragt.
+- Damit sehen wir direkt aus der Kamera, welche Regeln/Objekttypen die Normal-Szene unterstützt und welche exakte CrossLine-Template-Struktur diese Firmware erwartet.
+- Es erfolgt über `devVideoAnalyse` keinerlei Schreibzugriff.
+
 # v0.2.1
 
 - Die Runtime-Diagnose zeigt `VideoAnalyseGlobal.Scene.TypeList=[]`: Es ist kein IVS-Smart-Plan aktiv, obwohl Normal-Modul und P05-CrossLine-Regel vorhanden sind.
