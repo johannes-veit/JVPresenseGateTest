@@ -1,3 +1,11 @@
+# v0.1.5
+
+- Fügt eine ausschließlich lesende Dahua-Web5/RPC2-Diagnose hinzu.
+- Verwendet die automatisch übernommenen Zugangsdaten der JV-Hof-Garage-Instanz.
+- Liest `VideoAnalyseRule` und `VideoAnalyseGlobal` über RPC2 sowie die Default-Tabelle von `VideoAnalyseRule`.
+- Verändert bei diesem Schritt keine Kameraeinstellung.
+- Die aus dem Nutzerbild abgeleitete P05-Geometrie ist bereits hinterlegt: A≈(4993,1342), B≈(5923,2294).
+
 # v0.1.4
 
 - Für IPC-PDW3849-A180-AS-PV / Taurus-Web5 wird keine neue IVS-Regel mehr per Legacy-CGI erzwungen.
