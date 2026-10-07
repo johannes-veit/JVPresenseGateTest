@@ -450,69 +450,42 @@ class JVPresenceGateTest extends IPSModule
 
         $rules = GateTestLogic::parseRules($rulesRaw['body']);
         $this->appendProtocol('IVS-Regeln vor Test: ' . $this->summarizeRules($rules));
+
+        // Diese Taurus/Web5-Firmware (u.a. 3.140.0000000.21.R auf
+        // IPC-PDW3849-A180-AS-PV) lässt neue IVS-Regeln über den alten
+        // configManager-Schreibweg nicht zuverlässig anlegen. Vorhandene
+        // CrossLineDetection-Regeln können jedoch sauber gelesen und ihre
+        // Events über eventManager.cgi empfangen werden.
+        //
+        // Deshalb: vorhandene Tripwire automatisch wiederverwenden. Ist noch
+        // keine vorhanden, keinerlei weitere Schreibversuche an der Kamera.
         $idx = GateTestLogic::findRuleIndex($rules, self::RULE_NAME);
-        $created = false;
         if ($idx === null) {
-            $used = array_map('intval', array_keys($rules));
-            $idx = $used === [] ? 0 : (max($used) + 1);
-            if ($idx > 9) {
-                $idx = GateTestLogic::firstFreeRuleIndex($rules, 10);
+            foreach ($rules as $candidateIdx => $candidateRule) {
+                if (strcasecmp((string) ($candidateRule['Type'] ?? ''), 'CrossLineDetection') === 0) {
+                    $idx = (int) $candidateIdx;
+                    break;
+                }
             }
-            if ($idx === null || array_key_exists($idx, $rules)) {
-                $this->setResult('FEHLER – kein sicher nutzbarer freier IVS-Regelplatz (0..9). Es wurde nichts überschrieben.');
-                return;
-            }
-            $created = true;
         }
 
-        $params = [
-            "VideoAnalyseRule[0][$idx].Name" => self::RULE_NAME,
-            "VideoAnalyseRule[0][$idx].Type" => 'CrossLineDetection',
-            "VideoAnalyseRule[0][$idx].Enable" => 'true',
-            "VideoAnalyseRule[0][$idx].Config.Direction" => 'Both',
-            "VideoAnalyseRule[0][$idx].Config.DetectLine[0][0]" => (string) $this->ReadPropertyInteger('LineAX'),
-            "VideoAnalyseRule[0][$idx].Config.DetectLine[0][1]" => (string) $this->ReadPropertyInteger('LineAY'),
-            "VideoAnalyseRule[0][$idx].Config.DetectLine[1][0]" => (string) $this->ReadPropertyInteger('LineBX'),
-            "VideoAnalyseRule[0][$idx].Config.DetectLine[1][1]" => (string) $this->ReadPropertyInteger('LineBY')
-        ];
-        $set = $this->configureTripwireStepwise($idx, $params);
-        if (!$set['ok']) {
-            $this->appendProtocol('Legacy-IVS-Schreibweg abgelehnt. Starte nur-lesende Kompatibilitätsanalyse der installierten Firmware.');
+        if ($idx === null) {
             $this->probeModernVideoAnalyse();
-            $this->setResult('DIAGNOSE – diese Dahua-Firmware lehnt das direkte Anlegen der IVS-Regel ab. Kompatibilitätsdaten wurden vollständig ins Testprotokoll geschrieben; Kamera wurde nicht weiter verändert.');
+            $this->setResult('EINMALIGE KAMERA-EINSTELLUNG NÖTIG – in JV Hof Garage unter KI/IVS eine Tripwire anlegen, Richtung Beide, Ziel Mensch. Danach hier erneut „Test vorbereiten & starten“ drücken.');
+            $this->appendProtocol('Keine CrossLineDetection vorhanden. Kamera bleibt unverändert. Bitte einmal im Dahua-Webinterface eine Tripwire anlegen.');
             return;
         }
 
-        // Neuere Dahua-Firmwares können direkt nach Objekttyp filtern. Falls das konkrete
-        // Modell das Feld nicht akzeptiert, bleibt die Tripwire trotzdem verwendbar.
-        $humanFilter = $this->cameraSet(["VideoAnalyseRule[0][$idx].ObjectTypes[0]" => 'Human']);
-        $this->appendProtocol($humanFilter['ok']
-            ? 'Human-Filter der Tripwire aktiviert.'
-            : 'Hinweis: ObjectTypes[0]=Human wurde von dieser Firmware nicht bestätigt; Test bleibt auf kontrollierten Fußgänger-Durchlauf beschränkt.');
-
-        // 24/7 aktiv – ohne Aufzeichnung/Sirene/Email-Linkage zu verändern.
-        $schedule = [];
-        for ($day = 0; $day < 7; $day++) {
-            $schedule["VideoAnalyseRule[0][$idx].EventHandler.TimeSection[$day][0]"] = '1 00:00:00-23:59:59';
-        }
-        $scheduleResult = $this->cameraSet($schedule);
-        if (!$scheduleResult['ok']) {
-            $this->appendProtocol('Hinweis: explizite 24/7-TimeSection wurde nicht bestätigt; Firmware-Default bleibt aktiv.');
-        }
-
-        $verify = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
-        if (!$verify['ok']) {
-            $this->setResult('FEHLER – Tripwire wurde geschrieben, konnte aber nicht rückgelesen werden.');
-            return;
-        }
-        $verifiedRules = GateTestLogic::parseRules($verify['body']);
-        $rule = $verifiedRules[$idx] ?? [];
-        if (strcasecmp((string) ($rule['Type'] ?? ''), 'CrossLineDetection') !== 0
-            || strtolower((string) ($rule['Enable'] ?? 'false')) !== 'true') {
-            $this->setResult('FEHLER – P05-Regel ist nach Rücklesen nicht aktiv.');
+        $rule = $rules[$idx] ?? [];
+        if (strtolower((string) ($rule['Enable'] ?? 'false')) !== 'true') {
+            $this->setResult('IVS-TRIPWIRE GEFUNDEN, ABER DEAKTIVIERT – bitte die Tripwire in der Kamera aktivieren und danach erneut starten.');
+            $this->appendProtocol('CrossLineDetection gefunden auf Index ' . $idx . ', aber Enable=' . (string) ($rule['Enable'] ?? '<fehlt>'));
             return;
         }
 
+        $this->WriteAttributeInteger('RuleIndex', $idx);
+        $this->WriteAttributeBoolean('RuleCreatedByModule', false);
+        $this->appendProtocol('Vorhandene Tripwire wird verwendet: Index ' . $idx . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
         // Prüfen, ob das Aktivieren von IVS die bestehende SmartMotion-Personenerkennung ausgeschaltet hat.
         if ($smartBefore !== null && strtolower($smartBefore) === 'true') {
             $smartAfterRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
@@ -528,13 +501,11 @@ class JVPresenceGateTest extends IPSModule
             }
         }
 
-        $this->WriteAttributeInteger('RuleIndex', $idx);
-        $this->WriteAttributeBoolean('RuleCreatedByModule', $created);
         $this->WriteAttributeBoolean('TestActive', true);
         $this->SetValue('TestActive', true);
         $this->setResult('REGEL BEREIT – Eventstream verbindet noch …');
-        $this->appendProtocol('P05-Regel aktiv: Index ' . $idx . ', Name=' . self::RULE_NAME);
-        $this->appendProtocol('Tripwire: A(' . $this->ReadPropertyInteger('LineAX') . ',' . $this->ReadPropertyInteger('LineAY') . ') -> B(' . $this->ReadPropertyInteger('LineBX') . ',' . $this->ReadPropertyInteger('LineBY') . '), Direction=Both');
+        $this->appendProtocol('P05-Test nutzt vorhandene CrossLineDetection auf Index ' . $idx . '.');
+        $this->appendProtocol('Die Liniengeometrie wird von der Kamera übernommen; das Testmodul schreibt keine IVS-Regel.');
         $this->appendProtocol('TESTFOLGE: 1 OUT, 2 IN, 3 OUT, 4 IN. Jeweils normal vollständig über die Linie gehen.');
 
         if (!$this->ReadAttributeBoolean('Streaming')) {
@@ -598,6 +569,12 @@ class JVPresenceGateTest extends IPSModule
 
         foreach ($events as $event) {
             if (strcasecmp((string) $event['code'], 'CrossLineDetection') !== 0) {
+                continue;
+            }
+
+            $selectedRule = $this->ReadAttributeInteger('RuleIndex');
+            $eventIndex = isset($event['index']) && $event['index'] !== '' ? (int) $event['index'] : null;
+            if ($selectedRule >= 0 && $eventIndex !== null && $eventIndex !== $selectedRule) {
                 continue;
             }
 
