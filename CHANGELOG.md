@@ -1,3 +1,9 @@
+# v0.1.9
+
+- Behebt den nächsten Realtest-Befund: Der Dahua-Eventstream war bereits verbunden, bevor P05 per RPC2 angelegt wurde.
+- Nach einer neu erzeugten P05-Regel wird der `eventManager.cgi?codes=[All]`-Stream jetzt zwingend neu aufgebaut, damit die Kamera die neue `CrossLineDetection` in das laufende Event-Abo übernimmt.
+- Während des Tests werden relevante Nicht-IVS-Ereignisse (`SmartMotionHuman`, `VideoMotion`, `SmartMotionVehicle`, `CrossRegionDetection`) als Diagnose protokolliert. Damit lässt sich unterscheiden, ob der Eventstream funktioniert, aber nur der IVS-Smart-Plan nicht feuert.
+
 # v0.1.8
 
 - Behebt zwei beim ersten realen P05-Lauf gefundene Fehler.
