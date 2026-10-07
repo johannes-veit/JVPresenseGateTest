@@ -60,6 +60,8 @@ class JVPresenceGateTest extends IPSModule
         $this->RegisterAttributeBoolean('TestActive', false);
         $this->RegisterAttributeString('OriginalVideoAnalyseRuleRpc2', '');
         $this->RegisterAttributeBoolean('Rpc2RuleCreatedByModule', false);
+        $this->RegisterAttributeString('OriginalVideoAnalyseGlobalRpc2', '');
+        $this->RegisterAttributeBoolean('Rpc2GlobalChangedByModule', false);
 
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 10);
         $this->RegisterVariableBoolean('Ready', 'Test bereit', '~Switch', 20);
@@ -418,6 +420,16 @@ class JVPresenceGateTest extends IPSModule
         $this->appendProtocol('Quelle: JV Hof Garage / ' . $cfg['host'] . ':' . $cfg['port']);
         $this->appendProtocol('Keine Zugangsdaten werden im Protokoll ausgegeben.');
 
+        if ($this->ReadAttributeBoolean('Rpc2GlobalChangedByModule')) {
+            $this->appendProtocol('Vorherige, vom Testmodul aktivierte IVS-Smart-Plan-Konfiguration wird zuerst vollständig zurückgesetzt.');
+            $restoreGlobal = $this->restoreOriginalVideoAnalyseGlobalViaRpc2();
+            if (!($restoreGlobal['ok'] ?? false)) {
+                $this->setResult('FEHLER – alter IVS-Smart-Plan konnte nicht sicher zurückgesetzt werden: ' . (string) ($restoreGlobal['error'] ?? 'unbekannt') . '. Test abgebrochen.');
+                return;
+            }
+            $this->appendProtocol('Originale VideoAnalyseGlobal-Tabelle wiederhergestellt.');
+        }
+
         if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
             $this->appendProtocol('Vorhandene, vom Testmodul erzeugte P05-Regel wird vor dem neuen Lauf auf den gesicherten Originalzustand zurückgesetzt.');
             $restore = $this->restoreOriginalVideoAnalyseRuleViaRpc2();
@@ -519,20 +531,18 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('RuleCreatedByModule', $createdNow || $this->ReadAttributeBoolean('Rpc2RuleCreatedByModule'));
         $this->appendProtocol(($createdNow ? 'Neu erzeugte' : 'Vorhandene') . ' Tripwire wird verwendet: Index ' . $idx . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
 
-        // Nach den Realtests steht fest: Eventstream + SMD funktionieren,
-        // CrossLineDetection feuert aber nicht. Vor weiterem Laufen deshalb
-        // zuerst den tatsächlichen IVS-Runtime-/Smart-Plan-Zustand auslesen.
+        // Realdiagnose v0.2.0: VideoAnalyseGlobal.Scene.TypeList war leer,
+        // obwohl Normal-Modul und CrossLine-Regel vorhanden waren. Dahua behandelt
+        // den Smart Plan als Master-Schalter für IVS. Aktivierung erfolgt daher
+        // jetzt kontrolliert über RPC2 und wird vollständig gesichert/verifiziert.
+        $smartPlanChangedNow = false;
         if ($createdNow) {
-            $diag = $this->probeIvsRuntimeViaRpc2();
-            if (!($diag['ok'] ?? false)) {
-                $this->setResult('IVS-DIAGNOSE FEHLGESCHLAGEN – Kamera wurde nicht weiter verändert. Testprotokoll senden.');
+            $smartPlan = $this->enableNormalIvsSmartPlanViaRpc2();
+            if (!($smartPlan['ok'] ?? false)) {
+                $this->setResult('STOP – IVS-Smart-Plan konnte nicht sicher aktiviert werden: ' . (string) ($smartPlan['error'] ?? 'unbekannt') . '. Ausgangszustand wurde soweit möglich wiederhergestellt.');
                 return;
             }
-            $this->WriteAttributeBoolean('TestActive', false);
-            $this->SetValue('TestActive', false);
-            $this->setReady(false);
-            $this->setResult('IVS-DIAGNOSE ERFASST – nicht erneut laufen. Bitte Testprotokoll senden; daraus wird der fehlende Smart-Plan/Analyse-Modul-Schritt abgeleitet.');
-            return;
+            $smartPlanChangedNow = (bool) ($smartPlan['changed'] ?? false);
         }
         // Prüfen, ob das Aktivieren von IVS die bestehende SmartMotion-Personenerkennung ausgeschaltet hat.
         if ($smartBefore !== null && strtolower($smartBefore) === 'true') {
@@ -563,9 +573,9 @@ class JVPresenceGateTest extends IPSModule
         // Eventstream neu verbunden werden. Bei dieser Firmware wurde der Stream
         // bisher bereits vor dem RPC2-ADD aufgebaut; ein laufendes codes=[All]
         // Abonnement übernimmt neu hinzugekommene IVS-Regeln nicht zuverlässig.
-        if ($createdNow || !$this->ReadAttributeBoolean('Streaming')) {
-            if ($createdNow) {
-                $this->appendProtocol('Eventstream wird nach neu angelegter P05-Regel zwingend neu aufgebaut.');
+        if ($createdNow || $smartPlanChangedNow || !$this->ReadAttributeBoolean('Streaming')) {
+            if ($createdNow || $smartPlanChangedNow) {
+                $this->appendProtocol('Eventstream wird nach P05-/Smart-Plan-Änderung zwingend neu aufgebaut.');
             }
             $this->Reconnect();
             $this->WriteAttributeBoolean('TestActive', true);
@@ -589,6 +599,12 @@ class JVPresenceGateTest extends IPSModule
 
     public function CleanupCameraTestConfig(): void
     {
+        if ($this->ReadAttributeBoolean('Rpc2GlobalChangedByModule')) {
+            $restoreGlobal = $this->restoreOriginalVideoAnalyseGlobalViaRpc2();
+            $this->appendProtocol(($restoreGlobal['ok'] ?? false)
+                ? 'IVS-Smart-Plan entfernt; ursprüngliche VideoAnalyseGlobal-Tabelle vollständig wiederhergestellt.'
+                : 'WARNUNG: ursprüngliche VideoAnalyseGlobal-Tabelle konnte nicht automatisch wiederhergestellt werden: ' . (string) ($restoreGlobal['error'] ?? 'unbekannt'));
+        }
         if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
             $restore = $this->restoreOriginalVideoAnalyseRuleViaRpc2();
             $this->appendProtocol(($restore['ok'] ?? false)
@@ -614,6 +630,7 @@ class JVPresenceGateTest extends IPSModule
             'ruleIndex' => $this->ReadAttributeInteger('RuleIndex'),
             'ruleCreatedByModule' => $this->ReadAttributeBoolean('RuleCreatedByModule'),
             'globalChangedByModule' => $this->ReadAttributeBoolean('GlobalChangedByModule'),
+            'rpc2GlobalChangedByModule' => $this->ReadAttributeBoolean('Rpc2GlobalChangedByModule'),
             'testActive' => $this->ReadAttributeBoolean('TestActive'),
             'crossings' => $this->getCrossings()
         ];
@@ -1214,6 +1231,162 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', false);
         $this->WriteAttributeBoolean('RuleCreatedByModule', false);
         $this->WriteAttributeInteger('RuleIndex', -1);
+        return ['ok' => true, 'error' => ''];
+    }
+
+    /** @return array{ok:bool,error:string,changed?:bool} */
+    private function enableNormalIvsSmartPlanViaRpc2(): array
+    {
+        $cfg = $this->cameraConfiguration();
+        $login = $this->rpc2Login(
+            (string) ($cfg['host'] ?? ''),
+            (int) ($cfg['port'] ?? 80),
+            (string) ($cfg['username'] ?? ''),
+            (string) ($cfg['password'] ?? '')
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'error' => 'RPC2-Login fehlgeschlagen'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+
+        $read = $this->rpc2Call($host, $port, $session, 40, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+        if (!($read['ok'] ?? false) || !is_array($read['json']['params']['table'] ?? null)) {
+            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+            return ['ok' => false, 'error' => 'VideoAnalyseGlobal konnte nicht gelesen werden'];
+        }
+
+        $original = $read['json']['params']['table'];
+        if (!isset($original[0]['Scene']) || !is_array($original[0]['Scene'])) {
+            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+            return ['ok' => false, 'error' => 'unerwartete VideoAnalyseGlobal-Struktur'];
+        }
+
+        $currentList = $original[0]['Scene']['TypeList'] ?? [];
+        if ($currentList === null) {
+            $currentList = [];
+        }
+        if (!is_array($currentList)) {
+            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+            return ['ok' => false, 'error' => 'Scene.TypeList hat unerwarteten Typ'];
+        }
+
+        if (in_array('Normal', $currentList, true)) {
+            $this->appendProtocol('IVS Smart Plan: Normal ist bereits in Scene.TypeList aktiv.');
+            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+            return ['ok' => true, 'error' => '', 'changed' => false];
+        }
+
+        // Keine fremde Smart-Plan-Auswahl automatisch überschreiben.
+        if ($currentList !== []) {
+            $this->appendProtocol('IVS Smart Plan Sicherheitsabbruch: vorhandene TypeList=' . json_encode($currentList, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+            return ['ok' => false, 'error' => 'bereits anderer Smart Plan aktiv'];
+        }
+
+        $backup = json_encode($original, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($backup) || $backup === '') {
+            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+            return ['ok' => false, 'error' => 'Global-Backup konnte nicht erzeugt werden'];
+        }
+        $this->WriteAttributeString('OriginalVideoAnalyseGlobalRpc2', $backup);
+        $this->WriteAttributeBoolean('Rpc2GlobalChangedByModule', false);
+
+        $noop = $this->rpc2Call(
+            $host, $port, $session, 41, 'configManager.setConfig',
+            ['name' => 'VideoAnalyseGlobal', 'table' => $original, 'options' => []]
+        );
+        $this->appendRpc2Result('SMARTPLAN NO-OP VideoAnalyseGlobal', $noop);
+        if (!($noop['ok'] ?? false)) {
+            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+            return ['ok' => false, 'error' => 'NO-OP-Write VideoAnalyseGlobal abgelehnt'];
+        }
+
+        $candidate = $original;
+        $candidate[0]['Scene']['TypeList'] = ['Normal'];
+
+        $write = $this->rpc2Call(
+            $host, $port, $session, 42, 'configManager.setConfig',
+            ['name' => 'VideoAnalyseGlobal', 'table' => $candidate, 'options' => []]
+        );
+        $this->appendRpc2Result('SMARTPLAN ENABLE Normal', $write);
+        if (!($write['ok'] ?? false)) {
+            $this->rpc2Call($host, $port, $session, 43, 'configManager.setConfig', ['name' => 'VideoAnalyseGlobal', 'table' => $original, 'options' => []]);
+            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+            return ['ok' => false, 'error' => 'Kamera hat TypeList=[Normal] abgelehnt'];
+        }
+
+        $verify = $this->rpc2Call($host, $port, $session, 44, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+        $verifiedList = $verify['json']['params']['table'][0]['Scene']['TypeList'] ?? null;
+        if (!($verify['ok'] ?? false) || !is_array($verifiedList) || !in_array('Normal', $verifiedList, true)) {
+            $rollback = $this->rpc2Call($host, $port, $session, 45, 'configManager.setConfig', ['name' => 'VideoAnalyseGlobal', 'table' => $original, 'options' => []]);
+            $this->appendRpc2Result('SMARTPLAN ROLLBACK', $rollback);
+            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+            return ['ok' => false, 'error' => 'Smart-Plan-Rückleseprüfung fehlgeschlagen'];
+        }
+
+        // Bestehende SMD-Human-Erkennung darf nicht verloren gehen.
+        $smartRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
+        $smartAfter = $smartRaw['ok']
+            ? GateTestLogic::configValue($smartRaw['body'], 'SmartMotionDetect[0].Enable')
+            : null;
+        $smartBefore = strtolower($this->ReadAttributeString('OriginalSmartMotionEnable'));
+        if ($smartBefore === 'true' && $smartAfter !== null && strtolower($smartAfter) !== 'true') {
+            $rollback = $this->rpc2Call($host, $port, $session, 46, 'configManager.setConfig', ['name' => 'VideoAnalyseGlobal', 'table' => $original, 'options' => []]);
+            $this->appendRpc2Result('SMARTPLAN ROLLBACK wegen SMD-Konflikt', $rollback);
+            $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+            return ['ok' => false, 'error' => 'SMD wurde durch IVS-Smart-Plan deaktiviert'];
+        }
+
+        $this->WriteAttributeBoolean('Rpc2GlobalChangedByModule', true);
+        $this->appendProtocol('IVS Smart Plan erfolgreich aktiviert: Scene.TypeList=[Normal].');
+        $this->appendProtocol('SmartMotionDetect nach Smart-Plan-Aktivierung: ' . ($smartAfter ?? '<nicht lesbar>'));
+        $this->rpc2Call($host, $port, $session, 49, 'global.logout', null);
+        return ['ok' => true, 'error' => '', 'changed' => true];
+    }
+
+    /** @return array{ok:bool,error:string} */
+    private function restoreOriginalVideoAnalyseGlobalViaRpc2(): array
+    {
+        $raw = $this->ReadAttributeString('OriginalVideoAnalyseGlobalRpc2');
+        $table = json_decode($raw, true);
+        if (!is_array($table)) {
+            return ['ok' => false, 'error' => 'kein gültiges Global-Backup vorhanden'];
+        }
+
+        $cfg = $this->cameraConfiguration();
+        $login = $this->rpc2Login(
+            (string) ($cfg['host'] ?? ''),
+            (int) ($cfg['port'] ?? 80),
+            (string) ($cfg['username'] ?? ''),
+            (string) ($cfg['password'] ?? '')
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'error' => 'RPC2-Login fehlgeschlagen'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+
+        $restore = $this->rpc2Call(
+            $host, $port, $session, 60, 'configManager.setConfig',
+            ['name' => 'VideoAnalyseGlobal', 'table' => $table, 'options' => []]
+        );
+        if (!($restore['ok'] ?? false)) {
+            $this->rpc2Call($host, $port, $session, 69, 'global.logout', null);
+            return ['ok' => false, 'error' => 'Global-Restore wurde abgelehnt'];
+        }
+
+        $verify = $this->rpc2Call($host, $port, $session, 61, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+        $this->rpc2Call($host, $port, $session, 69, 'global.logout', null);
+        if (!($verify['ok'] ?? false)) {
+            return ['ok' => false, 'error' => 'Global-Restore konnte nicht rückgelesen werden'];
+        }
+
+        $this->WriteAttributeBoolean('Rpc2GlobalChangedByModule', false);
         return ['ok' => true, 'error' => ''];
     }
 
