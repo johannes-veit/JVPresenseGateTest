@@ -1,4 +1,4 @@
-# JV Presence Gate Test v0.1.6
+# JV Presence Gate Test v0.1.7
 
 Separates IP-Symcon-Testmodul für die erste reale Presence-Grenze **P05 HOME_CORE ↔ OUTSIDE am Schiebetor**.
 
@@ -69,3 +69,8 @@ Wenn noch keine Tripwire vorhanden ist, führt v0.1.5 automatisch eine nur-lesen
 ## RPC2-Login-Hinweis
 
 Bei Dahua Web5 ist die erste `global.login`-Antwort häufig absichtlich `result=false`, liefert aber bereits `session`, `realm` und `random` für den zweiten authentifizierten Login. v0.1.6 behandelt diesen Challenge-Schritt korrekt.
+
+
+## Automatischer RPC2-Writer
+
+Ab v0.1.7 legt das Modul die P05-Tripwire selbst über Dahua Web5/RPC2 an. Vorher wird die komplette IVS-Regeltabelle gesichert. Der Writer prüft zuerst mit einem unveränderten NO-OP-Write, ob die Firmware vollständige Tabellenwrites akzeptiert. Erst danach wird `P05_HOME_STREET` angefügt und vollständig zurückgelesen. Bei jeder Abweichung oder wenn die bestehende SMD-Personenerkennung beeinflusst wird, wird die Originaltabelle automatisch wiederhergestellt.
