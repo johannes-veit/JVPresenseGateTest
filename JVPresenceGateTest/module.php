@@ -465,6 +465,7 @@ class JVPresenceGateTest extends IPSModule
         //
         // Deshalb: vorhandene Tripwire automatisch wiederverwenden. Ist noch
         // keine vorhanden, keinerlei weitere Schreibversuche an der Kamera.
+        $createdNow = false;
         $idx = GateTestLogic::findRuleIndex($rules, self::RULE_NAME);
         if ($idx === null) {
             foreach ($rules as $candidateIdx => $candidateRule) {
@@ -482,6 +483,7 @@ class JVPresenceGateTest extends IPSModule
                 $this->setResult('FEHLER – automatische RPC2-Tripwire konnte nicht sicher angelegt werden: ' . (string) ($createdRpc['error'] ?? 'unbekannt') . '. Kamera wurde soweit möglich auf den Ausgangszustand zurückgesetzt.');
                 return;
             }
+            $createdNow = true;
             $idx = (int) ($createdRpc['index'] ?? -1);
             if ($idx < 0) {
                 $this->setResult('FEHLER – RPC2-Tripwire wurde bestätigt, aber der Regelindex konnte nicht bestimmt werden.');
@@ -500,8 +502,8 @@ class JVPresenceGateTest extends IPSModule
         }
 
         $this->WriteAttributeInteger('RuleIndex', $idx);
-        $this->WriteAttributeBoolean('RuleCreatedByModule', false);
-        $this->appendProtocol('Vorhandene Tripwire wird verwendet: Index ' . $idx . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
+        $this->WriteAttributeBoolean('RuleCreatedByModule', $createdNow || $this->ReadAttributeBoolean('Rpc2RuleCreatedByModule'));
+        $this->appendProtocol(($createdNow ? 'Neu erzeugte' : 'Vorhandene') . ' Tripwire wird verwendet: Index ' . $idx . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
         // Prüfen, ob das Aktivieren von IVS die bestehende SmartMotion-Personenerkennung ausgeschaltet hat.
         if ($smartBefore !== null && strtolower($smartBefore) === 'true') {
             $smartAfterRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
@@ -520,8 +522,10 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('TestActive', true);
         $this->SetValue('TestActive', true);
         $this->setResult('REGEL BEREIT – Eventstream verbindet noch …');
-        $this->appendProtocol('P05-Test nutzt vorhandene CrossLineDetection auf Index ' . $idx . '.');
-        $this->appendProtocol('Die Liniengeometrie wird von der Kamera übernommen; das Testmodul schreibt keine IVS-Regel.');
+        $this->appendProtocol('P05-Test nutzt CrossLineDetection auf Index ' . $idx . '.');
+        $this->appendProtocol($createdNow
+            ? 'Die P05-Linie wurde durch das Testmodul über RPC2 angelegt und vollständig rückgelesen.'
+            : 'Die vorhandene Liniengeometrie der Kamera wird unverändert verwendet.');
         $this->appendProtocol('TESTFOLGE: 1 OUT, 2 IN, 3 OUT, 4 IN. Jeweils normal vollständig über die Linie gehen.');
 
         if (!$this->ReadAttributeBoolean('Streaming')) {
