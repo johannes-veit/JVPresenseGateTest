@@ -543,6 +543,24 @@ class JVPresenceGateTest extends IPSModule
                 return;
             }
             $smartPlanChangedNow = (bool) ($smartPlan['changed'] ?? false);
+
+            // Bevor nochmals gelaufen wird, die moderne Web5-Analyse-API exakt abfragen.
+            // Das ist vollständig lesend und liefert Kamera-Caps sowie – sofern
+            // unterstützt – die echte CrossLine-Template-Struktur dieser Firmware.
+            $probe = $this->probeModernIvsFactoryViaRpc2();
+            if (!($probe['ok'] ?? false)) {
+                $this->WriteAttributeBoolean('TestActive', false);
+                $this->SetValue('TestActive', false);
+                $this->setReady(false);
+                $this->setResult('IVS-WEB5-DIAGNOSE TEILWEISE – nicht laufen. Bitte Testprotokoll senden.');
+                return;
+            }
+
+            $this->WriteAttributeBoolean('TestActive', false);
+            $this->SetValue('TestActive', false);
+            $this->setReady(false);
+            $this->setResult('IVS-WEB5-DIAGNOSE ERFASST – nicht laufen. Bitte Testprotokoll senden.');
+            return;
         }
         // Prüfen, ob das Aktivieren von IVS die bestehende SmartMotion-Personenerkennung ausgeschaltet hat.
         if ($smartBefore !== null && strtolower($smartBefore) === 'true') {
@@ -1232,6 +1250,125 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('RuleCreatedByModule', false);
         $this->WriteAttributeInteger('RuleIndex', -1);
         return ['ok' => true, 'error' => ''];
+    }
+
+    /**
+     * Moderne Dahua-Web5-IVS-API: factory.instance -> getCaps/getTemplateRule.
+     * Ausschließlich lesend.
+     * @return array{ok:bool,error:string}
+     */
+    private function probeModernIvsFactoryViaRpc2(): array
+    {
+        $cfg = $this->cameraConfiguration();
+        $login = $this->rpc2Login(
+            (string) ($cfg['host'] ?? ''),
+            (int) ($cfg['port'] ?? 80),
+            (string) ($cfg['username'] ?? ''),
+            (string) ($cfg['password'] ?? '')
+        );
+        if (!($login['ok'] ?? false)) {
+            $this->appendProtocol('WEB5 IVS LOGIN FEHLER: ' . (string) ($login['error'] ?? 'unbekannt'));
+            return ['ok' => false, 'error' => 'RPC2-Login fehlgeschlagen'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+
+        $factory = $this->rpc2Call(
+            $host, $port, $session, 80,
+            'devVideoAnalyse.factory.instance',
+            ['channel' => 0]
+        );
+        $this->appendRpc2Result('WEB5 devVideoAnalyse.factory.instance', $factory);
+
+        $object = $factory['json']['result'] ?? null;
+        if (!($factory['ok'] ?? false) || $object === null || $object === false || $object === '') {
+            $this->rpc2Call($host, $port, $session, 89, 'global.logout', null);
+            return ['ok' => false, 'error' => 'devVideoAnalyse.factory.instance fehlgeschlagen'];
+        }
+
+        $caps = $this->rpc2CallWithObject(
+            $host, $port, $session, 81,
+            'devVideoAnalyse.getCaps',
+            null,
+            $object
+        );
+        $this->appendRpc2Result('WEB5 devVideoAnalyse.getCaps', $caps);
+
+        // Mehrere ausschließlich lesende Template-Varianten. Je nach Web5-
+        // Generation erwartet Dahua entweder eine Minimalregel oder die bereits
+        // angelegte Regelstruktur.
+        $templateShapes = [
+            'MINIMAL' => ['Class' => 'Normal', 'Type' => 'CrossLineDetection'],
+            'NAMED' => [
+                'Class' => 'Normal',
+                'Type' => 'CrossLineDetection',
+                'Name' => self::RULE_NAME,
+                'ObjectTypes' => ['Human']
+            ],
+            'CURRENT' => [
+                'Class' => 'Normal',
+                'Config' => [
+                    'DetectLine' => [[self::P05_AX, self::P05_AY], [self::P05_BX, self::P05_BY]],
+                    'Direction' => 'Both'
+                ],
+                'Enable' => true,
+                'Name' => self::RULE_NAME,
+                'ObjectTypes' => ['Human'],
+                'Type' => 'CrossLineDetection'
+            ]
+        ];
+
+        $templateOk = false;
+        $id = 82;
+        foreach ($templateShapes as $label => $rule) {
+            $r = $this->rpc2CallWithObject(
+                $host, $port, $session, $id++,
+                'devVideoAnalyse.getTemplateRule',
+                ['rule' => $rule],
+                $object
+            );
+            $this->appendRpc2Result('WEB5 getTemplateRule ' . $label, $r);
+            if ($r['ok'] ?? false) {
+                $templateOk = true;
+                break;
+            }
+        }
+
+        $this->rpc2Call($host, $port, $session, 89, 'global.logout', null);
+        $this->appendProtocol(
+            'WEB5 IVS DIAGNOSE: Caps=' . (($caps['ok'] ?? false) ? 'OK' : 'FEHLER') .
+            ', CrossLine-Template=' . ($templateOk ? 'OK' : 'nicht geliefert') .
+            '. Es wurde nichts über devVideoAnalyse geschrieben.'
+        );
+
+        return [
+            'ok' => ($caps['ok'] ?? false) === true,
+            'error' => ($caps['ok'] ?? false) === true ? '' : 'getCaps fehlgeschlagen'
+        ];
+    }
+
+    /** @return array{ok:bool,json?:array,error?:string,http?:int,raw?:string} */
+    private function rpc2CallWithObject(
+        string $host,
+        int $port,
+        string $session,
+        int $id,
+        string $method,
+        $params,
+        $object
+    ): array {
+        $payload = [
+            'method' => $method,
+            'id' => $id,
+            'session' => $session,
+            'object' => $object
+        ];
+        if ($params !== null) {
+            $payload['params'] = $params;
+        }
+        return $this->rpc2Post('http://' . $host . ':' . $port . '/RPC2', $payload);
     }
 
     /** @return array{ok:bool,error:string,changed?:bool} */
