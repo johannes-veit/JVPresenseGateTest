@@ -54,6 +54,8 @@ class JVPresenceGateTest extends IPSModule
         $this->RegisterAttributeString('SeenEventKeys', '{}');
         $this->RegisterAttributeString('Crossings', '[]');
         $this->RegisterAttributeBoolean('TestActive', false);
+        $this->RegisterAttributeString('OriginalVideoAnalyseRuleRpc2', '');
+        $this->RegisterAttributeBoolean('Rpc2RuleCreatedByModule', false);
 
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 10);
         $this->RegisterVariableBoolean('Ready', 'Test bereit', '~Switch', 20);
@@ -474,14 +476,20 @@ class JVPresenceGateTest extends IPSModule
         }
 
         if ($idx === null) {
-            $this->appendProtocol('Keine CrossLineDetection vorhanden. Starte RPC2/Web5-Kompatibilitätsprüfung.');
-            $rpc = $this->probeRpc2VideoAnalyse();
-            if (($rpc['ok'] ?? false) === true) {
-                $this->setResult('RPC2-DIAGNOSE ERFOLGREICH – Web5-Zugriff auf VideoAnalyseRule funktioniert. Bitte Testprotokoll hier senden; daraus baue ich den sicheren automatischen Regel-Writer.');
-            } else {
-                $this->setResult('RPC2-DIAGNOSE FEHLGESCHLAGEN – Details stehen im Testprotokoll. Kamera wurde nicht verändert.');
+            $this->appendProtocol('Keine CrossLineDetection vorhanden. Lege P05 über den bestätigten Web5/RPC2-Konfigurationsweg an.');
+            $createdRpc = $this->createP05TripwireViaRpc2();
+            if (!($createdRpc['ok'] ?? false)) {
+                $this->setResult('FEHLER – automatische RPC2-Tripwire konnte nicht sicher angelegt werden: ' . (string) ($createdRpc['error'] ?? 'unbekannt') . '. Kamera wurde soweit möglich auf den Ausgangszustand zurückgesetzt.');
+                return;
             }
-            return;
+            $idx = (int) ($createdRpc['index'] ?? -1);
+            if ($idx < 0) {
+                $this->setResult('FEHLER – RPC2-Tripwire wurde bestätigt, aber der Regelindex konnte nicht bestimmt werden.');
+                return;
+            }
+            $rulesRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
+            $rules = $rulesRaw['ok'] ? GateTestLogic::parseRules($rulesRaw['body']) : [];
+            $this->appendProtocol('P05 wurde automatisch über RPC2 angelegt und per CGI rückgelesen.');
         }
 
         $rule = $rules[$idx] ?? [];
@@ -539,18 +547,19 @@ class JVPresenceGateTest extends IPSModule
 
     public function CleanupCameraTestConfig(): void
     {
-        $idx = $this->ReadAttributeInteger('RuleIndex');
-        if ($idx >= 0) {
-            $result = $this->cameraSet(["VideoAnalyseRule[0][$idx].Enable" => 'false']);
-            $this->appendProtocol($result['ok']
-                ? 'P05-Testregel deaktiviert.'
-                : 'WARNUNG: Testregel konnte nicht deaktiviert werden: ' . $result['error']);
+        if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
+            $restore = $this->restoreOriginalVideoAnalyseRuleViaRpc2();
+            $this->appendProtocol(($restore['ok'] ?? false)
+                ? 'P05-Testregel entfernt; ursprüngliche VideoAnalyseRule-Tabelle vollständig wiederhergestellt.'
+                : 'WARNUNG: ursprüngliche VideoAnalyseRule-Tabelle konnte nicht automatisch wiederhergestellt werden: ' . (string) ($restore['error'] ?? 'unbekannt'));
+        } else {
+            $this->appendProtocol('Keine vom Testmodul erzeugte IVS-Regel vorhanden; bestehende Kamera-Regeln bleiben unverändert.');
         }
         $this->restoreGlobalSceneType();
         $this->WriteAttributeBoolean('TestActive', false);
         $this->SetValue('TestActive', false);
         $this->setReady(false);
-        $this->setResult('Testregel deaktiviert / Smart-Plan soweit durch das Modul verändert zurückgesetzt.');
+        $this->setResult('Test beendet. Vom Modul erzeugte Testkonfiguration wurde soweit vorhanden zurückgesetzt.');
     }
 
     public function DumpState(): void
@@ -884,6 +893,271 @@ class JVPresenceGateTest extends IPSModule
             return ['ok' => false, 'body' => is_string($body) ? $body : '', 'error' => $error !== '' ? $error : ('HTTP ' . $http), 'http' => $http];
         }
         return ['ok' => true, 'body' => (string) $body, 'error' => '', 'http' => $http];
+    }
+
+    /** @return array{ok:bool,error:string,index?:int} */
+    private function createP05TripwireViaRpc2(): array
+    {
+        $cfg = $this->cameraConfiguration();
+        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
+            return ['ok' => false, 'error' => 'Kamerakonfiguration fehlt'];
+        }
+
+        $login = $this->rpc2Login(
+            (string) $cfg['host'],
+            (int) $cfg['port'],
+            (string) $cfg['username'],
+            (string) $cfg['password']
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'error' => 'RPC2-Login fehlgeschlagen: ' . (string) ($login['error'] ?? '')];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+
+        $read = $this->rpc2Call($host, $port, $session, 10, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
+        if (!($read['ok'] ?? false) || !is_array($read['json']['params']['table'] ?? null)) {
+            $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+            return ['ok' => false, 'error' => 'aktuelle VideoAnalyseRule-Tabelle konnte nicht gelesen werden'];
+        }
+
+        $original = $read['json']['params']['table'];
+        if (!isset($original[0]) || !is_array($original[0])) {
+            $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+            return ['ok' => false, 'error' => 'unerwartete VideoAnalyseRule-Struktur'];
+        }
+
+        foreach ($original[0] as $i => $rule) {
+            if (is_array($rule) && strcasecmp((string) ($rule['Type'] ?? ''), 'CrossLineDetection') === 0) {
+                $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+                return ['ok' => true, 'error' => '', 'index' => (int) $i];
+            }
+        }
+
+        $backup = json_encode($original, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($backup) || $backup === '') {
+            $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+            return ['ok' => false, 'error' => 'Backup der IVS-Tabelle konnte nicht erzeugt werden'];
+        }
+        $this->WriteAttributeString('OriginalVideoAnalyseRuleRpc2', $backup);
+        $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', false);
+
+        $ids = [];
+        foreach ($original[0] as $rule) {
+            if (is_array($rule) && isset($rule['Id']) && is_numeric($rule['Id'])) {
+                $ids[(int) $rule['Id']] = true;
+            }
+        }
+        $newId = 0;
+        while (isset($ids[$newId])) {
+            $newId++;
+        }
+
+        $eventHandler = [];
+        foreach ($original[0] as $rule) {
+            if (is_array($rule) && is_array($rule['EventHandler'] ?? null)) {
+                $eventHandler = $rule['EventHandler'];
+                break;
+            }
+        }
+        if ($eventHandler === []) {
+            $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+            return ['ok' => false, 'error' => 'keine EventHandler-Vorlage in der Kamera gefunden'];
+        }
+
+        // Für den Presence-Test keinerlei Alarm-/Aufzeichnungs-Nebenwirkung.
+        foreach ([
+            'AlarmOutEnable','BeepEnable','ExAlarmOutEnable','LogEnable','MMSEnable',
+            'MailEnable','MatrixEnable','MessageEnable','PtzLinkEnable','RecordEnable',
+            'SnapshotEnable','TipEnable','TourEnable','VoiceEnable'
+        ] as $flag) {
+            if (array_key_exists($flag, $eventHandler)) {
+                $eventHandler[$flag] = false;
+            }
+        }
+        if (isset($eventHandler['TrigerHttp']) && is_array($eventHandler['TrigerHttp'])) {
+            $eventHandler['TrigerHttp']['TrigerHttpEnable'] = false;
+            $eventHandler['TrigerHttp']['TrigerHttpCommand'] = '';
+        }
+
+        $newRule = [
+            'Class' => 'Normal',
+            'Config' => [
+                'DetectLine' => [
+                    [$this->ReadPropertyInteger('LineAX'), $this->ReadPropertyInteger('LineAY')],
+                    [$this->ReadPropertyInteger('LineBX'), $this->ReadPropertyInteger('LineBY')]
+                ],
+                'Direction' => 'Both',
+                'LaneNumber' => null,
+                'SizeFilter' => [
+                    'MaxSize' => [8191, 8191],
+                    'MinSize' => [200, 200],
+                    'Type' => 'ByLength'
+                ],
+                'TriggerPosition' => ['Center']
+            ],
+            'Enable' => true,
+            'EventHandler' => $eventHandler,
+            'Id' => $newId,
+            'Name' => self::RULE_NAME,
+            'ObjectTypes' => ['Human'],
+            'PtzPresetId' => 0,
+            'TrackEnable' => false,
+            'Type' => 'CrossLineDetection'
+        ];
+
+        $candidate = $original;
+        $candidate[0][] = $newRule;
+        $newIndex = count($candidate[0]) - 1;
+
+        // Vor dem echten Add zuerst exakt dieselbe Tabelle zurückschreiben.
+        // Damit beweisen wir, dass diese Firmware den vollständigen RPC2-Write akzeptiert,
+        // ohne semantisch etwas zu ändern.
+        $noop = $this->rpc2Call(
+            $host, $port, $session, 11, 'configManager.setConfig',
+            ['name' => 'VideoAnalyseRule', 'table' => $original, 'options' => []]
+        );
+        $this->appendRpc2Result('NO-OP setConfig VideoAnalyseRule', $noop);
+        if (!($noop['ok'] ?? false)) {
+            $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+            return ['ok' => false, 'error' => 'Firmware lehnt vollständigen RPC2-Write der VideoAnalyseRule-Tabelle ab'];
+        }
+
+        $write = $this->rpc2Call(
+            $host, $port, $session, 12, 'configManager.setConfig',
+            ['name' => 'VideoAnalyseRule', 'table' => $candidate, 'options' => []]
+        );
+        $this->appendRpc2Result('ADD P05 setConfig VideoAnalyseRule', $write);
+        if (!($write['ok'] ?? false)) {
+            $this->rpc2Call($host, $port, $session, 13, 'configManager.setConfig', ['name' => 'VideoAnalyseRule', 'table' => $original, 'options' => []]);
+            $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+            return ['ok' => false, 'error' => 'Kamera hat das Hinzufügen der P05-Regel abgelehnt'];
+        }
+
+        $verify = $this->rpc2Call($host, $port, $session, 14, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
+        $ok = false;
+        $verifiedRule = null;
+        $verifiedTable = $verify['json']['params']['table'] ?? null;
+        if (($verify['ok'] ?? false) && is_array($verifiedTable) && isset($verifiedTable[0]) && is_array($verifiedTable[0])) {
+            foreach ($verifiedTable[0] as $i => $rule) {
+                if (!is_array($rule)) {
+                    continue;
+                }
+                if (strcasecmp((string) ($rule['Name'] ?? ''), self::RULE_NAME) === 0
+                    && strcasecmp((string) ($rule['Type'] ?? ''), 'CrossLineDetection') === 0) {
+                    $line = $rule['Config']['DetectLine'] ?? null;
+                    $objects = $rule['ObjectTypes'] ?? [];
+                    $ok = is_array($line)
+                        && ($line[0][0] ?? null) === $this->ReadPropertyInteger('LineAX')
+                        && ($line[0][1] ?? null) === $this->ReadPropertyInteger('LineAY')
+                        && ($line[1][0] ?? null) === $this->ReadPropertyInteger('LineBX')
+                        && ($line[1][1] ?? null) === $this->ReadPropertyInteger('LineBY')
+                        && strtolower((string) ($rule['Config']['Direction'] ?? '')) === 'both'
+                        && in_array('Human', is_array($objects) ? $objects : [], true)
+                        && (($rule['Enable'] ?? false) === true);
+                    $verifiedRule = $rule;
+                    $newIndex = (int) $i;
+                    break;
+                }
+            }
+        }
+
+        // Zusätzlich sicherstellen, dass die drei vorhandenen Regeln unverändert geblieben sind.
+        if ($ok && is_array($verifiedTable[0] ?? null)) {
+            for ($i = 0; $i < count($original[0]); $i++) {
+                $before = $original[0][$i] ?? null;
+                $after = $verifiedTable[0][$i] ?? null;
+                if (!is_array($before) || !is_array($after)
+                    || (string) ($before['Name'] ?? '') !== (string) ($after['Name'] ?? '')
+                    || (string) ($before['Type'] ?? '') !== (string) ($after['Type'] ?? '')
+                    || (bool) ($before['Enable'] ?? false) !== (bool) ($after['Enable'] ?? false)) {
+                    $ok = false;
+                    break;
+                }
+            }
+        }
+
+        if (!$ok) {
+            $rollback = $this->rpc2Call(
+                $host, $port, $session, 15, 'configManager.setConfig',
+                ['name' => 'VideoAnalyseRule', 'table' => $original, 'options' => []]
+            );
+            $this->appendRpc2Result('ROLLBACK VideoAnalyseRule', $rollback);
+            $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+            return ['ok' => false, 'error' => 'Rückleseprüfung der neuen P05-Regel fehlgeschlagen; Rollback ausgeführt'];
+        }
+
+        // Bestehende SMD-Personenerkennung muss erhalten bleiben.
+        $smartAfterRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
+        $smartAfter = $smartAfterRaw['ok']
+            ? GateTestLogic::configValue($smartAfterRaw['body'], 'SmartMotionDetect[0].Enable')
+            : null;
+        $smartBefore = $this->ReadAttributeString('OriginalSmartMotionEnable');
+        if ($smartBefore !== '' && strtolower($smartBefore) === 'true'
+            && $smartAfter !== null && strtolower($smartAfter) !== 'true') {
+            $rollback = $this->rpc2Call(
+                $host, $port, $session, 16, 'configManager.setConfig',
+                ['name' => 'VideoAnalyseRule', 'table' => $original, 'options' => []]
+            );
+            $this->appendRpc2Result('ROLLBACK wegen SMD-Konflikt', $rollback);
+            $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+            return ['ok' => false, 'error' => 'SMD wurde durch IVS beeinflusst; Ausgangszustand wiederhergestellt'];
+        }
+
+        $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+        $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', true);
+        $this->WriteAttributeBoolean('RuleCreatedByModule', true);
+        $this->WriteAttributeInteger('RuleIndex', $newIndex);
+        $this->appendProtocol('RPC2 P05 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', Human=true, Direction=Both.');
+        $this->appendProtocol('P05 Geometrie: A(' . $this->ReadPropertyInteger('LineAX') . ',' . $this->ReadPropertyInteger('LineAY') . ') -> B(' . $this->ReadPropertyInteger('LineBX') . ',' . $this->ReadPropertyInteger('LineBY') . ').');
+        return ['ok' => true, 'error' => '', 'index' => $newIndex];
+    }
+
+    /** @return array{ok:bool,error:string} */
+    private function restoreOriginalVideoAnalyseRuleViaRpc2(): array
+    {
+        $raw = $this->ReadAttributeString('OriginalVideoAnalyseRuleRpc2');
+        $table = json_decode($raw, true);
+        if (!is_array($table)) {
+            return ['ok' => false, 'error' => 'kein gültiges IVS-Backup vorhanden'];
+        }
+
+        $cfg = $this->cameraConfiguration();
+        $login = $this->rpc2Login(
+            (string) ($cfg['host'] ?? ''),
+            (int) ($cfg['port'] ?? 80),
+            (string) ($cfg['username'] ?? ''),
+            (string) ($cfg['password'] ?? '')
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'error' => 'RPC2-Login fehlgeschlagen'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+        $restore = $this->rpc2Call(
+            $host, $port, $session, 70, 'configManager.setConfig',
+            ['name' => 'VideoAnalyseRule', 'table' => $table, 'options' => []]
+        );
+        if (!($restore['ok'] ?? false)) {
+            $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+            return ['ok' => false, 'error' => 'setConfig Restore wurde abgelehnt'];
+        }
+
+        $verify = $this->rpc2Call($host, $port, $session, 71, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
+        $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+        $current = $verify['json']['params']['table'] ?? null;
+        if (!($verify['ok'] ?? false) || !is_array($current) || count($current[0] ?? []) !== count($table[0] ?? [])) {
+            return ['ok' => false, 'error' => 'Restore konnte nicht eindeutig rückgelesen werden'];
+        }
+
+        $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', false);
+        $this->WriteAttributeBoolean('RuleCreatedByModule', false);
+        $this->WriteAttributeInteger('RuleIndex', -1);
+        return ['ok' => true, 'error' => ''];
     }
 
     /** @return array{ok:bool,error:string} */
