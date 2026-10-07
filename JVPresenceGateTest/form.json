@@ -37,42 +37,7 @@
       "items": [
         {
           "type": "Label",
-          "caption": "Tagsüber: 'Test vorbereiten & starten' → BEREIT → OUT → IN → OUT → IN. Ohne Lauftest (z. B. nachts): 'Kamera-Konfiguration prüfen' führt denselben P05-Aufbau aus, liest alle relevanten Dahua-Einstellungen mehrfach zurück und startet keinen Zähler."
-        }
-      ]
-    },
-    {
-      "type": "ExpansionPanel",
-      "caption": "Erweitert / nur falls nötig",
-      "expanded": false,
-      "items": [
-        {
-          "type": "NumberSpinner",
-          "name": "LineAX",
-          "caption": "Tripwire A X (0..8191)",
-          "minimum": 0,
-          "maximum": 8191
-        },
-        {
-          "type": "NumberSpinner",
-          "name": "LineAY",
-          "caption": "Tripwire A Y (0..8191)",
-          "minimum": 0,
-          "maximum": 8191
-        },
-        {
-          "type": "NumberSpinner",
-          "name": "LineBX",
-          "caption": "Tripwire B X (0..8191)",
-          "minimum": 0,
-          "maximum": 8191
-        },
-        {
-          "type": "NumberSpinner",
-          "name": "LineBY",
-          "caption": "Tripwire B Y (0..8191)",
-          "minimum": 0,
-          "maximum": 8191
+          "caption": "P05 deckt Schiebetor und die links liegende Personentür entlang der roten Markierung ab. Tagsüber: 'Test vorbereiten & starten' → BEREIT → OUT → IN → OUT → IN. Ohne Lauftest (z. B. nachts): 'Kamera-Konfiguration prüfen' baut P05 auf und liest alle kritischen Dahua-Einstellungen zurück; der Zähler bleibt dabei absichtlich 0."
         }
       ]
     }
