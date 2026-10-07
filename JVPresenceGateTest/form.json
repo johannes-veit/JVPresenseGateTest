@@ -37,7 +37,7 @@
       "items": [
         {
           "type": "Label",
-          "caption": "1. 'Test vorbereiten & starten' drücken. 2. Warten bis Ergebnis 'BEREIT' zeigt. 3. Dann OUT → IN → OUT → IN durch das Schiebetor gehen. Nach vier eindeutigen Tripwire-Ereignissen wertet das Modul die Richtung automatisch aus."
+          "caption": "Tagsüber: 'Test vorbereiten & starten' → BEREIT → OUT → IN → OUT → IN. Ohne Lauftest (z. B. nachts): 'Kamera-Konfiguration prüfen' führt denselben P05-Aufbau aus, liest alle relevanten Dahua-Einstellungen mehrfach zurück und startet keinen Zähler."
         }
       ]
     },
@@ -78,6 +78,11 @@
     }
   ],
   "actions": [
+    {
+      "type": "Button",
+      "caption": "Kamera-Konfiguration prüfen (kein Lauftest)",
+      "onClick": "JVGATE_AuditCameraConfiguration($id);"
+    },
     {
       "type": "Button",
       "caption": "Test vorbereiten & starten",
