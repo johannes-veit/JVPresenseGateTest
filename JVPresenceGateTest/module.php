@@ -70,6 +70,7 @@ class JVPresenceGateTest extends IPSModule
         $this->RegisterAttributeBoolean('Rpc2RuleCreatedByModule', false);
         $this->RegisterAttributeString('OriginalVideoAnalyseGlobalRpc2', '');
         $this->RegisterAttributeBoolean('Rpc2GlobalChangedByModule', false);
+        $this->RegisterAttributeBoolean('AuditOnlyNextRun', false);
 
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 10);
         $this->RegisterVariableBoolean('Ready', 'Test bereit', '~Switch', 20);
@@ -401,8 +402,19 @@ class JVPresenceGateTest extends IPSModule
         $this->setResult('Eventstream wird neu aufgebaut …');
     }
 
+    public function AuditCameraConfiguration(): void
+    {
+        $this->WriteAttributeBoolean('AuditOnlyNextRun', true);
+        try {
+            $this->PrepareAndStartTest();
+        } finally {
+            $this->WriteAttributeBoolean('AuditOnlyNextRun', false);
+        }
+    }
+
     public function PrepareAndStartTest(): void
     {
+        $auditOnly = $this->ReadAttributeBoolean('AuditOnlyNextRun');
         $this->ResetTest();
 
         // Bei jedem Tastendruck frisch auflösen. Dadurch funktioniert der Test auch,
@@ -428,14 +440,27 @@ class JVPresenceGateTest extends IPSModule
         $this->appendProtocol('Quelle: JV Hof Garage / ' . $cfg['host'] . ':' . $cfg['port']);
         $this->appendProtocol('Keine Zugangsdaten werden im Protokoll ausgegeben.');
 
+        // Altstände bis v0.2.4 können VideoAnalyseGlobal per RPC2 verändert haben.
+        // Diese Änderung zuerst exakt zurücksetzen.
         if ($this->ReadAttributeBoolean('Rpc2GlobalChangedByModule')) {
-            $this->appendProtocol('Vorherige, vom Testmodul aktivierte IVS-Smart-Plan-Konfiguration wird zuerst vollständig zurückgesetzt.');
+            $this->appendProtocol('Vorherige RPC2-IVS-Smart-Plan-Konfiguration wird zuerst vollständig zurückgesetzt.');
             $restoreGlobal = $this->restoreOriginalVideoAnalyseGlobalViaRpc2();
             if (!($restoreGlobal['ok'] ?? false)) {
-                $this->setResult('FEHLER – alter IVS-Smart-Plan konnte nicht sicher zurückgesetzt werden: ' . (string) ($restoreGlobal['error'] ?? 'unbekannt') . '. Test abgebrochen.');
+                $this->setResult('FEHLER – alter RPC2-IVS-Smart-Plan konnte nicht sicher zurückgesetzt werden: ' . (string) ($restoreGlobal['error'] ?? 'unbekannt') . '. Test abgebrochen.');
                 return;
             }
-            $this->appendProtocol('Originale VideoAnalyseGlobal-Tabelle wiederhergestellt.');
+            $this->appendProtocol('Originale VideoAnalyseGlobal-Tabelle (RPC2-Altstand) wiederhergestellt.');
+        }
+
+        // Ab v0.2.6 wird die aktive Dahua-IVS-Szene ausschließlich über den
+        // dokumentierten HTTP-API-Pfad Scene.Type gesteuert.
+        if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
+            $this->appendProtocol('Vorherige Scene.Type-Teständerung wird zuerst auf den Ausgangswert zurückgesetzt.');
+            $this->restoreGlobalSceneType();
+            if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
+                $this->setResult('FEHLER – vorherige Scene.Type-Teständerung konnte nicht sicher zurückgesetzt werden.');
+                return;
+            }
         }
 
         if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
@@ -464,28 +489,50 @@ class JVPresenceGateTest extends IPSModule
         }
 
         $globalRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseGlobal');
-        $globalType = $globalRaw['ok']
-            ? GateTestLogic::configValue($globalRaw['body'], 'VideoAnalyseGlobal[0].Scene.Type')
-            : null;
-        $this->WriteAttributeString('OriginalGlobalSceneType', $globalType ?? '');
-        $this->WriteAttributeBoolean('GlobalChangedByModule', false);
+        if (!$globalRaw['ok']) {
+            $this->setResult('FEHLER – VideoAnalyseGlobal konnte über die Dahua-HTTP-API nicht gelesen werden: ' . $globalRaw['error']);
+            return;
+        }
+        $globalType = GateTestLogic::configValue($globalRaw['body'], 'VideoAnalyseGlobal[0].Scene.Type');
+        if ($globalType === null) {
+            $this->setResult('FEHLER – Dahua liefert VideoAnalyseGlobal[0].Scene.Type nicht zurück. Keine IVS-Änderung vorgenommen.');
+            $this->appendProtocol('SICHERHEITSABBRUCH: Scene.Type konnte vor dem Schreiben nicht eindeutig gelesen werden.');
+            return;
+        }
 
-        if ($globalType !== null) {
-            $this->appendProtocol('VideoAnalyseGlobal Scene.Type vorher: ' . ($globalType === '' ? '<leer>' : $globalType));
-            $normalized = strtolower(trim($globalType));
-            if ($normalized === '' || $normalized === '0') {
-                $setGlobal = $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => 'Normal']);
-                if ($setGlobal['ok']) {
-                    $this->WriteAttributeBoolean('GlobalChangedByModule', true);
-                    $this->appendProtocol('IVS Smart-Plan temporär auf Scene.Type=Normal gesetzt.');
-                } else {
-                    $this->appendProtocol('WARNUNG: Smart-Plan konnte nicht automatisch auf Normal gesetzt werden: ' . $setGlobal['error']);
-                }
-            } elseif ($normalized !== 'normal') {
-                $this->setResult('STOP – Kamera nutzt bereits einen anderen AI-Smart-Plan (' . $globalType . '). Es wurde nichts umgestellt.');
-                $this->appendProtocol('Abbruch zum Schutz vorhandener AI-Konfiguration.');
+        $this->appendProtocol('VideoAnalyseGlobal Scene.Type vorher: ' . ($globalType === '' ? '<leer>' : $globalType));
+        $normalized = strtolower(trim($globalType));
+        if ($normalized === '' || $normalized === '0') {
+            // Laut Dahua HTTP API ist dies der dokumentierte Aktivierungspfad
+            // für die Normal-IVS-Szene:
+            // configManager.cgi?action=setConfig&VideoAnalyseGlobal[0].Scene.Type=Normal
+            $this->WriteAttributeString('OriginalGlobalSceneType', $globalType);
+            $setGlobal = $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => 'Normal']);
+            if (!$setGlobal['ok']) {
+                $this->setResult('FEHLER – Dahua hat Scene.Type=Normal nicht akzeptiert: ' . $setGlobal['error']);
                 return;
             }
+
+            $verifyGlobalRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseGlobal');
+            $verifyGlobalType = $verifyGlobalRaw['ok']
+                ? GateTestLogic::configValue($verifyGlobalRaw['body'], 'VideoAnalyseGlobal[0].Scene.Type')
+                : null;
+            if ($verifyGlobalType !== 'Normal') {
+                // Best effort sofort zurücksetzen, falls das Rücklesen nicht exakt stimmt.
+                $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => ($globalType === '' ? '0' : $globalType)]);
+                $this->setResult('FEHLER – Scene.Type=Normal wurde nach dem Schreiben nicht eindeutig zurückgelesen.');
+                $this->appendProtocol('SICHERHEITSABBRUCH: Scene.Type Readback=' . json_encode($verifyGlobalType));
+                return;
+            }
+
+            $this->WriteAttributeBoolean('GlobalChangedByModule', true);
+            $this->appendProtocol('DAHUA HTTP API VERIFY: VideoAnalyseGlobal[0].Scene.Type=Normal -> OK.');
+        } elseif ($normalized === 'normal') {
+            $this->appendProtocol('DAHUA HTTP API VERIFY: Scene.Type=Normal war bereits aktiv.');
+        } else {
+            $this->setResult('STOP – Kamera nutzt bereits einen anderen AI-Smart-Plan (' . $globalType . '). Es wurde nichts umgestellt.');
+            $this->appendProtocol('Abbruch zum Schutz vorhandener AI-Konfiguration.');
+            return;
         }
 
         $rules = GateTestLogic::parseRules($rulesRaw['body']);
@@ -539,35 +586,25 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('RuleCreatedByModule', $createdNow || $this->ReadAttributeBoolean('Rpc2RuleCreatedByModule'));
         $this->appendProtocol(($createdNow ? 'Neu erzeugte' : 'Vorhandene') . ' Tripwire wird verwendet: Index ' . $idx . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
 
-        // Realdiagnose + externer Dahua-Referenzcode: Die aktive IVS-Szene wird
-        // über VideoAnalyseGlobal.Scene.Type gesteuert. TypeList allein aktiviert
-        // die Runtime nicht. Scene.Type=Normal wird kontrolliert gesetzt und
-        // vollständig gesichert/verifiziert.
-        $smartPlanChangedNow = false;
-        if ($createdNow) {
-            $smartPlan = $this->enableNormalIvsSmartPlanViaRpc2();
-            if (!($smartPlan['ok'] ?? false)) {
-                $this->setResult('STOP – IVS-Smart-Plan konnte nicht sicher aktiviert werden: ' . (string) ($smartPlan['error'] ?? 'unbekannt') . '. Ausgangszustand wurde soweit möglich wiederhergestellt.');
-                return;
-            }
-            $smartPlanChangedNow = (bool) ($smartPlan['changed'] ?? false);
-
-            // Bevor nochmals gelaufen wird, die moderne Web5-Analyse-API exakt abfragen.
-            // Das ist vollständig lesend und liefert Kamera-Caps sowie – sofern
-            // unterstützt – die echte CrossLine-Template-Struktur dieser Firmware.
-            $probe = $this->probeModernIvsFactoryViaRpc2();
-            if (!($probe['ok'] ?? false)) {
-                $this->WriteAttributeBoolean('TestActive', false);
-                $this->SetValue('TestActive', false);
-                $this->setReady(false);
-                $this->setResult('IVS-WEB5-DIAGNOSE TEILWEISE – nicht laufen. Bitte Testprotokoll senden.');
-                return;
-            }
-
+        // Scene.Type wurde oben bereits über den von Dahua dokumentierten
+        // HTTP-API-Pfad gesetzt und rückgelesen. Jetzt erfolgt eine unabhängige
+        // Vollprüfung über CGI + RPC2 + Web5-Capabilities.
+        $smartPlanChangedNow = $this->ReadAttributeBoolean('GlobalChangedByModule');
+        $audit = $this->auditP05CameraConfiguration($idx);
+        if (!($audit['ok'] ?? false)) {
             $this->WriteAttributeBoolean('TestActive', false);
             $this->SetValue('TestActive', false);
             $this->setReady(false);
-            $this->setResult('IVS-WEB5-DIAGNOSE ERFASST – nicht laufen. Bitte Testprotokoll senden.');
+            $this->setResult('KAMERA-KONFIGURATION NICHT FREIGEGEBEN – ' . (string) ($audit['error'] ?? 'Audit fehlgeschlagen') . '. Nicht laufen.');
+            return;
+        }
+
+        if ($auditOnly) {
+            $this->WriteAttributeBoolean('TestActive', false);
+            $this->SetValue('TestActive', false);
+            $this->setReady(false);
+            $this->setResult('KAMERA-KONFIGURATION OK – P05, Scene.Type=Normal, Human-Filter und Geometrie wurden mehrfach rückgelesen. Heute kein Lauftest nötig.');
+            $this->appendProtocol('AUDIT-ONLY: Konfiguration ist vorbereitet und geprüft; Zähler bleibt absichtlich 0.');
             return;
         }
         // Prüfen, ob das Aktivieren von IVS die bestehende SmartMotion-Personenerkennung ausgeschaltet hat.
@@ -1252,6 +1289,216 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('RuleCreatedByModule', false);
         $this->WriteAttributeInteger('RuleIndex', -1);
         return ['ok' => true, 'error' => ''];
+    }
+
+    /**
+     * Unabhängige P05-Konfigurationsprüfung ohne Lauftest.
+     * Prüft dieselben Daten über die dokumentierte CGI-API, RPC2 und Web5-Caps.
+     * @return array{ok:bool,error:string}
+     */
+    private function auditP05CameraConfiguration(int $idx): array
+    {
+        $errors = [];
+        $checks = 0;
+
+        // 1) Offizielle Dahua HTTP API: aktive IVS-Szene.
+        $global = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseGlobal');
+        $sceneType = $global['ok']
+            ? GateTestLogic::configValue($global['body'], 'VideoAnalyseGlobal[0].Scene.Type')
+            : null;
+        if ($sceneType === 'Normal') {
+            $checks++;
+            $this->appendProtocol('AUDIT OK 1: CGI VideoAnalyseGlobal[0].Scene.Type=Normal.');
+        } else {
+            $errors[] = 'CGI Scene.Type!=' . json_encode($sceneType);
+        }
+
+        // 2) Offizielle Dahua HTTP API: Regel-Basisdaten und komplette 5-Punkt-Linie.
+        $rulesRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
+        if (!$rulesRaw['ok']) {
+            $errors[] = 'CGI VideoAnalyseRule nicht lesbar';
+        } else {
+            $prefix = "VideoAnalyseRule[0][$idx]";
+            $name = GateTestLogic::configValue($rulesRaw['body'], $prefix . '.Name');
+            $type = GateTestLogic::configValue($rulesRaw['body'], $prefix . '.Type');
+            $enable = GateTestLogic::configValue($rulesRaw['body'], $prefix . '.Enable');
+            $direction = GateTestLogic::configValue($rulesRaw['body'], $prefix . '.Config.Direction');
+            $class = GateTestLogic::configValue($rulesRaw['body'], $prefix . '.Class');
+            $human = GateTestLogic::configValue($rulesRaw['body'], $prefix . '.ObjectTypes[0]');
+
+            if ($name === self::RULE_NAME
+                && $type === 'CrossLineDetection'
+                && strtolower((string) $enable) === 'true'
+                && strtolower((string) $direction) === 'both'
+                && ($class === null || $class === 'Normal')
+                && $human === 'Human') {
+                $checks++;
+                $this->appendProtocol('AUDIT OK 2: CGI P05 Name/Type/Enable/Direction/Class/Human korrekt.');
+            } else {
+                $errors[] = 'CGI P05-Basisdaten abweichend';
+                $this->appendProtocol('AUDIT FEHLER 2: ' . json_encode([
+                    'name' => $name, 'type' => $type, 'enable' => $enable,
+                    'direction' => $direction, 'class' => $class, 'object0' => $human
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            }
+
+            $lineOk = true;
+            foreach (self::P05_LINE as $p => $xy) {
+                $x = GateTestLogic::configValue($rulesRaw['body'], $prefix . '.Config.DetectLine[' . $p . '][0]');
+                $y = GateTestLogic::configValue($rulesRaw['body'], $prefix . '.Config.DetectLine[' . $p . '][1]');
+                if ((string) $x !== (string) $xy[0] || (string) $y !== (string) $xy[1]) {
+                    $lineOk = false;
+                    break;
+                }
+            }
+            if ($lineOk) {
+                $checks++;
+                $this->appendProtocol('AUDIT OK 3: CGI P05-Polylinie vollständig 5/5 Punkte korrekt.');
+            } else {
+                $errors[] = 'CGI P05-Polylinie weicht ab';
+            }
+        }
+
+        // 3) Bestehende SMD-Personenerkennung muss erhalten bleiben.
+        $smart = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
+        $smartEnable = $smart['ok']
+            ? GateTestLogic::configValue($smart['body'], 'SmartMotionDetect[0].Enable')
+            : null;
+        if (strtolower((string) $smartEnable) === 'true') {
+            $checks++;
+            $this->appendProtocol('AUDIT OK 4: SmartMotionDetect bleibt aktiv.');
+        } else {
+            $errors[] = 'SmartMotionDetect nicht aktiv/lesbar';
+        }
+
+        // 4) RPC2: dieselbe Konfiguration strukturiert rücklesen.
+        $cfg = $this->cameraConfiguration();
+        $login = $this->rpc2Login(
+            (string) ($cfg['host'] ?? ''),
+            (int) ($cfg['port'] ?? 80),
+            (string) ($cfg['username'] ?? ''),
+            (string) ($cfg['password'] ?? '')
+        );
+        if (!($login['ok'] ?? false)) {
+            $errors[] = 'RPC2-Login für Audit fehlgeschlagen';
+        } else {
+            $host = (string) $cfg['host'];
+            $port = (int) $cfg['port'];
+            $session = (string) ($login['session'] ?? '');
+
+            $rpcGlobal = $this->rpc2Call($host, $port, $session, 90, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+            $rpcScene = $rpcGlobal['json']['params']['table'][0]['Scene']['Type'] ?? null;
+            if (($rpcGlobal['ok'] ?? false) && $rpcScene === 'Normal') {
+                $checks++;
+                $this->appendProtocol('AUDIT OK 5: RPC2 Scene.Type=Normal.');
+            } else {
+                $errors[] = 'RPC2 Scene.Type!=' . json_encode($rpcScene);
+            }
+
+            $rpcRules = $this->rpc2Call($host, $port, $session, 91, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
+            $table = $rpcRules['json']['params']['table'][0] ?? null;
+            $rpcRule = null;
+            if (($rpcRules['ok'] ?? false) && is_array($table)) {
+                foreach ($table as $candidate) {
+                    if (is_array($candidate)
+                        && (string) ($candidate['Name'] ?? '') === self::RULE_NAME
+                        && (string) ($candidate['Type'] ?? '') === 'CrossLineDetection') {
+                        $rpcRule = $candidate;
+                        break;
+                    }
+                }
+            }
+
+            $rpcRuleOk = is_array($rpcRule)
+                && (($rpcRule['Enable'] ?? false) === true)
+                && (($rpcRule['Class'] ?? 'Normal') === 'Normal')
+                && (($rpcRule['Config']['Direction'] ?? '') === 'Both')
+                && (($rpcRule['Config']['DetectLine'] ?? null) === self::P05_LINE)
+                && in_array('Human', is_array($rpcRule['ObjectTypes'] ?? null) ? $rpcRule['ObjectTypes'] : [], true);
+
+            if ($rpcRuleOk) {
+                $checks++;
+                $this->appendProtocol('AUDIT OK 6: RPC2 P05-Regel inkl. Human-Filter und 5-Punkt-Geometrie korrekt.');
+            } else {
+                $errors[] = 'RPC2 P05-Regel abweichend';
+                if (is_array($rpcRule)) {
+                    $this->appendProtocol('AUDIT RPC2 P05 IST: ' . json_encode($rpcRule, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                }
+            }
+
+            // Alarm-/Sirenen-/Aufzeichnungs-Nebenwirkungen dürfen für P05 nicht aktiv sein.
+            $handlerOk = is_array($rpcRule);
+            if ($handlerOk) {
+                $handler = is_array($rpcRule['EventHandler'] ?? null) ? $rpcRule['EventHandler'] : [];
+                foreach ([
+                    'AlarmOutEnable','BeepEnable','ExAlarmOutEnable','MailEnable',
+                    'MatrixEnable','MessageEnable','PtzLinkEnable','RecordEnable',
+                    'SnapshotEnable','TourEnable','VoiceEnable'
+                ] as $flag) {
+                    if (($handler[$flag] ?? false) === true) {
+                        $handlerOk = false;
+                        break;
+                    }
+                }
+            }
+            if ($handlerOk) {
+                $checks++;
+                $this->appendProtocol('AUDIT OK 7: P05 hat keine Alarm-/Sirenen-/Record-/Snapshot-Nebenwirkung.');
+            } else {
+                $errors[] = 'P05 EventHandler enthält unerwünschte Nebenwirkung';
+            }
+
+            // Web5-Capabilities: Kamera muss genau diese Kombination unterstützen.
+            $factory = $this->rpc2Call($host, $port, $session, 92, 'devVideoAnalyse.factory.instance', ['channel' => 0]);
+            $object = $factory['json']['result'] ?? null;
+            $caps = ($factory['ok'] ?? false) && $object !== null
+                ? $this->rpc2CallWithObject($host, $port, $session, 93, 'devVideoAnalyse.getCaps', null, $object)
+                : ['ok' => false];
+
+            $cap = $caps['json']['params']['caps'] ?? null;
+            $crossCap = is_array($cap)
+                ? ($cap['SupportedScenes']['Normal']['SupportedRules']['CrossLineDetection'] ?? null)
+                : null;
+            $capOk = is_array($cap)
+                && in_array('Normal', is_array($cap['SupportedScene'] ?? null) ? $cap['SupportedScene'] : [], true)
+                && is_array($crossCap)
+                && in_array('Human', is_array($crossCap['SupportedObjectTypes'] ?? null) ? $crossCap['SupportedObjectTypes'] : [], true)
+                && ((int) ($cap['MaxPointOfLine'] ?? 0) >= count(self::P05_LINE))
+                && (($crossCap['TriggerPosition'] ?? null) === false);
+
+            if ($capOk) {
+                $checks++;
+                $this->appendProtocol('AUDIT OK 8: Web5-Caps bestätigen Normal + CrossLine + Human + mindestens 5 Linienpunkte; TriggerPosition=false.');
+            } else {
+                $errors[] = 'Web5-Capabilities passen nicht zur P05-Konfiguration';
+                if (is_array($cap)) {
+                    $this->appendProtocol('AUDIT WEB5 CAPS: ' . json_encode([
+                        'SupportedScene' => $cap['SupportedScene'] ?? null,
+                        'MaxPointOfLine' => $cap['MaxPointOfLine'] ?? null,
+                        'CrossLineDetection' => $crossCap
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                }
+            }
+
+            // VideoAnalyseModule ist firmwareabhängig aufgebaut; lesbar muss es sein.
+            $module = $this->rpc2Call($host, $port, $session, 94, 'configManager.getConfig', ['name' => 'VideoAnalyseModule']);
+            if ($module['ok'] ?? false) {
+                $checks++;
+                $this->appendProtocol('AUDIT OK 9: VideoAnalyseModule über RPC2 lesbar.');
+            } else {
+                $errors[] = 'VideoAnalyseModule nicht lesbar';
+            }
+
+            $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
+        }
+
+        if ($errors === []) {
+            $this->appendProtocol('AUDIT GESAMT: OK (' . $checks . ' Prüfungen). Kamera hat die P05-Konfiguration vollständig übernommen.');
+            return ['ok' => true, 'error' => ''];
+        }
+
+        $this->appendProtocol('AUDIT GESAMT: FEHLER – ' . implode(' | ', $errors));
+        return ['ok' => false, 'error' => implode('; ', $errors)];
     }
 
     /**
