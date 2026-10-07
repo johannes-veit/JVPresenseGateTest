@@ -1302,6 +1302,11 @@ class JVPresenceGateTest extends IPSModule
         // Generation erwartet Dahua entweder eine Minimalregel oder die bereits
         // angelegte Regelstruktur.
         $templateShapes = [
+            // Die dahua-rpc-Web5-Signatur typisiert "rule" absichtlich als unknown.
+            // Auf dieser Firmware haben Objektvarianten bisher INVALID_PARAM geliefert.
+            // Deshalb zuerst die wahrscheinliche Web5-Form: reiner Regeltyp als String.
+            'STRING' => 'CrossLineDetection',
+            'TYPE_ONLY' => ['Type' => 'CrossLineDetection'],
             'MINIMAL' => ['Class' => 'Normal', 'Type' => 'CrossLineDetection'],
             'NAMED' => [
                 'Class' => 'Normal',
