@@ -1,3 +1,12 @@
+# v0.2.5
+
+- Ursache des weiter fehlenden CrossLine-Events weiter eingegrenzt: `Scene.TypeList=[Normal]` wird zwar gespeichert, aktiviert aber nicht die laufende IVS-Szene.
+- Stellt die Dahua-IVS-Aktivierung auf `VideoAnalyseGlobal[0].Scene.Type=Normal` um. Genau dieses Feld wird von funktionierenden Dahua-IVS-Implementierungen gesetzt.
+- Vorhandene fremde `Scene.Type`-Werte werden nicht überschrieben; die komplette Global-Tabelle bleibt gesichert und rollback-fähig.
+- Rückleseprüfung prüft nun explizit `Scene.Type=Normal`.
+- Entfernt `TriggerPosition=[Center]` aus P05, weil die Kamera-Caps für `CrossLineDetection` ausdrücklich `TriggerPosition=false` melden.
+- Erweiterte P05-Polylinie über Schiebetor und Personentür bleibt unverändert erhalten.
+
 # v0.2.4
 
 - Auswertung des Web5-Protokolls: Zähler bleibt 0, weil weiterhin kein `CrossLineDetection`-Event von der Kamera kommt; Counter/Variable sind nicht die Ursache.
