@@ -13,6 +13,10 @@ class JVPresenceGateTest extends IPSModule
     private const ALA2_MODULE_GUID = '{5E08D4EE-9727-4682-A23E-E8625EB2337E}';
     private const IM_CHANGESTATUS_ID = 10505;
     private const RULE_NAME = 'P05_HOME_STREET';
+    private const P05_AX = 4993;
+    private const P05_AY = 1342;
+    private const P05_BX = 5923;
+    private const P05_BY = 2294;
 
     public function Create(): void
     {
@@ -414,6 +418,16 @@ class JVPresenceGateTest extends IPSModule
         $this->appendProtocol('Quelle: JV Hof Garage / ' . $cfg['host'] . ':' . $cfg['port']);
         $this->appendProtocol('Keine Zugangsdaten werden im Protokoll ausgegeben.');
 
+        if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
+            $this->appendProtocol('Vorhandene, vom Testmodul erzeugte P05-Regel wird vor dem neuen Lauf auf den gesicherten Originalzustand zurückgesetzt.');
+            $restore = $this->restoreOriginalVideoAnalyseRuleViaRpc2();
+            if (!($restore['ok'] ?? false)) {
+                $this->setResult('FEHLER – alte Testregel konnte nicht sicher zurückgesetzt werden: ' . (string) ($restore['error'] ?? 'unbekannt') . '. Test abgebrochen.');
+                return;
+            }
+            $this->appendProtocol('Originale VideoAnalyseRule-Tabelle wiederhergestellt.');
+        }
+
         $rulesRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
         if (!$rulesRaw['ok']) {
             $this->setResult('FEHLER – IVS-Konfiguration konnte nicht gelesen werden: ' . $rulesRaw['error']);
@@ -527,6 +541,7 @@ class JVPresenceGateTest extends IPSModule
             ? 'Die P05-Linie wurde durch das Testmodul über RPC2 angelegt und vollständig rückgelesen.'
             : 'Die vorhandene Liniengeometrie der Kamera wird unverändert verwendet.');
         $this->appendProtocol('TESTFOLGE: 1 OUT, 2 IN, 3 OUT, 4 IN. Jeweils normal vollständig über die Linie gehen.');
+        $this->appendProtocol('Eventzuordnung: Dahua event.index ist Kanalindex 0 und wird nicht mit dem IVS-Regelindex verwechselt.');
 
         if (!$this->ReadAttributeBoolean('Streaming')) {
             $this->Reconnect();
@@ -593,11 +608,9 @@ class JVPresenceGateTest extends IPSModule
                 continue;
             }
 
-            $selectedRule = $this->ReadAttributeInteger('RuleIndex');
-            $eventIndex = isset($event['index']) && $event['index'] !== '' ? (int) $event['index'] : null;
-            if ($selectedRule >= 0 && $eventIndex !== null && $eventIndex !== $selectedRule) {
-                continue;
-            }
+            // Dahua eventManager 'index' ist der Video-Kanalindex, nicht der
+            // Index in VideoAnalyseRule. Bei dieser Kamera ist index=0, während
+            // P05 als Regel [3] angelegt wird. Daher nicht gegen RuleIndex filtern.
 
             $direction = GateTestLogic::directionFromEvent($event);
             $summary = [
@@ -990,8 +1003,8 @@ class JVPresenceGateTest extends IPSModule
             'Class' => 'Normal',
             'Config' => [
                 'DetectLine' => [
-                    [$this->ReadPropertyInteger('LineAX'), $this->ReadPropertyInteger('LineAY')],
-                    [$this->ReadPropertyInteger('LineBX'), $this->ReadPropertyInteger('LineBY')]
+                    [self::P05_AX, self::P05_AY],
+                    [self::P05_BX, self::P05_BY]
                 ],
                 'Direction' => 'Both',
                 'LaneNumber' => null,
@@ -1054,10 +1067,10 @@ class JVPresenceGateTest extends IPSModule
                     $line = $rule['Config']['DetectLine'] ?? null;
                     $objects = $rule['ObjectTypes'] ?? [];
                     $ok = is_array($line)
-                        && ($line[0][0] ?? null) === $this->ReadPropertyInteger('LineAX')
-                        && ($line[0][1] ?? null) === $this->ReadPropertyInteger('LineAY')
-                        && ($line[1][0] ?? null) === $this->ReadPropertyInteger('LineBX')
-                        && ($line[1][1] ?? null) === $this->ReadPropertyInteger('LineBY')
+                        && ($line[0][0] ?? null) === self::P05_AX
+                        && ($line[0][1] ?? null) === self::P05_AY
+                        && ($line[1][0] ?? null) === self::P05_BX
+                        && ($line[1][1] ?? null) === self::P05_BY
                         && strtolower((string) ($rule['Config']['Direction'] ?? '')) === 'both'
                         && in_array('Human', is_array($objects) ? $objects : [], true)
                         && (($rule['Enable'] ?? false) === true);
@@ -1115,7 +1128,7 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('RuleCreatedByModule', true);
         $this->WriteAttributeInteger('RuleIndex', $newIndex);
         $this->appendProtocol('RPC2 P05 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', Human=true, Direction=Both.');
-        $this->appendProtocol('P05 Geometrie: A(' . $this->ReadPropertyInteger('LineAX') . ',' . $this->ReadPropertyInteger('LineAY') . ') -> B(' . $this->ReadPropertyInteger('LineBX') . ',' . $this->ReadPropertyInteger('LineBY') . ').');
+        $this->appendProtocol('P05 Geometrie: A(' . self::P05_AX . ',' . self::P05_AY . ') -> B(' . self::P05_BX . ',' . self::P05_BY . ').');
         return ['ok' => true, 'error' => '', 'index' => $newIndex];
     }
 
