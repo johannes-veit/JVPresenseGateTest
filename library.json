@@ -1,0 +1,12 @@
+{
+  "id": "{3194BB0B-87FC-4DC3-B7C6-1A01E109B681}",
+  "author": "Johannes Veit",
+  "name": "JV Presence Gate Test",
+  "url": "",
+  "compatibility": {
+    "version": "9.0"
+  },
+  "version": "0.1.0",
+  "build": 1,
+  "date": 0
+}

@@ -1,0 +1,107 @@
+{
+  "elements": [
+    {
+      "type": "Label",
+      "caption": "Separater Test für die Presence-Grenze am Schiebetor. Das bestehende Außenlichtmodul wird nicht verändert. Kamera, Zugangsdaten und Host werden automatisch aus der bestehenden Instanz 'JV Hof Garage' übernommen."
+    },
+    {
+      "type": "CheckBox",
+      "name": "Enabled",
+      "caption": "Testmodul aktiv"
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Automatik",
+      "expanded": true,
+      "items": [
+        {
+          "type": "CheckBox",
+          "name": "AutoDiscover",
+          "caption": "JV Hof Garage automatisch finden"
+        },
+        {
+          "type": "SelectInstance",
+          "name": "SourceCameraInstanceID",
+          "caption": "Optional: bestehende AussenlichtAutomatik2-Instanz manuell wählen"
+        },
+        {
+          "type": "Label",
+          "caption": "Normalfall: nichts auswählen. Die bekannte JV-Hof-Garage-Instanz wird automatisch erkannt. Es werden keine Zugangsdaten in diesem Testmodul gespeichert."
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Schiebetor-Test",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "1. 'Test vorbereiten & starten' drücken. 2. Warten bis Ergebnis 'BEREIT' zeigt. 3. Dann OUT → IN → OUT → IN durch das Schiebetor gehen. Nach vier eindeutigen Tripwire-Ereignissen wertet das Modul die Richtung automatisch aus."
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Erweitert / nur falls nötig",
+      "expanded": false,
+      "items": [
+        {
+          "type": "NumberSpinner",
+          "name": "LineAX",
+          "caption": "Tripwire A X (0..8191)",
+          "minimum": 0,
+          "maximum": 8191
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "LineAY",
+          "caption": "Tripwire A Y (0..8191)",
+          "minimum": 0,
+          "maximum": 8191
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "LineBX",
+          "caption": "Tripwire B X (0..8191)",
+          "minimum": 0,
+          "maximum": 8191
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "LineBY",
+          "caption": "Tripwire B Y (0..8191)",
+          "minimum": 0,
+          "maximum": 8191
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Button",
+      "caption": "Test vorbereiten & starten",
+      "onClick": "JVGATE_PrepareAndStartTest($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Test zurücksetzen",
+      "onClick": "JVGATE_ResetTest($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Verbindung neu aufbauen",
+      "onClick": "JVGATE_Reconnect($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Testregel deaktivieren / Smart-Plan zurücksetzen",
+      "onClick": "JVGATE_CleanupCameraTestConfig($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Zustand ins Debug schreiben",
+      "onClick": "JVGATE_DumpState($id);"
+    }
+  ]
+}

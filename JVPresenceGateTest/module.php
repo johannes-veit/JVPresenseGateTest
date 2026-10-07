@@ -1,0 +1,943 @@
+<?php
+
+declare(strict_types=1);
+
+require_once dirname(__DIR__) . '/libs/DahuaDigest.php';
+require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
+require_once dirname(__DIR__) . '/libs/GateTestLogic.php';
+
+class JVPresenceGateTest extends IPSModule
+{
+    private const CLIENT_SOCKET_GUID = '{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}';
+    private const SOCKET_TX_GUID = '{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}';
+    private const ALA2_MODULE_GUID = '{5E08D4EE-9727-4682-A23E-E8625EB2337E}';
+    private const IM_CHANGESTATUS_ID = 10505;
+    private const RULE_NAME = 'P05_HOME_STREET';
+
+    public function Create(): void
+    {
+        parent::Create();
+
+        $this->RegisterPropertyBoolean('Enabled', true);
+        $this->RegisterPropertyBoolean('AutoDiscover', true);
+        $this->RegisterPropertyInteger('SourceCameraInstanceID', 0);
+
+        // Vorbereitet anhand des vom Nutzer gelieferten unveränderten Bildes "JV Hof Garage".
+        // Dahua-IVS-Koordinaten sind normiert auf 0..8191.
+        $this->RegisterPropertyInteger('LineAX', 4400);
+        $this->RegisterPropertyInteger('LineAY', 3000);
+        $this->RegisterPropertyInteger('LineBX', 7600);
+        $this->RegisterPropertyInteger('LineBY', 4300);
+
+        $this->RegisterAttributeInteger('SourceInstanceID', 0);
+        $this->RegisterAttributeInteger('RegisteredParentID', 0);
+        $this->RegisterAttributeBoolean('Streaming', false);
+        $this->RegisterAttributeInteger('LastCameraRx', 0);
+        $this->RegisterAttributeInteger('LastHttpRequest', 0);
+        $this->RegisterAttributeBoolean('AuthPending', false);
+        $this->RegisterAttributeBoolean('LastRequestAuthenticated', false);
+        $this->RegisterAttributeBoolean('AuthBlocked', false);
+        $this->RegisterAttributeInteger('AuthFailureCount', 0);
+        $this->RegisterAttributeInteger('DigestNC', 0);
+        $this->RegisterAttributeString('DigestChallenge', '{}');
+        $this->RegisterAttributeInteger('SocketRestartStage', 0);
+        $this->RegisterAttributeInteger('LastSocketRestart', 0);
+        $this->RegisterAttributeInteger('RuleIndex', -1);
+        $this->RegisterAttributeBoolean('RuleCreatedByModule', false);
+        $this->RegisterAttributeBoolean('GlobalChangedByModule', false);
+        $this->RegisterAttributeString('OriginalGlobalSceneType', '');
+        $this->RegisterAttributeString('OriginalSmartMotionEnable', '');
+        $this->RegisterAttributeString('SeenEventKeys', '{}');
+        $this->RegisterAttributeString('Crossings', '[]');
+        $this->RegisterAttributeBoolean('TestActive', false);
+
+        $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 10);
+        $this->RegisterVariableBoolean('Ready', 'Test bereit', '~Switch', 20);
+        $this->RegisterVariableBoolean('TestActive', 'Test läuft', '~Switch', 30);
+        $this->RegisterVariableInteger('CrossingCount', 'Grenzübertritte erkannt', '', 40);
+        $this->RegisterVariableString('Result', 'Ergebnis / Nächster Schritt', '', 50);
+        $this->RegisterVariableString('LastEvent', 'Letztes IVS-Ereignis', '', 60);
+        $this->RegisterVariableString('Protocol', 'Testprotokoll', '', 70);
+
+        $this->RegisterTimer('HandshakeTimer', 0, 'JVGATE_HandshakeTimer($_IPS["TARGET"]);');
+        $this->RegisterTimer('SocketRestartTimer', 0, 'JVGATE_SocketRestartTimer($_IPS["TARGET"]);');
+        $this->RegisterTimer('Watchdog', 15000, 'JVGATE_Watchdog($_IPS["TARGET"]);');
+
+        $this->RequireParent(self::CLIENT_SOCKET_GUID);
+    }
+
+    public function ApplyChanges(): void
+    {
+        parent::ApplyChanges();
+
+        $this->SetTimerInterval('HandshakeTimer', 0);
+        $this->SetTimerInterval('SocketRestartTimer', 0);
+        $this->SetBuffer('HttpBuffer', '');
+        $this->SetBuffer('EventCarry', '');
+        $this->WriteAttributeBoolean('Streaming', false);
+        $this->WriteAttributeBoolean('AuthPending', false);
+        $this->WriteAttributeBoolean('LastRequestAuthenticated', false);
+        $this->WriteAttributeBoolean('AuthBlocked', false);
+        $this->WriteAttributeInteger('AuthFailureCount', 0);
+        $this->WriteAttributeInteger('DigestNC', 0);
+        $this->WriteAttributeString('DigestChallenge', '{}');
+        $this->setStreamOK(false);
+        $this->setReady(false);
+
+        $sourceID = $this->resolveSourceInstance();
+        $this->WriteAttributeInteger('SourceInstanceID', $sourceID);
+        if ($sourceID <= 0) {
+            $this->SetValue('Result', 'NICHT BEREIT – bestehende Instanz JV Hof Garage wurde nicht gefunden.');
+            return;
+        }
+
+        $this->syncParentSocket();
+        $this->updateParentSubscription($this->getParentID());
+        $this->SetValue('Result', 'Installiert. Einmal „Test vorbereiten & starten“ drücken.');
+
+        if ($this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
+            $this->scheduleSocketRestart(500);
+        }
+    }
+
+    public function GetConfigurationForParent(): string
+    {
+        $cfg = $this->cameraConfiguration();
+        return json_encode([
+            'Host' => $cfg['host'] ?? '',
+            'Port' => $cfg['port'] ?? 80,
+            'Open' => $this->ReadPropertyBoolean('Enabled') && ($cfg['host'] ?? '') !== ''
+        ]);
+    }
+
+    public function ReceiveData($JSONString): string
+    {
+        $data = json_decode((string) $JSONString, true);
+        if (!is_array($data) || !isset($data['Buffer'])) {
+            return '';
+        }
+        $chunk = (string) $data['Buffer'];
+        if ($chunk === '') {
+            return '';
+        }
+
+        $this->WriteAttributeInteger('LastCameraRx', time());
+
+        if ($this->ReadAttributeBoolean('Streaming')) {
+            $this->setStreamOK(true);
+            $this->processEventData($chunk);
+            return '';
+        }
+
+        $http = $this->GetBuffer('HttpBuffer') . $chunk;
+        if (strlen($http) > 262144) {
+            $http = substr($http, -131072);
+        }
+        $headerEnd = strpos($http, "\r\n\r\n");
+        if ($headerEnd === false) {
+            $this->SetBuffer('HttpBuffer', $http);
+            return '';
+        }
+
+        $header = substr($http, 0, $headerEnd + 4);
+        $body = substr($http, $headerEnd + 4);
+        $this->SetBuffer('HttpBuffer', '');
+
+        if (!preg_match('#^HTTP/\d\.\d\s+(\d{3})#i', $header, $m)) {
+            $this->appendProtocol('HTTP: ungültiger Antwortkopf');
+            return '';
+        }
+        $status = (int) $m[1];
+        if ($status === 401) {
+            $challenge = $this->extractDigestChallenge($header);
+            if ($challenge === []) {
+                $this->appendProtocol('HTTP 401 ohne Digest-Challenge');
+                return '';
+            }
+            $this->WriteAttributeString('DigestChallenge', json_encode($challenge));
+            $wasAuthenticated = $this->ReadAttributeBoolean('LastRequestAuthenticated');
+            if (!$wasAuthenticated) {
+                $this->WriteAttributeBoolean('AuthPending', true);
+                $this->scheduleSocketRestart(100);
+                return '';
+            }
+
+            $stale = strtolower((string) ($challenge['stale'] ?? 'false')) === 'true';
+            $failures = $this->ReadAttributeInteger('AuthFailureCount') + 1;
+            $this->WriteAttributeInteger('AuthFailureCount', $failures);
+            if ($stale && $failures <= 2) {
+                $this->WriteAttributeBoolean('AuthPending', true);
+                $this->scheduleSocketRestart(100);
+                return '';
+            }
+
+            $this->WriteAttributeBoolean('AuthBlocked', true);
+            $this->SetValue('Result', 'FEHLER – Dahua-Digest-Anmeldung wurde abgewiesen.');
+            return '';
+        }
+
+        if ($status === 200) {
+            $this->WriteAttributeBoolean('Streaming', true);
+            $this->WriteAttributeBoolean('AuthPending', false);
+            $this->WriteAttributeBoolean('AuthBlocked', false);
+            $this->WriteAttributeInteger('AuthFailureCount', 0);
+            $this->setStreamOK(true);
+            $this->appendProtocol('Dahua Eventstream verbunden (codes=[All])');
+            $this->refreshReadyState();
+            if ($body !== '') {
+                $this->processEventData($body);
+            }
+            return '';
+        }
+
+        $this->appendProtocol('HTTP: unerwarteter Status ' . $status);
+        return '';
+    }
+
+    public function MessageSink($TimeStamp, $SenderID, $Message, $Data): void
+    {
+        if ((int) $Message !== self::IM_CHANGESTATUS_ID || (int) $SenderID !== $this->getParentID()) {
+            return;
+        }
+
+        $status = 0;
+        if (is_array($Data) && isset($Data[0])) {
+            $status = (int) $Data[0];
+        } elseif (IPS_InstanceExists((int) $SenderID)) {
+            $status = (int) IPS_GetInstance((int) $SenderID)['InstanceStatus'];
+        }
+
+        if ($status === 102 && $this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
+            $this->WriteAttributeBoolean('Streaming', false);
+            $this->setStreamOK(false);
+            $this->SetBuffer('HttpBuffer', '');
+            $this->SetBuffer('EventCarry', '');
+            if (!$this->ReadAttributeBoolean('AuthBlocked')) {
+                $this->SetTimerInterval('HandshakeTimer', 250);
+            }
+        } else {
+            $this->WriteAttributeBoolean('Streaming', false);
+            $this->setStreamOK(false);
+            $this->setReady(false);
+        }
+    }
+
+    public function HandshakeTimer(): void
+    {
+        $this->SetTimerInterval('HandshakeTimer', 0);
+        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady() || $this->ReadAttributeBoolean('AuthBlocked')) {
+            return;
+        }
+        $parentID = $this->getParentID();
+        if ($parentID <= 0 || !IPS_InstanceExists($parentID) || (int) IPS_GetInstance($parentID)['InstanceStatus'] !== 102) {
+            return;
+        }
+        $this->beginHandshake();
+    }
+
+    public function SocketRestartTimer(): void
+    {
+        $this->SetTimerInterval('SocketRestartTimer', 0);
+        $parentID = $this->getParentID();
+        if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
+            $this->WriteAttributeInteger('SocketRestartStage', 0);
+            return;
+        }
+
+        $stage = $this->ReadAttributeInteger('SocketRestartStage');
+        if ($stage === 1) {
+            try {
+                IPS_SetProperty($parentID, 'Open', false);
+                IPS_ApplyChanges($parentID);
+            } catch (Throwable $e) {
+                $this->WriteAttributeInteger('SocketRestartStage', 0);
+                $this->appendProtocol('Socket schließen fehlgeschlagen: ' . $e->getMessage());
+                return;
+            }
+            $this->WriteAttributeInteger('SocketRestartStage', 2);
+            $this->SetTimerInterval('SocketRestartTimer', 300);
+            return;
+        }
+
+        if ($stage === 2) {
+            $this->WriteAttributeInteger('SocketRestartStage', 0);
+            if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady() || $this->ReadAttributeBoolean('AuthBlocked')) {
+                return;
+            }
+            $cfg = $this->cameraConfiguration();
+            try {
+                IPS_SetProperty($parentID, 'Host', (string) $cfg['host']);
+                IPS_SetProperty($parentID, 'Port', (int) $cfg['port']);
+                IPS_SetProperty($parentID, 'Open', true);
+                IPS_ApplyChanges($parentID);
+            } catch (Throwable $e) {
+                $this->appendProtocol('Socket öffnen fehlgeschlagen: ' . $e->getMessage());
+                return;
+            }
+            $this->WriteAttributeInteger('LastSocketRestart', time());
+            $this->SetTimerInterval('HandshakeTimer', 1000);
+        }
+    }
+
+    public function Watchdog(): void
+    {
+        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady() || $this->ReadAttributeBoolean('AuthBlocked')) {
+            return;
+        }
+        $parentID = $this->getParentID();
+        if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
+            return;
+        }
+
+        $now = time();
+        $status = (int) IPS_GetInstance($parentID)['InstanceStatus'];
+        if ($status !== 102) {
+            $this->WriteAttributeBoolean('Streaming', false);
+            $this->setStreamOK(false);
+            $this->setReady(false);
+            if ($this->ReadAttributeInteger('SocketRestartStage') === 0
+                && ($now - $this->ReadAttributeInteger('LastSocketRestart')) >= 20) {
+                $this->scheduleSocketRestart(100);
+            }
+            return;
+        }
+
+        $lastRx = $this->ReadAttributeInteger('LastCameraRx');
+        if ($this->ReadAttributeBoolean('Streaming') && $lastRx > 0 && ($now - $lastRx) > 25) {
+            $this->appendProtocol('Watchdog: kein Dahua-Heartbeat >25 s, Stream wird neu aufgebaut');
+            $this->WriteAttributeBoolean('Streaming', false);
+            $this->setStreamOK(false);
+            $this->setReady(false);
+            $this->WriteAttributeBoolean('AuthPending', false);
+            $this->WriteAttributeBoolean('LastRequestAuthenticated', false);
+            $this->WriteAttributeInteger('DigestNC', 0);
+            $this->WriteAttributeString('DigestChallenge', '{}');
+            $this->scheduleSocketRestart(100);
+        }
+    }
+
+    public function Reconnect(): void
+    {
+        $this->WriteAttributeBoolean('Streaming', false);
+        $this->setStreamOK(false);
+        $this->setReady(false);
+        $this->WriteAttributeBoolean('AuthPending', false);
+        $this->WriteAttributeBoolean('AuthBlocked', false);
+        $this->WriteAttributeBoolean('LastRequestAuthenticated', false);
+        $this->WriteAttributeInteger('AuthFailureCount', 0);
+        $this->WriteAttributeInteger('DigestNC', 0);
+        $this->WriteAttributeString('DigestChallenge', '{}');
+        $this->WriteAttributeInteger('LastCameraRx', 0);
+        $this->SetBuffer('HttpBuffer', '');
+        $this->SetBuffer('EventCarry', '');
+        $this->scheduleSocketRestart(100);
+        $this->SetValue('Result', 'Eventstream wird neu aufgebaut …');
+    }
+
+    public function PrepareAndStartTest(): void
+    {
+        $this->ResetTest();
+        $cfg = $this->cameraConfiguration();
+        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
+            $this->SetValue('Result', 'FEHLER – Kamerakonfiguration konnte nicht automatisch aus JV Hof Garage übernommen werden.');
+            return;
+        }
+
+        $this->appendProtocol('=== P05 SCHIEBETOR TEST ===');
+        $this->appendProtocol('Quelle: JV Hof Garage / ' . $cfg['host'] . ':' . $cfg['port']);
+        $this->appendProtocol('Keine Zugangsdaten werden im Protokoll ausgegeben.');
+
+        $rulesRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
+        if (!$rulesRaw['ok']) {
+            $this->SetValue('Result', 'FEHLER – IVS-Konfiguration konnte nicht gelesen werden: ' . $rulesRaw['error']);
+            return;
+        }
+
+        $smartRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
+        $smartBefore = $smartRaw['ok']
+            ? GateTestLogic::configValue($smartRaw['body'], 'SmartMotionDetect[0].Enable')
+            : null;
+        $this->WriteAttributeString('OriginalSmartMotionEnable', $smartBefore ?? '');
+        if ($smartBefore !== null) {
+            $this->appendProtocol('SmartMotionDetect vorher: ' . $smartBefore);
+        }
+
+        $globalRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseGlobal');
+        $globalType = $globalRaw['ok']
+            ? GateTestLogic::configValue($globalRaw['body'], 'VideoAnalyseGlobal[0].Scene.Type')
+            : null;
+        $this->WriteAttributeString('OriginalGlobalSceneType', $globalType ?? '');
+        $this->WriteAttributeBoolean('GlobalChangedByModule', false);
+
+        if ($globalType !== null) {
+            $this->appendProtocol('VideoAnalyseGlobal Scene.Type vorher: ' . ($globalType === '' ? '<leer>' : $globalType));
+            $normalized = strtolower(trim($globalType));
+            if ($normalized === '' || $normalized === '0') {
+                $setGlobal = $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => 'Normal']);
+                if ($setGlobal['ok']) {
+                    $this->WriteAttributeBoolean('GlobalChangedByModule', true);
+                    $this->appendProtocol('IVS Smart-Plan temporär auf Scene.Type=Normal gesetzt.');
+                } else {
+                    $this->appendProtocol('WARNUNG: Smart-Plan konnte nicht automatisch auf Normal gesetzt werden: ' . $setGlobal['error']);
+                }
+            } elseif ($normalized !== 'normal') {
+                $this->SetValue('Result', 'STOP – Kamera nutzt bereits einen anderen AI-Smart-Plan (' . $globalType . '). Es wurde nichts umgestellt.');
+                $this->appendProtocol('Abbruch zum Schutz vorhandener AI-Konfiguration.');
+                return;
+            }
+        }
+
+        $rules = GateTestLogic::parseRules($rulesRaw['body']);
+        $idx = GateTestLogic::findRuleIndex($rules, self::RULE_NAME);
+        $created = false;
+        if ($idx === null) {
+            $idx = GateTestLogic::firstFreeRuleIndex($rules, 10);
+            if ($idx === null) {
+                $this->SetValue('Result', 'FEHLER – kein freier IVS-Regelplatz (0..9). Es wurde nichts überschrieben.');
+                return;
+            }
+            $created = true;
+        }
+
+        $params = [
+            "VideoAnalyseRule[0][$idx].Name" => self::RULE_NAME,
+            "VideoAnalyseRule[0][$idx].Type" => 'CrossLineDetection',
+            "VideoAnalyseRule[0][$idx].Enable" => 'true',
+            "VideoAnalyseRule[0][$idx].Config.Direction" => 'Both',
+            "VideoAnalyseRule[0][$idx].Config.DetectLine[0][0]" => (string) $this->ReadPropertyInteger('LineAX'),
+            "VideoAnalyseRule[0][$idx].Config.DetectLine[0][1]" => (string) $this->ReadPropertyInteger('LineAY'),
+            "VideoAnalyseRule[0][$idx].Config.DetectLine[1][0]" => (string) $this->ReadPropertyInteger('LineBX'),
+            "VideoAnalyseRule[0][$idx].Config.DetectLine[1][1]" => (string) $this->ReadPropertyInteger('LineBY')
+        ];
+        $set = $this->cameraSet($params);
+        if (!$set['ok']) {
+            $this->SetValue('Result', 'FEHLER – P05-Tripwire konnte nicht eingerichtet werden: ' . $set['error']);
+            return;
+        }
+
+        // Neuere Dahua-Firmwares können direkt nach Objekttyp filtern. Falls das konkrete
+        // Modell das Feld nicht akzeptiert, bleibt die Tripwire trotzdem verwendbar.
+        $humanFilter = $this->cameraSet(["VideoAnalyseRule[0][$idx].ObjectTypes[0]" => 'Human']);
+        $this->appendProtocol($humanFilter['ok']
+            ? 'Human-Filter der Tripwire aktiviert.'
+            : 'Hinweis: ObjectTypes[0]=Human wurde von dieser Firmware nicht bestätigt; Test bleibt auf kontrollierten Fußgänger-Durchlauf beschränkt.');
+
+        // 24/7 aktiv – ohne Aufzeichnung/Sirene/Email-Linkage zu verändern.
+        $schedule = [];
+        for ($day = 0; $day < 7; $day++) {
+            $schedule["VideoAnalyseRule[0][$idx].EventHandler.TimeSection[$day][0]"] = '1 00:00:00-23:59:59';
+        }
+        $scheduleResult = $this->cameraSet($schedule);
+        if (!$scheduleResult['ok']) {
+            $this->appendProtocol('Hinweis: explizite 24/7-TimeSection wurde nicht bestätigt; Firmware-Default bleibt aktiv.');
+        }
+
+        $verify = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
+        if (!$verify['ok']) {
+            $this->SetValue('Result', 'FEHLER – Tripwire wurde geschrieben, konnte aber nicht rückgelesen werden.');
+            return;
+        }
+        $verifiedRules = GateTestLogic::parseRules($verify['body']);
+        $rule = $verifiedRules[$idx] ?? [];
+        if (strcasecmp((string) ($rule['Type'] ?? ''), 'CrossLineDetection') !== 0
+            || strtolower((string) ($rule['Enable'] ?? 'false')) !== 'true') {
+            $this->SetValue('Result', 'FEHLER – P05-Regel ist nach Rücklesen nicht aktiv.');
+            return;
+        }
+
+        // Prüfen, ob das Aktivieren von IVS die bestehende SmartMotion-Personenerkennung ausgeschaltet hat.
+        if ($smartBefore !== null && strtolower($smartBefore) === 'true') {
+            $smartAfterRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
+            $smartAfter = $smartAfterRaw['ok']
+                ? GateTestLogic::configValue($smartAfterRaw['body'], 'SmartMotionDetect[0].Enable')
+                : null;
+            if ($smartAfter !== null && strtolower($smartAfter) !== 'true') {
+                $this->appendProtocol('SICHERHEITSABBRUCH: SmartMotionDetect wurde durch IVS deaktiviert. Ausgangszustand wird zurückgesetzt.');
+                $this->cameraSet(["VideoAnalyseRule[0][$idx].Enable" => 'false']);
+                $this->restoreGlobalSceneType();
+                $this->SetValue('Result', 'STOP – IVS und bestehende SMD-Personenerkennung kollidieren auf dieser Firmware. Ausgangszustand wiederhergestellt.');
+                return;
+            }
+        }
+
+        $this->WriteAttributeInteger('RuleIndex', $idx);
+        $this->WriteAttributeBoolean('RuleCreatedByModule', $created);
+        $this->WriteAttributeBoolean('TestActive', true);
+        $this->SetValue('TestActive', true);
+        $this->SetValue('Result', 'REGEL BEREIT – Eventstream verbindet noch …');
+        $this->appendProtocol('P05-Regel aktiv: Index ' . $idx . ', Name=' . self::RULE_NAME);
+        $this->appendProtocol('Tripwire: A(' . $this->ReadPropertyInteger('LineAX') . ',' . $this->ReadPropertyInteger('LineAY') . ') -> B(' . $this->ReadPropertyInteger('LineBX') . ',' . $this->ReadPropertyInteger('LineBY') . '), Direction=Both');
+        $this->appendProtocol('TESTFOLGE: 1 OUT, 2 IN, 3 OUT, 4 IN. Jeweils normal vollständig über die Linie gehen.');
+
+        if (!$this->ReadAttributeBoolean('Streaming')) {
+            $this->Reconnect();
+            $this->WriteAttributeBoolean('TestActive', true);
+            $this->SetValue('TestActive', true);
+        }
+        $this->refreshReadyState();
+    }
+
+    public function ResetTest(): void
+    {
+        $this->WriteAttributeString('SeenEventKeys', '{}');
+        $this->WriteAttributeString('Crossings', '[]');
+        $this->WriteAttributeBoolean('TestActive', false);
+        $this->SetValue('TestActive', false);
+        $this->SetValue('CrossingCount', 0);
+        $this->SetValue('LastEvent', '');
+        $this->SetValue('Protocol', '');
+        $this->setReady(false);
+        $this->SetValue('Result', 'Zurückgesetzt. „Test vorbereiten & starten“ drücken.');
+    }
+
+    public function CleanupCameraTestConfig(): void
+    {
+        $idx = $this->ReadAttributeInteger('RuleIndex');
+        if ($idx >= 0) {
+            $result = $this->cameraSet(["VideoAnalyseRule[0][$idx].Enable" => 'false']);
+            $this->appendProtocol($result['ok']
+                ? 'P05-Testregel deaktiviert.'
+                : 'WARNUNG: Testregel konnte nicht deaktiviert werden: ' . $result['error']);
+        }
+        $this->restoreGlobalSceneType();
+        $this->WriteAttributeBoolean('TestActive', false);
+        $this->SetValue('TestActive', false);
+        $this->setReady(false);
+        $this->SetValue('Result', 'Testregel deaktiviert / Smart-Plan soweit durch das Modul verändert zurückgesetzt.');
+    }
+
+    public function DumpState(): void
+    {
+        $state = [
+            'sourceInstanceID' => $this->ReadAttributeInteger('SourceInstanceID'),
+            'parentID' => $this->getParentID(),
+            'streaming' => $this->ReadAttributeBoolean('Streaming'),
+            'lastCameraRx' => $this->ReadAttributeInteger('LastCameraRx'),
+            'ruleIndex' => $this->ReadAttributeInteger('RuleIndex'),
+            'ruleCreatedByModule' => $this->ReadAttributeBoolean('RuleCreatedByModule'),
+            'globalChangedByModule' => $this->ReadAttributeBoolean('GlobalChangedByModule'),
+            'testActive' => $this->ReadAttributeBoolean('TestActive'),
+            'crossings' => $this->getCrossings()
+        ];
+        $this->SendDebug('GateTestState', json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
+    }
+
+    private function processEventData(string $chunk): void
+    {
+        $carry = $this->GetBuffer('EventCarry');
+        $events = DahuaEventParser::feed($chunk, $carry);
+        $this->SetBuffer('EventCarry', $carry);
+
+        foreach ($events as $event) {
+            if (strcasecmp((string) $event['code'], 'CrossLineDetection') !== 0) {
+                continue;
+            }
+
+            $direction = GateTestLogic::directionFromEvent($event);
+            $summary = [
+                'time' => date('H:i:s'),
+                'code' => $event['code'],
+                'action' => $event['action'],
+                'index' => $event['index'],
+                'human' => $event['human'],
+                'direction' => $direction,
+                'eventId' => $event['eventId'],
+                'ruleId' => $event['ruleId'],
+                'groupId' => $event['groupId'],
+                'objectId' => $event['objectId']
+            ];
+            $this->SetValue('LastEvent', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $this->appendProtocol('IVS ' . json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $this->SendDebug('CrossLineDetection', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ' | RAW=' . $this->singleLine((string) $event['raw']), 0);
+
+            if (!$this->ReadAttributeBoolean('TestActive')) {
+                continue;
+            }
+            $action = strtolower(trim((string) $event['action']));
+            if (!in_array($action, ['start', 'on', 'pulse'], true)) {
+                continue;
+            }
+
+            $key = $this->eventKey($event, $direction);
+            $seen = json_decode($this->ReadAttributeString('SeenEventKeys'), true);
+            if (!is_array($seen)) {
+                $seen = [];
+            }
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = time();
+            if (count($seen) > 100) {
+                $seen = array_slice($seen, -100, null, true);
+            }
+            $this->WriteAttributeString('SeenEventKeys', json_encode($seen));
+
+            $crossings = $this->getCrossings();
+            $step = count($crossings) + 1;
+            if ($step > 4) {
+                continue;
+            }
+            $expected = ($step % 2 === 1) ? 'OUT' : 'IN';
+            $crossings[] = [
+                'step' => $step,
+                'expected' => $expected,
+                'time' => time(),
+                'direction' => $direction,
+                'eventId' => $event['eventId'],
+                'ruleId' => $event['ruleId'],
+                'index' => $event['index']
+            ];
+            $this->WriteAttributeString('Crossings', json_encode($crossings));
+            $this->SetValue('CrossingCount', count($crossings));
+            $this->appendProtocol('GEZÄHLT Schritt ' . $step . ' erwartet=' . $expected . ' Direction=' . ($direction ?? '<fehlt>'));
+
+            $evaluation = GateTestLogic::evaluateFourCrossings($crossings);
+            if (($evaluation['complete'] ?? false) === true) {
+                $this->WriteAttributeBoolean('TestActive', false);
+                $this->SetValue('TestActive', false);
+                $this->setReady(false);
+
+                if (($evaluation['valid'] ?? false) === true) {
+                    $result = 'FERTIG – P05 eindeutig: OUT=' . $evaluation['outDirection'] . ', IN=' . $evaluation['inDirection'] . '. Testprotokoll hier hochladen.';
+                    $this->SetValue('Result', $result);
+                    $this->appendProtocol($result);
+                } else {
+                    $result = 'TEST BEENDET, aber Zuordnung noch nicht eindeutig: ' . ($evaluation['message'] ?? 'unbekannt') . '. Testprotokoll hier hochladen.';
+                    $this->SetValue('Result', $result);
+                    $this->appendProtocol($result);
+                }
+            } else {
+                $next = count($crossings) + 1;
+                $nextExpected = ($next % 2 === 1) ? 'OUT' : 'IN';
+                $this->SetValue('Result', 'Schritt ' . count($crossings) . '/4 erkannt. Als Nächstes: ' . $nextExpected . ' durch das Schiebetor.');
+            }
+        }
+    }
+
+    private function beginHandshake(): void
+    {
+        if ($this->ReadAttributeBoolean('AuthBlocked')) {
+            return;
+        }
+        $this->WriteAttributeBoolean('Streaming', false);
+        $this->setStreamOK(false);
+        $this->SetBuffer('HttpBuffer', '');
+        $this->SetBuffer('EventCarry', '');
+        $this->sendEventRequest($this->ReadAttributeBoolean('AuthPending'));
+    }
+
+    private function sendEventRequest(bool $authenticated): void
+    {
+        $cfg = $this->cameraConfiguration();
+        $uri = '/cgi-bin/eventManager.cgi?action=attach&codes=[All]&heartbeat=5';
+        $host = (string) ($cfg['host'] ?? '');
+        $port = (int) ($cfg['port'] ?? 80);
+        if ($host === '') {
+            return;
+        }
+        $hostHeader = $port === 80 ? $host : ($host . ':' . $port);
+        $headers = [
+            'GET ' . $uri . ' HTTP/1.1',
+            'Host: ' . $hostHeader,
+            'User-Agent: IP-Symcon-JVPresenceGateTest/0.1.0',
+            'Accept: multipart/x-mixed-replace, */*',
+            'Connection: keep-alive'
+        ];
+
+        if ($authenticated) {
+            $challenge = json_decode($this->ReadAttributeString('DigestChallenge'), true);
+            if (!is_array($challenge)) {
+                $challenge = [];
+            }
+            $nc = $this->ReadAttributeInteger('DigestNC') + 1;
+            $this->WriteAttributeInteger('DigestNC', $nc);
+            $cnonce = substr(hash('sha256', $this->InstanceID . ':' . microtime(true) . ':' . mt_rand()), 0, 16);
+            try {
+                $headers[] = 'Authorization: ' . DahuaDigest::buildAuthorization(
+                    (string) ($cfg['username'] ?? ''),
+                    (string) ($cfg['password'] ?? ''),
+                    'GET',
+                    $uri,
+                    $challenge,
+                    $nc,
+                    $cnonce
+                );
+            } catch (Throwable $e) {
+                $this->appendProtocol('Digest-Fehler: ' . $e->getMessage());
+                return;
+            }
+        }
+
+        $payload = json_encode([
+            'DataID' => self::SOCKET_TX_GUID,
+            'Buffer' => implode("\r\n", $headers) . "\r\n\r\n"
+        ]);
+        $this->WriteAttributeBoolean('LastRequestAuthenticated', $authenticated);
+        $this->WriteAttributeInteger('LastHttpRequest', time());
+        try {
+            $this->SendDataToParent($payload);
+        } catch (Throwable $e) {
+            $this->appendProtocol('Eventstream-Anfrage fehlgeschlagen: ' . $e->getMessage());
+        }
+    }
+
+    private function scheduleSocketRestart(int $delayMs = 100): void
+    {
+        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()) {
+            return;
+        }
+        if ($this->ReadAttributeInteger('SocketRestartStage') !== 0) {
+            return;
+        }
+        $this->WriteAttributeInteger('SocketRestartStage', 1);
+        $this->SetTimerInterval('SocketRestartTimer', max(50, $delayMs));
+    }
+
+    /** @return array<string,string> */
+    private function extractDigestChallenge(string $header): array
+    {
+        if (!preg_match('/^WWW-Authenticate:\s*(Digest\s+.+)$/im', $header, $m)) {
+            return [];
+        }
+        return DahuaDigest::parseChallenge(trim((string) $m[1]));
+    }
+
+    private function resolveSourceInstance(): int
+    {
+        $manual = $this->ReadPropertyInteger('SourceCameraInstanceID');
+        if ($manual > 0 && IPS_InstanceExists($manual)) {
+            $inst = IPS_GetInstance($manual);
+            if (($inst['ModuleInfo']['ModuleID'] ?? '') === self::ALA2_MODULE_GUID) {
+                return $manual;
+            }
+        }
+        if (!$this->ReadPropertyBoolean('AutoDiscover')) {
+            return 0;
+        }
+
+        $fallback = 0;
+        foreach (IPS_GetInstanceListByModuleID(self::ALA2_MODULE_GUID) as $id) {
+            if (!IPS_InstanceExists((int) $id)) {
+                continue;
+            }
+            $name = IPS_GetName((int) $id);
+            if (strcasecmp(trim($name), 'JV Hof Garage') === 0) {
+                return (int) $id;
+            }
+            try {
+                $host = trim((string) IPS_GetProperty((int) $id, 'CameraHost'));
+                if ($host === '192.168.107.111') {
+                    $fallback = (int) $id;
+                }
+            } catch (Throwable $e) {
+            }
+        }
+        return $fallback;
+    }
+
+    /** @return array{host:string,port:int,username:string,password:string}|array{} */
+    private function cameraConfiguration(): array
+    {
+        $sourceID = $this->ReadAttributeInteger('SourceInstanceID');
+        if ($sourceID <= 0 || !IPS_InstanceExists($sourceID)) {
+            $sourceID = $this->resolveSourceInstance();
+            if ($sourceID > 0) {
+                $this->WriteAttributeInteger('SourceInstanceID', $sourceID);
+            }
+        }
+        if ($sourceID <= 0 || !IPS_InstanceExists($sourceID)) {
+            return [];
+        }
+        try {
+            return [
+                'host' => trim((string) IPS_GetProperty($sourceID, 'CameraHost')),
+                'port' => max(1, (int) IPS_GetProperty($sourceID, 'CameraPort')),
+                'username' => (string) IPS_GetProperty($sourceID, 'Username'),
+                'password' => (string) IPS_GetProperty($sourceID, 'Password')
+            ];
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    private function cameraConfigurationReady(): bool
+    {
+        $cfg = $this->cameraConfiguration();
+        return ($cfg['host'] ?? '') !== '' && ($cfg['username'] ?? '') !== '' && ($cfg['password'] ?? '') !== '';
+    }
+
+    /** @return array{ok:bool,body:string,error:string,http:int} */
+    private function cameraGet(string $uri): array
+    {
+        $cfg = $this->cameraConfiguration();
+        if (($cfg['host'] ?? '') === '') {
+            return ['ok' => false, 'body' => '', 'error' => 'keine Kamera', 'http' => 0];
+        }
+        $scheme = 'http';
+        $url = $scheme . '://' . $cfg['host'] . ':' . $cfg['port'] . $uri;
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'body' => '', 'error' => 'curl_init fehlgeschlagen', 'http' => 0];
+        }
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPAUTH => CURLAUTH_DIGEST,
+            CURLOPT_USERPWD => $cfg['username'] . ':' . $cfg['password'],
+            CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_NOSIGNAL => true,
+            CURLOPT_FOLLOWLOCATION => false
+        ]);
+        $body = curl_exec($ch);
+        $error = curl_error($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($body === false || $http < 200 || $http >= 300) {
+            return ['ok' => false, 'body' => is_string($body) ? $body : '', 'error' => $error !== '' ? $error : ('HTTP ' . $http), 'http' => $http];
+        }
+        return ['ok' => true, 'body' => (string) $body, 'error' => '', 'http' => $http];
+    }
+
+    /** @param array<string,string> $params
+     *  @return array{ok:bool,body:string,error:string,http:int}
+     */
+    private function cameraSet(array $params): array
+    {
+        if ($params === []) {
+            return ['ok' => true, 'body' => 'OK', 'error' => '', 'http' => 200];
+        }
+        $parts = [];
+        foreach ($params as $key => $value) {
+            $parts[] = $key . '=' . rawurlencode($value);
+        }
+        $result = $this->cameraGet('/cgi-bin/configManager.cgi?action=setConfig&' . implode('&', $parts));
+        if ($result['ok'] && stripos(trim($result['body']), 'OK') === false) {
+            return ['ok' => false, 'body' => $result['body'], 'error' => 'Kamera antwortete nicht mit OK', 'http' => $result['http']];
+        }
+        return $result;
+    }
+
+    private function restoreGlobalSceneType(): void
+    {
+        if (!$this->ReadAttributeBoolean('GlobalChangedByModule')) {
+            return;
+        }
+        $old = $this->ReadAttributeString('OriginalGlobalSceneType');
+        $restoreValue = $old === '' ? '0' : $old;
+        $r = $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => $restoreValue]);
+        $this->appendProtocol($r['ok']
+            ? 'VideoAnalyseGlobal Scene.Type auf Ausgangswert zurückgesetzt.'
+            : 'WARNUNG: Scene.Type konnte nicht zurückgesetzt werden: ' . $r['error']);
+        if ($r['ok']) {
+            $this->WriteAttributeBoolean('GlobalChangedByModule', false);
+        }
+    }
+
+    private function syncParentSocket(): void
+    {
+        $parentID = $this->getParentID();
+        $cfg = $this->cameraConfiguration();
+        if ($parentID <= 0 || !IPS_InstanceExists($parentID) || ($cfg['host'] ?? '') === '') {
+            return;
+        }
+        try {
+            IPS_SetProperty($parentID, 'Host', (string) $cfg['host']);
+            IPS_SetProperty($parentID, 'Port', (int) $cfg['port']);
+            IPS_SetProperty($parentID, 'Open', $this->ReadPropertyBoolean('Enabled'));
+            IPS_ApplyChanges($parentID);
+        } catch (Throwable $e) {
+            $this->SetValue('Result', 'Client Socket konnte nicht automatisch konfiguriert werden: ' . $e->getMessage());
+        }
+    }
+
+    private function updateParentSubscription(int $newParentID): void
+    {
+        $oldParentID = $this->ReadAttributeInteger('RegisteredParentID');
+        if ($oldParentID > 0 && $oldParentID !== $newParentID && IPS_InstanceExists($oldParentID)) {
+            try {
+                $this->UnregisterMessage($oldParentID, self::IM_CHANGESTATUS_ID);
+            } catch (Throwable $e) {
+            }
+        }
+        if ($newParentID > 0 && IPS_InstanceExists($newParentID)) {
+            try {
+                $this->RegisterMessage($newParentID, self::IM_CHANGESTATUS_ID);
+            } catch (Throwable $e) {
+            }
+        }
+        $this->WriteAttributeInteger('RegisteredParentID', $newParentID);
+    }
+
+    private function getParentID(): int
+    {
+        try {
+            return (int) IPS_GetInstance($this->InstanceID)['ConnectionID'];
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    /** @param array<string,mixed> $event */
+    private function eventKey(array $event, ?string $direction): string
+    {
+        $eventId = $event['eventId'] ?? null;
+        if ($eventId !== null && $eventId !== '') {
+            return 'event:' . (string) $eventId;
+        }
+        $ruleId = $event['ruleId'] ?? '';
+        $objectId = $event['objectId'] ?? '';
+        return 'fallback:' . sha1((string) $event['code'] . '|' . (string) $event['index'] . '|' . (string) $ruleId . '|' . (string) $objectId . '|' . (string) $direction . '|' . date('YmdHis'));
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function getCrossings(): array
+    {
+        $decoded = json_decode($this->ReadAttributeString('Crossings'), true);
+        return is_array($decoded) ? array_values($decoded) : [];
+    }
+
+    private function refreshReadyState(): void
+    {
+        $ruleReady = $this->ReadAttributeInteger('RuleIndex') >= 0;
+        $stream = $this->ReadAttributeBoolean('Streaming');
+        $active = $this->ReadAttributeBoolean('TestActive');
+        $ready = $ruleReady && $stream && $active;
+        $this->setReady($ready);
+        if ($ready && $this->GetValue('CrossingCount') === 0) {
+            $this->SetValue('Result', 'BEREIT – jetzt OUT → IN → OUT → IN durch das Schiebetor gehen.');
+        }
+    }
+
+    private function setStreamOK(bool $value): void
+    {
+        $id = $this->GetIDForIdent('StreamOK');
+        if ($id > 0 && GetValueBoolean($id) !== $value) {
+            SetValueBoolean($id, $value);
+        }
+    }
+
+    private function setReady(bool $value): void
+    {
+        $id = $this->GetIDForIdent('Ready');
+        if ($id > 0 && GetValueBoolean($id) !== $value) {
+            SetValueBoolean($id, $value);
+        }
+    }
+
+    private function appendProtocol(string $line): void
+    {
+        $stamp = date('Y-m-d H:i:s');
+        $old = (string) $this->GetValue('Protocol');
+        $new = $old . ($old === '' ? '' : "\n") . '[' . $stamp . '] ' . $line;
+        if (strlen($new) > 60000) {
+            $new = substr($new, -55000);
+        }
+        $this->SetValue('Protocol', $new);
+        $this->SendDebug('Protocol', $line, 0);
+    }
+
+    private function singleLine(string $value): string
+    {
+        return preg_replace('/\s+/', ' ', trim($value)) ?? trim($value);
+    }
+}
