@@ -1,3 +1,10 @@
+# v0.1.8
+
+- Behebt zwei beim ersten realen P05-Lauf gefundene Fehler.
+- P05 verwendet nun intern fest die kalibrierte Linie aus dem Nutzerbild: A(4993,1342) → B(5923,2294); alte persistierte Property-Werte können die Geometrie nicht mehr verfälschen.
+- Dahua `eventManager`-Feld `index` ist der Video-Kanalindex (JV Hof Garage: 0), nicht der Index der `VideoAnalyseRule` (P05: 3). CrossLine-Ereignisse werden daher nicht mehr fälschlich verworfen.
+- Eine vom Modul erzeugte P05-Regel aus einem vorherigen Lauf wird vor einem neuen Test automatisch auf die gesicherte Originaltabelle zurückgesetzt und anschließend sauber neu angelegt.
+
 # v0.1.7
 
 - Nutzt den bestätigten Dahua-Web5/RPC2-Zugriff zum automatischen Anlegen von `P05_HOME_STREET`.
