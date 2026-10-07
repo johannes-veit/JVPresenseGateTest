@@ -22,12 +22,16 @@ class JVPresenceGateTest extends IPSModule
         $this->RegisterPropertyBoolean('AutoDiscover', true);
         $this->RegisterPropertyInteger('SourceCameraInstanceID', 0);
 
-        // Vorbereitet anhand des vom Nutzer gelieferten unveränderten Bildes "JV Hof Garage".
-        // Dahua-IVS-Koordinaten sind normiert auf 0..8191.
-        $this->RegisterPropertyInteger('LineAX', 4400);
-        $this->RegisterPropertyInteger('LineAY', 3000);
-        $this->RegisterPropertyInteger('LineBX', 7600);
-        $this->RegisterPropertyInteger('LineBY', 4300);
+        // Exakt aus der vom Nutzer rot markierten P05-Linie im aktuellen JV-Hof-Garage-Bild abgeleitet.
+        // Bild 1536x691 px -> Dahua-IVS-Koordinaten 0..8191.
+        // Sichtlinie: ca. Pixel A(936,113) -> B(1110,193).
+        // Konzeptuell: OUT = Richtung Straße = rechts/oben; IN = links/unten.
+        // In Rohbildkoordinaten (Ursprung oben links) entspricht OUT damit +X/-Y.
+        // Die tatsächliche Dahua-Direction-Bezeichnung wird weiterhin im Realtest gelernt.
+        $this->RegisterPropertyInteger('LineAX', 4993);
+        $this->RegisterPropertyInteger('LineAY', 1342);
+        $this->RegisterPropertyInteger('LineBX', 5923);
+        $this->RegisterPropertyInteger('LineBY', 2294);
 
         $this->RegisterAttributeInteger('SourceInstanceID', 0);
         $this->RegisterAttributeInteger('RegisteredParentID', 0);
