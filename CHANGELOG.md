@@ -1,3 +1,10 @@
+# v0.1.3
+
+- Erkennt ältere vs. moderne Dahua-IVS-Konfigurationswege.
+- Wenn das direkte Anlegen einer neuen VideoAnalyseRule abgelehnt wird, startet automatisch eine ausschließlich lesende Kompatibilitätsanalyse.
+- Protokolliert VideoAnalyseGlobal, getSceneList, devVideoAnalyse getCaps, getTemplateRule, Softwareversion und Gerätetyp.
+- Nach einer abgelehnten Regelanlage werden keine weiteren Kameraeinstellungen geschrieben.
+
 # v0.1.2
 
 - Dahua-IVS-Regel wird jetzt schrittweise geschrieben: Name/Typ → Geometrie/Richtung → Aktivierung.
