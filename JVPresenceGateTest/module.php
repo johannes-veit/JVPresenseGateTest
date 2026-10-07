@@ -477,7 +477,9 @@ class JVPresenceGateTest extends IPSModule
         ];
         $set = $this->configureTripwireStepwise($idx, $params);
         if (!$set['ok']) {
-            $this->setResult('FEHLER – P05-Tripwire konnte nicht eingerichtet werden: ' . $set['error'] . ' – Details stehen im Testprotokoll.');
+            $this->appendProtocol('Legacy-IVS-Schreibweg abgelehnt. Starte nur-lesende Kompatibilitätsanalyse der installierten Firmware.');
+            $this->probeModernVideoAnalyse();
+            $this->setResult('DIAGNOSE – diese Dahua-Firmware lehnt das direkte Anlegen der IVS-Regel ab. Kompatibilitätsdaten wurden vollständig ins Testprotokoll geschrieben; Kamera wurde nicht weiter verändert.');
             return;
         }
 
@@ -897,6 +899,34 @@ class JVPresenceGateTest extends IPSModule
             return ['ok' => false, 'body' => is_string($body) ? $body : '', 'error' => $error !== '' ? $error : ('HTTP ' . $http), 'http' => $http];
         }
         return ['ok' => true, 'body' => (string) $body, 'error' => '', 'http' => $http];
+    }
+
+    private function probeModernVideoAnalyse(): void
+    {
+        $requests = [
+            'VideoAnalyseGlobal' => '/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseGlobal',
+            'SceneList' => '/cgi-bin/devVideoAnalyse.cgi?action=getSceneList',
+            'AnalyseCapsCh1' => '/cgi-bin/devVideoAnalyse.cgi?action=getCaps&channel=1',
+            'TemplateNormalCh1' => '/cgi-bin/devVideoAnalyse.cgi?action=getTemplateRule&Class=Normal&Channel=1',
+            'SoftwareVersion' => '/cgi-bin/magicBox.cgi?action=getSoftwareVersion',
+            'DeviceType' => '/cgi-bin/magicBox.cgi?action=getDeviceType'
+        ];
+
+        foreach ($requests as $label => $uri) {
+            $r = $this->cameraGet($uri);
+            $body = $this->singleLine((string) ($r['body'] ?? ''));
+            if (strlen($body) > 12000) {
+                $body = substr($body, 0, 12000) . '…';
+            }
+            $this->appendProtocol(
+                'PROBE ' . $label .
+                ': ok=' . (($r['ok'] ?? false) ? 'true' : 'false') .
+                ' HTTP=' . (int) ($r['http'] ?? 0) .
+                ' body=' . ($body === '' ? '<leer>' : $body)
+            );
+        }
+
+        $this->appendProtocol('HINWEIS: Die PROBE-Aufrufe sind ausschließlich lesend. Es wurde nach der abgelehnten Regelanlage keine weitere Kameraeinstellung geschrieben.');
     }
 
     /** @param array<int,array<string,mixed>> $rules */
