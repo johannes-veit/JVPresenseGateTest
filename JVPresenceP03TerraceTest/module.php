@@ -987,6 +987,701 @@ class JVPresenceP03TerraceTest extends IPSModule
         }
     }
 
+    public function P03ProofTimer(): void
+    {
+        $this->evaluateP03Pending();
+    }
+
+    public function RunP03Simulation(): void
+    {
+        $result = $this->runP03SimulationInternal();
+        $this->WriteAttributeBoolean('P03SimulationPassed', (bool) ($result['ok'] ?? false));
+        $this->appendProtocol(
+            'P03 SIMULATION: ' . (($result['ok'] ?? false) ? 'PASS' : 'FAIL')
+                . ' – ' . implode(' | ', $result['details'] ?? [])
+        );
+        $this->SetValue('P03ProofState', ($result['ok'] ?? false) ? 'SIMULATION PASS' : 'SIMULATION FAIL');
+        $this->setResult(($result['ok'] ?? false)
+            ? 'P03 interne Simulation bestanden.'
+            : 'P03 interne Simulation FEHLER – nicht testen.');
+    }
+
+    /** @return array{ok:bool,details:array<int,string>} */
+    private function runP03SimulationInternal(): array
+    {
+        $details = [];
+        $ok = true;
+        $base = 1000.0;
+
+        $cases = [
+            [
+                'name' => 'OUT primary',
+                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
+                'events' => [
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 8],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 6]
+                ],
+                'now' => $base + 7,
+                'state' => P03ProofEngine::STATE_VERIFIED,
+                'action' => P03ProofEngine::ACTION_HOME_TO_LAGER
+            ],
+            [
+                'name' => 'IN primary',
+                'cross' => ['ts' => $base, 'direction' => 'LeftToRight'],
+                'events' => [
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 7],
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base + 5]
+                ],
+                'now' => $base + 6,
+                'state' => P03ProofEngine::STATE_VERIFIED,
+                'action' => P03ProofEngine::ACTION_LAGER_TO_HOME
+            ],
+            [
+                'name' => 'OUT terrace fallback',
+                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
+                'events' => [
+                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 40],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 8]
+                ],
+                'now' => $base + 9,
+                'state' => P03ProofEngine::STATE_VERIFIED,
+                'action' => P03ProofEngine::ACTION_HOME_TO_LAGER
+            ],
+            [
+                'name' => 'false crossline without human',
+                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
+                'events' => [],
+                'now' => $base + 61,
+                'state' => P03ProofEngine::STATE_UNKNOWN,
+                'action' => null
+            ],
+            [
+                'name' => 'incomplete one-side proof',
+                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
+                'events' => [
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5]
+                ],
+                'now' => $base + 61,
+                'state' => P03ProofEngine::STATE_PROVISIONAL,
+                'action' => null
+            ],
+            [
+                'name' => 'contradictory simultaneous traffic',
+                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
+                'events' => [
+                    ['id' => 'jpre', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 7],
+                    ['id' => 'wpre', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 6],
+                    ['id' => 'jpost', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base + 6],
+                    ['id' => 'wpost', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 7]
+                ],
+                'now' => $base + 8,
+                'state' => P03ProofEngine::STATE_CONTRADICTION,
+                'action' => null
+            ]
+        ];
+
+        foreach ($cases as $case) {
+            $result = P03ProofEngine::evaluate(
+                $case['cross'],
+                $case['events'],
+                (float) $case['now'],
+                30.0,
+                60.0
+            );
+            $pass = ($result['state'] ?? null) === $case['state']
+                && ($result['action'] ?? null) === $case['action'];
+            $details[] = $case['name'] . '=' . ($pass ? 'OK' : 'FAIL');
+            $ok = $ok && $pass;
+        }
+
+        $map = [];
+        $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
+        $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
+        $map = P03ProofEngine::learnDirection($map, 'LeftToRight', P03ProofEngine::ACTION_LAGER_TO_HOME);
+        $map = P03ProofEngine::learnDirection($map, 'LeftToRight', P03ProofEngine::ACTION_LAGER_TO_HOME);
+        $direction = P03ProofEngine::directionStatus($map);
+        $dirPass = ($direction['stable'] ?? false) === true;
+        $details[] = 'direction learning=' . ($dirPass ? 'OK' : 'FAIL');
+        $ok = $ok && $dirPass;
+
+        return ['ok' => $ok, 'details' => $details];
+    }
+
+    /** @param array<string,mixed> $meta */
+    private function recordP03HumanEvent(string $source, array $meta = []): void
+    {
+        if (!$this->ReadAttributeBoolean('TestActive') && !$this->ReadAttributeBoolean('ProductionEnabled')) {
+            return;
+        }
+
+        $events = $this->getP03HumanEvents();
+        $now = microtime(true);
+        $externalId = trim((string) ($meta['eventId'] ?? ''));
+        if ($externalId !== '') {
+            $id = $source . ':event:' . $externalId;
+            foreach ($events as $event) {
+                if (($event['id'] ?? '') === $id) {
+                    return;
+                }
+            }
+        } else {
+            $id = $source . ':' . sprintf('%.6f', $now);
+            // Boolean PersonDetected can occasionally be re-published. Collapse
+            // same-source STARTs arriving within one second.
+            for ($i = count($events) - 1; $i >= 0; $i--) {
+                if (($events[$i]['source'] ?? '') !== $source) {
+                    continue;
+                }
+                if (($now - (float) ($events[$i]['ts'] ?? 0.0)) < 1.0) {
+                    return;
+                }
+                break;
+            }
+        }
+
+        $events[] = [
+            'id' => $id,
+            'source' => $source,
+            'ts' => $now,
+            'used' => false,
+            'meta' => $meta
+        ];
+
+        $cutoff = $now - 180.0;
+        $events = array_values(array_filter($events, static fn($e) => (float) ($e['ts'] ?? 0.0) >= $cutoff));
+        if (count($events) > 120) {
+            $events = array_slice($events, -120);
+        }
+        $this->setP03HumanEvents($events);
+
+        $this->appendProtocol('P03 HUMAN ' . $source . ' @' . sprintf('%.3f', $now));
+        $this->evaluateP03Pending();
+    }
+
+    /** @param array<string,mixed> $event */
+    private function recordP03Crossing(array $event, ?string $direction): void
+    {
+        $pending = $this->getP03PendingCrossings();
+        $now = microtime(true);
+        $eventId = trim((string) ($event['eventId'] ?? ''));
+        $id = $eventId !== '' ? ('cross:event:' . $eventId) : ('cross:' . sprintf('%.6f', $now));
+
+        foreach ($pending as $candidate) {
+            if (($candidate['id'] ?? '') === $id) {
+                return;
+            }
+        }
+
+        $candidate = [
+            'id' => $id,
+            'ts' => $now,
+            'direction' => $direction,
+            'eventId' => $event['eventId'] ?? null,
+            'ruleId' => $event['ruleId'] ?? null,
+            'objectId' => $event['objectId'] ?? null
+        ];
+        $pending[] = $candidate;
+        if (count($pending) > 20) {
+            $pending = array_slice($pending, -20);
+        }
+        $this->setP03PendingCrossings($pending);
+
+        $this->SetValue('P03ProofState', 'PENDING – CrossLine wartet auf Kamerabestätigung');
+        $this->appendProtocol(
+            'P03 CROSS id=' . $id
+                . ' Direction=' . ($direction ?? '<fehlt>')
+                . ' – wartet auf HOME/LAGER Human-Beweis'
+        );
+        $this->SetTimerInterval('P03ProofTimer', 1000);
+        $this->evaluateP03Pending();
+    }
+
+    public function P03AuxRescan(): void
+    {
+        $result = $this->discoverP03AuxSources(true);
+        $this->subscribeP03AuxVariables();
+        $audit = $this->auditP03AuxCameras();
+        $this->refreshP03CameraStatus();
+        $this->setResult(($result['ok'] ?? false) && ($audit['ok'] ?? false)
+            ? 'P03 Zusatzkameras gefunden und geprüft.'
+            : 'P03 Zusatzkameras noch nicht vollständig bereit – Protokoll prüfen.');
+    }
+
+    private function evaluateP03Pending(): void
+    {
+        $pending = $this->getP03PendingCrossings();
+        if ($pending === []) {
+            $this->SetTimerInterval('P03ProofTimer', 0);
+            return;
+        }
+
+        $events = $this->getP03HumanEvents();
+        $remaining = [];
+        $now = microtime(true);
+        $near = max(5, $this->ReadPropertyInteger('NearProofWindowSeconds'));
+        $terrace = max($near, $this->ReadPropertyInteger('TerraceProofWindowSeconds'));
+
+        foreach ($pending as $cross) {
+            $result = P03ProofEngine::evaluate($cross, $events, $now, (float) $near, (float) $terrace);
+            $state = (string) ($result['state'] ?? P03ProofEngine::STATE_UNKNOWN);
+
+            if ($state === P03ProofEngine::STATE_PENDING) {
+                $remaining[] = $cross;
+                continue;
+            }
+
+            if (in_array($state, [P03ProofEngine::STATE_VERIFIED, P03ProofEngine::STATE_STRONG_VERIFIED], true)) {
+                $events = $this->markP03HumanEventsUsed($events, $result['usedEventIds'] ?? [], (string) ($cross['id'] ?? ''));
+
+                $map = json_decode($this->ReadAttributeString('P03DirectionMap'), true);
+                if (!is_array($map)) {
+                    $map = [];
+                }
+                $map = P03ProofEngine::learnDirection(
+                    $map,
+                    isset($cross['direction']) ? (string) $cross['direction'] : null,
+                    isset($result['action']) ? (string) $result['action'] : null
+                );
+                $this->WriteAttributeString('P03DirectionMap', json_encode($map));
+
+                $verified = $this->ReadAttributeInteger('P03VerifiedCount') + 1;
+                $this->WriteAttributeInteger('P03VerifiedCount', $verified);
+                $this->SetValue('P03VerifiedTransfers', $verified);
+
+                $proofText = $this->formatP03Proof($cross, $result);
+                $this->SetValue('P03ProofState', $state);
+                $this->SetValue('P03LastProof', $proofText);
+                $this->appendProtocol('P03 PROOF ' . $state . ' ' . $proofText);
+                $this->onP03VerifiedTransfer($cross, $result);
+                continue;
+            }
+
+            if ($state === P03ProofEngine::STATE_CONTRADICTION) {
+                $this->WriteAttributeBoolean('CoverageDebt', true);
+                $this->SetValue('P03ProofState', 'CONTRADICTION – kein Übergang gebucht');
+                $this->SetValue('P03LastProof', $this->formatP03Proof($cross, $result));
+                $this->appendProtocol('P03 CONTRADICTION – CrossLine verworfen; keine Presence-Änderung.');
+                continue;
+            }
+
+            // PROVISIONAL / UNKNOWN are explicitly non-committing.
+            $this->SetValue('P03ProofState', $state . ' – kein Übergang gebucht');
+            $this->SetValue('P03LastProof', $this->formatP03Proof($cross, $result));
+            $this->appendProtocol('P03 ' . $state . ' – unvollständiger Beweis; keine Presence-Änderung.');
+        }
+
+        $this->setP03HumanEvents($events);
+        $this->setP03PendingCrossings($remaining);
+        $this->refreshP03DirectionStatus();
+
+        if ($remaining === []) {
+            $this->SetTimerInterval('P03ProofTimer', 0);
+        } else {
+            $this->SetTimerInterval('P03ProofTimer', 1000);
+        }
+
+        $dir = P03ProofEngine::directionStatus(
+            json_decode($this->ReadAttributeString('P03DirectionMap'), true) ?: []
+        );
+        if ($this->ReadAttributeBoolean('TestActive')
+            && ($dir['stable'] ?? false)
+            && $this->ReadAttributeInteger('P03VerifiedCount') >= 4) {
+            $this->WriteAttributeBoolean('TestActive', false);
+            $this->SetValue('TestActive', false);
+            $this->setReady(false);
+            $this->setResult('P03 MEHRKAMERA VERIFIZIERT – mindestens 4 bestätigte Übergänge und stabile CrossLine-Richtungen. Produktivbetrieb kann freigegeben werden.');
+            $this->appendProtocol('P03 COMMISSIONING COMPLETE: Mehrkamera-Proof + Richtungslernen stabil.');
+        }
+    }
+
+    /** @param array<int,array<string,mixed>> $events */
+    private function markP03HumanEventsUsed(array $events, array $ids, string $crossId): array
+    {
+        $wanted = array_fill_keys(array_map('strval', $ids), true);
+        foreach ($events as &$event) {
+            $id = (string) ($event['id'] ?? '');
+            if ($id !== '' && isset($wanted[$id])) {
+                $event['used'] = true;
+                $event['usedBy'] = $crossId;
+            }
+        }
+        unset($event);
+        return $events;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function getP03HumanEvents(): array
+    {
+        $decoded = json_decode($this->ReadAttributeString('P03HumanEvents'), true);
+        return is_array($decoded) ? array_values($decoded) : [];
+    }
+
+    /** @param array<int,array<string,mixed>> $events */
+    private function setP03HumanEvents(array $events): void
+    {
+        $this->WriteAttributeString(
+            'P03HumanEvents',
+            json_encode(array_values($events), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]'
+        );
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function getP03PendingCrossings(): array
+    {
+        $decoded = json_decode($this->ReadAttributeString('P03PendingCrossings'), true);
+        return is_array($decoded) ? array_values($decoded) : [];
+    }
+
+    /** @param array<int,array<string,mixed>> $crossings */
+    private function setP03PendingCrossings(array $crossings): void
+    {
+        $this->WriteAttributeString(
+            'P03PendingCrossings',
+            json_encode(array_values($crossings), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]'
+        );
+    }
+
+    /** @param array<string,mixed> $cross @param array<string,mixed> $result */
+    private function formatP03Proof(array $cross, array $result): string
+    {
+        $action = (string) ($result['action'] ?? 'NONE');
+        $path = (string) ($result['path'] ?? '');
+        $direction = (string) ($cross['direction'] ?? '<fehlt>');
+        return $action . ' via ' . $path . ' / CrossLine=' . $direction;
+    }
+
+    /** @param array<string,mixed> $cross @param array<string,mixed> $result */
+    private function onP03VerifiedTransfer(array $cross, array $result): void
+    {
+        $action = (string) ($result['action'] ?? '');
+        if ($action === '') {
+            return;
+        }
+
+        // P03 is an internal HOME <-> LAGER/WORK zone transfer. It must never
+        // create or remove property occupants by itself.
+        $this->SetValue(
+            'PresenceLastEvent',
+            date('H:i:s') . ' P03 ' . $action . ' VERIFIED (' . (string) ($result['path'] ?? '') . ')'
+        );
+
+        if (!$this->ReadAttributeBoolean('ProductionEnabled')) {
+            return;
+        }
+
+        $this->WriteAttributeInteger('LastProductionEvent', time());
+        $this->appendProtocol(
+            'PRESENCE P03 VERIFIED ' . $action
+                . ' Direction=' . (string) ($cross['direction'] ?? '')
+                . ' – nur Zonenwechsel, keine Occupant-Anzahl geändert.'
+        );
+        $this->refreshProductionState();
+    }
+
+    private function refreshP03DirectionStatus(): void
+    {
+        $map = json_decode($this->ReadAttributeString('P03DirectionMap'), true);
+        if (!is_array($map)) {
+            $map = [];
+        }
+        $status = P03ProofEngine::directionStatus($map);
+        if (($status['contradiction'] ?? false) === true) {
+            $this->SetValue('P03DirectionStatus', 'WIDERSPRUCH – Richtungslernen gesperrt');
+            return;
+        }
+
+        $resolved = $status['resolved'] ?? [];
+        if (($status['stable'] ?? false) === true) {
+            $this->SetValue(
+                'P03DirectionStatus',
+                'STABIL: L→R=' . (string) ($resolved['LeftToRight'] ?? '?')
+                    . ' / R→L=' . (string) ($resolved['RightToLeft'] ?? '?')
+            );
+            return;
+        }
+
+        $this->SetValue(
+            'P03DirectionStatus',
+            'LERNEND: ' . json_encode($status['counts'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+    }
+
+    /** @return array{ok:bool,jv:int,work:int} */
+    private function discoverP03AuxSources(bool $allowCreate): array
+    {
+        $jvHost = trim($this->ReadPropertyString('AuxJVHost'));
+        $workHost = trim($this->ReadPropertyString('AuxWorkHost'));
+
+        $jv = $this->findAla2CameraInstance($jvHost, ['JV Links (Lagerplatz)', 'Lagerplatz JV links', 'JV Links Lagerplatz']);
+        $work = $this->findAla2CameraInstance($workHost, ['Lagerplatz Werkstatt links', 'Werkstatt links', 'P03 – Lagerplatz Werkstatt links']);
+
+        if ($work <= 0 && $allowCreate && $this->ReadPropertyBoolean('AutoCreateWorkObserver') && $jv > 0) {
+            $work = $this->createWorkObserverFromCamera($jv, $workHost);
+        }
+
+        $this->WriteAttributeInteger('AuxJVInstanceID', $jv);
+        $this->WriteAttributeInteger('AuxWorkInstanceID', $work);
+
+        $jvVar = $jv > 0 ? $this->findPersonDetectedVariable($jv) : 0;
+        $workVar = $work > 0 ? $this->findPersonDetectedVariable($work) : 0;
+        $this->updateP03AuxSubscription('AuxJVPersonVarID', $jvVar);
+        $this->updateP03AuxSubscription('AuxWorkPersonVarID', $workVar);
+
+        return ['ok' => $jvVar > 0 && $workVar > 0, 'jv' => $jv, 'work' => $work];
+    }
+
+    private function findAla2CameraInstance(string $host, array $names): int
+    {
+        $fallback = 0;
+        foreach (IPS_GetInstanceListByModuleID(self::ALA2_MODULE_GUID) as $id) {
+            $id = (int) $id;
+            if ($id <= 0 || !IPS_InstanceExists($id)) {
+                continue;
+            }
+            try {
+                $candidateHost = trim((string) IPS_GetProperty($id, 'CameraHost'));
+                if ($host !== '' && $candidateHost === $host) {
+                    return $id;
+                }
+            } catch (Throwable $e) {
+            }
+
+            $name = trim((string) IPS_GetName($id));
+            foreach ($names as $expected) {
+                if (strcasecmp($name, (string) $expected) === 0) {
+                    $fallback = $id;
+                    break;
+                }
+            }
+        }
+        return $fallback;
+    }
+
+    private function findPersonDetectedVariable(int $instanceID): int
+    {
+        if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
+            return 0;
+        }
+        try {
+            $id = (int) IPS_GetObjectIDByIdent('PersonDetected', $instanceID);
+            return ($id > 0 && IPS_VariableExists($id)) ? $id : 0;
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    private function subscribeP03AuxVariables(): void
+    {
+        foreach (['AuxJVPersonVarID', 'AuxWorkPersonVarID'] as $attr) {
+            $id = $this->ReadAttributeInteger($attr);
+            if ($id > 0 && IPS_VariableExists($id)) {
+                try {
+                    $this->RegisterMessage($id, self::VM_UPDATE_ID);
+                } catch (Throwable $e) {
+                }
+            }
+        }
+    }
+
+    private function updateP03AuxSubscription(string $attribute, int $newID): void
+    {
+        $oldID = $this->ReadAttributeInteger($attribute);
+        if ($oldID > 0 && $oldID !== $newID && IPS_VariableExists($oldID)) {
+            try {
+                $this->UnregisterMessage($oldID, self::VM_UPDATE_ID);
+            } catch (Throwable $e) {
+            }
+        }
+        if ($newID > 0 && IPS_VariableExists($newID)) {
+            try {
+                $this->RegisterMessage($newID, self::VM_UPDATE_ID);
+            } catch (Throwable $e) {
+            }
+        }
+        $this->WriteAttributeInteger($attribute, $newID);
+    }
+
+    private function createWorkObserverFromCamera(int $credentialSourceID, string $host): int
+    {
+        if ($credentialSourceID <= 0 || !IPS_InstanceExists($credentialSourceID) || $host === '') {
+            return 0;
+        }
+
+        try {
+            $port = max(1, (int) IPS_GetProperty($credentialSourceID, 'CameraPort'));
+            $username = (string) IPS_GetProperty($credentialSourceID, 'Username');
+            $password = (string) IPS_GetProperty($credentialSourceID, 'Password');
+        } catch (Throwable $e) {
+            return 0;
+        }
+
+        if ($username === '' || $password === '') {
+            return 0;
+        }
+
+        // Exactly one credential probe. No brute-force retries against Dahua.
+        $probe = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/magicBox.cgi?action=getDeviceType');
+        if (!($probe['ok'] ?? false)) {
+            $this->appendProtocol('P03 Werkstatt-links: vorhandene JV-IPC-Zugangsdaten passen nicht auf ' . $host . '; keine weiteren Login-Versuche.');
+            return 0;
+        }
+
+        try {
+            $id = IPS_CreateInstance(self::ALA2_MODULE_GUID);
+            IPS_SetName($id, 'P03 – Lagerplatz Werkstatt links');
+            IPS_SetProperty($id, 'Enabled', true);
+            IPS_SetProperty($id, 'CameraHost', $host);
+            IPS_SetProperty($id, 'CameraPort', $port);
+            IPS_SetProperty($id, 'Username', $username);
+            IPS_SetProperty($id, 'Password', $password);
+            IPS_SetProperty($id, 'LightAutomationEnabled', false);
+            IPS_SetProperty($id, 'DebugEvents', false);
+            IPS_ApplyChanges($id);
+            $this->appendProtocol('P03 Werkstatt-links: reine Personenerkennungs-Instanz automatisch angelegt (#' . $id . ', Lichtautomatik AUS).');
+            return $id;
+        } catch (Throwable $e) {
+            $this->appendProtocol('P03 Werkstatt-links Instanz konnte nicht automatisch angelegt werden: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /** @return array{ok:bool,error:string,http:int,body:string} */
+    private function genericCameraGet(string $host, int $port, string $username, string $password, string $uri): array
+    {
+        if ($host === '' || $username === '' || $password === '') {
+            return ['ok' => false, 'error' => 'Konfiguration unvollständig', 'http' => 0, 'body' => ''];
+        }
+
+        $ch = curl_init('http://' . $host . ':' . $port . $uri);
+        if ($ch === false) {
+            return ['ok' => false, 'error' => 'curl_init fehlgeschlagen', 'http' => 0, 'body' => ''];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPAUTH => CURLAUTH_DIGEST,
+            CURLOPT_USERPWD => $username . ':' . $password,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_TIMEOUT => 6,
+            CURLOPT_NOSIGNAL => true,
+            CURLOPT_FOLLOWLOCATION => false
+        ]);
+        $body = curl_exec($ch);
+        $error = curl_error($ch);
+        $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($body === false || $http < 200 || $http >= 300) {
+            return [
+                'ok' => false,
+                'error' => $error !== '' ? $error : ('HTTP ' . $http),
+                'http' => $http,
+                'body' => is_string($body) ? $body : ''
+            ];
+        }
+
+        return ['ok' => true, 'error' => '', 'http' => $http, 'body' => (string) $body];
+    }
+
+    /** @return array{ok:bool,error:string,model:string,sensitivity:string} */
+    private function auditP03AuxCamera(int $instanceID, string $role): array
+    {
+        if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
+            return ['ok' => false, 'error' => $role . ': Instanz fehlt', 'model' => '', 'sensitivity' => ''];
+        }
+
+        try {
+            $host = trim((string) IPS_GetProperty($instanceID, 'CameraHost'));
+            $port = max(1, (int) IPS_GetProperty($instanceID, 'CameraPort'));
+            $username = (string) IPS_GetProperty($instanceID, 'Username');
+            $password = (string) IPS_GetProperty($instanceID, 'Password');
+        } catch (Throwable $e) {
+            return ['ok' => false, 'error' => $role . ': Kamerakonfiguration nicht lesbar', 'model' => '', 'sensitivity' => ''];
+        }
+
+        $type = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/magicBox.cgi?action=getDeviceType');
+        $model = '';
+        if ($type['ok'] ?? false) {
+            if (preg_match('/(?:^|\r?\n)type=([^\r\n]+)/i', (string) $type['body'], $m)) {
+                $model = trim((string) $m[1]);
+            }
+        }
+
+        $smart = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
+        if (!($smart['ok'] ?? false)) {
+            return ['ok' => false, 'error' => $role . ': SmartMotionDetect nicht lesbar', 'model' => $model, 'sensitivity' => ''];
+        }
+
+        $raw = (string) $smart['body'];
+        $enable = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Enable');
+        $human = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes.Human');
+        if ($human === null) {
+            $object0 = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes[0]');
+            $human = (strcasecmp((string) $object0, 'Human') === 0) ? 'true' : $human;
+        }
+        $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
+
+        $personVar = $this->findPersonDetectedVariable($instanceID);
+        $ok = strtolower((string) $enable) === 'true'
+            && strtolower((string) $human) === 'true'
+            && $personVar > 0;
+
+        $this->appendProtocol(
+            'P03 AUX AUDIT ' . $role
+                . ': host=' . $host
+                . ', model=' . ($model !== '' ? $model : '<nicht gemeldet>')
+                . ', SMD=' . (string) $enable
+                . ', Human=' . (string) $human
+                . ', Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
+                . ', PersonVar=' . $personVar
+                . ' -> ' . ($ok ? 'OK' : 'FEHLER')
+        );
+
+        return [
+            'ok' => $ok,
+            'error' => $ok ? '' : ($role . ': SMD Human/PersonDetected nicht vollständig aktiv'),
+            'model' => $model,
+            'sensitivity' => $sensitivity
+        ];
+    }
+
+    /** @return array{ok:bool,error:string} */
+    private function auditP03AuxCameras(): array
+    {
+        $jv = $this->ReadAttributeInteger('AuxJVInstanceID');
+        $work = $this->ReadAttributeInteger('AuxWorkInstanceID');
+        $jvAudit = $this->auditP03AuxCamera($jv, self::AUX_JV_ROLE);
+        $workAudit = $this->auditP03AuxCamera($work, self::AUX_WORK_ROLE);
+
+        $ok = ($jvAudit['ok'] ?? false) && ($workAudit['ok'] ?? false);
+        $this->WriteAttributeBoolean('P03MultiAuditPassed', $ok);
+        $this->refreshP03CameraStatus();
+
+        return [
+            'ok' => $ok,
+            'error' => $ok ? '' : trim(
+                (string) ($jvAudit['error'] ?? '') . ' | ' . (string) ($workAudit['error'] ?? ''),
+                ' |'
+            )
+        ];
+    }
+
+    private function refreshP03CameraStatus(): void
+    {
+        $terrace = $this->ReadAttributeInteger('SourceInstanceID');
+        $jv = $this->ReadAttributeInteger('AuxJVInstanceID');
+        $work = $this->ReadAttributeInteger('AuxWorkInstanceID');
+        $jvVar = $this->ReadAttributeInteger('AuxJVPersonVarID');
+        $workVar = $this->ReadAttributeInteger('AuxWorkPersonVarID');
+
+        $this->SetValue(
+            'P03CameraStatus',
+            'Terrasse=' . ($terrace > 0 ? 'OK#' . $terrace : 'FEHLT')
+                . ' | JV-links=' . ($jvVar > 0 ? 'OK#' . $jv : 'FEHLT')
+                . ' | Werkstatt-links=' . ($workVar > 0 ? 'OK#' . $work : 'FEHLT')
+        );
+    }
+
     /** @param array<string|int,mixed> $node */
     private function findFirstRectRecursive(array $node): ?array
     {
