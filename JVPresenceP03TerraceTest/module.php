@@ -1163,6 +1163,67 @@ class JVPresenceP03TerraceTest extends IPSModule
             $ok = $ok && $pass;
         }
 
+        $noLineCases = [
+            [
+                'name' => '3CAM OUT no-line',
+                'events' => [
+                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 20],
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 8],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 4,
+                'state' => P03ProofEngine::STATE_STRONG_VERIFIED,
+                'action' => P03ProofEngine::ACTION_HOME_TO_LAGER
+            ],
+            [
+                'name' => '3CAM IN no-line',
+                'events' => [
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 8],
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base],
+                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base + 20]
+                ],
+                'now' => $base + 24,
+                'state' => P03ProofEngine::STATE_STRONG_VERIFIED,
+                'action' => P03ProofEngine::ACTION_LAGER_TO_HOME
+            ],
+            [
+                'name' => '3CAM wrong order',
+                'events' => [
+                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 20],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 8],
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 10,
+                'state' => P03ProofEngine::STATE_UNKNOWN,
+                'action' => null
+            ],
+            [
+                'name' => '3CAM stale',
+                'events' => [
+                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 120],
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 8],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 10,
+                'state' => P03ProofEngine::STATE_UNKNOWN,
+                'action' => null
+            ]
+        ];
+
+        foreach ($noLineCases as $case) {
+            $result = P03ProofEngine::evaluateThreeCameraSequence(
+                $case['events'],
+                (float) $case['now'],
+                30.0,
+                60.0,
+                3.0
+            );
+            $pass = ($result['state'] ?? null) === $case['state']
+                && ($result['action'] ?? null) === $case['action'];
+            $details[] = $case['name'] . '=' . ($pass ? 'OK' : 'FAIL');
+            $ok = $ok && $pass;
+        }
+
         $map = [];
         $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
         $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
