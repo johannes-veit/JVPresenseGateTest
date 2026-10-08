@@ -37,11 +37,15 @@
       "items": [
         {
           "type": "Label",
-          "caption": "Rote Grenzlinie liegt weit im Hintergrund am Treppen-/Durchgangsbereich. Testkonfiguration: Human, MinSize=0, Type=ByLength, Sensitivity=7."
+          "caption": "Rote P03-Grenzlinie liegt weit im Hintergrund am Treppen-/Durchgangsbereich. Testkonfiguration: generische CrossLine mit ObjectTypes=Unknown, MinSize=0, Type=ByLength, Normal-IVS-Sensitivity=10."
         },
         {
           "type": "Label",
-          "caption": "Testfolge: HOME→LAGER → LAGER→HOME → HOME→LAGER → LAGER→HOME. Danach Protokoll senden. Erst wenn die Richtungen eindeutig gelernt sind, wird P03 produktiv freigegeben."
+          "caption": "SmartMotionHuman bleibt parallel aktiv und dient später als zeitlich versetzte Personenbestätigung. Für den jetzigen Test zählt zunächst nur, ob die P03-CrossLine in beiden Richtungen zuverlässig auslöst."
+        },
+        {
+          "type": "Label",
+          "caption": "Testfolge: HOME→LAGER → LAGER→HOME → HOME→LAGER → LAGER→HOME. Vor dem Lauftest zuerst immer „Kamera-Konfiguration prüfen“ ausführen."
         }
       ]
     }
