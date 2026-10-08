@@ -1,0 +1,24 @@
+name: PHP CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+      - name: Lint all PHP
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' f; do
+            php -l "$f"
+          done < <(find . -type f -name '*.php' -print0)
+      - name: P03 proof simulations
+        run: php tests/P03ProofEngineTest.php
