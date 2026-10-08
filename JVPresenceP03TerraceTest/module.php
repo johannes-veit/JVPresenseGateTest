@@ -592,12 +592,12 @@ class JVPresenceP03TerraceTest extends IPSModule
             return;
         }
 
-        $sens = $this->setNormalVideoAnalyseSensitivityViaRpc2(7);
+        $sens = $this->setNormalVideoAnalyseSensitivityViaRpc2(10);
         if (!($sens['ok'] ?? false)) {
-            $this->setResult('FEHLER – P03 Sensitivity=7 konnte nicht sicher gesetzt/verifiziert werden: ' . (string) ($sens['error'] ?? 'unbekannt'));
+            $this->setResult('FEHLER – P03 Sensitivity=10 konnte nicht sicher gesetzt/verifiziert werden: ' . (string) ($sens['error'] ?? 'unbekannt'));
             return;
         }
-        $this->appendProtocol('P03 Sensitivity=7 gesetzt und per RPC2 rückgelesen.');
+        $this->appendProtocol('P03 Sensitivity=10 gesetzt und per RPC2 rückgelesen.');
 
         $rules = GateTestLogic::parseRules($rulesRaw['body']);
         $this->appendProtocol('IVS-Regeln vor Test: ' . $this->summarizeRules($rules));
@@ -693,7 +693,7 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->appendProtocol($createdNow
             ? 'Die P03-Linie wurde durch das Testmodul über RPC2 angelegt und vollständig rückgelesen.'
             : 'Die vorhandene Liniengeometrie der Kamera wird unverändert verwendet.');
-        $this->appendProtocol('TESTVARIANTE P03: Human, MinSize=0, Type=ByLength und Sensitivity=7 für den weit entfernten Übergang.');
+        $this->appendProtocol('TESTVARIANTE P03: Human, MinSize=0, Type=ByLength und Sensitivity=10 (Maximaltest) für den weit entfernten Übergang. SmartMotionHuman-Rect wird zusätzlich protokolliert.');
         $this->appendProtocol('TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. Jeweils normal vollständig über die rote P03-Grenze gehen.');
         $this->appendProtocol('Eventzuordnung: Dahua event.index ist Kanalindex 0 und wird nicht mit dem IVS-Regelindex verwechselt.');
 
@@ -810,7 +810,14 @@ class JVPresenceP03TerraceTest extends IPSModule
                             'smartmotionvehicle',
                             'crossregiondetection'
                         ], true)) {
-                        $this->appendProtocol('DIAG EVENT code=' . $code . ' action=' . (string) ($event['action'] ?? '') . ' index=' . (string) ($event['index'] ?? ''));
+                        $diag = 'DIAG EVENT code=' . $code . ' action=' . (string) ($event['action'] ?? '') . ' index=' . (string) ($event['index'] ?? '');
+                        if (strcasecmp($code, 'SmartMotionHuman') === 0) {
+                            $rect = $this->findFirstRectRecursive(is_array($event['data'] ?? null) ? $event['data'] : []);
+                            if ($rect !== null) {
+                                $diag .= ' Rect=' . json_encode($rect, JSON_UNESCAPED_SLASHES);
+                            }
+                        }
+                        $this->appendProtocol($diag);
                     }
                 }
                 continue;
@@ -906,6 +913,23 @@ class JVPresenceP03TerraceTest extends IPSModule
                 $this->setResult('Schritt ' . count($crossings) . '/4 erkannt. Als Nächstes: ' . $nextExpected . ' durch das P03-Grenze.');
             }
         }
+    }
+
+    /** @param array<string|int,mixed> $node */
+    private function findFirstRectRecursive(array $node): ?array
+    {
+        foreach ($node as $key => $value) {
+            if (strcasecmp((string) $key, 'Rect') === 0 && is_array($value) && count($value) >= 4) {
+                return array_values(array_slice($value, 0, 4));
+            }
+            if (is_array($value)) {
+                $found = $this->findFirstRectRecursive($value);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+        return null;
     }
 
     /** @param array<string,mixed> $event */
@@ -1860,11 +1884,11 @@ class JVPresenceP03TerraceTest extends IPSModule
             $module = $this->rpc2Call($host, $port, $session, 94, 'configManager.getConfig', ['name' => 'VideoAnalyseModule']);
             $moduleTable = $module['json']['params']['table'] ?? null;
             $moduleSensitivity = is_array($moduleTable) ? $this->findNormalSensitivityRecursive($moduleTable) : null;
-            if (($module['ok'] ?? false) && $moduleSensitivity === 7) {
+            if (($module['ok'] ?? false) && $moduleSensitivity === 10) {
                 $checks++;
-                $this->appendProtocol('AUDIT OK 9: VideoAnalyseModule Normal Sensitivity=7.');
+                $this->appendProtocol('AUDIT OK 9: VideoAnalyseModule Normal Sensitivity=10.');
             } else {
-                $errors[] = 'VideoAnalyseModule Sensitivity ist nicht 7 (IST=' . var_export($moduleSensitivity, true) . ')';
+                $errors[] = 'VideoAnalyseModule Sensitivity ist nicht 10 (IST=' . var_export($moduleSensitivity, true) . ')';
             }
 
             $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
