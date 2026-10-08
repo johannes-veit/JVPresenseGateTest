@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "Separater Test für die Presence-Grenze am Schiebetor. Das bestehende Außenlichtmodul wird nicht verändert. Kamera, Zugangsdaten und Host werden automatisch aus der bestehenden Instanz 'JV Hof Garage' übernommen."
+      "caption": "PresenceManager – P05 ist technisch bestätigt. Der produktive Grundbetrieb nutzt die Kamera JV Hof Garage und verarbeitet die Grenze Schiebetor/Personentür. Weitere Identitäts- und Sensorquellen werden schrittweise ergänzt."
     },
     {
       "type": "CheckBox",
@@ -32,6 +32,17 @@
     },
     {
       "type": "ExpansionPanel",
+      "caption": "PresenceManager – Produktivbetrieb",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "P05 produktiv aktivieren: OUT=RightToLeft, IN=LeftToRight, Human-Körperklassifizierung, MinSize=0, Type=ByLength. Ereignisse werden zunächst anonym verarbeitet. 0 Personen bedeutet ausdrücklich noch keinen zertifizierten Leerstand."
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
       "caption": "Schiebetor-Test",
       "expanded": true,
       "items": [
@@ -43,6 +54,16 @@
     }
   ],
   "actions": [
+    {
+      "type": "Button",
+      "caption": "P05 Produktivbetrieb aktivieren",
+      "onClick": "JVGATE_EnableProductionP05($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "P05 Produktivbetrieb deaktivieren / Original wiederherstellen",
+      "onClick": "JVGATE_DisableProductionP05($id);"
+    },
     {
       "type": "Button",
       "caption": "Kamera-Konfiguration prüfen (kein Lauftest)",
