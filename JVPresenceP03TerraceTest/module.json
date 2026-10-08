@@ -1,0 +1,18 @@
+{
+  "id": "{0A7A91CE-3BC1-4B1E-9C11-7B7E973F5C03}",
+  "name": "JV Presence P03 Terrace Test",
+  "type": 3,
+  "vendor": "",
+  "aliases": [
+    "Presence P03 Terrace Test",
+    "P03 HOME Lager Test"
+  ],
+  "parentRequirements": [
+    "{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}"
+  ],
+  "childRequirements": [],
+  "implemented": [
+    "{018EF6B5-AB94-40C6-AA53-46943E824ACF}"
+  ],
+  "prefix": "JVP03"
+}
