@@ -132,6 +132,76 @@ $r = P03ProofEngine::evaluate(
 );
 assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], 'Consumed evidence ignored');
 
+// Three-camera fallback without CrossLine: OUT.
+$r = P03ProofEngine::evaluateThreeCameraSequence(
+    [
+        e('t1', P03ProofEngine::SRC_TERRACE, $base - 20),
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8),
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base)
+    ],
+    $base + 4
+);
+assertSameValue(P03ProofEngine::STATE_STRONG_VERIFIED, $r['state'], '3cam OUT no-line state');
+assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER, $r['action'], '3cam OUT no-line action');
+assertSameValue('P03_3CAM_OUT_NO_LINE', $r['path'], '3cam OUT no-line path');
+
+// Three-camera fallback without CrossLine: IN.
+$r = P03ProofEngine::evaluateThreeCameraSequence(
+    [
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base - 8),
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base),
+        e('t1', P03ProofEngine::SRC_TERRACE, $base + 20)
+    ],
+    $base + 24
+);
+assertSameValue(P03ProofEngine::STATE_STRONG_VERIFIED, $r['state'], '3cam IN no-line state');
+assertSameValue(P03ProofEngine::ACTION_LAGER_TO_HOME, $r['action'], '3cam IN no-line action');
+assertSameValue('P03_3CAM_IN_NO_LINE', $r['path'], '3cam IN no-line path');
+
+// Before settle delay, no-line proof stays pending.
+$r = P03ProofEngine::evaluateThreeCameraSequence(
+    [
+        e('t1', P03ProofEngine::SRC_TERRACE, $base - 20),
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8),
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base)
+    ],
+    $base + 1
+);
+assertSameValue(P03ProofEngine::STATE_PENDING, $r['state'], '3cam settle pending');
+
+// Wrong/incomplete order may never become a verified transfer.
+$r = P03ProofEngine::evaluateThreeCameraSequence(
+    [
+        e('t1', P03ProofEngine::SRC_TERRACE, $base - 20),
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base - 8),
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base)
+    ],
+    $base + 10
+);
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam wrong order rejected');
+
+// Stale camera event outside the permitted gap is rejected.
+$r = P03ProofEngine::evaluateThreeCameraSequence(
+    [
+        e('t1', P03ProofEngine::SRC_TERRACE, $base - 120),
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8),
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base)
+    ],
+    $base + 10
+);
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam stale evidence rejected');
+
+// Consumed human evidence may not create a second no-line transfer.
+$r = P03ProofEngine::evaluateThreeCameraSequence(
+    [
+        e('t1', P03ProofEngine::SRC_TERRACE, $base - 20, true),
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8, true),
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base, true)
+    ],
+    $base + 10
+);
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam consumed evidence ignored');
+
 // Direction map requires two consistent proofs in both opposite directions.
 $map = [];
 $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
