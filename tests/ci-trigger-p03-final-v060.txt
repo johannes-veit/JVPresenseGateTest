@@ -1,0 +1,1 @@
+Final P03 v0.6.0 validation after runtime camera diagnostics
