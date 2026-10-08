@@ -37,12 +37,12 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->RegisterPropertyBoolean('AutoDiscover', true);
         $this->RegisterPropertyInteger('SourceCameraInstanceID', 0);
 
-        // Exakt aus der vom Nutzer rot markierten P03-Linie im aktuellen JV-Hof-Garage-Bild abgeleitet.
+        // Exakt aus der vom Nutzer rot markierten P03-Linie im markierten Livebild der Kamera JV Terrasse abgeleitet.
         // Bild 1536x691 px -> Dahua-IVS-Koordinaten 0..8191.
         // Aktuelle Polylinie umfasst HOME↔Lagerplatz-Grenze.
         // Legacy-Endpunkt-Properties bleiben nur aus Kompatibilitätsgründen vorhanden;
         // der RPC2-Writer verwendet ausschließlich self::P03_LINE.
-        // Konzeptuell: OUT = Richtung Straße = rechts/oben; IN = links/unten.
+        // Die Richtungszuordnung HOME→LAGER / LAGER→HOME wird erst durch den 4-Schritt-Test gelernt.
         $this->RegisterPropertyInteger('LineAX', 5720);
         $this->RegisterPropertyInteger('LineAY', 2208);
         $this->RegisterPropertyInteger('LineBX', 6505);
@@ -459,7 +459,7 @@ class JVPresenceP03TerraceTest extends IPSModule
             return;
         }
 
-        $this->appendProtocol('=== P03 P03 HOME-LAGER TEST ===');
+        $this->appendProtocol('=== P03 HOME-LAGER TEST ===');
         $this->appendProtocol('Quelle: JV Terrasse / ' . $cfg['host'] . ':' . $cfg['port']);
         $this->appendProtocol('Keine Zugangsdaten werden im Protokoll ausgegeben.');
 
@@ -597,7 +597,9 @@ class JVPresenceP03TerraceTest extends IPSModule
 
         $sens = $this->setNormalVideoAnalyseSensitivityViaRpc2(10);
         if (!($sens['ok'] ?? false)) {
-            $this->setResult('FEHLER – P03 Sensitivity=10 konnte nicht sicher gesetzt/verifiziert werden: ' . (string) ($sens['error'] ?? 'unbekannt'));
+            $error = 'FEHLER – P03 Sensitivity=10 konnte nicht sicher gesetzt/verifiziert werden: ' . (string) ($sens['error'] ?? 'unbekannt');
+            $this->rollbackPreparedP03Config($error);
+            $this->setResult($error);
             return;
         }
         $this->appendProtocol('P03 Sensitivity=10 gesetzt und per RPC2 rückgelesen.');
@@ -614,27 +616,25 @@ class JVPresenceP03TerraceTest extends IPSModule
         // Deshalb: vorhandene Tripwire automatisch wiederverwenden. Ist noch
         // keine vorhanden, keinerlei weitere Schreibversuche an der Kamera.
         $createdNow = false;
+        // Ausschließlich die eigene P03-Regel wiederverwenden.
+        // Fremde CrossLine-Regeln dürfen weder übernommen noch verändert werden.
         $idx = GateTestLogic::findRuleIndex($rules, self::RULE_NAME);
-        if ($idx === null) {
-            foreach ($rules as $candidateIdx => $candidateRule) {
-                if (strcasecmp((string) ($candidateRule['Type'] ?? ''), 'CrossLineDetection') === 0) {
-                    $idx = (int) $candidateIdx;
-                    break;
-                }
-            }
-        }
 
         if ($idx === null) {
             $this->appendProtocol('Keine CrossLineDetection vorhanden. Lege P03 über den bestätigten Web5/RPC2-Konfigurationsweg an.');
             $createdRpc = $this->createP03TripwireViaRpc2();
             if (!($createdRpc['ok'] ?? false)) {
-                $this->setResult('FEHLER – automatische RPC2-Tripwire konnte nicht sicher angelegt werden: ' . (string) ($createdRpc['error'] ?? 'unbekannt') . '. Kamera wurde soweit möglich auf den Ausgangszustand zurückgesetzt.');
+                $error = 'FEHLER – automatische RPC2-Tripwire konnte nicht sicher angelegt werden: ' . (string) ($createdRpc['error'] ?? 'unbekannt');
+                $this->rollbackPreparedP03Config($error);
+                $this->setResult($error . '. Kamera wurde auf den Ausgangszustand zurückgesetzt.');
                 return;
             }
             $createdNow = true;
             $idx = (int) ($createdRpc['index'] ?? -1);
             if ($idx < 0) {
-                $this->setResult('FEHLER – RPC2-Tripwire wurde bestätigt, aber der Regelindex konnte nicht bestimmt werden.');
+                $error = 'FEHLER – RPC2-Tripwire wurde bestätigt, aber der Regelindex konnte nicht bestimmt werden.';
+                $this->rollbackPreparedP03Config($error);
+                $this->setResult($error);
                 return;
             }
             $rulesRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
@@ -644,8 +644,10 @@ class JVPresenceP03TerraceTest extends IPSModule
 
         $rule = $rules[$idx] ?? [];
         if (strtolower((string) ($rule['Enable'] ?? 'false')) !== 'true') {
-            $this->setResult('IVS-TRIPWIRE GEFUNDEN, ABER DEAKTIVIERT – bitte die Tripwire in der Kamera aktivieren und danach erneut starten.');
+            $error = 'IVS-TRIPWIRE GEFUNDEN, ABER DEAKTIVIERT – P03 wird nicht getestet.';
             $this->appendProtocol('CrossLineDetection gefunden auf Index ' . $idx . ', aber Enable=' . (string) ($rule['Enable'] ?? '<fehlt>'));
+            $this->rollbackPreparedP03Config($error);
+            $this->setResult($error);
             return;
         }
 
@@ -659,10 +661,9 @@ class JVPresenceP03TerraceTest extends IPSModule
         $smartPlanChangedNow = $this->ReadAttributeBoolean('GlobalChangedByModule');
         $audit = $this->auditP03CameraConfiguration($idx);
         if (!($audit['ok'] ?? false)) {
-            $this->WriteAttributeBoolean('TestActive', false);
-            $this->SetValue('TestActive', false);
-            $this->setReady(false);
-            $this->setResult('KAMERA-KONFIGURATION NICHT FREIGEGEBEN – ' . (string) ($audit['error'] ?? 'Audit fehlgeschlagen') . '. Nicht laufen.');
+            $error = 'KAMERA-KONFIGURATION NICHT FREIGEGEBEN – ' . (string) ($audit['error'] ?? 'Audit fehlgeschlagen') . '. Nicht laufen.';
+            $this->rollbackPreparedP03Config($error);
+            $this->setResult($error);
             return;
         }
 
@@ -670,7 +671,7 @@ class JVPresenceP03TerraceTest extends IPSModule
             $this->WriteAttributeBoolean('TestActive', false);
             $this->SetValue('TestActive', false);
             $this->setReady(false);
-            $this->setResult('KAMERA-KONFIGURATION OK – P03, Scene.Type=Normal, Human-Filter und Geometrie wurden mehrfach rückgelesen. Heute kein Lauftest nötig.');
+            $this->setResult('KAMERA-KONFIGURATION OK – P03, Scene.Type=Normal, ObjectTypes=Unknown, Sensitivity=10 und Geometrie wurden mehrfach rückgelesen. Noch nicht laufen; erst Test starten.');
             $this->appendProtocol('AUDIT-ONLY: Konfiguration ist vorbereitet und geprüft; Zähler bleibt absichtlich 0.');
             return;
         }
@@ -681,10 +682,10 @@ class JVPresenceP03TerraceTest extends IPSModule
                 ? GateTestLogic::configValue($smartAfterRaw['body'], 'SmartMotionDetect[0].Enable')
                 : null;
             if ($smartAfter !== null && strtolower($smartAfter) !== 'true') {
-                $this->appendProtocol('SICHERHEITSABBRUCH: SmartMotionDetect wurde durch IVS deaktiviert. Ausgangszustand wird zurückgesetzt.');
-                $this->cameraSet(["VideoAnalyseRule[0][$idx].Enable" => 'false']);
-                $this->restoreGlobalSceneType();
-                $this->setResult('STOP – IVS und bestehende SMD-Personenerkennung kollidieren auf dieser Firmware. Ausgangszustand wiederhergestellt.');
+                $error = 'STOP – IVS und bestehende SMD-Personenerkennung kollidieren auf dieser Firmware.';
+                $this->appendProtocol('SICHERHEITSABBRUCH: SmartMotionDetect wurde durch IVS deaktiviert.');
+                $this->rollbackPreparedP03Config($error);
+                $this->setResult($error . ' Ausgangszustand wiederhergestellt.');
                 return;
             }
         }
@@ -696,7 +697,7 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->appendProtocol($createdNow
             ? 'Die P03-Linie wurde durch das Testmodul über RPC2 angelegt und vollständig rückgelesen.'
             : 'Die vorhandene Liniengeometrie der Kamera wird unverändert verwendet.');
-        $this->appendProtocol('TESTVARIANTE P03: generische CrossLine ohne Human-Filter, MinSize=0, Type=ByLength, Sensitivity=10. Die Linie liegt wieder exakt auf der vom Nutzer markierten HOME↔Lagerplatz-Grenze. SmartMotionHuman dient nur als spätere Bestätigung.');
+        $this->appendProtocol('TESTVARIANTE P03: generische CrossLine mit ObjectTypes=Unknown, MinSize=0, Type=ByLength, Sensitivity=10. Die Linie liegt exakt auf der markierten HOME↔Lagerplatz-Grenze. SmartMotionHuman dient nur als zeitlich versetzte Personenbestätigung.');
         $this->appendProtocol('TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. Jeweils normal vollständig über die rote P03-Grenze gehen.');
         $this->appendProtocol('Eventzuordnung: Dahua event.index ist Kanalindex 0 und wird nicht mit dem IVS-Regelindex verwechselt.');
 
@@ -713,6 +714,28 @@ class JVPresenceP03TerraceTest extends IPSModule
             $this->SetValue('TestActive', true);
         }
         $this->refreshReadyState();
+    }
+
+    private function rollbackPreparedP03Config(string $reason): void
+    {
+        $this->WriteAttributeBoolean('TestActive', false);
+        $this->SetValue('TestActive', false);
+        $this->setReady(false);
+
+        if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
+            $r = $this->restoreOriginalVideoAnalyseRuleViaRpc2();
+            $this->appendProtocol('ROLLBACK P03 Rule: ' . (($r['ok'] ?? false) ? 'OK' : 'FEHLER ' . (string) ($r['error'] ?? '')));
+        }
+        if ($this->ReadAttributeBoolean('Rpc2ModuleChangedByModule')) {
+            $r = $this->restoreOriginalVideoAnalyseModuleViaRpc2();
+            $this->appendProtocol('ROLLBACK P03 Sensitivity: ' . (($r['ok'] ?? false) ? 'OK' : 'FEHLER ' . (string) ($r['error'] ?? '')));
+        }
+        if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
+            $this->restoreGlobalSceneType();
+            $this->appendProtocol('ROLLBACK P03 Scene.Type: ' . ($this->ReadAttributeBoolean('GlobalChangedByModule') ? 'FEHLER' : 'OK'));
+        }
+
+        $this->appendProtocol('SICHERHEITSROLLBACK: ' . $reason);
     }
 
     public function EnableProductionP03(): void
@@ -826,9 +849,17 @@ class JVPresenceP03TerraceTest extends IPSModule
                 continue;
             }
 
-            // Dahua eventManager 'index' ist der Video-Kanalindex, nicht der
-            // Index in VideoAnalyseRule. Bei dieser Kamera ist index=0, während
-            // P03 als Regel [3] angelegt wird. Daher nicht gegen RuleIndex filtern.
+            // Dahua eventManager 'index' ist nur der Video-Kanalindex. Für die
+            // konkrete P03-Regel steht RuleID im Eventpayload zur Verfügung.
+            $ruleIndex = $this->ReadAttributeInteger('RuleIndex');
+            $eventRuleId = $event['ruleId'] ?? null;
+            if ($eventRuleId !== null && is_numeric($eventRuleId) && $ruleIndex >= 0
+                && (int) $eventRuleId !== $ruleIndex) {
+                if ($this->ReadAttributeBoolean('TestActive')) {
+                    $this->appendProtocol('DIAG IVS ignoriert: fremde CrossLine RuleID=' . (string) $eventRuleId . ', erwartet=' . $ruleIndex);
+                }
+                continue;
+            }
 
             $direction = GateTestLogic::directionFromEvent($event);
             $summary = [
@@ -1410,7 +1441,9 @@ class JVPresenceP03TerraceTest extends IPSModule
         }
 
         foreach ($original[0] as $i => $rule) {
-            if (is_array($rule) && strcasecmp((string) ($rule['Type'] ?? ''), 'CrossLineDetection') === 0) {
+            if (is_array($rule)
+                && strcasecmp((string) ($rule['Type'] ?? ''), 'CrossLineDetection') === 0
+                && strcasecmp((string) ($rule['Name'] ?? ''), self::RULE_NAME) === 0) {
                 $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
                 return ['ok' => true, 'error' => '', 'index' => (int) $i];
             }
@@ -1483,10 +1516,10 @@ class JVPresenceP03TerraceTest extends IPSModule
             'EventHandler' => $eventHandler,
             'Id' => $newId,
             'Name' => self::RULE_NAME,
-            // P03: absichtlich kein ObjectTypes-Filter. Der Übergang liegt so weit
-            // im Hintergrund, dass SmartMotionHuman erst deutlich später klassifiziert.
-            // CrossLine darf deshalb zunächst auch ein noch "Unknown" getracktes Objekt melden.
-            'ObjectTypes' => [],
+            // Generische Dahua-Tripwire: "Unknown" bedeutet nicht auf Human/Vehicle
+            // vorfiltern. Damit kann die Linie bereits auslösen, bevor SMD die weit
+            // entfernte Person als Human klassifiziert.
+            'ObjectTypes' => ['Unknown'],
             'PtzPresetId' => 0,
             'TrackEnable' => false,
             'Type' => 'CrossLineDetection'
@@ -1536,6 +1569,7 @@ class JVPresenceP03TerraceTest extends IPSModule
                     $ok = is_array($line)
                         && $line === self::P03_LINE
                         && strtolower((string) ($rule['Config']['Direction'] ?? '')) === 'both'
+                        && in_array('Unknown', is_array($objects) ? $objects : [], true)
                         && (($rule['Enable'] ?? false) === true);
                     $verifiedRule = $rule;
                     $newIndex = (int) $i;
@@ -1590,8 +1624,8 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', true);
         $this->WriteAttributeBoolean('RuleCreatedByModule', true);
         $this->WriteAttributeInteger('RuleIndex', $newIndex);
-        $this->appendProtocol('RPC2 P03 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', ObjectFilter=OFF, MinSize=0, Type=ByLength, Direction=Both.');
-        $this->appendProtocol('HINWEIS P03: Tripwire läuft absichtlich ohne Human-Filter. SmartMotionHuman wird separat als zeitversetzte Personenbestätigung protokolliert.');
+        $this->appendProtocol('RPC2 P03 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', ObjectTypes=Unknown, MinSize=0, Type=ByLength, Direction=Both.');
+        $this->appendProtocol('HINWEIS P03: Tripwire läuft generisch mit ObjectTypes=Unknown. SmartMotionHuman wird separat als zeitversetzte Personenbestätigung protokolliert.');
         $this->appendProtocol('P03 Geometrie (HOME↔Lagerplatz-Grenze): ' . json_encode(self::P03_LINE, JSON_UNESCAPED_SLASHES) . '.');
         return ['ok' => true, 'error' => '', 'index' => $newIndex];
     }
@@ -1733,9 +1767,10 @@ class JVPresenceP03TerraceTest extends IPSModule
                 && $type === 'CrossLineDetection'
                 && strtolower((string) $enable) === 'true'
                 && strtolower((string) $direction) === 'both'
-                && ($class === null || $class === 'Normal')) {
+                && ($class === null || $class === 'Normal')
+                && $human === 'Unknown') {
                 $checks++;
-                $this->appendProtocol('AUDIT OK 2: CGI P03 Name/Type/Enable/Direction/Class korrekt; ObjectFilter bewusst OFF.');
+                $this->appendProtocol('AUDIT OK 2: CGI P03 Name/Type/Enable/Direction/Class und ObjectTypes=Unknown korrekt.');
             } else {
                 $errors[] = 'CGI P03-Basisdaten abweichend';
                 $this->appendProtocol('AUDIT FEHLER 2: ' . json_encode([
@@ -1817,11 +1852,12 @@ class JVPresenceP03TerraceTest extends IPSModule
                 && (($rpcRule['Config']['Direction'] ?? '') === 'Both')
                 && (($rpcRule['Config']['DetectLine'] ?? null) === self::P03_LINE)
                 && (($rpcRule['Config']['SizeFilter']['MinSize'] ?? null) === [0, 0])
-                && (($rpcRule['Config']['SizeFilter']['Type'] ?? '') === 'ByLength');
+                && (($rpcRule['Config']['SizeFilter']['Type'] ?? '') === 'ByLength')
+                && in_array('Unknown', is_array($rpcRule['ObjectTypes'] ?? null) ? $rpcRule['ObjectTypes'] : [], true);
 
             if ($rpcRuleOk) {
                 $checks++;
-                $this->appendProtocol('AUDIT OK 6: RPC2 P03 ohne ObjectFilter, MinSize=0, Type=ByLength und 5-Punkt-Geometrie korrekt.');
+                $this->appendProtocol('AUDIT OK 6: RPC2 P03 ObjectTypes=Unknown, MinSize=0, Type=ByLength und 5-Punkt-Geometrie korrekt.');
             } else {
                 $errors[] = 'RPC2 P03-Regel abweichend';
                 if (is_array($rpcRule)) {
@@ -1865,13 +1901,12 @@ class JVPresenceP03TerraceTest extends IPSModule
             $capOk = is_array($cap)
                 && in_array('Normal', is_array($cap['SupportedScene'] ?? null) ? $cap['SupportedScene'] : [], true)
                 && is_array($crossCap)
-                && in_array('Human', is_array($crossCap['SupportedObjectTypes'] ?? null) ? $crossCap['SupportedObjectTypes'] : [], true)
                 && ((int) ($cap['MaxPointOfLine'] ?? 0) >= count(self::P03_LINE))
                 && (($crossCap['TriggerPosition'] ?? null) === false);
 
             if ($capOk) {
                 $checks++;
-                $this->appendProtocol('AUDIT OK 8: Web5-Caps bestätigen Normal + CrossLine + Human + mindestens 5 Linienpunkte; TriggerPosition=false.');
+                $this->appendProtocol('AUDIT OK 8: Web5-Caps bestätigen Normal + CrossLine + mindestens 5 Linienpunkte; TriggerPosition=false. ObjectTypes=Unknown wurde separat per CGI/RPC2 bestätigt.');
             } else {
                 $errors[] = 'Web5-Capabilities passen nicht zur P03-Konfiguration';
                 if (is_array($cap)) {
@@ -1883,7 +1918,7 @@ class JVPresenceP03TerraceTest extends IPSModule
                 }
             }
 
-            // P03: Normal-IVS-Sensitivity muss exakt 7 sein.
+            // P03: Normal-IVS-Sensitivity muss exakt 10 sein.
             $module = $this->rpc2Call($host, $port, $session, 94, 'configManager.getConfig', ['name' => 'VideoAnalyseModule']);
             $moduleTable = $module['json']['params']['table'] ?? null;
             $moduleSensitivity = is_array($moduleTable) ? $this->findNormalSensitivityRecursive($moduleTable) : null;
