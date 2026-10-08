@@ -153,6 +153,142 @@ final class P03ProofEngine
         return $map;
     }
 
+    /**
+     * Three-camera fallback when the physical CrossLine is not emitted.
+     *
+     * OUT: TERRACE -> JV_LEFT -> WORK_LEFT
+     * IN:  WORK_LEFT -> JV_LEFT -> TERRACE
+     *
+     * All three human events are mandatory and may not have been consumed by
+     * another transfer. This is a named deterministic proof path, not a score.
+     *
+     * @param array<int,array<string,mixed>> $events
+     * @return array<string,mixed>
+     */
+    public static function evaluateThreeCameraSequence(
+        array $events,
+        float $now,
+        float $nearWindow = 30.0,
+        float $terraceWindow = 60.0,
+        float $settleDelay = 3.0
+    ): array {
+        $events = array_values(array_filter($events, static function ($e) {
+            return is_array($e)
+                && empty($e['used'])
+                && isset($e['ts'], $e['source'])
+                && (float) $e['ts'] > 0.0;
+        }));
+        usort($events, static fn(array $a, array $b) => ((float) $a['ts']) <=> ((float) $b['ts']));
+
+        $out = self::latestThreeCameraSequence(
+            $events,
+            [self::SRC_TERRACE, self::SRC_JV_LEFT, self::SRC_WORK_LEFT],
+            [$terraceWindow, $nearWindow]
+        );
+        $in = self::latestThreeCameraSequence(
+            $events,
+            [self::SRC_WORK_LEFT, self::SRC_JV_LEFT, self::SRC_TERRACE],
+            [$nearWindow, $terraceWindow]
+        );
+
+        if ($out !== null && $in !== null) {
+            $outEnd = (float) ($out[2]['ts'] ?? 0.0);
+            $inEnd = (float) ($in[2]['ts'] ?? 0.0);
+
+            // If two complete opposite sequences overlap in the same unconsumed
+            // event window, do not guess. The caller must wait for a clean path.
+            $outIds = self::ids($out);
+            $inIds = self::ids($in);
+            if (array_intersect($outIds, $inIds) !== [] || abs($outEnd - $inEnd) <= max($nearWindow, $terraceWindow)) {
+                return self::result(
+                    self::STATE_CONTRADICTION,
+                    null,
+                    'P03_3CAM_BOTH_DIRECTIONS',
+                    [],
+                    ['out' => array_map([self::class, 'compact'], $out), 'in' => array_map([self::class, 'compact'], $in)]
+                );
+            }
+
+            // Non-overlapping historical sequences: choose the latest one only.
+            if ($outEnd > $inEnd) {
+                $in = null;
+            } else {
+                $out = null;
+            }
+        }
+
+        $sequence = $out ?? $in;
+        if ($sequence === null) {
+            return self::result(self::STATE_UNKNOWN, null, 'NO_3CAM_SEQUENCE', [], []);
+        }
+
+        $endTs = (float) ($sequence[2]['ts'] ?? 0.0);
+        if ($now < ($endTs + max(0.0, $settleDelay))) {
+            return self::result(
+                self::STATE_PENDING,
+                null,
+                'P03_3CAM_SETTLE',
+                [],
+                ['sequence' => array_map([self::class, 'compact'], $sequence)]
+            );
+        }
+
+        $isOut = $out !== null;
+        return self::result(
+            self::STATE_STRONG_VERIFIED,
+            $isOut ? self::ACTION_HOME_TO_LAGER : self::ACTION_LAGER_TO_HOME,
+            $isOut ? 'P03_3CAM_OUT_NO_LINE' : 'P03_3CAM_IN_NO_LINE',
+            self::ids($sequence),
+            ['sequence' => array_map([self::class, 'compact'], $sequence)]
+        );
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $events
+     * @param array<int,string> $sources
+     * @param array<int,float> $maxGaps
+     * @return array<int,array<string,mixed>>|null
+     */
+    private static function latestThreeCameraSequence(array $events, array $sources, array $maxGaps): ?array
+    {
+        $best = null;
+        $bestEnd = -INF;
+
+        foreach ($events as $i => $first) {
+            if (($first['source'] ?? '') !== $sources[0]) {
+                continue;
+            }
+            $t1 = (float) ($first['ts'] ?? 0.0);
+
+            foreach ($events as $j => $second) {
+                if ($j === $i || ($second['source'] ?? '') !== $sources[1]) {
+                    continue;
+                }
+                $t2 = (float) ($second['ts'] ?? 0.0);
+                if ($t2 < $t1 || ($t2 - $t1) > (float) ($maxGaps[0] ?? 0.0)) {
+                    continue;
+                }
+
+                foreach ($events as $k => $third) {
+                    if ($k === $i || $k === $j || ($third['source'] ?? '') !== $sources[2]) {
+                        continue;
+                    }
+                    $t3 = (float) ($third['ts'] ?? 0.0);
+                    if ($t3 < $t2 || ($t3 - $t2) > (float) ($maxGaps[1] ?? 0.0)) {
+                        continue;
+                    }
+
+                    if ($t3 > $bestEnd) {
+                        $best = [$first, $second, $third];
+                        $bestEnd = $t3;
+                    }
+                }
+            }
+        }
+
+        return $best;
+    }
+
     /** @param array<string,mixed> $map */
     public static function directionStatus(array $map): array
     {
