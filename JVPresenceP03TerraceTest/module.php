@@ -1685,9 +1685,20 @@ class JVPresenceP03TerraceTest extends IPSModule
         }
         $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
 
+        // Dahua Web 3.x documents Motion Detection as prerequisite for SMD.
+        // Newer firmware may not expose the same flat key, so only an explicit
+        // "false" blocks the audit; a missing key is logged but not guessed.
+        $motion = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/configManager.cgi?action=getConfig&name=MotionDetect');
+        $motionEnable = null;
+        if ($motion['ok'] ?? false) {
+            $motionEnable = GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable');
+        }
+
         $personVar = $this->findPersonDetectedVariable($instanceID);
+        $motionOK = $motionEnable === null || strtolower((string) $motionEnable) === 'true';
         $ok = strtolower((string) $enable) === 'true'
             && strtolower((string) $human) === 'true'
+            && $motionOK
             && $personVar > 0;
 
         $this->appendProtocol(
@@ -1697,6 +1708,7 @@ class JVPresenceP03TerraceTest extends IPSModule
                 . ', SMD=' . (string) $enable
                 . ', Human=' . (string) $human
                 . ', Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
+                . ', MotionDetect=' . ($motionEnable === null ? '<nicht gemeldet>' : (string) $motionEnable)
                 . ', PersonVar=' . $personVar
                 . ' -> ' . ($ok ? 'OK' : 'FEHLER')
         );
