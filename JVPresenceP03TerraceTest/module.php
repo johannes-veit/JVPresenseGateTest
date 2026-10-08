@@ -88,13 +88,9 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->RegisterAttributeString('OriginalVideoAnalyseModuleRpc2', '');
         $this->RegisterAttributeBoolean('Rpc2ModuleChangedByModule', false);
 
-        // PresenceManager – produktiver P03-Grundbaustein.
+        // P03 portal state. P03 never changes the property occupant count by itself.
         $this->RegisterAttributeBoolean('ProductionEnabled', false);
-        $this->RegisterAttributeInteger('UnknownOccupants', 0);
-        $this->RegisterAttributeInteger('PortalBalance', 0);
-        $this->RegisterAttributeString('SeenProductionEventKeys', '{}');
         $this->RegisterAttributeInteger('LastProductionEvent', 0);
-        $this->RegisterAttributeBoolean('CoverageDebt', true);
 
         // P03 multi-camera proof state.
         $this->RegisterAttributeInteger('AuxJVInstanceID', 0);
@@ -129,7 +125,6 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03_SocketRestartTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('Watchdog', 15000, 'JVP03_Watchdog($_IPS["TARGET"]);');
-        $this->RegisterTimer('ProductionCommitTimer', 0, 'JVP03_ProductionCommitTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('P03ProofTimer', 0, 'JVP03_P03ProofTimer($_IPS["TARGET"]);');
 
         $this->RequireParent(self::CLIENT_SOCKET_GUID);
@@ -141,11 +136,11 @@ class JVPresenceP03TerraceTest extends IPSModule
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
-        $this->SetTimerInterval('ProductionCommitTimer', 0);
         $this->SetTimerInterval('P03ProofTimer', 0);
-        $this->SetBuffer('ProductionPending', '[]');
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
+        $this->WriteAttributeString('P03HumanEvents', '[]');
+        $this->WriteAttributeString('P03PendingCrossings', '[]');
         $this->WriteAttributeBoolean('Streaming', false);
         $this->WriteAttributeBoolean('AuthPending', false);
         $this->WriteAttributeBoolean('LastRequestAuthenticated', false);
@@ -916,6 +911,9 @@ class JVPresenceP03TerraceTest extends IPSModule
         }
         $this->restoreGlobalSceneType();
         $this->WriteAttributeBoolean('TestActive', false);
+        $this->SetTimerInterval('P03ProofTimer', 0);
+        $this->WriteAttributeString('P03PendingCrossings', '[]');
+        $this->WriteAttributeString('P03HumanEvents', '[]');
         $this->SetValue('TestActive', false);
         $this->setReady(false);
         $this->setResult('Test beendet. Vom Modul erzeugte Testkonfiguration wurde soweit vorhanden zurückgesetzt.');
@@ -1321,7 +1319,6 @@ class JVPresenceP03TerraceTest extends IPSModule
             }
 
             if ($state === P03ProofEngine::STATE_CONTRADICTION) {
-                $this->WriteAttributeBoolean('CoverageDebt', true);
                 $this->SetValue('P03ProofState', 'CONTRADICTION – kein Übergang gebucht');
                 $this->SetValue('P03LastProof', $this->formatP03Proof($cross, $result));
                 $this->appendProtocol('P03 CONTRADICTION – CrossLine verworfen; keine Presence-Änderung.');
@@ -1775,225 +1772,29 @@ class JVPresenceP03TerraceTest extends IPSModule
         return null;
     }
 
-    /** @param array<string,mixed> $event */
-    private function processProductionCrossLine(array $event, ?string $direction): void
-    {
-        $action = strtolower(trim((string) ($event['action'] ?? '')));
-        if (!in_array($action, ['start', 'on', 'pulse'], true)) {
-            return;
-        }
-
-        $portalAction = null;
-        if ($direction === 'RightToLeft') {
-            $portalAction = 'OUT';
-        } elseif ($direction === 'LeftToRight') {
-            $portalAction = 'IN';
-        }
-        if ($portalAction === null) {
-            $this->SetValue('PresenceLastEvent', 'P03 Richtung unbekannt: ' . ($direction ?? '<fehlt>'));
-            $this->WriteAttributeBoolean('CoverageDebt', true);
-            $this->refreshProductionState();
-            return;
-        }
-
-        // Nur die produktiv angelegte P03-Regel verarbeiten.
-        $ruleId = $event['ruleId'] ?? null;
-        $ruleIndex = $this->ReadAttributeInteger('RuleIndex');
-        if ($ruleId !== null && is_numeric($ruleId) && $ruleIndex >= 0 && (int) $ruleId !== $ruleIndex) {
-            return;
-        }
-
-        $key = $this->eventKey($event, $direction);
-        $seen = json_decode($this->ReadAttributeString('SeenProductionEventKeys'), true);
-        if (!is_array($seen)) {
-            $seen = [];
-        }
-        if (isset($seen[$key])) {
-            return;
-        }
-        $seen[$key] = time();
-        if (count($seen) > 200) {
-            $seen = array_slice($seen, -200, null, true);
-        }
-        $this->WriteAttributeString('SeenProductionEventKeys', json_encode($seen));
-
-        // 3-s-Reorder/Contradiction-Schutz. Beim Test trat einmal für dasselbe
-        // Objekt im selben Moment LeftToRight UND RightToLeft auf. Solche Paare
-        // dürfen den Presence-Ledger nicht verändern.
-        $pending = json_decode($this->GetBuffer('ProductionPending'), true);
-        if (!is_array($pending)) {
-            $pending = [];
-        }
-
-        $now = microtime(true);
-        $objectId = $event['objectId'] ?? null;
-        if ($objectId !== null && $objectId !== '') {
-            foreach ($pending as $idx => $candidate) {
-                if ((string) ($candidate['objectId'] ?? '') !== (string) $objectId) {
-                    continue;
-                }
-                $age = $now - (float) ($candidate['queuedAt'] ?? 0);
-                if ($age > 3.5) {
-                    continue;
-                }
-
-                if (($candidate['portalAction'] ?? '') === $portalAction) {
-                    // Gleiche Richtung für dasselbe Objekt = Dublette.
-                    return;
-                }
-
-                // Gegensätzliche Richtungen im selben Reorder-Fenster:
-                // beide verwerfen und Beobachtungsschuld setzen.
-                unset($pending[$idx]);
-                $pending = array_values($pending);
-                $this->SetBuffer('ProductionPending', json_encode($pending));
-                $this->WriteAttributeBoolean('CoverageDebt', true);
-                $this->SetValue(
-                    'PresenceLastEvent',
-                    date('H:i:s') . ' P03 CONTRADICTION – Objekt ' . (string) $objectId .
-                    ' meldete IN und OUT innerhalb 3 s'
-                );
-                $this->appendProtocol(
-                    'PRESENCE P03 CONTRADICTION objectId=' . (string) $objectId .
-                    ' – beide Richtungsereignisse verworfen, CoverageDebt=true'
-                );
-                $this->refreshProductionState();
-                if ($pending === []) {
-                    $this->SetTimerInterval('ProductionCommitTimer', 0);
-                }
-                return;
-            }
-        }
-
-        $pending[] = [
-            'queuedAt' => $now,
-            'portalAction' => $portalAction,
-            'direction' => $direction,
-            'human' => (bool) ($event['human'] ?? false),
-            'classification' => $event['classification'] ?? null,
-            'eventId' => $event['eventId'] ?? null,
-            'ruleId' => $event['ruleId'] ?? null,
-            'objectId' => $objectId
-        ];
-        $this->SetBuffer('ProductionPending', json_encode($pending));
-        $this->SetTimerInterval('ProductionCommitTimer', 1000);
-    }
-
-    public function ProductionCommitTimer(): void
-    {
-        $pending = json_decode($this->GetBuffer('ProductionPending'), true);
-        if (!is_array($pending) || $pending === []) {
-            $this->SetTimerInterval('ProductionCommitTimer', 0);
-            return;
-        }
-
-        $now = microtime(true);
-        $remaining = [];
-        foreach ($pending as $candidate) {
-            if (($now - (float) ($candidate['queuedAt'] ?? 0)) < 3.0) {
-                $remaining[] = $candidate;
-                continue;
-            }
-            $this->commitProductionCrossing($candidate);
-        }
-
-        $this->SetBuffer('ProductionPending', json_encode($remaining));
-        if ($remaining === []) {
-            $this->SetTimerInterval('ProductionCommitTimer', 0);
-        }
-    }
-
-    /** @param array<string,mixed> $candidate */
-    private function commitProductionCrossing(array $candidate): void
-    {
-        if (!$this->ReadAttributeBoolean('ProductionEnabled')) {
-            return;
-        }
-
-        $portalAction = (string) ($candidate['portalAction'] ?? '');
-        if (!in_array($portalAction, ['IN', 'OUT'], true)) {
-            return;
-        }
-
-        $coverageDebt = $this->ReadAttributeBoolean('CoverageDebt');
-        $unknown = max(0, $this->ReadAttributeInteger('UnknownOccupants'));
-        $balance = $this->ReadAttributeInteger('PortalBalance');
-
-        if ($coverageDebt) {
-            // Solange der Startbestand nicht verifiziert ist, dürfen Portalereignisse
-            // nicht als reale Personenanzahl interpretiert werden. Wir führen nur eine
-            // technische Netto-Bilanz seit Aktivierung/Resync.
-            $balance += ($portalAction === 'IN') ? 1 : -1;
-            $this->WriteAttributeInteger('PortalBalance', $balance);
-        } else {
-            if ($portalAction === 'IN') {
-                $unknown++;
-            } elseif ($unknown > 0) {
-                $unknown--;
-            }
-            $this->WriteAttributeInteger('UnknownOccupants', $unknown);
-        }
-
-        $this->WriteAttributeInteger('LastProductionEvent', time());
-
-        $classification = trim((string) ($candidate['classification'] ?? ''));
-        $suffix = $classification !== '' ? ' / ' . $classification : '';
-        $detail = $coverageDebt
-            ? 'Portalbilanz=' . (($balance >= 0) ? '+' : '') . $balance . ', Resync offen'
-            : 'UnknownOccupants=' . $unknown;
-        $this->SetValue(
-            'PresenceLastEvent',
-            date('H:i:s') . ' P03 ' . $portalAction . $suffix . ' (' . $detail . ')'
-        );
-        $this->appendProtocol(
-            'PRESENCE P03 ' . $portalAction .
-            ' Direction=' . (string) ($candidate['direction'] ?? '') .
-            ' Human=' . (($candidate['human'] ?? false) ? 'true' : 'false') .
-            ' ' . $detail
-        );
-
-        $this->refreshProductionState();
-    }
-
     private function refreshProductionState(): void
     {
         $enabled = $this->ReadAttributeBoolean('ProductionEnabled');
-        $unknown = max(0, $this->ReadAttributeInteger('UnknownOccupants'));
-
         if (!$enabled) {
-            $this->SetValue('PresenceSystemState', 'P03 INAKTIV');
-            $this->SetValue('HouseStatus', 'UNBEKANNT');
-            $this->SetValue('PresentPersons', '–');
+            $this->SetValue('PresenceSystemState', 'P03 INAKTIV / TEST');
+            $this->SetValue('HouseStatus', 'P03 ist nur Zonenportal');
+            $this->SetValue('PresentPersons', 'Personenzahl wird durch P03 nicht verändert');
             return;
         }
 
         $streaming = $this->ReadAttributeBoolean('Streaming');
-        $coverageDebt = $this->ReadAttributeBoolean('CoverageDebt');
-        $this->SetValue(
-            'PresenceSystemState',
-            $streaming
-                ? ($coverageDebt ? 'P03 AKTIV – Resync/weitere Beweise nötig' : 'P03 AKTIV – Grundbetrieb')
-                : 'P03 AKTIV – Eventstream wird aufgebaut'
+        $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0;
+        $direction = P03ProofEngine::directionStatus(
+            json_decode($this->ReadAttributeString('P03DirectionMap'), true) ?: []
         );
 
-        if ($coverageDebt) {
-            $balance = $this->ReadAttributeInteger('PortalBalance');
-            $this->SetValue('HouseStatus', 'UNBEKANNT – Resync erforderlich');
-            $this->SetValue(
-                'PresentPersons',
-                'Startbestand unbekannt; Portalbilanz ' . (($balance >= 0) ? '+' : '') . $balance
-            );
-            return;
-        }
-
-        if ($unknown > 0) {
-            $this->SetValue('HouseStatus', 'BELEGT – mindestens ' . $unknown . ' unbekannte Person(en)');
-            $this->SetValue('PresentPersons', 'Unbekannt × ' . $unknown);
-        } else {
-            // Sicherheitsregel: 0 anonyme Tokens ist noch KEIN Leerstandsnachweis.
-            $this->SetValue('HouseStatus', 'UNBEKANNT – Leerstand nicht zertifiziert');
-            $this->SetValue('PresentPersons', 'keine sicher bestätigten Personen');
-        }
+        $state = ($streaming && $auxReady && ($direction['stable'] ?? false))
+            ? 'P03 PRODUKTIV – 3-Kamera-Proof'
+            : 'P03 DEGRADED – kein Übergang ohne vollständigen Proof';
+        $this->SetValue('PresenceSystemState', $state);
+        $this->SetValue('HouseStatus', 'unverändert – P03 verschiebt nur HOME↔WORK');
+        $this->SetValue('PresentPersons', 'unverändert durch P03');
     }
 
     private function beginHandshake(): void
