@@ -657,6 +657,7 @@ class JVPresenceGateTest extends IPSModule
         $this->appendProtocol($createdNow
             ? 'Die P05-Linie wurde durch das Testmodul über RPC2 angelegt und vollständig rückgelesen.'
             : 'Die vorhandene Liniengeometrie der Kamera wird unverändert verwendet.');
+        $this->appendProtocol('TESTVARIANTE: MinSize=0 bei unverändertem Type=ByLength – gezielter Test der OUT-Erkennung mit Rücken zur Kamera.');
         $this->appendProtocol('TESTFOLGE: 1 OUT, 2 IN, 3 OUT, 4 IN. Natürlich gehen: bei OUT normal mit dem Rücken zur Kamera, nicht umdrehen.');
         $this->appendProtocol('Eventzuordnung: Dahua event.index ist Kanalindex 0 und wird nicht mit dem IVS-Regelindex verwechselt.');
 
@@ -1155,11 +1156,12 @@ class JVPresenceGateTest extends IPSModule
                 'Direction' => 'Both',
                 'LaneNumber' => null,
                 'SizeFilter' => [
-                    // Bewährter Stand aus dem erfolgreichen 4/4-Lauftest.
-                    // Auf dieser Firmware ist Type=ByLength für die laufende
-                    // CrossLine-Runtime erforderlich.
+                    // Kontrollierter OUT-Test: nur die Mindestgröße wird
+                    // reduziert. Type=ByLength bleibt ausdrücklich erhalten,
+                    // weil das Entfernen dieses Feldes im vorherigen Test zu
+                    // 0/4 CrossLine-Ereignissen führte.
                     'MaxSize' => [8191, 8191],
-                    'MinSize' => [200, 200],
+                    'MinSize' => [0, 0],
                     'Type' => 'ByLength'
                 ],
                 // Kamera-Caps melden TriggerPosition=false für CrossLineDetection.
@@ -1273,7 +1275,7 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', true);
         $this->WriteAttributeBoolean('RuleCreatedByModule', true);
         $this->WriteAttributeInteger('RuleIndex', $newIndex);
-        $this->appendProtocol('RPC2 P05 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', Human=true, MinSize=200, Type=ByLength, Direction=Both.');
+        $this->appendProtocol('RPC2 P05 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', Human=true, MinSize=0, Type=ByLength, Direction=Both.');
         $this->appendProtocol('HINWEIS: Human ist Dahua-Objektklassifizierung des Körpers; FaceDetection/HumanFace ist eine separate Funktion und wird hier nicht benutzt.');
         $this->appendProtocol('P05 Geometrie (Schiebetor + Personentür): ' . json_encode(self::P05_LINE, JSON_UNESCAPED_SLASHES) . '.');
         return ['ok' => true, 'error' => '', 'index' => $newIndex];
@@ -1500,13 +1502,13 @@ class JVPresenceGateTest extends IPSModule
                 && (($rpcRule['Class'] ?? 'Normal') === 'Normal')
                 && (($rpcRule['Config']['Direction'] ?? '') === 'Both')
                 && (($rpcRule['Config']['DetectLine'] ?? null) === self::P05_LINE)
-                && (($rpcRule['Config']['SizeFilter']['MinSize'] ?? null) === [200, 200])
+                && (($rpcRule['Config']['SizeFilter']['MinSize'] ?? null) === [0, 0])
                 && (($rpcRule['Config']['SizeFilter']['Type'] ?? '') === 'ByLength')
                 && in_array('Human', is_array($rpcRule['ObjectTypes'] ?? null) ? $rpcRule['ObjectTypes'] : [], true);
 
             if ($rpcRuleOk) {
                 $checks++;
-                $this->appendProtocol('AUDIT OK 6: RPC2 P05 inkl. Human-Filter, MinSize=200, Type=ByLength und 5-Punkt-Geometrie korrekt.');
+                $this->appendProtocol('AUDIT OK 6: RPC2 P05 inkl. Human-Filter, MinSize=0, Type=ByLength und 5-Punkt-Geometrie korrekt.');
             } else {
                 $errors[] = 'RPC2 P05-Regel abweichend';
                 if (is_array($rpcRule)) {
