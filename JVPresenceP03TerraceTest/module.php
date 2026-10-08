@@ -19,11 +19,16 @@ class JVPresenceP03TerraceTest extends IPSModule
     // Pixel ca.: (911,78) -> (923,79) -> (930,96) -> (973,129) -> (1104,203)
     // Dahua-IVS-Normkoordinaten 0..8191:
     private const P03_LINE = [
-        [5720, 2208],
-        [5960, 2232],
-        [6057, 2172],
-        [6286, 2303],
-        [6505, 2552]
+        // Aus dem realen SmartMotionHuman-Rect-Test v0.5.1 abgeleitet.
+        // Relevante Person am Übergang: Rect=[5968,2776,6200,4096].
+        // Die vorherige Linie lag mit Y≈2200..2550 oberhalb des erkannten Körpers.
+        // Gleiche X-Geometrie, ca. 1200 Dahua-Pixel tiefer -> durch den
+        // tatsächlichen Human-Trackingbereich.
+        [5720, 3408],
+        [5960, 3432],
+        [6057, 3372],
+        [6286, 3503],
+        [6505, 3752]
     ];
 
     public function Create(): void
@@ -41,9 +46,9 @@ class JVPresenceP03TerraceTest extends IPSModule
         // der RPC2-Writer verwendet ausschließlich self::P03_LINE.
         // Konzeptuell: OUT = Richtung Straße = rechts/oben; IN = links/unten.
         $this->RegisterPropertyInteger('LineAX', 5720);
-        $this->RegisterPropertyInteger('LineAY', 2208);
+        $this->RegisterPropertyInteger('LineAY', 3408);
         $this->RegisterPropertyInteger('LineBX', 6505);
-        $this->RegisterPropertyInteger('LineBY', 2552);
+        $this->RegisterPropertyInteger('LineBY', 3752);
 
         $this->RegisterAttributeInteger('SourceInstanceID', 0);
         $this->RegisterAttributeInteger('RegisteredParentID', 0);
@@ -693,7 +698,7 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->appendProtocol($createdNow
             ? 'Die P03-Linie wurde durch das Testmodul über RPC2 angelegt und vollständig rückgelesen.'
             : 'Die vorhandene Liniengeometrie der Kamera wird unverändert verwendet.');
-        $this->appendProtocol('TESTVARIANTE P03: Human, MinSize=0, Type=ByLength und Sensitivity=10 (Maximaltest) für den weit entfernten Übergang. SmartMotionHuman-Rect wird zusätzlich protokolliert.');
+        $this->appendProtocol('TESTVARIANTE P03: Human, MinSize=0, Type=ByLength, Sensitivity=10. Linie wurde anhand des realen Human-Rect [5968,2776,6200,4096] ca. 1200 Punkte tiefer gelegt.');
         $this->appendProtocol('TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. Jeweils normal vollständig über die rote P03-Grenze gehen.');
         $this->appendProtocol('Eventzuordnung: Dahua event.index ist Kanalindex 0 und wird nicht mit dem IVS-Regelindex verwechselt.');
 
@@ -1588,6 +1593,7 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->appendProtocol('RPC2 P03 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', Human=true, MinSize=0, Type=ByLength, Direction=Both.');
         $this->appendProtocol('HINWEIS: Human ist Dahua-Objektklassifizierung des Körpers; FaceDetection/HumanFace ist eine separate Funktion und wird hier nicht benutzt.');
         $this->appendProtocol('P03 Geometrie (HOME↔Lagerplatz-Grenze): ' . json_encode(self::P03_LINE, JSON_UNESCAPED_SLASHES) . '.');
+        $this->appendProtocol('P03 RECT-KORREKTUR: frühere Linie lag oberhalb des erkannten Körpers; neue Linie schneidet den real gemessenen Human-Trackingbereich.');
         return ['ok' => true, 'error' => '', 'index' => $newIndex];
     }
 
