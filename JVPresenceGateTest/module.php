@@ -75,6 +75,7 @@ class JVPresenceGateTest extends IPSModule
         // PresenceManager – produktiver P05-Grundbaustein.
         $this->RegisterAttributeBoolean('ProductionEnabled', false);
         $this->RegisterAttributeInteger('UnknownOccupants', 0);
+        $this->RegisterAttributeInteger('PortalBalance', 0);
         $this->RegisterAttributeString('SeenProductionEventKeys', '{}');
         $this->RegisterAttributeInteger('LastProductionEvent', 0);
         $this->RegisterAttributeBoolean('CoverageDebt', true);
@@ -708,6 +709,8 @@ class JVPresenceGateTest extends IPSModule
 
         $this->WriteAttributeBoolean('ProductionEnabled', true);
         $this->WriteAttributeBoolean('CoverageDebt', true);
+        $this->WriteAttributeInteger('PortalBalance', 0);
+        $this->WriteAttributeInteger('UnknownOccupants', 0);
         $this->SetBuffer('ProductionPending', '[]');
         $this->SetTimerInterval('ProductionCommitTimer', 0);
         $this->WriteAttributeBoolean('TestActive', false);
@@ -1042,27 +1045,41 @@ class JVPresenceGateTest extends IPSModule
             return;
         }
 
+        $coverageDebt = $this->ReadAttributeBoolean('CoverageDebt');
         $unknown = max(0, $this->ReadAttributeInteger('UnknownOccupants'));
-        if ($portalAction === 'IN') {
-            $unknown++;
-        } elseif ($unknown > 0) {
-            $unknown--;
+        $balance = $this->ReadAttributeInteger('PortalBalance');
+
+        if ($coverageDebt) {
+            // Solange der Startbestand nicht verifiziert ist, dürfen Portalereignisse
+            // nicht als reale Personenanzahl interpretiert werden. Wir führen nur eine
+            // technische Netto-Bilanz seit Aktivierung/Resync.
+            $balance += ($portalAction === 'IN') ? 1 : -1;
+            $this->WriteAttributeInteger('PortalBalance', $balance);
+        } else {
+            if ($portalAction === 'IN') {
+                $unknown++;
+            } elseif ($unknown > 0) {
+                $unknown--;
+            }
+            $this->WriteAttributeInteger('UnknownOccupants', $unknown);
         }
-        $this->WriteAttributeInteger('UnknownOccupants', $unknown);
+
         $this->WriteAttributeInteger('LastProductionEvent', time());
 
         $classification = trim((string) ($candidate['classification'] ?? ''));
         $suffix = $classification !== '' ? ' / ' . $classification : '';
+        $detail = $coverageDebt
+            ? 'Portalbilanz=' . (($balance >= 0) ? '+' : '') . $balance . ', Resync offen'
+            : 'UnknownOccupants=' . $unknown;
         $this->SetValue(
             'PresenceLastEvent',
-            date('H:i:s') . ' P05 ' . $portalAction . $suffix .
-            ' (UnknownOccupants=' . $unknown . ')'
+            date('H:i:s') . ' P05 ' . $portalAction . $suffix . ' (' . $detail . ')'
         );
         $this->appendProtocol(
             'PRESENCE P05 ' . $portalAction .
             ' Direction=' . (string) ($candidate['direction'] ?? '') .
             ' Human=' . (($candidate['human'] ?? false) ? 'true' : 'false') .
-            ' UnknownOccupants=' . $unknown
+            ' ' . $detail
         );
 
         $this->refreshProductionState();
@@ -1088,6 +1105,16 @@ class JVPresenceGateTest extends IPSModule
                 ? ($coverageDebt ? 'P05 AKTIV – Resync/weitere Beweise nötig' : 'P05 AKTIV – Grundbetrieb')
                 : 'P05 AKTIV – Eventstream wird aufgebaut'
         );
+
+        if ($coverageDebt) {
+            $balance = $this->ReadAttributeInteger('PortalBalance');
+            $this->SetValue('HouseStatus', 'UNBEKANNT – Resync erforderlich');
+            $this->SetValue(
+                'PresentPersons',
+                'Startbestand unbekannt; Portalbilanz ' . (($balance >= 0) ? '+' : '') . $balance
+            );
+            return;
+        }
 
         if ($unknown > 0) {
             $this->SetValue('HouseStatus', 'BELEGT – mindestens ' . $unknown . ' unbekannte Person(en)');
