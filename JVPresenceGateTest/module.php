@@ -1155,12 +1155,12 @@ class JVPresenceGateTest extends IPSModule
                 'Direction' => 'Both',
                 'LaneNumber' => null,
                 'SizeFilter' => [
-                    // Dahua-CrossLine-Template verwendet MinSize [0,0].
-                    // Das ist für OUT wichtig: beim Weggehen wird die Person im
-                    // Bild kleiner; ein zusätzlicher Mindestgrößenfilter kann
-                    // den rückwärtigen Körper kurz vor der Linie verwerfen.
+                    // Bewährter Stand aus dem erfolgreichen 4/4-Lauftest.
+                    // Auf dieser Firmware ist Type=ByLength für die laufende
+                    // CrossLine-Runtime erforderlich.
                     'MaxSize' => [8191, 8191],
-                    'MinSize' => [0, 0]
+                    'MinSize' => [200, 200],
+                    'Type' => 'ByLength'
                 ],
                 // Kamera-Caps melden TriggerPosition=false für CrossLineDetection.
             ],
@@ -1273,7 +1273,7 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', true);
         $this->WriteAttributeBoolean('RuleCreatedByModule', true);
         $this->WriteAttributeInteger('RuleIndex', $newIndex);
-        $this->appendProtocol('RPC2 P05 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', Human-Körperfilter=true, MinSize=0, Direction=Both.');
+        $this->appendProtocol('RPC2 P05 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', Human=true, MinSize=200, Type=ByLength, Direction=Both.');
         $this->appendProtocol('HINWEIS: Human ist Dahua-Objektklassifizierung des Körpers; FaceDetection/HumanFace ist eine separate Funktion und wird hier nicht benutzt.');
         $this->appendProtocol('P05 Geometrie (Schiebetor + Personentür): ' . json_encode(self::P05_LINE, JSON_UNESCAPED_SLASHES) . '.');
         return ['ok' => true, 'error' => '', 'index' => $newIndex];
@@ -1500,12 +1500,13 @@ class JVPresenceGateTest extends IPSModule
                 && (($rpcRule['Class'] ?? 'Normal') === 'Normal')
                 && (($rpcRule['Config']['Direction'] ?? '') === 'Both')
                 && (($rpcRule['Config']['DetectLine'] ?? null) === self::P05_LINE)
-                && (($rpcRule['Config']['SizeFilter']['MinSize'] ?? null) === [0, 0])
+                && (($rpcRule['Config']['SizeFilter']['MinSize'] ?? null) === [200, 200])
+                && (($rpcRule['Config']['SizeFilter']['Type'] ?? '') === 'ByLength')
                 && in_array('Human', is_array($rpcRule['ObjectTypes'] ?? null) ? $rpcRule['ObjectTypes'] : [], true);
 
             if ($rpcRuleOk) {
                 $checks++;
-                $this->appendProtocol('AUDIT OK 6: RPC2 P05 inkl. Human-Körperfilter, MinSize=0 und 5-Punkt-Geometrie korrekt.');
+                $this->appendProtocol('AUDIT OK 6: RPC2 P05 inkl. Human-Filter, MinSize=200, Type=ByLength und 5-Punkt-Geometrie korrekt.');
             } else {
                 $errors[] = 'RPC2 P05-Regel abweichend';
                 if (is_array($rpcRule)) {
