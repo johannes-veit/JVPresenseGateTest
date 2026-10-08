@@ -520,21 +520,28 @@ class JVPresenceGateTest extends IPSModule
             $this->WriteAttributeString('OriginalVideoAnalyseGlobalRpc2', $backupJson);
             $this->WriteAttributeString('OriginalGlobalSceneType', (string) ($globalType ?? ''));
 
-            // Dokumentierter Dahua-HTTP-API-Befehl für die aktive IVS-Normal-Szene.
-            $setGlobal = $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => 'Normal']);
-            if (!$setGlobal['ok']) {
-                $this->setResult('FEHLER – Dahua hat Scene.Type=Normal nicht akzeptiert: ' . $setGlobal['error']);
+            // Diese Taurus/Web5-Firmware hängt beim CGI-setConfig-Aufruf für
+            // Scene.Type teilweise fest. Der bereits erfolgreich verifizierte
+            // RPC2-configManager.setConfig-Weg wird deshalb für den Write benutzt.
+            // CGI bleibt als unabhängiger Readback bestehen.
+            $candidateGlobalTable = $originalGlobalTable;
+            $candidateGlobalTable[0]['Scene']['Type'] = 'Normal';
+            $setGlobal = $this->setVideoAnalyseGlobalTableViaRpc2($candidateGlobalTable);
+            if (!($setGlobal['ok'] ?? false)) {
+                $this->setResult('FEHLER – RPC2 konnte Scene.Type=Normal nicht setzen: ' . (string) ($setGlobal['error'] ?? 'unbekannt'));
                 return;
             }
+            $this->appendProtocol('RPC2 WRITE: VideoAnalyseGlobal Scene.Type=Normal -> akzeptiert.');
 
-            // Doppelte Verifikation: CGI UND strukturiertes RPC2 müssen Normal zeigen.
+            // Primär muss RPC2 den geschriebenen Wert exakt bestätigen.
+            // CGI dient zusätzlich als Gegenprüfung, darf bei dieser Firmware
+            // aber nicht mehr den Ablauf blockieren.
             $verifyState = $this->readVideoAnalyseSceneState();
             $verifyRpcType = $verifyState['type'] ?? null;
             $verifyCgiType = $verifyState['cgiType'] ?? null;
-            if (!($verifyState['ok'] ?? false) || $verifyRpcType !== 'Normal' || $verifyCgiType !== 'Normal') {
-                // Exakte Originaltabelle zurückspielen, nicht mit geratenem Leerwert.
+            if (!($verifyState['ok'] ?? false) || $verifyRpcType !== 'Normal') {
                 $restore = $this->restoreVideoAnalyseGlobalTable($originalGlobalTable);
-                $this->setResult('FEHLER – Scene.Type=Normal wurde nicht über beide Dahua-APIs bestätigt.');
+                $this->setResult('FEHLER – Scene.Type=Normal wurde per RPC2 nicht bestätigt.');
                 $this->appendProtocol(
                     'SICHERHEITSABBRUCH: Readback RPC2=' . json_encode($verifyRpcType) .
                     ', CGI=' . json_encode($verifyCgiType) .
@@ -544,7 +551,10 @@ class JVPresenceGateTest extends IPSModule
             }
 
             $this->WriteAttributeBoolean('GlobalChangedByModule', true);
-            $this->appendProtocol('DAHUA VERIFY: Scene.Type=Normal über CGI + RPC2 bestätigt.');
+            $this->appendProtocol(
+                'DAHUA VERIFY: Scene.Type=Normal per RPC2 bestätigt; CGI=' .
+                ($verifyCgiType === null ? '<nicht ausgegeben>' : (string) $verifyCgiType) . '.'
+            );
         } elseif ($normalized === 'normal') {
             $this->appendProtocol('DAHUA VERIFY: Scene.Type=Normal war bereits aktiv.');
         } else {
@@ -2260,6 +2270,54 @@ class JVPresenceGateTest extends IPSModule
             return ['ok' => false, 'body' => $result['body'], 'error' => 'Kamera antwortete nicht mit OK', 'http' => $result['http']];
         }
         return $result;
+    }
+
+    /** @param array<int,mixed> $table
+     *  @return array{ok:bool,error:string}
+     */
+    private function setVideoAnalyseGlobalTableViaRpc2(array $table): array
+    {
+        $cfg = $this->cameraConfiguration();
+        $login = $this->rpc2Login(
+            (string) ($cfg['host'] ?? ''),
+            (int) ($cfg['port'] ?? 80),
+            (string) ($cfg['username'] ?? ''),
+            (string) ($cfg['password'] ?? '')
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'error' => 'RPC2-Login fehlgeschlagen'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+
+        $write = $this->rpc2Call(
+            $host, $port, $session, 140,
+            'configManager.setConfig',
+            ['name' => 'VideoAnalyseGlobal', 'table' => $table, 'options' => []]
+        );
+        $this->appendRpc2Result('SET VideoAnalyseGlobal Scene.Type', $write);
+        if (!($write['ok'] ?? false)) {
+            $this->rpc2Call($host, $port, $session, 149, 'global.logout', null);
+            return ['ok' => false, 'error' => 'RPC2 setConfig wurde abgelehnt'];
+        }
+
+        $verify = $this->rpc2Call($host, $port, $session, 141, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+        $this->rpc2Call($host, $port, $session, 149, 'global.logout', null);
+        $current = $verify['json']['params']['table'] ?? null;
+
+        if (!($verify['ok'] ?? false) || !is_array($current)) {
+            return ['ok' => false, 'error' => 'RPC2 Readback fehlgeschlagen'];
+        }
+
+        $wantedType = $table[0]['Scene']['Type'] ?? null;
+        $currentType = $current[0]['Scene']['Type'] ?? null;
+        if ($currentType !== $wantedType) {
+            return ['ok' => false, 'error' => 'RPC2 Readback Scene.Type=' . json_encode($currentType)];
+        }
+
+        return ['ok' => true, 'error' => ''];
     }
 
     /** @param array<int,mixed> $table
