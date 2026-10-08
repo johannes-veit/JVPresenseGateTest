@@ -1849,6 +1849,49 @@ class JVPresenceP03TerraceTest extends IPSModule
         }
         $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
 
+        // Dahua HTTP API: SMD supports Low/Middle/High. For these two mast IPCs
+        // the crossing area is close but partly in the blind spot, therefore use High.
+        // Only the SMD keys relevant to P03 are changed; Vehicle and link actions stay untouched.
+        if (strtolower((string) $enable) !== 'true'
+            || strtolower((string) $human) !== 'true'
+            || strcasecmp($sensitivity, 'High') !== 0) {
+            $setSmd = $this->genericCameraGet(
+                $host,
+                $port,
+                $username,
+                $password,
+                '/cgi-bin/configManager.cgi?action=setConfig'
+                    . '&SmartMotionDetect[0].Enable=true'
+                    . '&SmartMotionDetect[0].Sensitivity=High'
+                    . '&SmartMotionDetect[0].ObjectTypes.Human=true'
+            );
+            if (!($setSmd['ok'] ?? false) || trim((string) ($setSmd['body'] ?? '')) !== 'OK') {
+                return [
+                    'ok' => false,
+                    'error' => $role . ': SMD Human/High konnte nicht gesetzt werden',
+                    'model' => $model,
+                    'firmware' => $firmware,
+                    'sensitivity' => $sensitivity
+                ];
+            }
+
+            $smart = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
+            if (!($smart['ok'] ?? false)) {
+                return [
+                    'ok' => false,
+                    'error' => $role . ': SMD-Readback nach Konfiguration fehlgeschlagen',
+                    'model' => $model,
+                    'firmware' => $firmware,
+                    'sensitivity' => ''
+                ];
+            }
+            $raw = (string) $smart['body'];
+            $enable = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Enable');
+            $human = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes.Human');
+            $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
+            $this->appendProtocol($role . ': SMD automatisch auf Human + High gesetzt und rückgelesen.');
+        }
+
         // Dahua Web 3.x documents Motion Detection as prerequisite for SMD.
         // Newer firmware may not expose the same flat key, so only an explicit
         // "false" blocks the audit; a missing key is logged but not guessed.
@@ -1858,10 +1901,36 @@ class JVPresenceP03TerraceTest extends IPSModule
             $motionEnable = GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable');
         }
 
+        if ($motionEnable !== null && strtolower((string) $motionEnable) !== 'true') {
+            $setMotion = $this->genericCameraGet(
+                $host,
+                $port,
+                $username,
+                $password,
+                '/cgi-bin/configManager.cgi?action=setConfig&MotionDetect[0].Enable=true'
+            );
+            if (!($setMotion['ok'] ?? false) || trim((string) ($setMotion['body'] ?? '')) !== 'OK') {
+                return [
+                    'ok' => false,
+                    'error' => $role . ': MotionDetect als SMD-Voraussetzung konnte nicht aktiviert werden',
+                    'model' => $model,
+                    'firmware' => $firmware,
+                    'sensitivity' => $sensitivity
+                ];
+            }
+            $motion = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/configManager.cgi?action=getConfig&name=MotionDetect');
+            $motionEnable = ($motion['ok'] ?? false)
+                ? GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable')
+                : null;
+            $this->appendProtocol($role . ': MotionDetect als SMD-Voraussetzung aktiviert und rückgelesen.');
+        }
+
         $personVar = $this->findPersonDetectedVariable($instanceID);
         $motionOK = $motionEnable === null || strtolower((string) $motionEnable) === 'true';
+        $sensitivityOK = $sensitivity === '' || strcasecmp($sensitivity, 'High') === 0;
         $ok = strtolower((string) $enable) === 'true'
             && strtolower((string) $human) === 'true'
+            && $sensitivityOK
             && $motionOK
             && $personVar > 0;
 
