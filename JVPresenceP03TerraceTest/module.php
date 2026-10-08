@@ -101,6 +101,7 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->RegisterAttributeString('P03PendingCrossings', '[]');
         $this->RegisterAttributeString('P03DirectionMap', '{}');
         $this->RegisterAttributeInteger('P03VerifiedCount', 0);
+        $this->RegisterAttributeString('P03ActionCounts', '{"HOME_TO_LAGER":0,"LAGER_TO_HOME":0}');
         $this->RegisterAttributeBoolean('P03SimulationPassed', false);
         $this->RegisterAttributeBoolean('P03MultiAuditPassed', false);
 
@@ -825,22 +826,25 @@ class JVPresenceP03TerraceTest extends IPSModule
 
     public function EnableProductionP03(): void
     {
-        $direction = P03ProofEngine::directionStatus(
-            json_decode($this->ReadAttributeString('P03DirectionMap'), true) ?: []
-        );
+        $counts = json_decode($this->ReadAttributeString('P03ActionCounts'), true);
+        if (!is_array($counts)) {
+            $counts = [];
+        }
+        $out = (int) ($counts[P03ProofEngine::ACTION_HOME_TO_LAGER] ?? 0);
+        $in = (int) ($counts[P03ProofEngine::ACTION_LAGER_TO_HOME] ?? 0);
 
         $ready = $this->ReadAttributeBoolean('P03MultiAuditPassed')
             && $this->ReadAttributeBoolean('P03SimulationPassed')
-            && ($direction['stable'] ?? false)
+            && $out >= 2
+            && $in >= 2
             && $this->ReadAttributeInteger('P03VerifiedCount') >= 4
-            && $this->ReadAttributeInteger('RuleIndex') >= 0
             && $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
             && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0;
 
         if (!$ready) {
             $this->WriteAttributeBoolean('ProductionEnabled', false);
             $this->refreshProductionState();
-            $this->setResult('P03 Produktivbetrieb gesperrt – zuerst Gesamtaudit + mindestens 4 verifizierte Mehrkamera-Übergänge mit stabiler Richtungszuordnung.');
+            $this->setResult('P03 Produktivbetrieb gesperrt – zuerst Gesamtaudit + mindestens 2× HOME→LAGER und 2× LAGER→HOME verifizieren. CrossLine ist bevorzugt, 3-Kamera-Fallback ist zulässig.');
             return;
         }
 
@@ -869,6 +873,7 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->WriteAttributeString('P03PendingCrossings', '[]');
         $this->WriteAttributeString('P03DirectionMap', '{}');
         $this->WriteAttributeInteger('P03VerifiedCount', 0);
+        $this->WriteAttributeString('P03ActionCounts', '{"HOME_TO_LAGER":0,"LAGER_TO_HOME":0}');
         $this->WriteAttributeBoolean('P03MultiAuditPassed', false);
         $this->WriteAttributeBoolean('P03SimulationPassed', false);
         $this->WriteAttributeBoolean('TestActive', false);
@@ -939,6 +944,7 @@ class JVPresenceP03TerraceTest extends IPSModule
             'p03PendingCrossings' => $this->getP03PendingCrossings(),
             'p03DirectionMap' => json_decode($this->ReadAttributeString('P03DirectionMap'), true),
             'p03VerifiedCount' => $this->ReadAttributeInteger('P03VerifiedCount'),
+            'p03ActionCounts' => json_decode($this->ReadAttributeString('P03ActionCounts'), true),
             'p03SimulationPassed' => $this->ReadAttributeBoolean('P03SimulationPassed'),
             'p03MultiAuditPassed' => $this->ReadAttributeBoolean('P03MultiAuditPassed'),
             'crossings' => $this->getCrossings()
@@ -1052,6 +1058,7 @@ class JVPresenceP03TerraceTest extends IPSModule
     public function P03ProofTimer(): void
     {
         $this->evaluateP03Pending();
+        $this->evaluateP03NoLineFallback();
     }
 
     public function RunP03Simulation(): void
@@ -1218,6 +1225,7 @@ class JVPresenceP03TerraceTest extends IPSModule
 
         $this->appendProtocol('P03 HUMAN ' . $source . ' @' . sprintf('%.3f', $now));
         $this->evaluateP03Pending();
+        $this->evaluateP03NoLineFallback();
     }
 
     /** @param array<string,mixed> $event */
@@ -1256,6 +1264,7 @@ class JVPresenceP03TerraceTest extends IPSModule
         );
         $this->SetTimerInterval('P03ProofTimer', 1000);
         $this->evaluateP03Pending();
+        $this->evaluateP03NoLineFallback();
     }
 
     public function P03AuxRescan(): void
@@ -1293,28 +1302,12 @@ class JVPresenceP03TerraceTest extends IPSModule
             }
 
             if (in_array($state, [P03ProofEngine::STATE_VERIFIED, P03ProofEngine::STATE_STRONG_VERIFIED], true)) {
-                $events = $this->markP03HumanEventsUsed($events, $result['usedEventIds'] ?? [], (string) ($cross['id'] ?? ''));
-
-                $map = json_decode($this->ReadAttributeString('P03DirectionMap'), true);
-                if (!is_array($map)) {
-                    $map = [];
-                }
-                $map = P03ProofEngine::learnDirection(
-                    $map,
-                    isset($cross['direction']) ? (string) $cross['direction'] : null,
-                    isset($result['action']) ? (string) $result['action'] : null
+                $events = $this->commitP03VerifiedResult(
+                    $events,
+                    $cross,
+                    $result,
+                    (string) ($cross['id'] ?? 'cross')
                 );
-                $this->WriteAttributeString('P03DirectionMap', json_encode($map));
-
-                $verified = $this->ReadAttributeInteger('P03VerifiedCount') + 1;
-                $this->WriteAttributeInteger('P03VerifiedCount', $verified);
-                $this->SetValue('P03VerifiedTransfers', $verified);
-
-                $proofText = $this->formatP03Proof($cross, $result);
-                $this->SetValue('P03ProofState', $state);
-                $this->SetValue('P03LastProof', $proofText);
-                $this->appendProtocol('P03 PROOF ' . $state . ' ' . $proofText);
-                $this->onP03VerifiedTransfer($cross, $result);
                 continue;
             }
 
@@ -1341,17 +1334,116 @@ class JVPresenceP03TerraceTest extends IPSModule
             $this->SetTimerInterval('P03ProofTimer', 1000);
         }
 
-        $dir = P03ProofEngine::directionStatus(
-            json_decode($this->ReadAttributeString('P03DirectionMap'), true) ?: []
+        $this->checkP03CommissioningComplete();
+    }
+
+    private function evaluateP03NoLineFallback(): void
+    {
+        if (!$this->ReadAttributeBoolean('TestActive') && !$this->ReadAttributeBoolean('ProductionEnabled')) {
+            return;
+        }
+
+        $events = $this->getP03HumanEvents();
+        $near = max(5, $this->ReadPropertyInteger('NearProofWindowSeconds'));
+        $terrace = max($near, $this->ReadPropertyInteger('TerraceProofWindowSeconds'));
+        $result = P03ProofEngine::evaluateThreeCameraSequence(
+            $events,
+            microtime(true),
+            (float) $near,
+            (float) $terrace,
+            3.0
         );
-        if ($this->ReadAttributeBoolean('TestActive')
-            && ($dir['stable'] ?? false)
-            && $this->ReadAttributeInteger('P03VerifiedCount') >= 4) {
+
+        $state = (string) ($result['state'] ?? P03ProofEngine::STATE_UNKNOWN);
+        if ($state === P03ProofEngine::STATE_PENDING) {
+            $this->SetValue('P03ProofState', 'PENDING – 3-Kamera-Fallback wartet 3 s auf CrossLine');
+            $this->SetTimerInterval('P03ProofTimer', 1000);
+            return;
+        }
+
+        if (in_array($state, [P03ProofEngine::STATE_VERIFIED, P03ProofEngine::STATE_STRONG_VERIFIED], true)) {
+            $proofId = '3cam:' . sprintf('%.6f', microtime(true));
+            $pseudoCross = ['id' => $proofId, 'direction' => null, 'ts' => microtime(true)];
+            $events = $this->commitP03VerifiedResult($events, $pseudoCross, $result, $proofId);
+            $this->setP03HumanEvents($events);
+            $this->checkP03CommissioningComplete();
+            return;
+        }
+
+        if ($state === P03ProofEngine::STATE_CONTRADICTION) {
+            $this->SetValue('P03ProofState', 'CONTRADICTION – 3-Kamera-Reihenfolge widersprüchlich');
+            $this->appendProtocol('P03 3CAM CONTRADICTION – keine Zonenänderung.');
+        }
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $events
+     * @param array<string,mixed> $cross
+     * @param array<string,mixed> $result
+     * @return array<int,array<string,mixed>>
+     */
+    private function commitP03VerifiedResult(array $events, array $cross, array $result, string $proofId): array
+    {
+        $events = $this->markP03HumanEventsUsed($events, $result['usedEventIds'] ?? [], $proofId);
+
+        $direction = isset($cross['direction']) ? (string) $cross['direction'] : null;
+        $action = isset($result['action']) ? (string) $result['action'] : null;
+        if ($direction !== null && $direction !== '') {
+            $map = json_decode($this->ReadAttributeString('P03DirectionMap'), true);
+            if (!is_array($map)) {
+                $map = [];
+            }
+            $map = P03ProofEngine::learnDirection($map, $direction, $action);
+            $this->WriteAttributeString('P03DirectionMap', json_encode($map));
+        }
+
+        $counts = json_decode($this->ReadAttributeString('P03ActionCounts'), true);
+        if (!is_array($counts)) {
+            $counts = [];
+        }
+        if (in_array($action, [P03ProofEngine::ACTION_HOME_TO_LAGER, P03ProofEngine::ACTION_LAGER_TO_HOME], true)) {
+            $counts[$action] = (int) ($counts[$action] ?? 0) + 1;
+            $this->WriteAttributeString('P03ActionCounts', json_encode($counts));
+        }
+
+        $verified = $this->ReadAttributeInteger('P03VerifiedCount') + 1;
+        $this->WriteAttributeInteger('P03VerifiedCount', $verified);
+        $this->SetValue('P03VerifiedTransfers', $verified);
+
+        $proofText = $this->formatP03Proof($cross, $result);
+        $this->SetValue('P03ProofState', (string) ($result['state'] ?? P03ProofEngine::STATE_VERIFIED));
+        $this->SetValue('P03LastProof', $proofText);
+        $this->appendProtocol('P03 PROOF ' . (string) ($result['state'] ?? '') . ' ' . $proofText);
+        $this->onP03VerifiedTransfer($cross, $result);
+        $this->refreshP03DirectionStatus();
+        return $events;
+    }
+
+    private function checkP03CommissioningComplete(): void
+    {
+        if (!$this->ReadAttributeBoolean('TestActive')) {
+            return;
+        }
+
+        $counts = json_decode($this->ReadAttributeString('P03ActionCounts'), true);
+        if (!is_array($counts)) {
+            $counts = [];
+        }
+        $out = (int) ($counts[P03ProofEngine::ACTION_HOME_TO_LAGER] ?? 0);
+        $in = (int) ($counts[P03ProofEngine::ACTION_LAGER_TO_HOME] ?? 0);
+
+        if ($out >= 2 && $in >= 2 && $this->ReadAttributeInteger('P03VerifiedCount') >= 4) {
             $this->WriteAttributeBoolean('TestActive', false);
             $this->SetValue('TestActive', false);
             $this->setReady(false);
-            $this->setResult('P03 MEHRKAMERA VERIFIZIERT – mindestens 4 bestätigte Übergänge und stabile CrossLine-Richtungen. Produktivbetrieb kann freigegeben werden.');
-            $this->appendProtocol('P03 COMMISSIONING COMPLETE: Mehrkamera-Proof + Richtungslernen stabil.');
+            $dir = P03ProofEngine::directionStatus(
+                json_decode($this->ReadAttributeString('P03DirectionMap'), true) ?: []
+            );
+            $suffix = ($dir['stable'] ?? false)
+                ? ' CrossLine-Richtungen zusätzlich stabil gelernt.'
+                : ' Betrieb ist auch über den 3-Kamera-Fallback ohne CrossLine möglich.';
+            $this->setResult('P03 MEHRKAMERA VERIFIZIERT – 2× HOME→LAGER und 2× LAGER→HOME bestätigt.' . $suffix);
+            $this->appendProtocol('P03 COMMISSIONING COMPLETE: OUT=' . $out . ', IN=' . $in . '.' . $suffix);
         }
     }
 
