@@ -202,6 +202,40 @@ $r = P03ProofEngine::evaluateThreeCameraSequence(
 );
 assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam consumed evidence ignored');
 
+// CrossLine proof must not reuse a consumed event on only one side.
+$r = P03ProofEngine::evaluate(
+    c($base),
+    [
+        e('j-used', P03ProofEngine::SRC_JV_LEFT, $base - 6, true),
+        e('w-new', P03ProofEngine::SRC_WORK_LEFT, $base + 5)
+    ],
+    $base + 61
+);
+assertSameValue(P03ProofEngine::STATE_PROVISIONAL, $r['state'], 'Partly consumed proof rejected');
+
+// Event exactly on the boundary timestamp is accepted as before/after evidence,
+// but opposite complete paths at the same instant must fail closed.
+$r = P03ProofEngine::evaluate(
+    c($base),
+    [
+        e('j0', P03ProofEngine::SRC_JV_LEFT, $base),
+        e('w0', P03ProofEngine::SRC_WORK_LEFT, $base)
+    ],
+    $base + 1
+);
+assertSameValue(P03ProofEngine::STATE_CONTRADICTION, $r['state'], 'Simultaneous opposite evidence fails closed');
+
+// Three-camera fallback with duplicated source order must not verify.
+$r = P03ProofEngine::evaluateThreeCameraSequence(
+    [
+        e('t1', P03ProofEngine::SRC_TERRACE, $base - 20),
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 10),
+        e('j2', P03ProofEngine::SRC_JV_LEFT, $base - 5)
+    ],
+    $base + 10
+);
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam missing work-side camera rejected');
+
 // Direction map requires two consistent proofs in both opposite directions.
 $map = [];
 $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
