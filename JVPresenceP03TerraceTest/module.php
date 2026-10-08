@@ -320,6 +320,34 @@ class JVPresenceP03TerraceTest extends IPSModule
 
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data): void
     {
+        if ((int) $Message === self::VM_UPDATE_ID) {
+            $sender = (int) $SenderID;
+            $jvVar = $this->ReadAttributeInteger('AuxJVPersonVarID');
+            $workVar = $this->ReadAttributeInteger('AuxWorkPersonVarID');
+
+            if ($sender === $jvVar || $sender === $workVar) {
+                $changed = true;
+                if (is_array($Data) && array_key_exists(1, $Data)) {
+                    $changed = (bool) $Data[1];
+                }
+
+                $active = false;
+                try {
+                    $active = (bool) GetValue($sender);
+                } catch (Throwable $e) {
+                }
+
+                if ($changed && $active) {
+                    $source = ($sender === $jvVar) ? P03ProofEngine::SRC_JV_LEFT : P03ProofEngine::SRC_WORK_LEFT;
+                    $this->recordP03HumanEvent($source, [
+                        'sender' => $sender,
+                        'messageTimestamp' => (int) $TimeStamp
+                    ]);
+                }
+                return;
+            }
+        }
+
         if ((int) $Message !== self::IM_CHANGESTATUS_ID || (int) $SenderID !== $this->getParentID()) {
             return;
         }
@@ -790,13 +818,22 @@ class JVPresenceP03TerraceTest extends IPSModule
     {
         $this->WriteAttributeString('SeenEventKeys', '{}');
         $this->WriteAttributeString('Crossings', '[]');
+        $this->WriteAttributeString('P03HumanEvents', '[]');
+        $this->WriteAttributeString('P03PendingCrossings', '[]');
+        $this->WriteAttributeString('P03DirectionMap', '{}');
+        $this->WriteAttributeInteger('P03VerifiedCount', 0);
         $this->WriteAttributeBoolean('TestActive', false);
+        $this->SetTimerInterval('P03ProofTimer', 0);
         $this->SetValue('TestActive', false);
         $this->SetValue('CrossingCount', 0);
+        $this->SetValue('P03VerifiedTransfers', 0);
+        $this->SetValue('P03ProofState', 'RESET');
+        $this->SetValue('P03LastProof', '');
+        $this->SetValue('P03DirectionStatus', 'noch nicht gelernt');
         $this->SetValue('LastEvent', '');
         $this->SetValue('Protocol', '');
         $this->setReady(false);
-        $this->setResult('Zurückgesetzt. „Test vorbereiten & starten“ drücken.');
+        $this->setResult('Zurückgesetzt. „P03 Test vorbereiten & starten“ drücken.');
     }
 
     public function CleanupCameraTestConfig(): void
@@ -855,35 +892,41 @@ class JVPresenceP03TerraceTest extends IPSModule
 
         foreach ($events as $event) {
             $code = (string) ($event['code'] ?? '');
+            $action = strtolower(trim((string) ($event['action'] ?? '')));
+
             if (strcasecmp($code, 'CrossLineDetection') !== 0) {
-                // Diagnose nur während des laufenden Tests: damit erkennen wir,
-                // ob der Eventstream nach dem Regelwechsel grundsätzlich weiter
-                // Personen-/Bewegungsereignisse liefert, auch falls IVS selbst
-                // noch nicht feuert.
-                if ($this->ReadAttributeBoolean('TestActive')) {
-                    $action = strtolower(trim((string) ($event['action'] ?? '')));
-                    if (in_array($action, ['start', 'on', 'pulse'], true)
-                        && in_array(strtolower($code), [
-                            'smartmotionhuman',
-                            'videomotion',
-                            'smartmotionvehicle',
-                            'crossregiondetection'
-                        ], true)) {
-                        $diag = 'DIAG EVENT code=' . $code . ' action=' . (string) ($event['action'] ?? '') . ' index=' . (string) ($event['index'] ?? '');
-                        if (strcasecmp($code, 'SmartMotionHuman') === 0) {
-                            $rect = $this->findFirstRectRecursive(is_array($event['data'] ?? null) ? $event['data'] : []);
-                            if ($rect !== null) {
-                                $diag .= ' Rect=' . json_encode($rect, JSON_UNESCAPED_SLASHES);
-                            }
+                if (strcasecmp($code, 'SmartMotionHuman') === 0
+                    && in_array($action, ['start', 'on', 'pulse'], true)
+                    && ($this->ReadAttributeBoolean('TestActive') || $this->ReadAttributeBoolean('ProductionEnabled'))) {
+                    $this->recordP03HumanEvent(P03ProofEngine::SRC_TERRACE, [
+                        'eventId' => $event['eventId'] ?? null,
+                        'objectId' => $event['objectId'] ?? null,
+                        'classification' => $event['classification'] ?? null
+                    ]);
+                }
+
+                if ($this->ReadAttributeBoolean('TestActive')
+                    && in_array($action, ['start', 'on', 'pulse'], true)
+                    && in_array(strtolower($code), [
+                        'smartmotionhuman',
+                        'videomotion',
+                        'smartmotionvehicle',
+                        'crossregiondetection'
+                    ], true)) {
+                    $diag = 'DIAG EVENT code=' . $code . ' action=' . (string) ($event['action'] ?? '') . ' index=' . (string) ($event['index'] ?? '');
+                    if (strcasecmp($code, 'SmartMotionHuman') === 0) {
+                        $rect = $this->findFirstRectRecursive(is_array($event['data'] ?? null) ? $event['data'] : []);
+                        if ($rect !== null) {
+                            $diag .= ' Rect=' . json_encode($rect, JSON_UNESCAPED_SLASHES);
                         }
-                        $this->appendProtocol($diag);
                     }
+                    $this->appendProtocol($diag);
                 }
                 continue;
             }
 
-            // Dahua eventManager 'index' ist nur der Video-Kanalindex. Für die
-            // konkrete P03-Regel steht RuleID im Eventpayload zur Verfügung.
+            // Dahua eventManager "index" is the video channel. RuleID identifies
+            // the concrete P03 tripwire on this camera.
             $ruleIndex = $this->ReadAttributeInteger('RuleIndex');
             $eventRuleId = $event['ruleId'] ?? null;
             if ($eventRuleId !== null && is_numeric($eventRuleId) && $ruleIndex >= 0
@@ -910,19 +953,17 @@ class JVPresenceP03TerraceTest extends IPSModule
             ];
             $this->SetValue('LastEvent', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $this->appendProtocol('IVS ' . json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-            $this->SendDebug('CrossLineDetection', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ' | RAW=' . $this->singleLine((string) $event['raw']), 0);
+            $this->SendDebug(
+                'CrossLineDetection',
+                json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    . ' | RAW=' . $this->singleLine((string) $event['raw']),
+                0
+            );
 
-            // Produktiver P03-Adapter läuft unabhängig vom 4-Schritt-Test.
-            // Er erzeugt zunächst ausschließlich anonyme Portalereignisse.
-            if ($this->ReadAttributeBoolean('ProductionEnabled')) {
-                $this->processProductionCrossLine($event, $direction);
-            }
-
-            if (!$this->ReadAttributeBoolean('TestActive')) {
+            if (!in_array($action, ['start', 'on', 'pulse'], true)) {
                 continue;
             }
-            $action = strtolower(trim((string) $event['action']));
-            if (!in_array($action, ['start', 'on', 'pulse'], true)) {
+            if (!$this->ReadAttributeBoolean('TestActive') && !$this->ReadAttributeBoolean('ProductionEnabled')) {
                 continue;
             }
 
@@ -935,50 +976,14 @@ class JVPresenceP03TerraceTest extends IPSModule
                 continue;
             }
             $seen[$key] = time();
-            if (count($seen) > 100) {
-                $seen = array_slice($seen, -100, null, true);
+            if (count($seen) > 200) {
+                $seen = array_slice($seen, -200, null, true);
             }
             $this->WriteAttributeString('SeenEventKeys', json_encode($seen));
 
-            $crossings = $this->getCrossings();
-            $step = count($crossings) + 1;
-            if ($step > 4) {
-                continue;
-            }
-            $expected = ($step % 2 === 1) ? 'HOME→LAGER' : 'LAGER→HOME';
-            $crossings[] = [
-                'step' => $step,
-                'expected' => $expected,
-                'time' => time(),
-                'direction' => $direction,
-                'eventId' => $event['eventId'],
-                'ruleId' => $event['ruleId'],
-                'index' => $event['index']
-            ];
-            $this->WriteAttributeString('Crossings', json_encode($crossings));
-            $this->SetValue('CrossingCount', count($crossings));
-            $this->appendProtocol('GEZÄHLT Schritt ' . $step . ' erwartet=' . $expected . ' Direction=' . ($direction ?? '<fehlt>'));
-
-            $evaluation = GateTestLogic::evaluateFourCrossings($crossings);
-            if (($evaluation['complete'] ?? false) === true) {
-                $this->WriteAttributeBoolean('TestActive', false);
-                $this->SetValue('TestActive', false);
-                $this->setReady(false);
-
-                if (($evaluation['valid'] ?? false) === true) {
-                    $result = 'FERTIG – P03 eindeutig: HOME→LAGER=' . $evaluation['outDirection'] . ', LAGER→HOME=' . $evaluation['inDirection'] . '. Testprotokoll hier hochladen.';
-                    $this->setResult($result);
-                    $this->appendProtocol($result);
-                } else {
-                    $result = 'TEST BEENDET, aber Zuordnung noch nicht eindeutig: ' . ($evaluation['message'] ?? 'unbekannt') . '. Testprotokoll hier hochladen.';
-                    $this->setResult($result);
-                    $this->appendProtocol($result);
-                }
-            } else {
-                $next = count($crossings) + 1;
-                $nextExpected = ($next % 2 === 1) ? 'HOME→LAGER' : 'LAGER→HOME';
-                $this->setResult('Schritt ' . count($crossings) . '/4 erkannt. Als Nächstes: ' . $nextExpected . ' durch das P03-Grenze.');
-            }
+            $count = (int) $this->GetValue('CrossingCount') + 1;
+            $this->SetValue('CrossingCount', $count);
+            $this->recordP03Crossing($event, $direction);
         }
     }
 
