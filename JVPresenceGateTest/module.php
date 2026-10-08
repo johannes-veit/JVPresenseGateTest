@@ -72,6 +72,17 @@ class JVPresenceGateTest extends IPSModule
         $this->RegisterAttributeBoolean('Rpc2GlobalChangedByModule', false);
         $this->RegisterAttributeBoolean('AuditOnlyNextRun', false);
 
+        // PresenceManager – produktiver P05-Grundbaustein.
+        $this->RegisterAttributeBoolean('ProductionEnabled', false);
+        $this->RegisterAttributeInteger('UnknownOccupants', 0);
+        $this->RegisterAttributeString('SeenProductionEventKeys', '{}');
+        $this->RegisterAttributeInteger('LastProductionEvent', 0);
+
+        $this->RegisterVariableString('PresenceSystemState', 'Presence Systemstatus', '', 1);
+        $this->RegisterVariableString('HouseStatus', 'Hausstatus', '', 2);
+        $this->RegisterVariableString('PresentPersons', 'Anwesende Personen', '', 3);
+        $this->RegisterVariableString('PresenceLastEvent', 'Letztes Presence-Ereignis', '', 4);
+
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 10);
         $this->RegisterVariableBoolean('Ready', 'Test bereit', '~Switch', 20);
         $this->RegisterVariableBoolean('TestActive', 'Test läuft', '~Switch', 30);
@@ -104,6 +115,7 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeString('DigestChallenge', '{}');
         $this->setStreamOK(false);
         $this->setReady(false);
+        $this->refreshProductionState();
 
         $sourceID = $this->resolveSourceInstance();
         $this->WriteAttributeInteger('SourceInstanceID', $sourceID);
@@ -250,6 +262,7 @@ class JVPresenceGateTest extends IPSModule
             $this->WriteAttributeBoolean('AuthBlocked', false);
             $this->WriteAttributeInteger('AuthFailureCount', 0);
             $this->setStreamOK(true);
+            $this->refreshProductionState();
             $this->appendProtocol('Dahua Eventstream verbunden (codes=[All])');
             $this->refreshReadyState();
             if ($body !== '') {
@@ -676,6 +689,37 @@ class JVPresenceGateTest extends IPSModule
         $this->refreshReadyState();
     }
 
+    public function EnableProductionP05(): void
+    {
+        // Derselbe bereits verifizierte Aufbauweg wie beim erfolgreichen 4/4-Test.
+        // Nach dem Aufbau wird nur die Testzählung abgeschaltet; P05 bleibt aktiv.
+        $this->PrepareAndStartTest();
+
+        if ($this->ReadAttributeInteger('RuleIndex') < 0) {
+            $this->WriteAttributeBoolean('ProductionEnabled', false);
+            $this->refreshProductionState();
+            $this->setResult('FEHLER – P05 konnte nicht produktiv aktiviert werden.');
+            return;
+        }
+
+        $this->WriteAttributeBoolean('ProductionEnabled', true);
+        $this->WriteAttributeBoolean('TestActive', false);
+        $this->SetValue('TestActive', false);
+        $this->setReady(false);
+        $this->WriteAttributeString('SeenProductionEventKeys', '{}');
+        $this->refreshProductionState();
+        $this->appendProtocol('PRODUKTION: P05 aktiv. OUT=RightToLeft, IN=LeftToRight. Ereignisse werden als anonyme Portalwechsel verarbeitet.');
+        $this->setResult('PRODUKTIV – P05 aktiv. Jetzt normal benutzen; keine Testfolge mehr nötig.');
+    }
+
+    public function DisableProductionP05(): void
+    {
+        $this->WriteAttributeBoolean('ProductionEnabled', false);
+        $this->CleanupCameraTestConfig();
+        $this->refreshProductionState();
+        $this->appendProtocol('PRODUKTION: P05 deaktiviert und Testkonfiguration zurückgesetzt.');
+    }
+
     public function ResetTest(): void
     {
         $this->WriteAttributeString('SeenEventKeys', '{}');
@@ -691,6 +735,8 @@ class JVPresenceGateTest extends IPSModule
 
     public function CleanupCameraTestConfig(): void
     {
+        // Ein expliziter Cleanup bedeutet auch: kein produktiver P05-Betrieb.
+        $this->WriteAttributeBoolean('ProductionEnabled', false);
         if ($this->ReadAttributeBoolean('Rpc2GlobalChangedByModule')) {
             $restoreGlobal = $this->restoreOriginalVideoAnalyseGlobalViaRpc2();
             $this->appendProtocol(($restoreGlobal['ok'] ?? false)
@@ -779,6 +825,12 @@ class JVPresenceGateTest extends IPSModule
             $this->appendProtocol('IVS ' . json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $this->SendDebug('CrossLineDetection', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ' | RAW=' . $this->singleLine((string) $event['raw']), 0);
 
+            // Produktiver P05-Adapter läuft unabhängig vom 4-Schritt-Test.
+            // Er erzeugt zunächst ausschließlich anonyme Portalereignisse.
+            if ($this->ReadAttributeBoolean('ProductionEnabled')) {
+                $this->processProductionCrossLine($event, $direction);
+            }
+
             if (!$this->ReadAttributeBoolean('TestActive')) {
                 continue;
             }
@@ -840,6 +892,104 @@ class JVPresenceGateTest extends IPSModule
                 $nextExpected = ($next % 2 === 1) ? 'OUT' : 'IN';
                 $this->setResult('Schritt ' . count($crossings) . '/4 erkannt. Als Nächstes: ' . $nextExpected . ' durch das Schiebetor.');
             }
+        }
+    }
+
+    /** @param array<string,mixed> $event */
+    private function processProductionCrossLine(array $event, ?string $direction): void
+    {
+        $action = strtolower(trim((string) ($event['action'] ?? '')));
+        if (!in_array($action, ['start', 'on', 'pulse'], true)) {
+            return;
+        }
+
+        // Auf der bestätigten Kamera gilt: RightToLeft=OUT, LeftToRight=IN.
+        $portalAction = null;
+        if ($direction === 'RightToLeft') {
+            $portalAction = 'OUT';
+        } elseif ($direction === 'LeftToRight') {
+            $portalAction = 'IN';
+        }
+        if ($portalAction === null) {
+            $this->SetValue('PresenceLastEvent', 'P05 Richtung unbekannt: ' . ($direction ?? '<fehlt>'));
+            return;
+        }
+
+        // Nur die produktiv angelegte P05-Regel zählen. Die Kamera meldet bei
+        // dieser Firmware RuleID entsprechend dem Tabellenindex (im Test 3).
+        $ruleId = $event['ruleId'] ?? null;
+        $ruleIndex = $this->ReadAttributeInteger('RuleIndex');
+        if ($ruleId !== null && is_numeric($ruleId) && $ruleIndex >= 0 && (int) $ruleId !== $ruleIndex) {
+            return;
+        }
+
+        $key = $this->eventKey($event, $direction);
+        $seen = json_decode($this->ReadAttributeString('SeenProductionEventKeys'), true);
+        if (!is_array($seen)) {
+            $seen = [];
+        }
+        if (isset($seen[$key])) {
+            return;
+        }
+        $seen[$key] = time();
+        if (count($seen) > 200) {
+            $seen = array_slice($seen, -200, null, true);
+        }
+        $this->WriteAttributeString('SeenProductionEventKeys', json_encode($seen));
+
+        $unknown = max(0, $this->ReadAttributeInteger('UnknownOccupants'));
+        if ($portalAction === 'IN') {
+            $unknown++;
+        } elseif ($unknown > 0) {
+            $unknown--;
+        }
+        $this->WriteAttributeInteger('UnknownOccupants', $unknown);
+        $this->WriteAttributeInteger('LastProductionEvent', time());
+
+        $classification = (string) ($event['classification'] ?? '');
+        $suffix = $classification !== '' ? ' / ' . $classification : '';
+        $this->SetValue(
+            'PresenceLastEvent',
+            date('H:i:s') . ' P05 ' . $portalAction . $suffix .
+            ' (UnknownOccupants=' . $unknown . ')'
+        );
+        $this->appendProtocol(
+            'PRESENCE P05 ' . $portalAction .
+            ' Direction=' . $direction .
+            ' Human=' . (($event['human'] ?? false) ? 'true' : 'false') .
+            ' UnknownOccupants=' . $unknown
+        );
+
+        $this->refreshProductionState();
+    }
+
+    private function refreshProductionState(): void
+    {
+        $enabled = $this->ReadAttributeBoolean('ProductionEnabled');
+        $unknown = max(0, $this->ReadAttributeInteger('UnknownOccupants'));
+
+        if (!$enabled) {
+            $this->SetValue('PresenceSystemState', 'P05 INAKTIV');
+            $this->SetValue('HouseStatus', 'UNBEKANNT');
+            $this->SetValue('PresentPersons', '–');
+            return;
+        }
+
+        $streaming = $this->ReadAttributeBoolean('Streaming');
+        $this->SetValue(
+            'PresenceSystemState',
+            $streaming
+                ? 'P05 AKTIV – Grundbetrieb'
+                : 'P05 AKTIV – Eventstream wird aufgebaut'
+        );
+
+        if ($unknown > 0) {
+            $this->SetValue('HouseStatus', 'BELEGT – mindestens ' . $unknown . ' unbekannte Person(en)');
+            $this->SetValue('PresentPersons', 'Unbekannt × ' . $unknown);
+        } else {
+            // Sicherheitsregel: 0 anonyme Tokens ist noch KEIN Leerstandsnachweis.
+            $this->SetValue('HouseStatus', 'UNBEKANNT – Leerstand nicht zertifiziert');
+            $this->SetValue('PresentPersons', 'keine sicher bestätigten Personen');
         }
     }
 
