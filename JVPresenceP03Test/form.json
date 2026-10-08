@@ -1,0 +1,77 @@
+{
+  "elements": [
+    {
+      "type": "Label",
+      "caption": "Separater P03-Test für HOME/Hof/Terrasse ↔ Lagerplatz. Kamera: JV Terrasse. Die rote Grenze aus dem Bild vom 08.10.2026 wird automatisch als 5-Punkt-Tripwire angelegt."
+    },
+    {
+      "type": "CheckBox",
+      "name": "Enabled",
+      "caption": "P03-Testmodul aktiv"
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Automatik",
+      "expanded": true,
+      "items": [
+        {
+          "type": "CheckBox",
+          "name": "AutoDiscover",
+          "caption": "JV Terrasse automatisch finden"
+        },
+        {
+          "type": "SelectInstance",
+          "name": "SourceCameraInstanceID",
+          "caption": "Nur manuell, falls Automatik fehlschlägt"
+        },
+        {
+          "type": "Label",
+          "caption": "Normalfall: Auswahl leer lassen. Die Instanz soll JV Terrasse (#22132 / 192.168.107.110) automatisch finden."
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "P03 – HOME ↔ Lagerplatz",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Testfolge: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. Natürlich über die rote Grenze gehen, jeweils ca. 5–10 s Abstand."
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Button",
+      "caption": "Kamera-Konfiguration prüfen (kein Lauftest)",
+      "onClick": "JVP03_AuditCameraConfiguration($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "P03 Test vorbereiten & starten",
+      "onClick": "JVP03_PrepareAndStartTest($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Test zurücksetzen",
+      "onClick": "JVP03_ResetTest($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Verbindung neu aufbauen",
+      "onClick": "JVP03_Reconnect($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "P03-Testregel entfernen / Kamera zurücksetzen",
+      "onClick": "JVP03_CleanupCameraTestConfig($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Zustand ins Debug schreiben",
+      "onClick": "JVP03_DumpState($id);"
+    }
+  ]
+}
