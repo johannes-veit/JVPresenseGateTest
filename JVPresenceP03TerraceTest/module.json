@@ -1,11 +1,11 @@
 {
   "id": "{0A7A91CE-3BC1-4B1E-9C11-7B7E973F5C03}",
-  "name": "JV Presence P03 Terrace Test",
+  "name": "JV Presence P03 Multi Camera",
   "type": 3,
   "vendor": "",
   "aliases": [
-    "Presence P03 Terrace Test",
-    "P03 HOME Lager Test"
+    "Presence P03 Multi Camera",
+    "P03 HOME Lager Mehrkamera"
   ],
   "parentRequirements": [
     "{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}"
