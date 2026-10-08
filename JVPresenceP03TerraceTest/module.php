@@ -97,6 +97,12 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->RegisterAttributeInteger('AuxWorkInstanceID', 0);
         $this->RegisterAttributeInteger('AuxJVPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
+        $this->RegisterAttributeString('AuxJVModel', '');
+        $this->RegisterAttributeString('AuxWorkModel', '');
+        $this->RegisterAttributeString('AuxJVFirmware', '');
+        $this->RegisterAttributeString('AuxWorkFirmware', '');
+        $this->RegisterAttributeString('AuxJVSensitivity', '');
+        $this->RegisterAttributeString('AuxWorkSensitivity', '');
         $this->RegisterAttributeString('P03HumanEvents', '[]');
         $this->RegisterAttributeString('P03PendingCrossings', '[]');
         $this->RegisterAttributeString('P03DirectionMap', '{}');
@@ -1797,11 +1803,11 @@ class JVPresenceP03TerraceTest extends IPSModule
         return ['ok' => true, 'error' => '', 'http' => $http, 'body' => (string) $body];
     }
 
-    /** @return array{ok:bool,error:string,model:string,sensitivity:string} */
+    /** @return array{ok:bool,error:string,model:string,firmware:string,sensitivity:string} */
     private function auditP03AuxCamera(int $instanceID, string $role): array
     {
         if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
-            return ['ok' => false, 'error' => $role . ': Instanz fehlt', 'model' => '', 'sensitivity' => ''];
+            return ['ok' => false, 'error' => $role . ': Instanz fehlt', 'model' => '', 'firmware' => '', 'sensitivity' => ''];
         }
 
         try {
@@ -1810,7 +1816,7 @@ class JVPresenceP03TerraceTest extends IPSModule
             $username = (string) IPS_GetProperty($instanceID, 'Username');
             $password = (string) IPS_GetProperty($instanceID, 'Password');
         } catch (Throwable $e) {
-            return ['ok' => false, 'error' => $role . ': Kamerakonfiguration nicht lesbar', 'model' => '', 'sensitivity' => ''];
+            return ['ok' => false, 'error' => $role . ': Kamerakonfiguration nicht lesbar', 'model' => '', 'firmware' => '', 'sensitivity' => ''];
         }
 
         $type = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/magicBox.cgi?action=getDeviceType');
@@ -1821,9 +1827,17 @@ class JVPresenceP03TerraceTest extends IPSModule
             }
         }
 
+        $version = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/magicBox.cgi?action=getSoftwareVersion');
+        $firmware = '';
+        if ($version['ok'] ?? false) {
+            if (preg_match('/(?:^|\r?\n)version=([^\r\n]+)/i', (string) $version['body'], $m)) {
+                $firmware = trim((string) $m[1]);
+            }
+        }
+
         $smart = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
         if (!($smart['ok'] ?? false)) {
-            return ['ok' => false, 'error' => $role . ': SmartMotionDetect nicht lesbar', 'model' => $model, 'sensitivity' => ''];
+            return ['ok' => false, 'error' => $role . ': SmartMotionDetect nicht lesbar', 'model' => $model, 'firmware' => $firmware, 'sensitivity' => ''];
         }
 
         $raw = (string) $smart['body'];
@@ -1855,6 +1869,7 @@ class JVPresenceP03TerraceTest extends IPSModule
             'P03 AUX AUDIT ' . $role
                 . ': host=' . $host
                 . ', model=' . ($model !== '' ? $model : '<nicht gemeldet>')
+                . ', firmware=' . ($firmware !== '' ? $firmware : '<nicht gemeldet>')
                 . ', SMD=' . (string) $enable
                 . ', Human=' . (string) $human
                 . ', Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
@@ -1867,6 +1882,7 @@ class JVPresenceP03TerraceTest extends IPSModule
             'ok' => $ok,
             'error' => $ok ? '' : ($role . ': SMD Human/PersonDetected nicht vollständig aktiv'),
             'model' => $model,
+            'firmware' => $firmware,
             'sensitivity' => $sensitivity
         ];
     }
@@ -1878,6 +1894,13 @@ class JVPresenceP03TerraceTest extends IPSModule
         $work = $this->ReadAttributeInteger('AuxWorkInstanceID');
         $jvAudit = $this->auditP03AuxCamera($jv, self::AUX_JV_ROLE);
         $workAudit = $this->auditP03AuxCamera($work, self::AUX_WORK_ROLE);
+
+        $this->WriteAttributeString('AuxJVModel', (string) ($jvAudit['model'] ?? ''));
+        $this->WriteAttributeString('AuxWorkModel', (string) ($workAudit['model'] ?? ''));
+        $this->WriteAttributeString('AuxJVFirmware', (string) ($jvAudit['firmware'] ?? ''));
+        $this->WriteAttributeString('AuxWorkFirmware', (string) ($workAudit['firmware'] ?? ''));
+        $this->WriteAttributeString('AuxJVSensitivity', (string) ($jvAudit['sensitivity'] ?? ''));
+        $this->WriteAttributeString('AuxWorkSensitivity', (string) ($workAudit['sensitivity'] ?? ''));
 
         $ok = ($jvAudit['ok'] ?? false) && ($workAudit['ok'] ?? false);
         $this->WriteAttributeBoolean('P03MultiAuditPassed', $ok);
@@ -1904,7 +1927,9 @@ class JVPresenceP03TerraceTest extends IPSModule
             'P03CameraStatus',
             'Terrasse=' . ($terrace > 0 ? 'OK#' . $terrace : 'FEHLT')
                 . ' | JV-links=' . ($jvVar > 0 ? 'OK#' . $jv : 'FEHLT')
+                . ($this->ReadAttributeString('AuxJVModel') !== '' ? ' ' . $this->ReadAttributeString('AuxJVModel') : '')
                 . ' | Werkstatt-links=' . ($workVar > 0 ? 'OK#' . $work : 'FEHLT')
+                . ($this->ReadAttributeString('AuxWorkModel') !== '' ? ' ' . $this->ReadAttributeString('AuxWorkModel') : '')
         );
     }
 
