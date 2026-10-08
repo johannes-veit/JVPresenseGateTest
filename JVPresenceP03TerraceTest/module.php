@@ -524,6 +524,35 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->appendProtocol('Quelle: JV Terrasse / ' . $cfg['host'] . ':' . $cfg['port']);
         $this->appendProtocol('Keine Zugangsdaten werden im Protokoll ausgegeben.');
 
+        // Multi-camera preflight: JV Terrasse provides the physical boundary,
+        // the two mast cameras provide human confirmation on both sides.
+        $auxDiscovery = $this->discoverP03AuxSources(true);
+        $this->subscribeP03AuxVariables();
+        $this->refreshP03CameraStatus();
+        if (!($auxDiscovery['ok'] ?? false)) {
+            $this->setResult('FEHLER – P03 Zusatzkameras nicht vollständig verfügbar. JV-links und Werkstatt-links müssen PersonDetected liefern.');
+            $this->appendProtocol('P03 PREFLIGHT FEHLER: Zusatzkameras/PersonDetected fehlen.');
+            return;
+        }
+
+        $auxAudit = $this->auditP03AuxCameras();
+        if (!($auxAudit['ok'] ?? false)) {
+            $this->setResult('FEHLER – P03 Zusatzkamera-Audit: ' . (string) ($auxAudit['error'] ?? 'unbekannt'));
+            return;
+        }
+
+        $simulation = $this->runP03SimulationInternal();
+        $simOK = (bool) ($simulation['ok'] ?? false);
+        $this->WriteAttributeBoolean('P03SimulationPassed', $simOK);
+        $this->appendProtocol(
+            'P03 SIMULATION VOR LAUFTEST: ' . ($simOK ? 'PASS' : 'FAIL')
+                . ' – ' . implode(' | ', $simulation['details'] ?? [])
+        );
+        if (!$simOK) {
+            $this->setResult('FEHLER – interne P03-Simulation fehlgeschlagen. Kein Lauftest.');
+            return;
+        }
+
         if ($this->ReadAttributeBoolean('Rpc2ModuleChangedByModule')) {
             $this->appendProtocol('Vorherige P03-Sensitivity-Teständerung wird zuerst auf den Ausgangswert zurückgesetzt.');
             $restoreModule = $this->restoreOriginalVideoAnalyseModuleViaRpc2();
@@ -801,9 +830,32 @@ class JVPresenceP03TerraceTest extends IPSModule
 
     public function EnableProductionP03(): void
     {
-        $this->WriteAttributeBoolean('ProductionEnabled', false);
+        $direction = P03ProofEngine::directionStatus(
+            json_decode($this->ReadAttributeString('P03DirectionMap'), true) ?: []
+        );
+
+        $ready = $this->ReadAttributeBoolean('P03MultiAuditPassed')
+            && $this->ReadAttributeBoolean('P03SimulationPassed')
+            && ($direction['stable'] ?? false)
+            && $this->ReadAttributeInteger('P03VerifiedCount') >= 4
+            && $this->ReadAttributeInteger('RuleIndex') >= 0
+            && $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0;
+
+        if (!$ready) {
+            $this->WriteAttributeBoolean('ProductionEnabled', false);
+            $this->refreshProductionState();
+            $this->setResult('P03 Produktivbetrieb gesperrt – zuerst Gesamtaudit + mindestens 4 verifizierte Mehrkamera-Übergänge mit stabiler Richtungszuordnung.');
+            return;
+        }
+
+        $this->WriteAttributeBoolean('TestActive', false);
+        $this->SetValue('TestActive', false);
+        $this->WriteAttributeBoolean('ProductionEnabled', true);
+        $this->subscribeP03AuxVariables();
         $this->refreshProductionState();
-        $this->setResult('P03 Produktivbetrieb noch gesperrt – zuerst 4-Schritt-Richtungstest HOME→LAGER→HOME→LAGER→HOME durchführen.');
+        $this->setResult('P03 PRODUKTIV – Mehrkamera-Proof aktiv. Nur VERIFIED/STRONG_VERIFIED erzeugt einen Zonenwechsel.');
+        $this->appendProtocol('PRODUKTION: P03 Mehrkamera-Proof aktiviert.');
     }
 
     public function DisableProductionP03(): void
@@ -822,6 +874,8 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->WriteAttributeString('P03PendingCrossings', '[]');
         $this->WriteAttributeString('P03DirectionMap', '{}');
         $this->WriteAttributeInteger('P03VerifiedCount', 0);
+        $this->WriteAttributeBoolean('P03MultiAuditPassed', false);
+        $this->WriteAttributeBoolean('P03SimulationPassed', false);
         $this->WriteAttributeBoolean('TestActive', false);
         $this->SetTimerInterval('P03ProofTimer', 0);
         $this->SetValue('TestActive', false);
@@ -879,6 +933,16 @@ class JVPresenceP03TerraceTest extends IPSModule
             'globalChangedByModule' => $this->ReadAttributeBoolean('GlobalChangedByModule'),
             'rpc2GlobalChangedByModule' => $this->ReadAttributeBoolean('Rpc2GlobalChangedByModule'),
             'testActive' => $this->ReadAttributeBoolean('TestActive'),
+            'auxJVInstanceID' => $this->ReadAttributeInteger('AuxJVInstanceID'),
+            'auxWorkInstanceID' => $this->ReadAttributeInteger('AuxWorkInstanceID'),
+            'auxJVPersonVarID' => $this->ReadAttributeInteger('AuxJVPersonVarID'),
+            'auxWorkPersonVarID' => $this->ReadAttributeInteger('AuxWorkPersonVarID'),
+            'p03HumanEvents' => $this->getP03HumanEvents(),
+            'p03PendingCrossings' => $this->getP03PendingCrossings(),
+            'p03DirectionMap' => json_decode($this->ReadAttributeString('P03DirectionMap'), true),
+            'p03VerifiedCount' => $this->ReadAttributeInteger('P03VerifiedCount'),
+            'p03SimulationPassed' => $this->ReadAttributeBoolean('P03SimulationPassed'),
+            'p03MultiAuditPassed' => $this->ReadAttributeBoolean('P03MultiAuditPassed'),
             'crossings' => $this->getCrossings()
         ];
         $this->SendDebug('GateTestState', json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
@@ -3689,10 +3753,17 @@ class JVPresenceP03TerraceTest extends IPSModule
         $ruleReady = $this->ReadAttributeInteger('RuleIndex') >= 0;
         $stream = $this->ReadAttributeBoolean('Streaming');
         $active = $this->ReadAttributeBoolean('TestActive');
-        $ready = $ruleReady && $stream && $active;
+        $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0;
+        $preflight = $this->ReadAttributeBoolean('P03MultiAuditPassed')
+            && $this->ReadAttributeBoolean('P03SimulationPassed');
+
+        $ready = $ruleReady && $stream && $active && $auxReady && $preflight;
         $this->setReady($ready);
         if ($ready && $this->GetValue('CrossingCount') === 0) {
-            $this->setResult('BEREIT – jetzt OUT → IN → OUT → IN durch das P03-Grenze gehen.');
+            $this->setResult(
+                'BEREIT – P03 Mehrkamera-Test aktiv: CrossLine JV Terrasse + Human-Bestätigung JV-links/Werkstatt-links. Normal HOME→LAGER und zurück gehen.'
+            );
         }
     }
 
