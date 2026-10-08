@@ -5,13 +5,19 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/libs/DahuaDigest.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/GateTestLogic.php';
+require_once dirname(__DIR__) . '/libs/P03ProofEngine.php';
 
 class JVPresenceP03TerraceTest extends IPSModule
 {
     private const CLIENT_SOCKET_GUID = '{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}';
     private const SOCKET_TX_GUID = '{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}';
     private const ALA2_MODULE_GUID = '{5E08D4EE-9727-4682-A23E-E8625EB2337E}';
+    private const VM_UPDATE_ID = 10603;
     private const IM_CHANGESTATUS_ID = 10505;
+    private const AUX_JV_DEFAULT_HOST = '192.168.107.96';
+    private const AUX_WORK_DEFAULT_HOST = '192.168.107.99';
+    private const AUX_JV_ROLE = 'JV_LEFT';
+    private const AUX_WORK_ROLE = 'WORK_LEFT';
     private const RULE_NAME = 'P03_HOME_LAGER';
     // Aktuelle rote P03-Grenzlinie aus dem Bild vom 07.10.2026:
     // Sie deckt jetzt neben dem P03-Grenze auch die links liegende Personentür ab.
@@ -36,6 +42,11 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->RegisterPropertyBoolean('Enabled', true);
         $this->RegisterPropertyBoolean('AutoDiscover', true);
         $this->RegisterPropertyInteger('SourceCameraInstanceID', 0);
+        $this->RegisterPropertyString('AuxJVHost', self::AUX_JV_DEFAULT_HOST);
+        $this->RegisterPropertyString('AuxWorkHost', self::AUX_WORK_DEFAULT_HOST);
+        $this->RegisterPropertyBoolean('AutoCreateWorkObserver', true);
+        $this->RegisterPropertyInteger('NearProofWindowSeconds', 30);
+        $this->RegisterPropertyInteger('TerraceProofWindowSeconds', 60);
 
         // Exakt aus der vom Nutzer rot markierten P03-Linie im markierten Livebild der Kamera JV Terrasse abgeleitet.
         // Bild 1536x691 px -> Dahua-IVS-Koordinaten 0..8191.
@@ -85,10 +96,27 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->RegisterAttributeInteger('LastProductionEvent', 0);
         $this->RegisterAttributeBoolean('CoverageDebt', true);
 
+        // P03 multi-camera proof state.
+        $this->RegisterAttributeInteger('AuxJVInstanceID', 0);
+        $this->RegisterAttributeInteger('AuxWorkInstanceID', 0);
+        $this->RegisterAttributeInteger('AuxJVPersonVarID', 0);
+        $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
+        $this->RegisterAttributeString('P03HumanEvents', '[]');
+        $this->RegisterAttributeString('P03PendingCrossings', '[]');
+        $this->RegisterAttributeString('P03DirectionMap', '{}');
+        $this->RegisterAttributeInteger('P03VerifiedCount', 0);
+        $this->RegisterAttributeBoolean('P03SimulationPassed', false);
+        $this->RegisterAttributeBoolean('P03MultiAuditPassed', false);
+
         $this->RegisterVariableString('PresenceSystemState', 'Presence Systemstatus', '', 1);
         $this->RegisterVariableString('HouseStatus', 'Hausstatus', '', 2);
         $this->RegisterVariableString('PresentPersons', 'Anwesende Personen', '', 3);
         $this->RegisterVariableString('PresenceLastEvent', 'Letztes Presence-Ereignis', '', 4);
+        $this->RegisterVariableString('P03CameraStatus', 'P03 Kamerastatus', '', 5);
+        $this->RegisterVariableString('P03ProofState', 'P03 Beweisstatus', '', 6);
+        $this->RegisterVariableString('P03LastProof', 'P03 letzter Beweis', '', 7);
+        $this->RegisterVariableInteger('P03VerifiedTransfers', 'P03 verifizierte Übergänge', '', 8);
+        $this->RegisterVariableString('P03DirectionStatus', 'P03 Richtungslernen', '', 9);
 
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 10);
         $this->RegisterVariableBoolean('Ready', 'Test bereit', '~Switch', 20);
@@ -102,6 +130,7 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03_SocketRestartTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('Watchdog', 15000, 'JVP03_Watchdog($_IPS["TARGET"]);');
         $this->RegisterTimer('ProductionCommitTimer', 0, 'JVP03_ProductionCommitTimer($_IPS["TARGET"]);');
+        $this->RegisterTimer('P03ProofTimer', 0, 'JVP03_P03ProofTimer($_IPS["TARGET"]);');
 
         $this->RequireParent(self::CLIENT_SOCKET_GUID);
     }
@@ -113,6 +142,7 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
         $this->SetTimerInterval('ProductionCommitTimer', 0);
+        $this->SetTimerInterval('P03ProofTimer', 0);
         $this->SetBuffer('ProductionPending', '[]');
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
@@ -136,6 +166,9 @@ class JVPresenceP03TerraceTest extends IPSModule
 
         $this->syncParentSocket();
         $this->updateParentSubscription($this->getParentID());
+        $this->discoverP03AuxSources(false);
+        $this->subscribeP03AuxVariables();
+        $this->refreshP03CameraStatus();
         $this->setResult('Installiert. Nachts: „Kamera-Konfiguration prüfen“. Tagsüber: „Test vorbereiten & starten“.');
 
         if ($this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
