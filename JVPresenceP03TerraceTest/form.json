@@ -42,6 +42,10 @@
         {
           "type": "Label",
           "caption": "Standard: JV Terrasse 192.168.107.110, Lagerplatz JV links 192.168.107.96, Lagerplatz Werkstatt links 192.168.107.99. Bei automatisch angelegter Werkstatt-links-Instanz bleibt die Lichtautomatik AUS."
+        },
+        {
+          "type": "Label",
+          "caption": "Beim Gesamtaudit werden die beiden Mast-IPC – sofern vom Modell/Firmware unterstützt – auf Smart Motion Detection: Human + Sensitivity High geprüft und bei Bedarf gesetzt; Motion Detection wird nur dann aktiviert, wenn die Kamera sie als SMD-Voraussetzung deaktiviert meldet. Danach erfolgt jeweils ein Readback."
         }
       ]
     },
