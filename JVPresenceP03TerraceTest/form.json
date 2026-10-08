@@ -60,21 +60,25 @@
         {
           "type": "NumberSpinner",
           "name": "TerraceProofWindowSeconds",
-          "caption": "Fallback-Zeitfenster JV Terrasse Human (s)",
+          "caption": "Zeitfenster JV Terrasse Human / Fallback (s)",
           "minimum": 10,
           "maximum": 180
         },
         {
           "type": "Label",
-          "caption": "HOME→LAGER: Human auf HOME-Seite vor CrossLine + Human Werkstatt-Seite danach. LAGER→HOME: Human Werkstatt-Seite vor CrossLine + Human HOME-Seite danach."
+          "caption": "Primär mit CrossLine: HOME→LAGER = HOME-seitige Human-Erkennung vor Linie + Werkstatt-seitige Human-Erkennung danach. LAGER→HOME entsprechend umgekehrt."
         },
         {
           "type": "Label",
-          "caption": "Primär werden die beiden nahen Mastkameras korreliert. JV Terrasse Human ist nur Fallback/Zusatzbeweis. Die CrossLine selbst läuft generisch mit ObjectTypes=Unknown; reine CrossLine oder nur eine Personenbestätigung verändert keinen Presence-Zustand."
+          "caption": "Fallback ohne CrossLine: alle 3 Kameras müssen in plausibler Reihenfolge feuern. OUT: JV Terrasse → Lagerplatz JV links → Lagerplatz Werkstatt links. IN: Werkstatt links → JV links → JV Terrasse."
         },
         {
           "type": "Label",
-          "caption": "Die CrossLine-Richtung wird automatisch aus verifizierten Mehrkamera-Sequenzen gelernt. Erst nach mindestens 4 verifizierten Übergängen und stabiler Zuordnung kann P03 produktiv freigegeben werden."
+          "caption": "Reine CrossLine, nur eine Personenerkennung oder falsche/gleichzeitige widersprüchliche Reihenfolgen buchen keinen Übergang. Ereignisse werden nach Benutzung nicht wiederverwendet."
+        },
+        {
+          "type": "Label",
+          "caption": "Produktfreigabe erst nach mindestens 2× HOME→LAGER und 2× LAGER→HOME. CrossLine-Richtung wird zusätzlich automatisch gelernt, ist wegen des 3-Kamera-Fallbacks aber nicht alleinige Voraussetzung."
         }
       ]
     }
