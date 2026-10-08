@@ -1,0 +1,63 @@
+name: P03 CI
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP version
+        run: php -v
+      - name: PHP lint
+        run: |
+          set -e
+          find . -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: JSON syntax
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          for p in pathlib.Path('.').rglob('*.json'):
+              with p.open('r', encoding='utf-8') as f:
+                  json.load(f)
+              print('OK', p)
+          PY
+      - name: P03 proof engine simulations
+        run: php tests/P03ProofEngineTest.php
+      - name: Static P03 module contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('JVPresenceP03TerraceTest/module.php').read_text(encoding='utf-8')
+          required=[
+            "require_once dirname(__DIR__) . '/libs/P03ProofEngine.php';",
+            "private const AUX_JV_DEFAULT_HOST = '192.168.107.96';",
+            "private const AUX_WORK_DEFAULT_HOST = '192.168.107.99';",
+            "recordP03HumanEvent",
+            "recordP03Crossing",
+            "evaluateP03Pending",
+            "evaluateP03NoLineFallback",
+            "runP03SimulationInternal",
+            "auditP03AuxCameras",
+            "P03ProofTimer",
+            "ObjectTypes=Unknown",
+            "Sensitivity=10"
+          ]
+          missing=[x for x in required if x not in s]
+          if missing:
+              raise SystemExit('Missing required P03 contracts: '+repr(missing))
+          forbidden=[
+            "ProductionCommitTimer",
+            "ProductionPending",
+            "processProductionCrossLine",
+            "UnknownOccupants",
+            "PortalBalance"
+          ]
+          stale=[x for x in forbidden if x in s]
+          if stale:
+              raise SystemExit('Stale production code remains: '+repr(stale))
+          print('P03 module static contract PASS')
+          PY
