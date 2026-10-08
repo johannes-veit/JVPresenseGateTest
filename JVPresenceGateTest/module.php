@@ -488,49 +488,67 @@ class JVPresenceGateTest extends IPSModule
             $this->appendProtocol('SmartMotionDetect vorher: ' . $smartBefore);
         }
 
-        $globalRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseGlobal');
-        if (!$globalRaw['ok']) {
-            $this->setResult('FEHLER – VideoAnalyseGlobal konnte über die Dahua-HTTP-API nicht gelesen werden: ' . $globalRaw['error']);
-            return;
-        }
-        $globalType = GateTestLogic::configValue($globalRaw['body'], 'VideoAnalyseGlobal[0].Scene.Type');
-        if ($globalType === null) {
-            $this->setResult('FEHLER – Dahua liefert VideoAnalyseGlobal[0].Scene.Type nicht zurück. Keine IVS-Änderung vorgenommen.');
-            $this->appendProtocol('SICHERHEITSABBRUCH: Scene.Type konnte vor dem Schreiben nicht eindeutig gelesen werden.');
+        $sceneState = $this->readVideoAnalyseSceneState();
+        if (!($sceneState['ok'] ?? false)) {
+            $this->setResult('FEHLER – VideoAnalyseGlobal konnte nicht eindeutig gelesen werden: ' . (string) ($sceneState['error'] ?? ''));
+            $this->appendProtocol('SICHERHEITSABBRUCH: ' . (string) ($sceneState['error'] ?? 'Scene.Type unbekannt'));
             return;
         }
 
-        $this->appendProtocol('VideoAnalyseGlobal Scene.Type vorher: ' . ($globalType === '' ? '<leer>' : $globalType));
-        $normalized = strtolower(trim($globalType));
+        $globalType = $sceneState['type'] ?? null;
+        $cgiTypeBefore = $sceneState['cgiType'] ?? null;
+        $this->appendProtocol(
+            'VideoAnalyseGlobal Scene.Type vorher: RPC2=' . ($globalType === null ? '<null>' : (string) $globalType) .
+            ', CGI=' . ($cgiTypeBefore === null ? '<nicht ausgegeben>' : ((string) $cgiTypeBefore === '' ? '<leer>' : (string) $cgiTypeBefore))
+        );
+
+        $normalized = strtolower(trim((string) ($globalType ?? '')));
         if ($normalized === '' || $normalized === '0') {
-            // Laut Dahua HTTP API ist dies der dokumentierte Aktivierungspfad
-            // für die Normal-IVS-Szene:
-            // configManager.cgi?action=setConfig&VideoAnalyseGlobal[0].Scene.Type=Normal
-            $this->WriteAttributeString('OriginalGlobalSceneType', $globalType);
+            // Exakte Originaltabelle sichern. Auf dieser Taurus/Web5-Firmware
+            // repräsentiert RPC2 den inaktiven Smart-Plan als Scene.Type=null,
+            // während CGI die Zeile häufig komplett weglässt.
+            $originalGlobalTable = $sceneState['table'] ?? null;
+            if (!is_array($originalGlobalTable)) {
+                $this->setResult('FEHLER – vollständiges VideoAnalyseGlobal-Backup fehlt. Keine IVS-Änderung vorgenommen.');
+                return;
+            }
+            $backupJson = json_encode($originalGlobalTable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (!is_string($backupJson) || $backupJson === '') {
+                $this->setResult('FEHLER – VideoAnalyseGlobal-Backup konnte nicht erzeugt werden.');
+                return;
+            }
+            $this->WriteAttributeString('OriginalVideoAnalyseGlobalRpc2', $backupJson);
+            $this->WriteAttributeString('OriginalGlobalSceneType', (string) ($globalType ?? ''));
+
+            // Dokumentierter Dahua-HTTP-API-Befehl für die aktive IVS-Normal-Szene.
             $setGlobal = $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => 'Normal']);
             if (!$setGlobal['ok']) {
                 $this->setResult('FEHLER – Dahua hat Scene.Type=Normal nicht akzeptiert: ' . $setGlobal['error']);
                 return;
             }
 
-            $verifyGlobalRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseGlobal');
-            $verifyGlobalType = $verifyGlobalRaw['ok']
-                ? GateTestLogic::configValue($verifyGlobalRaw['body'], 'VideoAnalyseGlobal[0].Scene.Type')
-                : null;
-            if ($verifyGlobalType !== 'Normal') {
-                // Best effort sofort zurücksetzen, falls das Rücklesen nicht exakt stimmt.
-                $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => $globalType]);
-                $this->setResult('FEHLER – Scene.Type=Normal wurde nach dem Schreiben nicht eindeutig zurückgelesen.');
-                $this->appendProtocol('SICHERHEITSABBRUCH: Scene.Type Readback=' . json_encode($verifyGlobalType));
+            // Doppelte Verifikation: CGI UND strukturiertes RPC2 müssen Normal zeigen.
+            $verifyState = $this->readVideoAnalyseSceneState();
+            $verifyRpcType = $verifyState['type'] ?? null;
+            $verifyCgiType = $verifyState['cgiType'] ?? null;
+            if (!($verifyState['ok'] ?? false) || $verifyRpcType !== 'Normal' || $verifyCgiType !== 'Normal') {
+                // Exakte Originaltabelle zurückspielen, nicht mit geratenem Leerwert.
+                $restore = $this->restoreVideoAnalyseGlobalTable($originalGlobalTable);
+                $this->setResult('FEHLER – Scene.Type=Normal wurde nicht über beide Dahua-APIs bestätigt.');
+                $this->appendProtocol(
+                    'SICHERHEITSABBRUCH: Readback RPC2=' . json_encode($verifyRpcType) .
+                    ', CGI=' . json_encode($verifyCgiType) .
+                    ', Rollback=' . (($restore['ok'] ?? false) ? 'OK' : 'FEHLER')
+                );
                 return;
             }
 
             $this->WriteAttributeBoolean('GlobalChangedByModule', true);
-            $this->appendProtocol('DAHUA HTTP API VERIFY: VideoAnalyseGlobal[0].Scene.Type=Normal -> OK.');
+            $this->appendProtocol('DAHUA VERIFY: Scene.Type=Normal über CGI + RPC2 bestätigt.');
         } elseif ($normalized === 'normal') {
-            $this->appendProtocol('DAHUA HTTP API VERIFY: Scene.Type=Normal war bereits aktiv.');
+            $this->appendProtocol('DAHUA VERIFY: Scene.Type=Normal war bereits aktiv.');
         } else {
-            $this->setResult('STOP – Kamera nutzt bereits einen anderen AI-Smart-Plan (' . $globalType . '). Es wurde nichts umgestellt.');
+            $this->setResult('STOP – Kamera nutzt bereits einen anderen AI-Smart-Plan (' . (string) $globalType . '). Es wurde nichts umgestellt.');
             $this->appendProtocol('Abbruch zum Schutz vorhandener AI-Konfiguration.');
             return;
         }
@@ -1289,6 +1307,59 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeBoolean('RuleCreatedByModule', false);
         $this->WriteAttributeInteger('RuleIndex', -1);
         return ['ok' => true, 'error' => ''];
+    }
+
+    /**
+     * Liest VideoAnalyseGlobal robust. Manche Taurus/Web5-Firmwares lassen
+     * Scene.Type im CGI-Flat-Output vollständig weg, solange kein Smart-Plan
+     * aktiv ist. RPC2 liefert denselben Zustand strukturiert als null.
+     *
+     * @return array{ok:bool,type:mixed,table?:array,error:string,cgiType:?string}
+     */
+    private function readVideoAnalyseSceneState(): array
+    {
+        $cgi = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseGlobal');
+        if (!($cgi['ok'] ?? false)) {
+            return ['ok' => false, 'type' => null, 'error' => 'CGI VideoAnalyseGlobal nicht lesbar: ' . (string) ($cgi['error'] ?? ''), 'cgiType' => null];
+        }
+
+        $cgiType = GateTestLogic::configValue((string) ($cgi['body'] ?? ''), 'VideoAnalyseGlobal[0].Scene.Type');
+
+        $cfg = $this->cameraConfiguration();
+        $login = $this->rpc2Login(
+            (string) ($cfg['host'] ?? ''),
+            (int) ($cfg['port'] ?? 80),
+            (string) ($cfg['username'] ?? ''),
+            (string) ($cfg['password'] ?? '')
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'type' => null, 'error' => 'RPC2-Login fehlgeschlagen: ' . (string) ($login['error'] ?? ''), 'cgiType' => $cgiType];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+        $rpc = $this->rpc2Call($host, $port, $session, 120, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+        $this->rpc2Call($host, $port, $session, 129, 'global.logout', null);
+
+        $table = $rpc['json']['params']['table'] ?? null;
+        if (!($rpc['ok'] ?? false) || !is_array($table) || !isset($table[0]['Scene']) || !is_array($table[0]['Scene'])) {
+            return ['ok' => false, 'type' => null, 'error' => 'RPC2 VideoAnalyseGlobal-Struktur nicht lesbar', 'cgiType' => $cgiType];
+        }
+
+        $rpcType = $table[0]['Scene']['Type'] ?? null;
+        // Falls CGI einen expliziten Wert liefert, müssen beide APIs übereinstimmen.
+        if ($cgiType !== null && $rpcType !== null && (string) $cgiType !== (string) $rpcType) {
+            return [
+                'ok' => false,
+                'type' => $rpcType,
+                'table' => $table,
+                'error' => 'CGI/RPC2 Scene.Type widersprüchlich: CGI=' . json_encode($cgiType) . ', RPC2=' . json_encode($rpcType),
+                'cgiType' => $cgiType
+            ];
+        }
+
+        return ['ok' => true, 'type' => $rpcType, 'table' => $table, 'error' => '', 'cgiType' => $cgiType];
     }
 
     /**
@@ -2191,18 +2262,69 @@ class JVPresenceGateTest extends IPSModule
         return $result;
     }
 
+    /** @param array<int,mixed> $table
+     *  @return array{ok:bool,error:string}
+     */
+    private function restoreVideoAnalyseGlobalTable(array $table): array
+    {
+        $cfg = $this->cameraConfiguration();
+        $login = $this->rpc2Login(
+            (string) ($cfg['host'] ?? ''),
+            (int) ($cfg['port'] ?? 80),
+            (string) ($cfg['username'] ?? ''),
+            (string) ($cfg['password'] ?? '')
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'error' => 'RPC2-Login fehlgeschlagen'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+        $restore = $this->rpc2Call(
+            $host, $port, $session, 130,
+            'configManager.setConfig',
+            ['name' => 'VideoAnalyseGlobal', 'table' => $table, 'options' => []]
+        );
+        if (!($restore['ok'] ?? false)) {
+            $this->rpc2Call($host, $port, $session, 139, 'global.logout', null);
+            return ['ok' => false, 'error' => 'RPC2 Global-Restore abgelehnt'];
+        }
+
+        $verify = $this->rpc2Call($host, $port, $session, 131, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+        $this->rpc2Call($host, $port, $session, 139, 'global.logout', null);
+        $current = $verify['json']['params']['table'] ?? null;
+        if (!($verify['ok'] ?? false) || !is_array($current) || $current !== $table) {
+            return ['ok' => false, 'error' => 'RPC2 Global-Restore nicht identisch rückgelesen'];
+        }
+        return ['ok' => true, 'error' => ''];
+    }
+
     private function restoreGlobalSceneType(): void
     {
         if (!$this->ReadAttributeBoolean('GlobalChangedByModule')) {
             return;
         }
+
+        $raw = $this->ReadAttributeString('OriginalVideoAnalyseGlobalRpc2');
+        $table = json_decode($raw, true);
+        if (is_array($table)) {
+            $r = $this->restoreVideoAnalyseGlobalTable($table);
+            $this->appendProtocol(($r['ok'] ?? false)
+                ? 'VideoAnalyseGlobal exakt auf die gesicherte Originaltabelle zurückgesetzt.'
+                : 'WARNUNG: exakter VideoAnalyseGlobal-Restore fehlgeschlagen: ' . (string) ($r['error'] ?? ''));
+            if ($r['ok'] ?? false) {
+                $this->WriteAttributeBoolean('GlobalChangedByModule', false);
+            }
+            return;
+        }
+
+        // Nur für sehr alte Instanzen ohne Tabellen-Backup.
         $old = $this->ReadAttributeString('OriginalGlobalSceneType');
-        // Exakten Ausgangswert zurückschreiben. Die Dahua-HTTP-API akzeptiert
-        // für "kein aktiver IVS-Smart-Plan" auch einen leeren Scene.Type-Wert.
         $r = $this->cameraSet(['VideoAnalyseGlobal[0].Scene.Type' => $old]);
         $this->appendProtocol($r['ok']
-            ? 'VideoAnalyseGlobal Scene.Type auf Ausgangswert zurückgesetzt.'
-            : 'WARNUNG: Scene.Type konnte nicht zurückgesetzt werden: ' . $r['error']);
+            ? 'VideoAnalyseGlobal Scene.Type (Legacy-Restore) zurückgesetzt.'
+            : 'WARNUNG: Legacy-Scene.Type-Restore fehlgeschlagen: ' . $r['error']);
         if ($r['ok']) {
             $this->WriteAttributeBoolean('GlobalChangedByModule', false);
         }
