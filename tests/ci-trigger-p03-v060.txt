@@ -1,0 +1,1 @@
+P03 multi-camera validation trigger v0.6.0
