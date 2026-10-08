@@ -1,0 +1,81 @@
+{
+  "elements": [
+    {
+      "type": "Label",
+      "caption": "Separater P03-Test für HOME ↔ Lagerplatz über die Kamera JV Terrasse. P05/JV Hof Garage bleibt unverändert und produktiv aktiv."
+    },
+    {
+      "type": "CheckBox",
+      "name": "Enabled",
+      "caption": "P03-Testmodul aktiv"
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Automatik",
+      "expanded": true,
+      "items": [
+        {
+          "type": "CheckBox",
+          "name": "AutoDiscover",
+          "caption": "JV Terrasse automatisch finden"
+        },
+        {
+          "type": "SelectInstance",
+          "name": "SourceCameraInstanceID",
+          "caption": "Nur manuell, falls Automatik fehlschlägt"
+        },
+        {
+          "type": "Label",
+          "caption": "Normalfall: Auswahl leer lassen. Erwartete Quelle: JV Terrasse / 192.168.107.110."
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "P03 HOME ↔ Lagerplatz",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Rote Grenzlinie liegt weit im Hintergrund am Treppen-/Durchgangsbereich. Testkonfiguration: Human, MinSize=0, Type=ByLength, Sensitivity=7."
+        },
+        {
+          "type": "Label",
+          "caption": "Testfolge: HOME→LAGER → LAGER→HOME → HOME→LAGER → LAGER→HOME. Danach Protokoll senden. Erst wenn die Richtungen eindeutig gelernt sind, wird P03 produktiv freigegeben."
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Button",
+      "caption": "Kamera-Konfiguration prüfen (kein Lauftest)",
+      "onClick": "JVP03_AuditCameraConfiguration($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "P03 Test vorbereiten & starten",
+      "onClick": "JVP03_PrepareAndStartTest($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Test zurücksetzen",
+      "onClick": "JVP03_ResetTest($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Verbindung neu aufbauen",
+      "onClick": "JVP03_Reconnect($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "P03 Testregel + Sensitivity zurücksetzen",
+      "onClick": "JVP03_CleanupCameraTestConfig($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Zustand ins Debug schreiben",
+      "onClick": "JVP03_DumpState($id);"
+    }
+  ]
+}
