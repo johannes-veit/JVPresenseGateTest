@@ -2,16 +2,16 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "Separater P03-Test für HOME ↔ Lagerplatz über die Kamera JV Terrasse. P05/JV Hof Garage bleibt unverändert und produktiv aktiv."
+      "caption": "P03 Mehrkamera-Portal HOME ↔ Lagerplatz. JV Terrasse sieht als einzige Kamera die reale rote Grenzlinie; Lagerplatz JV links und Lagerplatz Werkstatt links bestätigen die Person auf beiden Seiten. P05/JV Hof Garage bleibt vollständig getrennt."
     },
     {
       "type": "CheckBox",
       "name": "Enabled",
-      "caption": "P03-Testmodul aktiv"
+      "caption": "P03-Modul aktiv"
     },
     {
       "type": "ExpansionPanel",
-      "caption": "Automatik",
+      "caption": "Kameras / automatische Zuordnung",
       "expanded": true,
       "items": [
         {
@@ -22,30 +22,59 @@
         {
           "type": "SelectInstance",
           "name": "SourceCameraInstanceID",
-          "caption": "Nur manuell, falls Automatik fehlschlägt"
+          "caption": "JV Terrasse nur manuell wählen, falls Automatik fehlschlägt"
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "AuxJVHost",
+          "caption": "Lagerplatz JV links – IP"
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "AuxWorkHost",
+          "caption": "Lagerplatz Werkstatt links – IP"
+        },
+        {
+          "type": "CheckBox",
+          "name": "AutoCreateWorkObserver",
+          "caption": "Falls Werkstatt-links noch keine Personenerkennungs-Instanz hat: automatisch reine Personenerkennung anlegen"
         },
         {
           "type": "Label",
-          "caption": "Normalfall: Auswahl leer lassen. Erwartete Quelle: JV Terrasse / 192.168.107.110."
+          "caption": "Standard: JV Terrasse 192.168.107.110, Lagerplatz JV links 192.168.107.96, Lagerplatz Werkstatt links 192.168.107.99. Bei automatisch angelegter Werkstatt-links-Instanz bleibt die Lichtautomatik AUS."
         }
       ]
     },
     {
       "type": "ExpansionPanel",
-      "caption": "P03 HOME ↔ Lagerplatz",
+      "caption": "P03 Beweislogik",
       "expanded": true,
       "items": [
         {
-          "type": "Label",
-          "caption": "Rote P03-Grenzlinie liegt weit im Hintergrund am Treppen-/Durchgangsbereich. Testkonfiguration: generische CrossLine mit ObjectTypes=Unknown, MinSize=0, Type=ByLength, Normal-IVS-Sensitivity=10."
+          "type": "NumberSpinner",
+          "name": "NearProofWindowSeconds",
+          "caption": "Zeitfenster Mastkameras (s)",
+          "minimum": 5,
+          "maximum": 120
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "TerraceProofWindowSeconds",
+          "caption": "Fallback-Zeitfenster JV Terrasse Human (s)",
+          "minimum": 10,
+          "maximum": 180
         },
         {
           "type": "Label",
-          "caption": "SmartMotionHuman bleibt parallel aktiv und dient später als zeitlich versetzte Personenbestätigung. Für den jetzigen Test zählt zunächst nur, ob die P03-CrossLine in beiden Richtungen zuverlässig auslöst."
+          "caption": "HOME→LAGER: Human auf HOME-Seite vor CrossLine + Human Werkstatt-Seite danach. LAGER→HOME: Human Werkstatt-Seite vor CrossLine + Human HOME-Seite danach."
         },
         {
           "type": "Label",
-          "caption": "Testfolge: HOME→LAGER → LAGER→HOME → HOME→LAGER → LAGER→HOME. Vor dem Lauftest zuerst immer „Kamera-Konfiguration prüfen“ ausführen."
+          "caption": "Primär werden die beiden nahen Mastkameras korreliert. JV Terrasse Human ist nur Fallback/Zusatzbeweis. Die CrossLine selbst läuft generisch mit ObjectTypes=Unknown; reine CrossLine oder nur eine Personenbestätigung verändert keinen Presence-Zustand."
+        },
+        {
+          "type": "Label",
+          "caption": "Die CrossLine-Richtung wird automatisch aus verifizierten Mehrkamera-Sequenzen gelernt. Erst nach mindestens 4 verifizierten Übergängen und stabiler Zuordnung kann P03 produktiv freigegeben werden."
         }
       ]
     }
@@ -53,28 +82,43 @@
   "actions": [
     {
       "type": "Button",
-      "caption": "Kamera-Konfiguration prüfen (kein Lauftest)",
+      "caption": "P03 Gesamtaudit – 3 Kameras (kein Lauftest)",
       "onClick": "JVP03_AuditCameraConfiguration($id);"
     },
     {
       "type": "Button",
-      "caption": "P03 Test vorbereiten & starten",
+      "caption": "Interne P03 Simulation ausführen",
+      "onClick": "JVP03_RunP03Simulation($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Zusatzkameras neu suchen / prüfen",
+      "onClick": "JVP03_P03AuxRescan($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "P03 Mehrkamera-Test vorbereiten & starten",
       "onClick": "JVP03_PrepareAndStartTest($id);"
     },
     {
       "type": "Button",
-      "caption": "Test zurücksetzen",
+      "caption": "P03 Produktivbetrieb aktivieren",
+      "onClick": "JVP03_EnableProductionP03($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "P03 Produktivbetrieb deaktivieren / Testkonfiguration zurücksetzen",
+      "onClick": "JVP03_DisableProductionP03($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Testzustand zurücksetzen",
       "onClick": "JVP03_ResetTest($id);"
     },
     {
       "type": "Button",
-      "caption": "Verbindung neu aufbauen",
+      "caption": "Terrassen-Eventstream neu aufbauen",
       "onClick": "JVP03_Reconnect($id);"
-    },
-    {
-      "type": "Button",
-      "caption": "P03 Testregel + Sensitivity zurücksetzen",
-      "onClick": "JVP03_CleanupCameraTestConfig($id);"
     },
     {
       "type": "Button",
