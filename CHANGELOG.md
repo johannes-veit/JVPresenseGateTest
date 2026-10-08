@@ -1,3 +1,14 @@
+# v0.6.2
+
+- P03-Grundtest und Simulation erweitert: zusätzliche Zeitfenster-Grenzfälle, fehlendes Dahua-Direction-Feld, Auswahl des grenznächsten Human-Ereignisses und 3-Kamera-Grenzwerte werden regressionsgeprüft.
+- Der reine P03-Gesamtaudit löscht bereits verifizierte Feldläufe und gelernte Richtungen nicht mehr; nur flüchtige Event-/Proof-Puffer werden für den Audit geleert.
+- Produktivfreigabe verlangt jetzt ausdrücklich einen laufenden Eventstream der JV-Terrasse, da dessen Human-Signal Bestandteil des Mehrkamera-Beweises bzw. Fallbacks ist.
+- Produktivstatus behandelt den zulässigen 3-Kamera-Fallback korrekt als produktiv, auch wenn die CrossLine-Richtung noch nicht stabil gelernt ist.
+- Dahua-SMD-Readback nach automatischer Konfiguration akzeptiert zusätzlich die Firmware-Variante ObjectTypes[0]=Human.
+- Wenn MotionDetect explizit aktiviert werden musste, ist danach ein eindeutiger TRUE-Readback Pflicht; ein unbekannter/fehlender Wert führt fail-closed zum Abbruch.
+- CI prüft nun zusätzlich die bestehende GateTestLogic sowie die gehärteten P03-Modulverträge.
+- Keine Änderung an P05 und keine Änderung an der P03-Grenzgeometrie.
+
 # v0.2.6
 
 - Nacht-/Konfigurations-Audit hinzugefügt: neuer Button `Kamera-Konfiguration prüfen (kein Lauftest)`.

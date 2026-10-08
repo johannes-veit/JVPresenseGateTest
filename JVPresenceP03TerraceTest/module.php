@@ -501,7 +501,22 @@ class JVPresenceP03TerraceTest extends IPSModule
     public function PrepareAndStartTest(): void
     {
         $auditOnly = $this->ReadAttributeBoolean('AuditOnlyNextRun');
-        $this->ResetTest();
+        if ($auditOnly) {
+            // Read-only/commissioning audit must not erase already verified field evidence.
+            // Only transient stream/proof buffers are cleared.
+            $this->WriteAttributeString('SeenEventKeys', '{}');
+            $this->WriteAttributeString('P03HumanEvents', '[]');
+            $this->WriteAttributeString('P03PendingCrossings', '[]');
+            $this->WriteAttributeBoolean('TestActive', false);
+            $this->SetTimerInterval('P03ProofTimer', 0);
+            $this->SetValue('TestActive', false);
+            $this->SetValue('CrossingCount', 0);
+            $this->SetValue('LastEvent', '');
+            $this->SetValue('Protocol', '');
+            $this->setReady(false);
+        } else {
+            $this->ResetTest();
+        }
 
         // Bei jedem Tastendruck frisch auflösen. Dadurch funktioniert der Test auch,
         // wenn die Instanz nach dem ersten ApplyChanges umbenannt/verschoben wurde
@@ -845,12 +860,13 @@ class JVPresenceP03TerraceTest extends IPSModule
             && $in >= 2
             && $this->ReadAttributeInteger('P03VerifiedCount') >= 4
             && $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0;
+            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
+            && $this->ReadAttributeBoolean('Streaming');
 
         if (!$ready) {
             $this->WriteAttributeBoolean('ProductionEnabled', false);
             $this->refreshProductionState();
-            $this->setResult('P03 Produktivbetrieb gesperrt – zuerst Gesamtaudit + mindestens 2× HOME→LAGER und 2× LAGER→HOME verifizieren. CrossLine ist bevorzugt, 3-Kamera-Fallback ist zulässig.');
+            $this->setResult('P03 Produktivbetrieb gesperrt – Gesamtaudit, Simulation, 2× HOME→LAGER, 2× LAGER→HOME und laufender Terrassen-Eventstream sind erforderlich. CrossLine ist bevorzugt, 3-Kamera-Fallback ist zulässig.');
             return;
         }
 
@@ -1888,6 +1904,10 @@ class JVPresenceP03TerraceTest extends IPSModule
             $raw = (string) $smart['body'];
             $enable = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Enable');
             $human = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes.Human');
+            if ($human === null) {
+                $object0 = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes[0]');
+                $human = (strcasecmp((string) $object0, 'Human') === 0) ? 'true' : $human;
+            }
             $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
             $this->appendProtocol($role . ': SMD automatisch auf Human + High gesetzt und rückgelesen.');
         }
@@ -1922,7 +1942,16 @@ class JVPresenceP03TerraceTest extends IPSModule
             $motionEnable = ($motion['ok'] ?? false)
                 ? GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable')
                 : null;
-            $this->appendProtocol($role . ': MotionDetect als SMD-Voraussetzung aktiviert und rückgelesen.');
+            if ($motionEnable === null || strtolower((string) $motionEnable) !== 'true') {
+                return [
+                    'ok' => false,
+                    'error' => $role . ': MotionDetect-Readback nach Aktivierung nicht eindeutig TRUE',
+                    'model' => $model,
+                    'firmware' => $firmware,
+                    'sensitivity' => $sensitivity
+                ];
+            }
+            $this->appendProtocol($role . ': MotionDetect als SMD-Voraussetzung aktiviert und eindeutig TRUE rückgelesen.');
         }
 
         $personVar = $this->findPersonDetectedVariable($instanceID);
@@ -2035,10 +2064,16 @@ class JVPresenceP03TerraceTest extends IPSModule
         $direction = P03ProofEngine::directionStatus(
             json_decode($this->ReadAttributeString('P03DirectionMap'), true) ?: []
         );
+        $proofReady = $this->ReadAttributeBoolean('P03MultiAuditPassed')
+            && $this->ReadAttributeBoolean('P03SimulationPassed');
 
-        $state = ($streaming && $auxReady && ($direction['stable'] ?? false))
-            ? 'P03 PRODUKTIV – 3-Kamera-Proof'
-            : 'P03 DEGRADED – kein Übergang ohne vollständigen Proof';
+        if ($streaming && $auxReady && $proofReady) {
+            $state = ($direction['stable'] ?? false)
+                ? 'P03 PRODUKTIV – CrossLine + 3-Kamera-Proof'
+                : 'P03 PRODUKTIV – 3-Kamera-Fallback, CrossLine-Richtung noch lernend';
+        } else {
+            $state = 'P03 DEGRADED – kein Übergang ohne vollständigen Proof';
+        }
         $this->SetValue('PresenceSystemState', $state);
         $this->SetValue('HouseStatus', 'unverändert – P03 verschiebt nur HOME↔WORK');
         $this->SetValue('PresentPersons', 'unverändert durch P03');

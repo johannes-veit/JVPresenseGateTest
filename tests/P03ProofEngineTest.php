@@ -236,6 +236,79 @@ $r = P03ProofEngine::evaluateThreeCameraSequence(
 );
 assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam missing work-side camera rejected');
 
+// Missing Dahua Direction must not suppress a physically verified transfer.
+// Direction is only learned when the camera actually supplies it.
+$r = P03ProofEngine::evaluate(
+    c($base, ''),
+    [e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 5), e('w1', P03ProofEngine::SRC_WORK_LEFT, $base + 5)],
+    $base + 6
+);
+assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'CrossLine without Direction still verifies');
+assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER, $r['action'], 'CrossLine without Direction action');
+
+// Exact near-window boundaries are valid.
+$r = P03ProofEngine::evaluate(
+    c($base),
+    [e('j-edge', P03ProofEngine::SRC_JV_LEFT, $base - 30), e('w-edge', P03ProofEngine::SRC_WORK_LEFT, $base + 30)],
+    $base + 31,
+    30.0,
+    60.0
+);
+assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'Exact near-window edge accepted');
+
+// A same-side event just outside the permitted window may not be used.
+$r = P03ProofEngine::evaluate(
+    c($base),
+    [e('j-stale-edge', P03ProofEngine::SRC_JV_LEFT, $base - 30.01), e('w-new', P03ProofEngine::SRC_WORK_LEFT, $base + 5)],
+    $base + 61,
+    30.0,
+    60.0
+);
+assertSameValue(P03ProofEngine::STATE_PROVISIONAL, $r['state'], 'Just-outside near-window rejected');
+assertSameValue(null, $r['action'], 'Just-outside near-window no action');
+
+// With multiple HOME-side detections, the event nearest the boundary is used.
+$r = P03ProofEngine::evaluate(
+    c($base),
+    [
+        e('j-old', P03ProofEngine::SRC_JV_LEFT, $base - 20),
+        e('j-new', P03ProofEngine::SRC_JV_LEFT, $base - 2),
+        e('w-new', P03ProofEngine::SRC_WORK_LEFT, $base + 4)
+    ],
+    $base + 5
+);
+assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'Nearest same-side event selected');
+assertSameValue(['j-new', 'w-new'], $r['usedEventIds'], 'Only nearest required evidence consumed');
+
+// Three-camera fallback accepts an event exactly at both configured gap limits.
+$r = P03ProofEngine::evaluateThreeCameraSequence(
+    [
+        e('t-edge', P03ProofEngine::SRC_TERRACE, $base - 90),
+        e('j-edge', P03ProofEngine::SRC_JV_LEFT, $base - 30),
+        e('w-edge', P03ProofEngine::SRC_WORK_LEFT, $base)
+    ],
+    $base + 4,
+    30.0,
+    60.0,
+    3.0
+);
+assertSameValue(P03ProofEngine::STATE_STRONG_VERIFIED, $r['state'], '3cam exact gap limits accepted');
+assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER, $r['action'], '3cam exact gap action');
+
+// A three-camera gap exceeding the limit by a fraction must fail closed.
+$r = P03ProofEngine::evaluateThreeCameraSequence(
+    [
+        e('t-over', P03ProofEngine::SRC_TERRACE, $base - 90.01),
+        e('j-over', P03ProofEngine::SRC_JV_LEFT, $base - 30),
+        e('w-over', P03ProofEngine::SRC_WORK_LEFT, $base)
+    ],
+    $base + 10,
+    30.0,
+    60.0,
+    3.0
+);
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam over-limit gap rejected');
+
 // Direction map requires two consistent proofs in both opposite directions.
 $map = [];
 $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);

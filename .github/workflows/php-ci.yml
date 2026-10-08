@@ -20,5 +20,28 @@ jobs:
           while IFS= read -r -d '' f; do
             php -l "$f"
           done < <(find . -type f -name '*.php' -print0)
+      - name: Legacy direction/config logic
+        run: php tests/test_logic.php
       - name: P03 proof simulations
         run: php tests/P03ProofEngineTest.php
+      - name: P03 hardened module contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('JVPresenceP03TerraceTest/module.php').read_text(encoding='utf-8')
+          required=[
+            "&& $this->ReadAttributeBoolean('Streaming');",
+            "P03 PRODUKTIV – 3-Kamera-Fallback, CrossLine-Richtung noch lernend",
+            "MotionDetect-Readback nach Aktivierung nicht eindeutig TRUE",
+            "if ($human === null)",
+            "if ($auditOnly) {",
+            "$this->ResetTest();"
+          ]
+          missing=[x for x in required if x not in s]
+          if missing:
+              raise SystemExit('Missing hardened P03 contracts: '+repr(missing))
+          audit=s[s.index("public function PrepareAndStartTest"):s.index("private function rollbackPreparedP03Config")]
+          if audit.index("if ($auditOnly) {") > audit.index("$this->ResetTest();"):
+              raise SystemExit('Audit-only guard does not protect field evidence')
+          print('P03 hardened module contract PASS')
+          PY
