@@ -1,0 +1,18 @@
+{
+  "id": "{C7E0B8A4-2C4A-4A73-9A4F-7F642B0326E1}",
+  "name": "JV Presence P03 Test",
+  "type": 3,
+  "vendor": "",
+  "aliases": [
+    "Presence P03 Test",
+    "Terrasse Lagerplatz Presence Test"
+  ],
+  "parentRequirements": [
+    "{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}"
+  ],
+  "childRequirements": [],
+  "implemented": [
+    "{018EF6B5-AB94-40C6-AA53-46943E824ACF}"
+  ],
+  "prefix": "JVP03"
+}
