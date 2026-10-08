@@ -77,6 +77,7 @@ class JVPresenceGateTest extends IPSModule
         $this->RegisterAttributeInteger('UnknownOccupants', 0);
         $this->RegisterAttributeString('SeenProductionEventKeys', '{}');
         $this->RegisterAttributeInteger('LastProductionEvent', 0);
+        $this->RegisterAttributeBoolean('CoverageDebt', true);
 
         $this->RegisterVariableString('PresenceSystemState', 'Presence Systemstatus', '', 1);
         $this->RegisterVariableString('HouseStatus', 'Hausstatus', '', 2);
@@ -94,6 +95,7 @@ class JVPresenceGateTest extends IPSModule
         $this->RegisterTimer('HandshakeTimer', 0, 'JVGATE_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVGATE_SocketRestartTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('Watchdog', 15000, 'JVGATE_Watchdog($_IPS["TARGET"]);');
+        $this->RegisterTimer('ProductionCommitTimer', 0, 'JVGATE_ProductionCommitTimer($_IPS["TARGET"]);');
 
         $this->RequireParent(self::CLIENT_SOCKET_GUID);
     }
@@ -104,6 +106,8 @@ class JVPresenceGateTest extends IPSModule
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
+        $this->SetTimerInterval('ProductionCommitTimer', 0);
+        $this->SetBuffer('ProductionPending', '[]');
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
         $this->WriteAttributeBoolean('Streaming', false);
@@ -703,6 +707,9 @@ class JVPresenceGateTest extends IPSModule
         }
 
         $this->WriteAttributeBoolean('ProductionEnabled', true);
+        $this->WriteAttributeBoolean('CoverageDebt', true);
+        $this->SetBuffer('ProductionPending', '[]');
+        $this->SetTimerInterval('ProductionCommitTimer', 0);
         $this->WriteAttributeBoolean('TestActive', false);
         $this->SetValue('TestActive', false);
         $this->setReady(false);
@@ -903,7 +910,6 @@ class JVPresenceGateTest extends IPSModule
             return;
         }
 
-        // Auf der bestätigten Kamera gilt: RightToLeft=OUT, LeftToRight=IN.
         $portalAction = null;
         if ($direction === 'RightToLeft') {
             $portalAction = 'OUT';
@@ -912,11 +918,12 @@ class JVPresenceGateTest extends IPSModule
         }
         if ($portalAction === null) {
             $this->SetValue('PresenceLastEvent', 'P05 Richtung unbekannt: ' . ($direction ?? '<fehlt>'));
+            $this->WriteAttributeBoolean('CoverageDebt', true);
+            $this->refreshProductionState();
             return;
         }
 
-        // Nur die produktiv angelegte P05-Regel zählen. Die Kamera meldet bei
-        // dieser Firmware RuleID entsprechend dem Tabellenindex (im Test 3).
+        // Nur die produktiv angelegte P05-Regel verarbeiten.
         $ruleId = $event['ruleId'] ?? null;
         $ruleIndex = $this->ReadAttributeInteger('RuleIndex');
         if ($ruleId !== null && is_numeric($ruleId) && $ruleIndex >= 0 && (int) $ruleId !== $ruleIndex) {
@@ -937,6 +944,104 @@ class JVPresenceGateTest extends IPSModule
         }
         $this->WriteAttributeString('SeenProductionEventKeys', json_encode($seen));
 
+        // 3-s-Reorder/Contradiction-Schutz. Beim Test trat einmal für dasselbe
+        // Objekt im selben Moment LeftToRight UND RightToLeft auf. Solche Paare
+        // dürfen den Presence-Ledger nicht verändern.
+        $pending = json_decode($this->GetBuffer('ProductionPending'), true);
+        if (!is_array($pending)) {
+            $pending = [];
+        }
+
+        $now = microtime(true);
+        $objectId = $event['objectId'] ?? null;
+        if ($objectId !== null && $objectId !== '') {
+            foreach ($pending as $idx => $candidate) {
+                if ((string) ($candidate['objectId'] ?? '') !== (string) $objectId) {
+                    continue;
+                }
+                $age = $now - (float) ($candidate['queuedAt'] ?? 0);
+                if ($age > 3.5) {
+                    continue;
+                }
+
+                if (($candidate['portalAction'] ?? '') === $portalAction) {
+                    // Gleiche Richtung für dasselbe Objekt = Dublette.
+                    return;
+                }
+
+                // Gegensätzliche Richtungen im selben Reorder-Fenster:
+                // beide verwerfen und Beobachtungsschuld setzen.
+                unset($pending[$idx]);
+                $pending = array_values($pending);
+                $this->SetBuffer('ProductionPending', json_encode($pending));
+                $this->WriteAttributeBoolean('CoverageDebt', true);
+                $this->SetValue(
+                    'PresenceLastEvent',
+                    date('H:i:s') . ' P05 CONTRADICTION – Objekt ' . (string) $objectId .
+                    ' meldete IN und OUT innerhalb 3 s'
+                );
+                $this->appendProtocol(
+                    'PRESENCE P05 CONTRADICTION objectId=' . (string) $objectId .
+                    ' – beide Richtungsereignisse verworfen, CoverageDebt=true'
+                );
+                $this->refreshProductionState();
+                if ($pending === []) {
+                    $this->SetTimerInterval('ProductionCommitTimer', 0);
+                }
+                return;
+            }
+        }
+
+        $pending[] = [
+            'queuedAt' => $now,
+            'portalAction' => $portalAction,
+            'direction' => $direction,
+            'human' => (bool) ($event['human'] ?? false),
+            'classification' => $event['classification'] ?? null,
+            'eventId' => $event['eventId'] ?? null,
+            'ruleId' => $event['ruleId'] ?? null,
+            'objectId' => $objectId
+        ];
+        $this->SetBuffer('ProductionPending', json_encode($pending));
+        $this->SetTimerInterval('ProductionCommitTimer', 1000);
+    }
+
+    public function ProductionCommitTimer(): void
+    {
+        $pending = json_decode($this->GetBuffer('ProductionPending'), true);
+        if (!is_array($pending) || $pending === []) {
+            $this->SetTimerInterval('ProductionCommitTimer', 0);
+            return;
+        }
+
+        $now = microtime(true);
+        $remaining = [];
+        foreach ($pending as $candidate) {
+            if (($now - (float) ($candidate['queuedAt'] ?? 0)) < 3.0) {
+                $remaining[] = $candidate;
+                continue;
+            }
+            $this->commitProductionCrossing($candidate);
+        }
+
+        $this->SetBuffer('ProductionPending', json_encode($remaining));
+        if ($remaining === []) {
+            $this->SetTimerInterval('ProductionCommitTimer', 0);
+        }
+    }
+
+    /** @param array<string,mixed> $candidate */
+    private function commitProductionCrossing(array $candidate): void
+    {
+        if (!$this->ReadAttributeBoolean('ProductionEnabled')) {
+            return;
+        }
+
+        $portalAction = (string) ($candidate['portalAction'] ?? '');
+        if (!in_array($portalAction, ['IN', 'OUT'], true)) {
+            return;
+        }
+
         $unknown = max(0, $this->ReadAttributeInteger('UnknownOccupants'));
         if ($portalAction === 'IN') {
             $unknown++;
@@ -946,7 +1051,7 @@ class JVPresenceGateTest extends IPSModule
         $this->WriteAttributeInteger('UnknownOccupants', $unknown);
         $this->WriteAttributeInteger('LastProductionEvent', time());
 
-        $classification = (string) ($event['classification'] ?? '');
+        $classification = trim((string) ($candidate['classification'] ?? ''));
         $suffix = $classification !== '' ? ' / ' . $classification : '';
         $this->SetValue(
             'PresenceLastEvent',
@@ -955,8 +1060,8 @@ class JVPresenceGateTest extends IPSModule
         );
         $this->appendProtocol(
             'PRESENCE P05 ' . $portalAction .
-            ' Direction=' . $direction .
-            ' Human=' . (($event['human'] ?? false) ? 'true' : 'false') .
+            ' Direction=' . (string) ($candidate['direction'] ?? '') .
+            ' Human=' . (($candidate['human'] ?? false) ? 'true' : 'false') .
             ' UnknownOccupants=' . $unknown
         );
 
@@ -976,10 +1081,11 @@ class JVPresenceGateTest extends IPSModule
         }
 
         $streaming = $this->ReadAttributeBoolean('Streaming');
+        $coverageDebt = $this->ReadAttributeBoolean('CoverageDebt');
         $this->SetValue(
             'PresenceSystemState',
             $streaming
-                ? 'P05 AKTIV – Grundbetrieb'
+                ? ($coverageDebt ? 'P05 AKTIV – Resync/weitere Beweise nötig' : 'P05 AKTIV – Grundbetrieb')
                 : 'P05 AKTIV – Eventstream wird aufgebaut'
         );
 
