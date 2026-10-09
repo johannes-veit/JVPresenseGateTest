@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
+require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 
 function expectAux(bool $condition, string $message): void
 {
@@ -55,5 +56,13 @@ expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'disabled rule r
 $bad = $rule;
 $bad['Type'] = 'CrossLineDetection';
 expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong rule type rejected');
+
+$carry = '';
+$rawEvent = "Code=CrossRegionDetection;action=Start;index=0;data={\"RuleID\":4,\"EventID\":101,\"Object\":{\"ObjectType\":\"Human\",\"ObjectID\":99}}\r\n";
+$events = DahuaEventParser::feed($rawEvent, $carry);
+expectAux(count($events) === 1, 'CrossRegion event parsed');
+expectAux(($events[0]['ruleId'] ?? null) === 4, 'CrossRegion RuleID parsed');
+expectAux(($events[0]['human'] ?? false) === true, 'CrossRegion Human classification parsed');
+expectAux(($events[0]['classification'] ?? null) === 'Human', 'CrossRegion Human classification exposed');
 
 echo "P03 auxiliary Human IVS rule tests PASS\n";

@@ -12,7 +12,8 @@ class JVPresenceP03MultiCamera extends IPSModule
 {
     private const CLIENT_SOCKET_GUID = '{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}';
     private const SOCKET_TX_GUID = '{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}';
-    private const ALA2_MODULE_GUID = '{5E08D4EE-9727-4682-A23E-E8625EB2337E}';
+    private const AUX_OBSERVER_MODULE_GUID = '{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}';
+    private const TERRACE_DEFAULT_HOST = '192.168.107.110';
     private const VM_UPDATE_ID = 10603;
     private const IM_CHANGESTATUS_ID = 10505;
     private const AUX_JV_DEFAULT_HOST = '192.168.107.96';
@@ -41,11 +42,20 @@ class JVPresenceP03MultiCamera extends IPSModule
         parent::Create();
 
         $this->RegisterPropertyBoolean('Enabled', true);
-        $this->RegisterPropertyBoolean('AutoDiscover', true);
-        $this->RegisterPropertyInteger('SourceCameraInstanceID', 0);
+
+        // P03 owns all three camera connections. The former AussenlichtAutomatik2
+        // source selection remains registered only so an update does not lose old
+        // instance configuration; it is deliberately not read or called.
+        $this->RegisterPropertyBoolean('AutoDiscover', true); // legacy, unused
+        $this->RegisterPropertyInteger('SourceCameraInstanceID', 0); // legacy, unused
+        $this->RegisterPropertyBoolean('AutoCreateWorkObserver', true); // legacy, unused
+
+        $this->RegisterPropertyString('TerraceHost', self::TERRACE_DEFAULT_HOST);
+        $this->RegisterPropertyInteger('CameraPort', 80);
+        $this->RegisterPropertyString('Username', '');
+        $this->RegisterPropertyString('Password', '');
         $this->RegisterPropertyString('AuxJVHost', self::AUX_JV_DEFAULT_HOST);
         $this->RegisterPropertyString('AuxWorkHost', self::AUX_WORK_DEFAULT_HOST);
-        $this->RegisterPropertyBoolean('AutoCreateWorkObserver', true);
         $this->RegisterPropertyInteger('NearProofWindowSeconds', 30);
         $this->RegisterPropertyInteger('TerraceProofWindowSeconds', 60);
 
@@ -170,21 +180,20 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->setReady(false);
         $this->refreshProductionState();
 
-        $sourceID = $this->resolveSourceInstance();
-        $this->WriteAttributeInteger('SourceInstanceID', $sourceID);
-        if ($sourceID <= 0) {
-            $this->setResult('NICHT BEREIT – bestehende Instanz JV Terrasse wurde nicht gefunden.');
-            return;
-        }
-
+        $this->WriteAttributeInteger('SourceInstanceID', 0);
         $this->syncParentSocket();
         $this->updateParentSubscription($this->getParentID());
         $this->discoverP03AuxSources(false);
         $this->subscribeP03AuxVariables();
         $this->refreshP03CameraStatus();
-        $this->setResult('Installiert. Nachts: „Kamera-Konfiguration prüfen“. Tagsüber: „Test vorbereiten & starten“.');
 
-        if ($this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
+        if (!$this->cameraConfigurationReady()) {
+            $this->setResult('NICHT BEREIT – P03 Dahua-Benutzername/Passwort direkt im P03-Modul eintragen.');
+            return;
+        }
+
+        $this->setResult('Installiert. P03 arbeitet vollständig unabhängig von der Außenlichtautomatik.');
+        if ($this->ReadPropertyBoolean('Enabled')) {
             $this->scheduleSocketRestart(500);
         }
     }
@@ -197,20 +206,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             return (string) $raw;
         }
 
-        $sourceID = $this->ReadAttributeInteger('SourceInstanceID');
-        if ($sourceID <= 0 || !IPS_InstanceExists($sourceID)) {
-            $sourceID = $this->resolveSourceInstance();
-        }
-
-        $sourceCaption = 'Automatisch erkannt: NICHT GEFUNDEN';
-        if ($sourceID > 0 && IPS_InstanceExists($sourceID)) {
-            $host = '';
-            try {
-                $host = trim((string) IPS_GetProperty($sourceID, 'CameraHost'));
-            } catch (Throwable $e) {
-            }
-            $sourceCaption = 'Automatisch erkannt: ' . IPS_GetName($sourceID) . ' (#' . $sourceID . ')' . ($host !== '' ? ' – ' . $host : '');
-        }
+        $host = trim($this->ReadPropertyString('TerraceHost'));
+        $sourceCaption = 'P03 direkt: JV Terrasse ' . ($host !== '' ? $host : '<IP fehlt>')
+            . ' – keine Abhängigkeit zur Außenlichtautomatik';
 
         $result = '';
         $resultID = $this->GetIDForIdent('Result');
@@ -222,16 +220,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
 
         $live = [
-            [
-                'type' => 'Label',
-                'caption' => $sourceCaption
-            ],
-            [
-                'type' => 'Label',
-                'caption' => 'Aktueller Teststatus: ' . $result
-            ]
+            ['type' => 'Label', 'caption' => $sourceCaption],
+            ['type' => 'Label', 'caption' => 'Aktueller Teststatus: ' . $result]
         ];
-
         array_splice($form['elements'], 1, 0, $live);
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
@@ -529,22 +520,12 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->ResetTest();
         }
 
-        // Bei jedem Tastendruck frisch auflösen. Dadurch funktioniert der Test auch,
-        // wenn die Instanz nach dem ersten ApplyChanges umbenannt/verschoben wurde
-        // oder der Anwender die Konfigurationsform ohne erneutes Übernehmen geöffnet hat.
-        $sourceID = $this->resolveSourceInstance();
-        $this->WriteAttributeInteger('SourceInstanceID', $sourceID);
-        if ($sourceID <= 0) {
-            $this->setResult('FEHLER – JV Terrasse konnte nicht automatisch gefunden werden. Im Feld darunter kann die Instanz notfalls manuell gewählt werden.');
-            return;
-        }
-
         $this->syncParentSocket();
         $this->updateParentSubscription($this->getParentID());
 
         $cfg = $this->cameraConfiguration();
         if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
-            $this->setResult('FEHLER – Kamerakonfiguration konnte nicht automatisch aus JV Terrasse übernommen werden.');
+            $this->setResult('FEHLER – P03 Dahua-IP/Zugangsdaten fehlen. Keine Außenlicht-Instanz wird mehr als Quelle verwendet.');
             return;
         }
 
@@ -1675,11 +1656,16 @@ class JVPresenceP03MultiCamera extends IPSModule
         $jvHost = trim($this->ReadPropertyString('AuxJVHost'));
         $workHost = trim($this->ReadPropertyString('AuxWorkHost'));
 
-        $jv = $this->findAla2CameraInstance($jvHost, ['JV Links (Lagerplatz)', 'Lagerplatz JV links', 'JV Links Lagerplatz']);
-        $work = $this->findAla2CameraInstance($workHost, ['Lagerplatz Werkstatt links', 'Werkstatt links', 'P03 – Lagerplatz Werkstatt links']);
+        $jv = $this->findP03AuxObserver($jvHost, self::AUX_JV_ROLE);
+        $work = $this->findP03AuxObserver($workHost, self::AUX_WORK_ROLE);
 
-        if ($work <= 0 && $allowCreate && $this->ReadPropertyBoolean('AutoCreateWorkObserver') && $jv > 0) {
-            $work = $this->createWorkObserverFromCamera($jv, $workHost);
+        if ($allowCreate && $this->cameraConfigurationReady()) {
+            if ($jv <= 0) {
+                $jv = $this->createP03AuxObserver($jvHost, self::AUX_JV_ROLE, 'P03 – Lagerplatz JV links');
+            }
+            if ($work <= 0) {
+                $work = $this->createP03AuxObserver($workHost, self::AUX_WORK_ROLE, 'P03 – Lagerplatz Werkstatt links');
+            }
         }
 
         $this->WriteAttributeInteger('AuxJVInstanceID', $jv);
@@ -1693,31 +1679,47 @@ class JVPresenceP03MultiCamera extends IPSModule
         return ['ok' => $jvVar > 0 && $workVar > 0, 'jv' => $jv, 'work' => $work];
     }
 
-    private function findAla2CameraInstance(string $host, array $names): int
+    private function findP03AuxObserver(string $host, string $role): int
     {
-        $fallback = 0;
-        foreach (IPS_GetInstanceListByModuleID(self::ALA2_MODULE_GUID) as $id) {
+        foreach (IPS_GetInstanceListByModuleID(self::AUX_OBSERVER_MODULE_GUID) as $id) {
             $id = (int) $id;
             if ($id <= 0 || !IPS_InstanceExists($id)) {
                 continue;
             }
             try {
-                $candidateHost = trim((string) IPS_GetProperty($id, 'CameraHost'));
-                if ($host !== '' && $candidateHost === $host) {
+                if (trim((string) IPS_GetProperty($id, 'CameraHost')) === $host
+                    && (string) IPS_GetProperty($id, 'Role') === $role) {
                     return $id;
                 }
             } catch (Throwable $e) {
             }
-
-            $name = trim((string) IPS_GetName($id));
-            foreach ($names as $expected) {
-                if (strcasecmp($name, (string) $expected) === 0) {
-                    $fallback = $id;
-                    break;
-                }
-            }
         }
-        return $fallback;
+        return 0;
+    }
+
+    private function createP03AuxObserver(string $host, string $role, string $name): int
+    {
+        if ($host === '' || !$this->cameraConfigurationReady()) {
+            return 0;
+        }
+
+        try {
+            $id = IPS_CreateInstance(self::AUX_OBSERVER_MODULE_GUID);
+            IPS_SetName($id, $name);
+            IPS_SetProperty($id, 'Enabled', true);
+            IPS_SetProperty($id, 'CameraHost', $host);
+            IPS_SetProperty($id, 'CameraPort', max(1, $this->ReadPropertyInteger('CameraPort')));
+            IPS_SetProperty($id, 'Username', $this->ReadPropertyString('Username'));
+            IPS_SetProperty($id, 'Password', $this->ReadPropertyString('Password'));
+            IPS_SetProperty($id, 'Role', $role);
+            IPS_SetProperty($id, 'RuleIndex', -1);
+            IPS_ApplyChanges($id);
+            $this->appendProtocol($role . ': eigener P03-Kameraobserver angelegt (#' . $id . ').');
+            return $id;
+        } catch (Throwable $e) {
+            $this->appendProtocol($role . ': P03-Kameraobserver konnte nicht angelegt werden: ' . $e->getMessage());
+            return 0;
+        }
     }
 
     private function findPersonDetectedVariable(int $instanceID): int
@@ -1762,50 +1764,6 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
         $this->WriteAttributeInteger($attribute, $newID);
-    }
-
-    private function createWorkObserverFromCamera(int $credentialSourceID, string $host): int
-    {
-        if ($credentialSourceID <= 0 || !IPS_InstanceExists($credentialSourceID) || $host === '') {
-            return 0;
-        }
-
-        try {
-            $port = max(1, (int) IPS_GetProperty($credentialSourceID, 'CameraPort'));
-            $username = (string) IPS_GetProperty($credentialSourceID, 'Username');
-            $password = (string) IPS_GetProperty($credentialSourceID, 'Password');
-        } catch (Throwable $e) {
-            return 0;
-        }
-
-        if ($username === '' || $password === '') {
-            return 0;
-        }
-
-        // Exactly one credential probe. No brute-force retries against Dahua.
-        $probe = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/magicBox.cgi?action=getDeviceType');
-        if (!($probe['ok'] ?? false)) {
-            $this->appendProtocol('P03 Werkstatt-links: vorhandene JV-IPC-Zugangsdaten passen nicht auf ' . $host . '; keine weiteren Login-Versuche.');
-            return 0;
-        }
-
-        try {
-            $id = IPS_CreateInstance(self::ALA2_MODULE_GUID);
-            IPS_SetName($id, 'P03 – Lagerplatz Werkstatt links');
-            IPS_SetProperty($id, 'Enabled', true);
-            IPS_SetProperty($id, 'CameraHost', $host);
-            IPS_SetProperty($id, 'CameraPort', $port);
-            IPS_SetProperty($id, 'Username', $username);
-            IPS_SetProperty($id, 'Password', $password);
-            IPS_SetProperty($id, 'LightAutomationEnabled', false);
-            IPS_SetProperty($id, 'DebugEvents', false);
-            IPS_ApplyChanges($id);
-            $this->appendProtocol('P03 Werkstatt-links: reine Personenerkennungs-Instanz automatisch angelegt (#' . $id . ', Lichtautomatik AUS).');
-            return $id;
-        } catch (Throwable $e) {
-            $this->appendProtocol('P03 Werkstatt-links Instanz konnte nicht automatisch angelegt werden: ' . $e->getMessage());
-            return 0;
-        }
     }
 
     /** @return array{ok:bool,error:string,http:int,body:string} */
@@ -1895,15 +1853,14 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
+        $meta = $this->p03AuxHumanRuleMeta($role);
+        $ruleIndex = $this->ReadAttributeInteger($meta['ruleIndex']);
         try {
-            if (function_exists('ALA2_Reconnect')) {
-                ALA2_Reconnect($instanceID);
-            } else {
-                IPS_ApplyChanges($instanceID);
-            }
-            $this->appendProtocol($role . ': Eventstream nach IVS-Änderung neu aufgebaut.');
+            IPS_SetProperty($instanceID, 'RuleIndex', $ruleIndex);
+            IPS_ApplyChanges($instanceID);
+            $this->appendProtocol($role . ': eigener P03-Eventstream nach IVS-Änderung neu aufgebaut.');
         } catch (Throwable $e) {
-            $this->appendProtocol($role . ': WARNUNG – Eventstream-Neuaufbau fehlgeschlagen: ' . $e->getMessage());
+            $this->appendProtocol($role . ': WARNUNG – P03-Eventstream-Neuaufbau fehlgeschlagen: ' . $e->getMessage());
         }
     }
 
@@ -2337,18 +2294,18 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function refreshP03CameraStatus(): void
     {
-        $terrace = $this->ReadAttributeInteger('SourceInstanceID');
         $jv = $this->ReadAttributeInteger('AuxJVInstanceID');
         $work = $this->ReadAttributeInteger('AuxWorkInstanceID');
         $jvVar = $this->ReadAttributeInteger('AuxJVPersonVarID');
         $workVar = $this->ReadAttributeInteger('AuxWorkPersonVarID');
+        $terraceHost = trim($this->ReadPropertyString('TerraceHost'));
 
         $this->SetValue(
             'P03CameraStatus',
-            'Terrasse=' . ($terrace > 0 ? 'OK#' . $terrace : 'FEHLT')
-                . ' | JV-links=' . ($jvVar > 0 ? 'OK#' . $jv : 'FEHLT')
+            'Terrasse=' . ($terraceHost !== '' ? 'DIREKT ' . $terraceHost : 'FEHLT')
+                . ' | JV-links=' . ($jvVar > 0 ? 'P03#' . $jv : 'FEHLT')
                 . ($this->ReadAttributeString('AuxJVModel') !== '' ? ' ' . $this->ReadAttributeString('AuxJVModel') : '')
-                . ' | Werkstatt-links=' . ($workVar > 0 ? 'OK#' . $work : 'FEHLT')
+                . ' | Werkstatt-links=' . ($workVar > 0 ? 'P03#' . $work : 'FEHLT')
                 . ($this->ReadAttributeString('AuxWorkModel') !== '' ? ' ' . $this->ReadAttributeString('AuxWorkModel') : '')
         );
     }
@@ -2489,97 +2446,15 @@ class JVPresenceP03MultiCamera extends IPSModule
         return DahuaDigest::parseChallenge(trim((string) $m[1]));
     }
 
-    private function resolveSourceInstance(): int
-    {
-        $manual = $this->ReadPropertyInteger('SourceCameraInstanceID');
-        if ($manual > 0 && IPS_InstanceExists($manual)) {
-            $inst = IPS_GetInstance($manual);
-            if (($inst['ModuleInfo']['ModuleID'] ?? '') === self::ALA2_MODULE_GUID) {
-                return $manual;
-            }
-        }
-        if (!$this->ReadPropertyBoolean('AutoDiscover')) {
-            return 0;
-        }
-
-        $fallback = 0;
-        foreach (IPS_GetInstanceListByModuleID(self::ALA2_MODULE_GUID) as $id) {
-            if (!IPS_InstanceExists((int) $id)) {
-                continue;
-            }
-            $name = IPS_GetName((int) $id);
-            if (strcasecmp(trim($name), 'JV Terrasse') === 0) {
-                return (int) $id;
-            }
-            try {
-                $host = trim((string) IPS_GetProperty((int) $id, 'CameraHost'));
-                if ($host === '192.168.107.110') {
-                    $fallback = (int) $id;
-                }
-            } catch (Throwable $e) {
-            }
-        }
-        if ($fallback > 0) {
-            return $fallback;
-        }
-
-        // Sicherheitsnetz: nicht nur nach Modul-GUID suchen. Damit bleibt die
-        // Ein-Klick-Erkennung auch dann funktionsfähig, wenn eine lokale Kopie
-        // des Außenlichtmoduls mit anderer GUID verwendet wird.
-        if (function_exists('IPS_GetInstanceList')) {
-            foreach (IPS_GetInstanceList() as $id) {
-                $id = (int) $id;
-                if ($id <= 0 || !IPS_InstanceExists($id)) {
-                    continue;
-                }
-
-                $name = trim((string) IPS_GetName($id));
-                if (strcasecmp($name, 'JV Terrasse') === 0) {
-                    try {
-                        $host = trim((string) IPS_GetProperty($id, 'CameraHost'));
-                        if ($host !== '') {
-                            return $id;
-                        }
-                    } catch (Throwable $e) {
-                    }
-                }
-
-                try {
-                    $host = trim((string) IPS_GetProperty($id, 'CameraHost'));
-                    if ($host === '192.168.107.110') {
-                        return $id;
-                    }
-                } catch (Throwable $e) {
-                }
-            }
-        }
-
-        return 0;
-    }
-
     /** @return array{host:string,port:int,username:string,password:string}|array{} */
     private function cameraConfiguration(): array
     {
-        $sourceID = $this->ReadAttributeInteger('SourceInstanceID');
-        if ($sourceID <= 0 || !IPS_InstanceExists($sourceID)) {
-            $sourceID = $this->resolveSourceInstance();
-            if ($sourceID > 0) {
-                $this->WriteAttributeInteger('SourceInstanceID', $sourceID);
-            }
-        }
-        if ($sourceID <= 0 || !IPS_InstanceExists($sourceID)) {
-            return [];
-        }
-        try {
-            return [
-                'host' => trim((string) IPS_GetProperty($sourceID, 'CameraHost')),
-                'port' => max(1, (int) IPS_GetProperty($sourceID, 'CameraPort')),
-                'username' => (string) IPS_GetProperty($sourceID, 'Username'),
-                'password' => (string) IPS_GetProperty($sourceID, 'Password')
-            ];
-        } catch (Throwable $e) {
-            return [];
-        }
+        return [
+            'host' => trim($this->ReadPropertyString('TerraceHost')),
+            'port' => max(1, $this->ReadPropertyInteger('CameraPort')),
+            'username' => $this->ReadPropertyString('Username'),
+            'password' => $this->ReadPropertyString('Password')
+        ];
     }
 
     private function cameraConfigurationReady(): bool
