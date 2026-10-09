@@ -23,7 +23,8 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterPropertyString('Password', '');
         $this->RegisterPropertyString('Role', '');
         $this->RegisterPropertyInteger('RuleIndex', -1); // Diagnose/Legacy
-        $this->RegisterPropertyInteger('RuleID', -1);    // echte Dahua Event RuleID
+        $this->RegisterPropertyInteger('RuleID', -1);    // numerischer Fallback
+        $this->RegisterPropertyString('RuleName', '');   // primäre Regelidentität
 
         $this->RegisterAttributeBoolean('Streaming', false);
         $this->RegisterAttributeInteger('LastCameraRx', 0);
@@ -332,7 +333,8 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetBuffer('EventCarry', $carry);
 
         $wantedRuleId = $this->ReadPropertyInteger('RuleID');
-        if ($wantedRuleId < 0) {
+        $wantedRuleName = trim($this->ReadPropertyString('RuleName'));
+        if ($wantedRuleId < 0 && $wantedRuleName === '') {
             return;
         }
 
@@ -342,22 +344,32 @@ class JVPresenceP03AuxObserver extends IPSModule
             $ruleId = $event['ruleId'] ?? null;
 
             if (strcasecmp($code, 'CrossRegionDetection') === 0) {
+                $raw = (string) ($event['raw'] ?? '');
+                if (strlen($raw) > 6000) {
+                    $raw = substr($raw, 0, 6000) . '…';
+                }
                 $rawSummary = [
                     'time' => date('H:i:s'),
                     'role' => $this->ReadPropertyString('Role'),
                     'action' => $event['action'] ?? '',
-                    'ruleId' => $ruleId,
+                    'ruleName' => $event['ruleName'] ?? null,
+                    'expectedRuleName' => $wantedRuleName,
+                    'cfgRuleId' => $event['cfgRuleId'] ?? null,
+                    'ruleIdPrimary' => $event['ruleIdPrimary'] ?? null,
+                    'ruleIdLegacy' => $event['ruleIdLegacy'] ?? null,
+                    'ruleIds' => $event['ruleIds'] ?? [],
                     'expectedRuleId' => $wantedRuleId,
                     'configuredIndex' => $this->ReadPropertyInteger('RuleIndex'),
                     'payloadHuman' => (bool) ($event['human'] ?? false),
                     'classification' => $event['classification'] ?? null,
-                    'eventId' => $event['eventId'] ?? null
+                    'eventId' => $event['eventId'] ?? null,
+                    'raw' => $raw
                 ];
                 $this->SetValue('LastIVSEvent', json_encode($rawSummary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 $this->SendDebug('CrossRegionDetection', json_encode($rawSummary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
             }
 
-            if (!P03AuxObserverLogic::isMatchingRuleEvent($event, $wantedRuleId)) {
+            if (!P03AuxObserverLogic::isMatchingRuleEvent($event, $wantedRuleId, $wantedRuleName)) {
                 continue;
             }
 
@@ -384,6 +396,8 @@ class JVPresenceP03AuxObserver extends IPSModule
                 'role' => $this->ReadPropertyString('Role'),
                 'code' => $code,
                 'action' => $event['action'] ?? '',
+                'ruleName' => $event['ruleName'] ?? null,
+                'ruleIds' => $event['ruleIds'] ?? [],
                 'ruleId' => $ruleId,
                 'human' => true,
                 'humanFromRule' => true,
@@ -397,7 +411,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             // The dedicated P03 rule itself is ObjectTypes=Human. Therefore a
             // matching START/ON/PULSE is a Human proof even if this firmware omits
             // ObjectType from the event payload.
-            if (P03AuxObserverLogic::isHumanProofStart($event, $wantedRuleId)) {
+            if (P03AuxObserverLogic::isHumanProofStart($event, $wantedRuleId, $wantedRuleName)) {
                 $until = time() + 5;
                 $this->WriteAttributeInteger('HumanPulseUntil', $until);
                 $this->SetValue('PersonDetected', true);
@@ -446,7 +460,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $headers = [
             'GET ' . $uri . ' HTTP/1.1',
             'Host: ' . $hostHeader,
-            'User-Agent: IP-Symcon-JVPresenceP03Aux/0.6.7',
+            'User-Agent: IP-Symcon-JVPresenceP03Aux/0.6.9',
             'Accept: multipart/x-mixed-replace, */*',
             'Connection: keep-alive'
         ];
