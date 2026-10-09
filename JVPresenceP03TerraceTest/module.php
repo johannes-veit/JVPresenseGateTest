@@ -1291,7 +1291,11 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         if ($state === P03ProofEngine::STATE_CONTRADICTION) {
             $this->SetValue('P03ProofState', 'CONTRADICTION – überlappende Gegenrichtung; kein Übergang');
-            $this->appendProtocol('P03 2CAM CONTRADICTION – keine Zonenänderung.');
+            // Fail closed, then start with a clean proof window. Ambiguous
+            // detections must neither create a transfer nor poison later walks.
+            $this->setP03HumanEvents([]);
+            $this->SetTimerInterval('P03ProofTimer', 0);
+            $this->appendProtocol('P03 2CAM CONTRADICTION – keine Zonenänderung; unklare Ereignisse verworfen.');
         }
     }
 
