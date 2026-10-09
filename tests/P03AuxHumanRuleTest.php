@@ -71,26 +71,27 @@ expectAux(($events[0]['classification'] ?? null) === 'Human', 'CrossRegion Human
 $matchingWithoutHumanPayload = [
     'code' => 'CrossRegionDetection',
     'action' => 'Start',
-    'ruleId' => 3,
+    // Event RuleID is the Dahua rule Id, NOT the VideoAnalyseRule array index.
+    'ruleId' => 0,
     'human' => false,
     'classification' => null
 ];
 expectAux(
-    P03AuxObserverLogic::isHumanProofStart($matchingWithoutHumanPayload, 3),
-    'dedicated Human-only rule counts even when payload omits Human classification'
+    P03AuxObserverLogic::isHumanProofStart($matchingWithoutHumanPayload, 0),
+    'Dahua rule Id 0 matches even when table index is different'
 );
 
 $wrongRule = $matchingWithoutHumanPayload;
-$wrongRule['ruleId'] = 2;
+$wrongRule['ruleId'] = 3; // typical table index; must NOT be mistaken for Dahua Id=0
 expectAux(
-    !P03AuxObserverLogic::isHumanProofStart($wrongRule, 3),
-    'foreign CrossRegion rule rejected'
+    !P03AuxObserverLogic::isHumanProofStart($wrongRule, 0),
+    'VideoAnalyseRule array index is not accepted as Dahua RuleID'
 );
 
 $stopEvent = $matchingWithoutHumanPayload;
 $stopEvent['action'] = 'Stop';
 expectAux(
-    !P03AuxObserverLogic::isHumanProofStart($stopEvent, 3),
+    !P03AuxObserverLogic::isHumanProofStart($stopEvent, 0),
     'STOP event does not create a new Human proof'
 );
 
