@@ -111,6 +111,10 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxJVStreamVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkStreamVarID', 0);
+        $this->RegisterAttributeInteger('AuxJVEventSeqVarID', 0);
+        $this->RegisterAttributeInteger('AuxWorkEventSeqVarID', 0);
+        $this->RegisterAttributeInteger('AuxJVEventDataVarID', 0);
+        $this->RegisterAttributeInteger('AuxWorkEventDataVarID', 0);
         $this->RegisterAttributeString('AuxJVModel', '');
         $this->RegisterAttributeString('AuxWorkModel', '');
         $this->RegisterAttributeString('AuxJVFirmware', '');
@@ -333,35 +337,51 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         if ((int) $Message === self::VM_UPDATE_ID) {
             $sender = (int) $SenderID;
-            $jvVar = $this->ReadAttributeInteger('AuxJVPersonVarID');
-            $workVar = $this->ReadAttributeInteger('AuxWorkPersonVarID');
             $jvStreamVar = $this->ReadAttributeInteger('AuxJVStreamVarID');
             $workStreamVar = $this->ReadAttributeInteger('AuxWorkStreamVarID');
 
             if ($sender === $jvStreamVar || $sender === $workStreamVar) {
                 $this->refreshProductionState();
+                $this->refreshReadyState();
                 return;
             }
 
-            if ($sender === $jvVar || $sender === $workVar) {
+            $jvSeqVar = $this->ReadAttributeInteger('AuxJVEventSeqVarID');
+            $workSeqVar = $this->ReadAttributeInteger('AuxWorkEventSeqVarID');
+            if ($sender === $jvSeqVar || $sender === $workSeqVar) {
                 $changed = true;
                 if (is_array($Data) && array_key_exists(1, $Data)) {
                     $changed = (bool) $Data[1];
                 }
+                if (!$changed) {
+                    return;
+                }
 
-                $active = false;
+                $isJv = $sender === $jvSeqVar;
+                $source = $isJv ? P03ProofEngine::SRC_JV_LEFT : P03ProofEngine::SRC_WORK_LEFT;
+                $dataVar = $this->ReadAttributeInteger($isJv ? 'AuxJVEventDataVarID' : 'AuxWorkEventDataVarID');
+                if ($dataVar <= 0 || !IPS_VariableExists($dataVar)) {
+                    $this->appendProtocol('P03 HUMAN EVENT verworfen: Metadatenvariable fehlt für ' . $source);
+                    return;
+                }
+
+                $meta = [];
                 try {
-                    $active = (bool) GetValue($sender);
+                    $decoded = json_decode((string) GetValue($dataVar), true);
+                    if (is_array($decoded)) {
+                        $meta = $decoded;
+                    }
                 } catch (Throwable $e) {
                 }
 
-                if ($changed && $active) {
-                    $source = ($sender === $jvVar) ? P03ProofEngine::SRC_JV_LEFT : P03ProofEngine::SRC_WORK_LEFT;
-                    $this->recordP03HumanEvent($source, [
-                        'sender' => $sender,
-                        'messageTimestamp' => (int) $TimeStamp
-                    ]);
+                if ($meta === []) {
+                    $this->appendProtocol('P03 HUMAN EVENT verworfen: Metadaten leer/ungültig für ' . $source);
+                    return;
                 }
+
+                $meta['senderSeqVar'] = $sender;
+                $meta['messageTimestamp'] = (int) $TimeStamp;
+                $this->recordP03HumanEvent($source, $meta);
                 return;
             }
         }
@@ -734,8 +754,10 @@ class JVPresenceP03MultiCamera extends IPSModule
             && $out >= 2
             && $in >= 2
             && $this->ReadAttributeInteger('P03VerifiedCount') >= 4
-            && $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
+            && $this->ReadAttributeInteger('AuxJVEventSeqVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventSeqVarID') > 0
+            && $this->ReadAttributeInteger('AuxJVEventDataVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventDataVarID') > 0
             && $this->p03AuxStreamsReady();
 
         if (!$ready) {
@@ -858,6 +880,10 @@ class JVPresenceP03MultiCamera extends IPSModule
             'auxWorkPersonVarID' => $this->ReadAttributeInteger('AuxWorkPersonVarID'),
             'auxJVStreamVarID' => $this->ReadAttributeInteger('AuxJVStreamVarID'),
             'auxWorkStreamVarID' => $this->ReadAttributeInteger('AuxWorkStreamVarID'),
+            'auxJVEventSeqVarID' => $this->ReadAttributeInteger('AuxJVEventSeqVarID'),
+            'auxWorkEventSeqVarID' => $this->ReadAttributeInteger('AuxWorkEventSeqVarID'),
+            'auxJVEventDataVarID' => $this->ReadAttributeInteger('AuxJVEventDataVarID'),
+            'auxWorkEventDataVarID' => $this->ReadAttributeInteger('AuxWorkEventDataVarID'),
             'auxJVHumanRuleIndex' => $this->ReadAttributeInteger('AuxJVHumanRuleIndex'),
             'auxWorkHumanRuleIndex' => $this->ReadAttributeInteger('AuxWorkHumanRuleIndex'),
             'auxJVHumanRuleID' => $this->ReadAttributeInteger('AuxJVHumanRuleID'),
@@ -1153,7 +1179,21 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
 
         $events = $this->getP03HumanEvents();
+        $receiveTs = isset($meta['receiveTs']) && is_numeric($meta['receiveTs'])
+            ? (float) $meta['receiveTs']
+            : microtime(true);
         $now = microtime(true);
+
+        // Child receiveTs is generated immediately when that camera stream event
+        // is parsed. It is monotonic enough for cross-camera ordering and avoids
+        // adding parent MessageSink scheduling latency. Reject implausible stale
+        // metadata rather than mixing old events into a new transfer.
+        if ($receiveTs <= 0.0 || abs($now - $receiveTs) > 30.0) {
+            $this->appendProtocol('P03 HUMAN EVENT verworfen: Zeitstempel unplausibel für ' . $source);
+            return;
+        }
+
+        $eventTs = $receiveTs;
         $externalId = trim((string) ($meta['eventId'] ?? ''));
         if ($externalId !== '') {
             $id = $source . ':event:' . $externalId;
@@ -1163,14 +1203,14 @@ class JVPresenceP03MultiCamera extends IPSModule
                 }
             }
         } else {
-            $id = $source . ':' . sprintf('%.6f', $now);
-            // Boolean PersonDetected can occasionally be re-published. Collapse
-            // same-source STARTs arriving within one second.
+            $id = $source . ':' . sprintf('%.6f', $eventTs);
+            // Compatibility fallback for events without an EventID. The aux
+            // observer already de-duplicates raw Dahua events.
             for ($i = count($events) - 1; $i >= 0; $i--) {
                 if (($events[$i]['source'] ?? '') !== $source) {
                     continue;
                 }
-                if (($now - (float) ($events[$i]['ts'] ?? 0.0)) < 1.0) {
+                if (($eventTs - (float) ($events[$i]['ts'] ?? 0.0)) < 0.25) {
                     return;
                 }
                 break;
@@ -1180,19 +1220,24 @@ class JVPresenceP03MultiCamera extends IPSModule
         $events[] = [
             'id' => $id,
             'source' => $source,
-            'ts' => $now,
+            'ts' => $eventTs,
             'used' => false,
             'meta' => $meta
         ];
 
-        $cutoff = $now - 180.0;
+        $cutoff = $eventTs - 180.0;
         $events = array_values(array_filter($events, static fn($e) => (float) ($e['ts'] ?? 0.0) >= $cutoff));
         if (count($events) > 120) {
             $events = array_slice($events, -120);
         }
         $this->setP03HumanEvents($events);
 
-        $this->appendProtocol('P03 HUMAN ' . $source . ' @' . sprintf('%.3f', $now));
+        $this->appendProtocol(
+            'P03 HUMAN ' . $source
+                . ' @' . sprintf('%.3f', $eventTs)
+                . ' seq=' . (string) ($meta['senderSeqVar'] ?? '?')
+                . ' eventId=' . ($externalId !== '' ? $externalId : '<fehlt>')
+        );
         $this->evaluateP03MastSequence();
     }
 
@@ -1504,13 +1549,27 @@ class JVPresenceP03MultiCamera extends IPSModule
         $workVar = $work > 0 ? $this->findPersonDetectedVariable($work) : 0;
         $jvStream = $jv > 0 ? $this->findAuxVariable($jv, 'StreamOK') : 0;
         $workStream = $work > 0 ? $this->findAuxVariable($work, 'StreamOK') : 0;
-        $this->updateP03AuxSubscription('AuxJVPersonVarID', $jvVar);
-        $this->updateP03AuxSubscription('AuxWorkPersonVarID', $workVar);
+        $jvSeq = $jv > 0 ? $this->findAuxVariable($jv, 'HumanEventSeq') : 0;
+        $workSeq = $work > 0 ? $this->findAuxVariable($work, 'HumanEventSeq') : 0;
+        $jvData = $jv > 0 ? $this->findAuxVariable($jv, 'LastHumanEvent') : 0;
+        $workData = $work > 0 ? $this->findAuxVariable($work, 'LastHumanEvent') : 0;
+
+        // PersonDetected remains a human-readable pulse only. Proof transport
+        // uses HumanEventSeq + LastHumanEvent so every detection is delivered.
+        $this->WriteAttributeInteger('AuxJVPersonVarID', $jvVar);
+        $this->WriteAttributeInteger('AuxWorkPersonVarID', $workVar);
         $this->updateP03AuxSubscription('AuxJVStreamVarID', $jvStream);
         $this->updateP03AuxSubscription('AuxWorkStreamVarID', $workStream);
+        $this->updateP03AuxSubscription('AuxJVEventSeqVarID', $jvSeq);
+        $this->updateP03AuxSubscription('AuxWorkEventSeqVarID', $workSeq);
+        $this->WriteAttributeInteger('AuxJVEventDataVarID', $jvData);
+        $this->WriteAttributeInteger('AuxWorkEventDataVarID', $workData);
 
         return [
-            'ok' => $jvVar > 0 && $workVar > 0 && $jvStream > 0 && $workStream > 0,
+            'ok' => $jvVar > 0 && $workVar > 0
+                && $jvStream > 0 && $workStream > 0
+                && $jvSeq > 0 && $workSeq > 0
+                && $jvData > 0 && $workData > 0,
             'jv' => $jv,
             'work' => $work
         ];
@@ -1607,7 +1666,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function subscribeP03AuxVariables(): void
     {
-        foreach (['AuxJVPersonVarID', 'AuxWorkPersonVarID', 'AuxJVStreamVarID', 'AuxWorkStreamVarID'] as $attr) {
+        foreach (['AuxJVStreamVarID', 'AuxWorkStreamVarID', 'AuxJVEventSeqVarID', 'AuxWorkEventSeqVarID'] as $attr) {
             $id = $this->ReadAttributeInteger($attr);
             if ($id > 0 && IPS_VariableExists($id)) {
                 try {
@@ -2464,8 +2523,10 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
-        $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
+        $auxReady = $this->ReadAttributeInteger('AuxJVEventSeqVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventSeqVarID') > 0
+            && $this->ReadAttributeInteger('AuxJVEventDataVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventDataVarID') > 0
             && $this->p03AuxStreamsReady();
         $proofReady = $this->ReadAttributeBoolean('P03MultiAuditPassed')
             && $this->ReadAttributeBoolean('P03SimulationPassed');
@@ -4181,8 +4242,10 @@ class JVPresenceP03MultiCamera extends IPSModule
         $active = $this->ReadAttributeBoolean('TestActive');
         $preflight = $this->ReadAttributeBoolean('P03MultiAuditPassed')
             && $this->ReadAttributeBoolean('P03SimulationPassed');
-        $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
+        $auxReady = $this->ReadAttributeInteger('AuxJVEventSeqVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventSeqVarID') > 0
+            && $this->ReadAttributeInteger('AuxJVEventDataVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventDataVarID') > 0
             && $this->p03AuxStreamsReady();
 
         $ready = $active && $preflight && $auxReady;
