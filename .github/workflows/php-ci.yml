@@ -61,10 +61,15 @@ jobs:
             "evaluateTwoCameraSequence",
             "P03 PRODUKTIV – 2-Kamera-Sequenz",
             "p03AuxStreamsReady",
+            "p03AuxTransportState",
+            "waitForP03AuxStream",
+            "inspectP03AuxIvsRuntime",
+            "p03CredentialsReady",
             "P03AuxHumanRule::matches",
             "CrossRegionDetection",
             "ObjectTypes=Human",
             "restoreP03AuxHumanRule",
+            "cleanupLegacyTerraceP03Config",
             "if ($auditOnly) {",
             "$this->ResetTest();"
           ]
@@ -84,7 +89,9 @@ jobs:
               "class JVPresenceP03AuxObserver extends IPSModule",
               "RuleIndex",
               "RuleID",
+              "RuleName",
               "PersonDetected",
+              "LastIVSEvent",
               "DahuaDigest::buildAuthorization",
               "P03AuxObserverLogic::isHumanProofStart"
           ]
@@ -98,14 +105,48 @@ jobs:
           if "ReadPropertyInteger('RuleID')" not in observer:
               raise SystemExit('Aux observer does not match events using Dahua RuleID')
           rule=Path('libs/P03AuxHumanRule.php').read_text(encoding='utf-8')
-          for token in ["'Action' => ['Cross', 'Appear']", "'Direction' => 'Enter'", "in_array('Appear', $actions, true)"]:
+          for token in [
+              "'Action' => ['Cross', 'Appear']",
+              "'Direction' => 'Enter'",
+              "in_array('Appear', $actions, true)",
+              "'CalibrateBoxs'",
+              "'TimeSection'",
+              "has24x7Schedule",
+              "'LightingLink'",
+              "'MsgtoNetEnable'"
+          ]:
               if token not in rule:
                   raise SystemExit('Missing functional CrossRegion rule contract: '+token)
           parser=Path('libs/DahuaEventParser.php').read_text(encoding='utf-8')
-          if "'CfgRuleId'" not in parser:
-              raise SystemExit('Dahua parser does not support CfgRuleId')
+          for token in ["'CfgRuleId'", "'RuleID'", "'RuleId'", "'ruleName'", "'ruleIds'", "array_key_exists($key, $node)"]:
+              if token not in parser:
+                  raise SystemExit('Missing Dahua parser identity contract: '+token)
           audit=s[s.index("public function PrepareAndStartTest"):s.index("private function rollbackPreparedP03Config")]
           if audit.index("if ($auditOnly) {") > audit.index("$this->ResetTest();"):
               raise SystemExit('Audit-only guard does not protect field evidence')
+          if "WriteAttributeBoolean('ProductionEnabled', false)" not in audit:
+              raise SystemExit('Audit/test preparation does not disable production fail-safe')
+
+          pending=s[s.index("private function evaluateP03Pending"):s.index("private function evaluateP03MastSequence")]
+          if "commitP03VerifiedResult" in pending:
+              raise SystemExit('Legacy CrossLine pending path can still commit a transfer')
+
+          crossing=s[s.index("private function recordP03Crossing"):s.index("public function P03AuxRescan")]
+          for forbidden_token in ["commitP03VerifiedResult", "setP03PendingCrossings($pending)", "evaluateP03Pending()"]:
+              if forbidden_token in crossing:
+                  raise SystemExit('Terrace CrossLine still affects proof: '+forbidden_token)
+
+          process=s[s.index("private function processEventData"):s.index("public function P03ProofTimer")]
+          if "recordP03HumanEvent(P03ProofEngine::SRC_TERRACE" in process:
+              raise SystemExit('Terrace Human still enters transfer evidence buffer')
+
+          verified=s[s.index("private function commitP03VerifiedResult"):s.index("private function checkP03CommissioningComplete")]
+          if "SetValue('CrossingCount', $verified)" not in verified:
+              raise SystemExit('Visible crossing count is not tied to verified mast transfers')
+
+          reset=s[s.index("public function ResetTest"):s.index("public function CleanupCameraTestConfig")]
+          if "WriteAttributeBoolean('ProductionEnabled', false)" not in reset:
+              raise SystemExit('ResetTest does not disable production')
+
           print('P03 hardened module contract PASS')
           PY
