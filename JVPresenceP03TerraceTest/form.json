@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03 Portal HOME ↔ Lagerplatz. Der Grenzübertritt wird ausschließlich aus der zeitlichen Reihenfolge der beiden Lagerplatzkameras ermittelt. Terrasse/CrossLine dient nur als Zusatzdiagnose."
+      "caption": "P03 HOME ↔ Lagerplatz: Der Grenzübertritt wird ausschließlich aus der Reihenfolge der beiden Lagerplatzkameras bestimmt. JV Terrasse ist keine Voraussetzung."
     },
     {
       "type": "CheckBox",
@@ -11,14 +11,9 @@
     },
     {
       "type": "ExpansionPanel",
-      "caption": "P03 Kameras / direkte Dahua-Verbindung",
+      "caption": "P03 Mastkameras – Primärsensoren",
       "expanded": true,
       "items": [
-        {
-          "type": "ValidationTextBox",
-          "name": "TerraceHost",
-          "caption": "JV Terrasse – IP"
-        },
         {
           "type": "NumberSpinner",
           "name": "CameraPort",
@@ -39,20 +34,37 @@
         {
           "type": "ValidationTextBox",
           "name": "AuxJVHost",
-          "caption": "Lagerplatz JV links – IP"
+          "caption": "JV_LEFT – Lagerplatz JV links"
         },
         {
           "type": "ValidationTextBox",
           "name": "AuxWorkHost",
-          "caption": "Lagerplatz Werkstatt links – IP"
+          "caption": "WORK_LEFT – Lagerplatz Werkstatt links"
         },
         {
           "type": "Label",
-          "caption": "Standard: Terrasse 192.168.107.110, JV links 192.168.107.96, Werkstatt links 192.168.107.99. Für die beiden Mastkameras legt P03 eigene interne Kamera-Observer und eigene Human-IVS-Regeln an."
+          "caption": "Standard: JV_LEFT 192.168.107.96, WORK_LEFT 192.168.107.99. P03 besitzt dafür eigene interne Observer und eigene Human-IVS-Regeln. AussenlichtAutomatik2 wird nicht verwendet oder verändert."
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Optionale Terrasse-Diagnose",
+      "expanded": false,
+      "items": [
+        {
+          "type": "CheckBox",
+          "name": "TerraceDiagnosticsEnabled",
+          "caption": "JV Terrasse Eventstream nur für Diagnose aktivieren"
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "TerraceHost",
+          "caption": "JV Terrasse – IP"
         },
         {
           "type": "Label",
-          "caption": "AussenlichtAutomatik2 bleibt vollständig unabhängig und wird von P03 nicht verwendet."
+          "caption": "Standard 192.168.107.110. Standardmäßig AUS. Terrasse/CrossLine beeinflusst weder Audit, Lauftest noch Produktivbetrieb."
         }
       ]
     },
@@ -70,19 +82,19 @@
         },
         {
           "type": "Label",
-          "caption": "Primärlogik: JV_LEFT → WORK_LEFT = HOME→LAGER. WORK_LEFT → JV_LEFT = LAGER→HOME."
+          "caption": "JV_LEFT → WORK_LEFT innerhalb des Zeitfensters = HOME→LAGER."
         },
         {
           "type": "Label",
-          "caption": "Nur wenn beide Kameras nacheinander innerhalb des Zeitfensters eine Person erkennen, wird ein Grenzübertritt gebucht."
+          "caption": "WORK_LEFT → JV_LEFT innerhalb des Zeitfensters = LAGER→HOME."
         },
         {
           "type": "Label",
-          "caption": "Nur eine Kamera, dieselbe Kamera zweimal, gleichzeitige/unklare Gegenrichtung oder zu großer Zeitabstand = kein Übergang."
+          "caption": "Nur eine Kamera, dieselbe Kamera mehrfach, unklare Gegenrichtung oder zu großer Zeitabstand = kein Übergang."
         },
         {
           "type": "Label",
-          "caption": "JV Terrasse und ihre CrossLine sind nur Zusatzdiagnose und dürfen niemals eine der beiden Mastkameras ersetzen."
+          "caption": "Intern wird jeder Human-IVS-Treffer über einen Ereigniszähler erfasst; der sichtbare Boolean „Person erkannt“ ist nur Diagnose."
         },
         {
           "type": "Label",
@@ -94,22 +106,22 @@
   "actions": [
     {
       "type": "Button",
-      "caption": "P03 Gesamtaudit – 3 Kameras (kein Lauftest)",
+      "caption": "P03 Mastkamera-Audit – 2 Kameras (kein Lauftest)",
       "onClick": "JVP03MC_AuditCameraConfiguration($id);"
     },
     {
       "type": "Button",
-      "caption": "Interne P03 Simulation ausführen",
+      "caption": "Interne P03 2-Kamera-Simulation ausführen",
       "onClick": "JVP03MC_RunP03Simulation($id);"
     },
     {
       "type": "Button",
-      "caption": "P03 Kamera-Observer neu suchen / prüfen",
+      "caption": "P03 Mastkamera-Observer neu suchen / prüfen",
       "onClick": "JVP03MC_P03AuxRescan($id);"
     },
     {
       "type": "Button",
-      "caption": "P03 Mehrkamera-Test vorbereiten & starten",
+      "caption": "P03 2-Kamera-Lauftest vorbereiten & starten",
       "onClick": "JVP03MC_PrepareAndStartTest($id);"
     },
     {
@@ -129,7 +141,7 @@
     },
     {
       "type": "Button",
-      "caption": "Terrassen-Eventstream neu aufbauen",
+      "caption": "Optionale Terrasse-Diagnose neu verbinden",
       "onClick": "JVP03MC_Reconnect($id);"
     },
     {

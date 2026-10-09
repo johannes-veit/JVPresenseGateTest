@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/libs/DahuaDigest.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/GateTestLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ProofEngine.php';
+require_once dirname(__DIR__) . '/libs/P03DahuaTemplate.php';
 require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
 
 class JVPresenceP03MultiCamera extends IPSModule
@@ -51,6 +52,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterPropertyBoolean('AutoCreateWorkObserver', true); // legacy, unused
 
         $this->RegisterPropertyString('TerraceHost', self::TERRACE_DEFAULT_HOST);
+        $this->RegisterPropertyBoolean('TerraceDiagnosticsEnabled', false);
         $this->RegisterPropertyInteger('CameraPort', 80);
         $this->RegisterPropertyString('Username', '');
         $this->RegisterPropertyString('Password', '');
@@ -84,6 +86,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('SocketRestartStage', 0);
         $this->RegisterAttributeInteger('LastSocketRestart', 0);
         $this->RegisterAttributeInteger('RuleIndex', -1);
+        $this->RegisterAttributeInteger('RuleID', -1);
         $this->RegisterAttributeBoolean('RuleCreatedByModule', false);
         $this->RegisterAttributeBoolean('GlobalChangedByModule', false);
         $this->RegisterAttributeString('OriginalGlobalSceneType', '');
@@ -108,6 +111,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('AuxWorkInstanceID', 0);
         $this->RegisterAttributeInteger('AuxJVPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
+        $this->RegisterAttributeInteger('AuxJVEventCounterVarID', 0);
+        $this->RegisterAttributeInteger('AuxWorkEventCounterVarID', 0);
         $this->RegisterAttributeInteger('AuxJVStreamVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkStreamVarID', 0);
         $this->RegisterAttributeString('AuxJVModel', '');
@@ -191,13 +196,13 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->subscribeP03AuxVariables();
         $this->refreshP03CameraStatus();
 
-        if (!$this->cameraConfigurationReady()) {
+        if (!$this->credentialsReady()) {
             $this->setResult('NICHT BEREIT – P03 Dahua-Benutzername/Passwort direkt im P03-Modul eintragen.');
             return;
         }
 
         $this->setResult('Installiert. P03 arbeitet vollständig unabhängig von der Außenlichtautomatik.');
-        if ($this->ReadPropertyBoolean('Enabled')) {
+        if ($this->ReadPropertyBoolean('Enabled') && $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')) {
             $this->scheduleSocketRestart(500);
         }
     }
@@ -210,9 +215,11 @@ class JVPresenceP03MultiCamera extends IPSModule
             return (string) $raw;
         }
 
-        $host = trim($this->ReadPropertyString('TerraceHost'));
-        $sourceCaption = 'P03 direkt: JV Terrasse ' . ($host !== '' ? $host : '<IP fehlt>')
-            . ' – keine Abhängigkeit zur Außenlichtautomatik';
+        $jvHost = trim($this->ReadPropertyString('AuxJVHost'));
+        $workHost = trim($this->ReadPropertyString('AuxWorkHost'));
+        $sourceCaption = 'P03 Primär: JV_LEFT ' . ($jvHost !== '' ? $jvHost : '<IP fehlt>')
+            . ' ↔ WORK_LEFT ' . ($workHost !== '' ? $workHost : '<IP fehlt>')
+            . ' – Terrasse nur optional';
 
         $result = '';
         $resultID = $this->GetIDForIdent('Result');
@@ -237,7 +244,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         return json_encode([
             'Host' => $cfg['host'] ?? '',
             'Port' => $cfg['port'] ?? 80,
-            'Open' => $this->ReadPropertyBoolean('Enabled') && ($cfg['host'] ?? '') !== ''
+            'Open' => $this->ReadPropertyBoolean('Enabled')
+                && $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+                && ($cfg['host'] ?? '') !== ''
         ]);
     }
 
@@ -332,33 +341,41 @@ class JVPresenceP03MultiCamera extends IPSModule
             $sender = (int) $SenderID;
             $jvVar = $this->ReadAttributeInteger('AuxJVPersonVarID');
             $workVar = $this->ReadAttributeInteger('AuxWorkPersonVarID');
+            $jvCounter = $this->ReadAttributeInteger('AuxJVEventCounterVarID');
+            $workCounter = $this->ReadAttributeInteger('AuxWorkEventCounterVarID');
             $jvStreamVar = $this->ReadAttributeInteger('AuxJVStreamVarID');
             $workStreamVar = $this->ReadAttributeInteger('AuxWorkStreamVarID');
 
             if ($sender === $jvStreamVar || $sender === $workStreamVar) {
                 $this->refreshProductionState();
+                $this->refreshReadyState();
                 return;
             }
 
-            if ($sender === $jvVar || $sender === $workVar) {
+            // Internal proof uses the monotonic counter, not the visible Boolean.
+            // Every IVS Human event increments it, even while PersonDetected is
+            // already TRUE from the previous 5-second pulse.
+            if ($sender === $jvCounter || $sender === $workCounter) {
                 $changed = true;
                 if (is_array($Data) && array_key_exists(1, $Data)) {
                     $changed = (bool) $Data[1];
                 }
-
-                $active = false;
-                try {
-                    $active = (bool) GetValue($sender);
-                } catch (Throwable $e) {
-                }
-
-                if ($changed && $active) {
-                    $source = ($sender === $jvVar) ? P03ProofEngine::SRC_JV_LEFT : P03ProofEngine::SRC_WORK_LEFT;
+                if ($changed) {
+                    $source = ($sender === $jvCounter)
+                        ? P03ProofEngine::SRC_JV_LEFT
+                        : P03ProofEngine::SRC_WORK_LEFT;
                     $this->recordP03HumanEvent($source, [
                         'sender' => $sender,
+                        'counter' => GetValue($sender),
                         'messageTimestamp' => (int) $TimeStamp
                     ]);
                 }
+                return;
+            }
+
+            // PersonDetected remains subscribed only as a visible health/status
+            // signal. It must never create a second proof beside the counter.
+            if ($sender === $jvVar || $sender === $workVar) {
                 return;
             }
         }
@@ -392,7 +409,10 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function HandshakeTimer(): void
     {
         $this->SetTimerInterval('HandshakeTimer', 0);
-        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady() || $this->ReadAttributeBoolean('AuthBlocked')) {
+        if (!$this->ReadPropertyBoolean('Enabled')
+            || !$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            || !$this->cameraConfigurationReady()
+            || $this->ReadAttributeBoolean('AuthBlocked')) {
             return;
         }
         $parentID = $this->getParentID();
@@ -428,7 +448,10 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         if ($stage === 2) {
             $this->WriteAttributeInteger('SocketRestartStage', 0);
-            if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady() || $this->ReadAttributeBoolean('AuthBlocked')) {
+            if (!$this->ReadPropertyBoolean('Enabled')
+            || !$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            || !$this->cameraConfigurationReady()
+            || $this->ReadAttributeBoolean('AuthBlocked')) {
                 return;
             }
             $cfg = $this->cameraConfiguration();
@@ -448,7 +471,10 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     public function Watchdog(): void
     {
-        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady() || $this->ReadAttributeBoolean('AuthBlocked')) {
+        if (!$this->ReadPropertyBoolean('Enabled')
+            || !$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            || !$this->cameraConfigurationReady()
+            || $this->ReadAttributeBoolean('AuthBlocked')) {
             return;
         }
         $parentID = $this->getParentID();
@@ -515,8 +541,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         $auditOnly = $this->ReadAttributeBoolean('AuditOnlyNextRun');
         if ($auditOnly) {
-            // Read-only/commissioning audit must not erase already verified field evidence.
-            // Only transient stream/proof buffers are cleared.
+            // Audit must not erase already verified field evidence.
             $this->WriteAttributeString('SeenEventKeys', '{}');
             $this->WriteAttributeString('P03HumanEvents', '[]');
             $this->WriteAttributeString('P03PendingCrossings', '[]');
@@ -531,33 +556,53 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->ResetTest();
         }
 
+        // Terrace is diagnostics-only. Keep its socket closed unless the optional
+        // diagnostic switch is explicitly enabled.
         $this->syncParentSocket();
         $this->updateParentSubscription($this->getParentID());
 
-        $cfg = $this->cameraConfiguration();
-        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
-            $this->setResult('FEHLER – P03 Dahua-IP/Zugangsdaten fehlen. Keine Außenlicht-Instanz wird mehr als Quelle verwendet.');
+        $username = trim($this->ReadPropertyString('Username'));
+        $password = $this->ReadPropertyString('Password');
+        $jvHost = trim($this->ReadPropertyString('AuxJVHost'));
+        $workHost = trim($this->ReadPropertyString('AuxWorkHost'));
+        if ($username === '' || $password === '' || $jvHost === '' || $workHost === '') {
+            $this->setResult('FEHLER – P03 Dahua-Zugangsdaten oder eine der beiden Mastkamera-IP-Adressen fehlen.');
             return;
         }
 
-        $this->appendProtocol('=== P03 HOME-LAGER TEST ===');
-        $this->appendProtocol('Quelle: JV Terrasse / ' . $cfg['host'] . ':' . $cfg['port']);
+        $this->appendProtocol('=== P03 MASTKAMERA HOME-LAGER TEST ===');
+        $this->appendProtocol('Primärsensoren: JV_LEFT=' . $jvHost . ' | WORK_LEFT=' . $workHost . '.');
+        $this->appendProtocol('Richtung: JV_LEFT→WORK_LEFT = HOME→LAGER; WORK_LEFT→JV_LEFT = LAGER→HOME.');
+        $this->appendProtocol('JV Terrasse/CrossLine ist optional und wird für Audit/Test/Produktion nicht benötigt.');
         $this->appendProtocol('Keine Zugangsdaten werden im Protokoll ausgegeben.');
 
-        // Multi-camera preflight: JV Terrasse provides the physical boundary,
-        // the two mast cameras provide human confirmation on both sides.
+        // v0.6.8 and earlier could have created/changed terrace IVS test config.
+        // Restore only those changes that P03 itself recorded as owned. Never
+        // create or modify terrace IVS as part of the new mast-camera workflow.
+        $legacyCleanup = $this->restoreLegacyTerraceP03Config();
+        if (!($legacyCleanup['ok'] ?? false)) {
+            $this->setResult(
+                'FEHLER – alte P03-Terrassen-Testkonfiguration konnte nicht sicher zurückgesetzt werden: '
+                . (string) ($legacyCleanup['error'] ?? 'unbekannt')
+            );
+            return;
+        }
+
         $auxDiscovery = $this->discoverP03AuxSources(true);
         $this->subscribeP03AuxVariables();
         $this->refreshP03CameraStatus();
         if (!($auxDiscovery['ok'] ?? false)) {
-            $this->setResult('FEHLER – P03 Zusatzkameras nicht vollständig verfügbar. JV-links und Werkstatt-links müssen PersonDetected liefern.');
-            $this->appendProtocol('P03 PREFLIGHT FEHLER: Zusatzkameras/PersonDetected fehlen.');
+            $this->setResult(
+                'FEHLER – P03 Mastkamera-Observer nicht vollständig verfügbar. '
+                . 'Beide Observer benötigen PersonDetected, HumanEventCounter und StreamOK.'
+            );
+            $this->appendProtocol('P03 PREFLIGHT FEHLER: Mastkamera-Observer/Counter/Streamvariablen fehlen.');
             return;
         }
 
         $auxAudit = $this->auditP03AuxCameras();
         if (!($auxAudit['ok'] ?? false)) {
-            $this->setResult('FEHLER – P03 Zusatzkamera-Audit: ' . (string) ($auxAudit['error'] ?? 'unbekannt'));
+            $this->setResult('FEHLER – P03 Mastkamera-Audit: ' . (string) ($auxAudit['error'] ?? 'unbekannt'));
             return;
         }
 
@@ -565,215 +610,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         $simOK = (bool) ($simulation['ok'] ?? false);
         $this->WriteAttributeBoolean('P03SimulationPassed', $simOK);
         $this->appendProtocol(
-            'P03 SIMULATION VOR LAUFTEST: ' . ($simOK ? 'PASS' : 'FAIL')
+            'P03 2-KAMERA-SIMULATION: ' . ($simOK ? 'PASS' : 'FAIL')
                 . ' – ' . implode(' | ', $simulation['details'] ?? [])
         );
         if (!$simOK) {
-            $this->setResult('FEHLER – interne P03-Simulation fehlgeschlagen. Kein Lauftest.');
-            return;
-        }
-
-        if ($this->ReadAttributeBoolean('Rpc2ModuleChangedByModule')) {
-            $this->appendProtocol('Vorherige P03-Sensitivity-Teständerung wird zuerst auf den Ausgangswert zurückgesetzt.');
-            $restoreModule = $this->restoreOriginalVideoAnalyseModuleViaRpc2();
-            if (!($restoreModule['ok'] ?? false)) {
-                $this->setResult('FEHLER – vorherige P03-Sensitivity konnte nicht sicher zurückgesetzt werden: ' . (string) ($restoreModule['error'] ?? 'unbekannt'));
-                return;
-            }
-        }
-
-        // Altstände bis v0.2.4 können VideoAnalyseGlobal per RPC2 verändert haben.
-        // Diese Änderung zuerst exakt zurücksetzen.
-        if ($this->ReadAttributeBoolean('Rpc2GlobalChangedByModule')) {
-            $this->appendProtocol('Vorherige RPC2-IVS-Smart-Plan-Konfiguration wird zuerst vollständig zurückgesetzt.');
-            $restoreGlobal = $this->restoreOriginalVideoAnalyseGlobalViaRpc2();
-            if (!($restoreGlobal['ok'] ?? false)) {
-                $this->setResult('FEHLER – alter RPC2-IVS-Smart-Plan konnte nicht sicher zurückgesetzt werden: ' . (string) ($restoreGlobal['error'] ?? 'unbekannt') . '. Test abgebrochen.');
-                return;
-            }
-            $this->appendProtocol('Originale VideoAnalyseGlobal-Tabelle (RPC2-Altstand) wiederhergestellt.');
-        }
-
-        // Ab v0.2.6 wird die aktive Dahua-IVS-Szene ausschließlich über den
-        // dokumentierten HTTP-API-Pfad Scene.Type gesteuert.
-        if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
-            $this->appendProtocol('Vorherige Scene.Type-Teständerung wird zuerst auf den Ausgangswert zurückgesetzt.');
-            $this->restoreGlobalSceneType();
-            if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
-                $this->setResult('FEHLER – vorherige Scene.Type-Teständerung konnte nicht sicher zurückgesetzt werden.');
-                return;
-            }
-        }
-
-        if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
-            $this->appendProtocol('Vorhandene, vom Testmodul erzeugte P03-Regel wird vor dem neuen Lauf auf den gesicherten Originalzustand zurückgesetzt.');
-            $restore = $this->restoreOriginalVideoAnalyseRuleViaRpc2();
-            if (!($restore['ok'] ?? false)) {
-                $this->setResult('FEHLER – alte Testregel konnte nicht sicher zurückgesetzt werden: ' . (string) ($restore['error'] ?? 'unbekannt') . '. Test abgebrochen.');
-                return;
-            }
-            $this->appendProtocol('Originale VideoAnalyseRule-Tabelle wiederhergestellt.');
-        }
-
-        $rulesRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
-        if (!$rulesRaw['ok']) {
-            $this->setResult('FEHLER – IVS-Konfiguration konnte nicht gelesen werden: ' . $rulesRaw['error']);
-            return;
-        }
-
-        $smartRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
-        $smartBefore = $smartRaw['ok']
-            ? GateTestLogic::configValue($smartRaw['body'], 'SmartMotionDetect[0].Enable')
-            : null;
-        $this->WriteAttributeString('OriginalSmartMotionEnable', $smartBefore ?? '');
-        if ($smartBefore !== null) {
-            $this->appendProtocol('SmartMotionDetect vorher: ' . $smartBefore);
-        }
-
-        $sceneState = $this->readVideoAnalyseSceneState();
-        if (!($sceneState['ok'] ?? false)) {
-            $this->setResult('FEHLER – VideoAnalyseGlobal konnte nicht eindeutig gelesen werden: ' . (string) ($sceneState['error'] ?? ''));
-            $this->appendProtocol('SICHERHEITSABBRUCH: ' . (string) ($sceneState['error'] ?? 'Scene.Type unbekannt'));
-            return;
-        }
-
-        $globalType = $sceneState['type'] ?? null;
-        $cgiTypeBefore = $sceneState['cgiType'] ?? null;
-        $this->appendProtocol(
-            'VideoAnalyseGlobal Scene.Type vorher: RPC2=' . ($globalType === null ? '<null>' : (string) $globalType) .
-            ', CGI=' . ($cgiTypeBefore === null ? '<nicht ausgegeben>' : ((string) $cgiTypeBefore === '' ? '<leer>' : (string) $cgiTypeBefore))
-        );
-
-        $normalized = strtolower(trim((string) ($globalType ?? '')));
-        if ($normalized === '' || $normalized === '0') {
-            // Exakte Originaltabelle sichern. Auf dieser Taurus/Web5-Firmware
-            // repräsentiert RPC2 den inaktiven Smart-Plan als Scene.Type=null,
-            // während CGI die Zeile häufig komplett weglässt.
-            $originalGlobalTable = $sceneState['table'] ?? null;
-            if (!is_array($originalGlobalTable)) {
-                $this->setResult('FEHLER – vollständiges VideoAnalyseGlobal-Backup fehlt. Keine IVS-Änderung vorgenommen.');
-                return;
-            }
-            $backupJson = json_encode($originalGlobalTable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            if (!is_string($backupJson) || $backupJson === '') {
-                $this->setResult('FEHLER – VideoAnalyseGlobal-Backup konnte nicht erzeugt werden.');
-                return;
-            }
-            $this->WriteAttributeString('OriginalVideoAnalyseGlobalRpc2', $backupJson);
-            $this->WriteAttributeString('OriginalGlobalSceneType', (string) ($globalType ?? ''));
-
-            // Diese Taurus/Web5-Firmware hängt beim CGI-setConfig-Aufruf für
-            // Scene.Type teilweise fest. Der bereits erfolgreich verifizierte
-            // RPC2-configManager.setConfig-Weg wird deshalb für den Write benutzt.
-            // CGI bleibt als unabhängiger Readback bestehen.
-            $candidateGlobalTable = $originalGlobalTable;
-            $candidateGlobalTable[0]['Scene']['Type'] = 'Normal';
-            $setGlobal = $this->setVideoAnalyseGlobalTableViaRpc2($candidateGlobalTable);
-            if (!($setGlobal['ok'] ?? false)) {
-                $this->setResult('FEHLER – RPC2 konnte Scene.Type=Normal nicht setzen: ' . (string) ($setGlobal['error'] ?? 'unbekannt'));
-                return;
-            }
-            $this->appendProtocol('RPC2 WRITE: VideoAnalyseGlobal Scene.Type=Normal -> akzeptiert.');
-
-            // Primär muss RPC2 den geschriebenen Wert exakt bestätigen.
-            // CGI dient zusätzlich als Gegenprüfung, darf bei dieser Firmware
-            // aber nicht mehr den Ablauf blockieren.
-            $verifyState = $this->readVideoAnalyseSceneState();
-            $verifyRpcType = $verifyState['type'] ?? null;
-            $verifyCgiType = $verifyState['cgiType'] ?? null;
-            if (!($verifyState['ok'] ?? false) || $verifyRpcType !== 'Normal') {
-                $restore = $this->restoreVideoAnalyseGlobalTable($originalGlobalTable);
-                $this->setResult('FEHLER – Scene.Type=Normal wurde per RPC2 nicht bestätigt.');
-                $this->appendProtocol(
-                    'SICHERHEITSABBRUCH: Readback RPC2=' . json_encode($verifyRpcType) .
-                    ', CGI=' . json_encode($verifyCgiType) .
-                    ', Rollback=' . (($restore['ok'] ?? false) ? 'OK' : 'FEHLER')
-                );
-                return;
-            }
-
-            $this->WriteAttributeBoolean('GlobalChangedByModule', true);
-            $this->appendProtocol(
-                'DAHUA VERIFY: Scene.Type=Normal per RPC2 bestätigt; CGI=' .
-                ($verifyCgiType === null ? '<nicht ausgegeben>' : (string) $verifyCgiType) . '.'
-            );
-        } elseif ($normalized === 'normal') {
-            $this->appendProtocol('DAHUA VERIFY: Scene.Type=Normal war bereits aktiv.');
-        } else {
-            $this->setResult('STOP – Kamera nutzt bereits einen anderen AI-Smart-Plan (' . (string) $globalType . '). Es wurde nichts umgestellt.');
-            $this->appendProtocol('Abbruch zum Schutz vorhandener AI-Konfiguration.');
-            return;
-        }
-
-        $sens = $this->setNormalVideoAnalyseSensitivityViaRpc2(10);
-        if (!($sens['ok'] ?? false)) {
-            $error = 'FEHLER – P03 Sensitivity=10 konnte nicht sicher gesetzt/verifiziert werden: ' . (string) ($sens['error'] ?? 'unbekannt');
-            $this->rollbackPreparedP03Config($error);
-            $this->setResult($error);
-            return;
-        }
-        $this->appendProtocol('P03 Sensitivity=10 gesetzt und per RPC2 rückgelesen.');
-
-        $rules = GateTestLogic::parseRules($rulesRaw['body']);
-        $this->appendProtocol('IVS-Regeln vor Test: ' . $this->summarizeRules($rules));
-
-        // Diese Taurus/Web5-Firmware (u.a. 3.140.0000000.21.R auf
-        // IPC-PDW3849-A180-AS-PV) lässt neue IVS-Regeln über den alten
-        // configManager-Schreibweg nicht zuverlässig anlegen. Vorhandene
-        // CrossLineDetection-Regeln können jedoch sauber gelesen und ihre
-        // Events über eventManager.cgi empfangen werden.
-        //
-        // Deshalb: vorhandene Tripwire automatisch wiederverwenden. Ist noch
-        // keine vorhanden, keinerlei weitere Schreibversuche an der Kamera.
-        $createdNow = false;
-        // Ausschließlich die eigene P03-Regel wiederverwenden.
-        // Fremde CrossLine-Regeln dürfen weder übernommen noch verändert werden.
-        $idx = GateTestLogic::findRuleIndex($rules, self::RULE_NAME);
-
-        if ($idx === null) {
-            $this->appendProtocol('Keine CrossLineDetection vorhanden. Lege P03 über den bestätigten Web5/RPC2-Konfigurationsweg an.');
-            $createdRpc = $this->createP03TripwireViaRpc2();
-            if (!($createdRpc['ok'] ?? false)) {
-                $error = 'FEHLER – automatische RPC2-Tripwire konnte nicht sicher angelegt werden: ' . (string) ($createdRpc['error'] ?? 'unbekannt');
-                $this->rollbackPreparedP03Config($error);
-                $this->setResult($error . '. Kamera wurde auf den Ausgangszustand zurückgesetzt.');
-                return;
-            }
-            $createdNow = true;
-            $idx = (int) ($createdRpc['index'] ?? -1);
-            if ($idx < 0) {
-                $error = 'FEHLER – RPC2-Tripwire wurde bestätigt, aber der Regelindex konnte nicht bestimmt werden.';
-                $this->rollbackPreparedP03Config($error);
-                $this->setResult($error);
-                return;
-            }
-            $rulesRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
-            $rules = $rulesRaw['ok'] ? GateTestLogic::parseRules($rulesRaw['body']) : [];
-            $this->appendProtocol('P03 wurde automatisch über RPC2 angelegt und per CGI rückgelesen.');
-        }
-
-        $rule = $rules[$idx] ?? [];
-        if (strtolower((string) ($rule['Enable'] ?? 'false')) !== 'true') {
-            $error = 'IVS-TRIPWIRE GEFUNDEN, ABER DEAKTIVIERT – P03 wird nicht getestet.';
-            $this->appendProtocol('CrossLineDetection gefunden auf Index ' . $idx . ', aber Enable=' . (string) ($rule['Enable'] ?? '<fehlt>'));
-            $this->rollbackPreparedP03Config($error);
-            $this->setResult($error);
-            return;
-        }
-
-        $this->WriteAttributeInteger('RuleIndex', $idx);
-        $this->WriteAttributeBoolean('RuleCreatedByModule', $createdNow || $this->ReadAttributeBoolean('Rpc2RuleCreatedByModule'));
-        $this->appendProtocol(($createdNow ? 'Neu erzeugte' : 'Vorhandene') . ' Tripwire wird verwendet: Index ' . $idx . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
-
-        // Scene.Type wurde oben bereits über den von Dahua dokumentierten
-        // HTTP-API-Pfad gesetzt und rückgelesen. Jetzt erfolgt eine unabhängige
-        // Vollprüfung über CGI + RPC2 + Web5-Capabilities.
-        $smartPlanChangedNow = $this->ReadAttributeBoolean('GlobalChangedByModule');
-        $audit = $this->auditP03CameraConfiguration($idx);
-        if (!($audit['ok'] ?? false)) {
-            $error = 'KAMERA-KONFIGURATION NICHT FREIGEGEBEN – ' . (string) ($audit['error'] ?? 'Audit fehlgeschlagen') . '. Nicht laufen.';
-            $this->rollbackPreparedP03Config($error);
-            $this->setResult($error);
+            $this->setResult('FEHLER – interne P03-2-Kamera-Simulation fehlgeschlagen. Kein Lauftest.');
             return;
         }
 
@@ -781,49 +622,83 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->WriteAttributeBoolean('TestActive', false);
             $this->SetValue('TestActive', false);
             $this->setReady(false);
-            $this->setResult('KAMERA-KONFIGURATION OK – P03, Scene.Type=Normal, ObjectTypes=Unknown, Sensitivity=10 und Geometrie wurden mehrfach rückgelesen. Noch nicht laufen; erst Test starten.');
-            $this->appendProtocol('AUDIT-ONLY: Konfiguration ist vorbereitet und geprüft; Zähler bleibt absichtlich 0.');
+            $this->setResult(
+                'P03 MASTKAMERA-AUDIT OK – beide Human-IVS-Regeln + Observer + 2-Kamera-Simulation geprüft. '
+                . 'Terrasse wurde nicht als Voraussetzung verwendet.'
+            );
+            $this->appendProtocol(
+                'AUDIT-ONLY: Mastkameras strukturell OK. HumanEventCounter muss im kurzen Einzeltest real hochzählen; '
+                . 'Terrasse/CrossLine bleibt Diagnose.'
+            );
             return;
         }
-        // Prüfen, ob das Aktivieren von IVS die bestehende SmartMotion-Personenerkennung ausgeschaltet hat.
-        if ($smartBefore !== null && strtolower($smartBefore) === 'true') {
-            $smartAfterRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
-            $smartAfter = $smartAfterRaw['ok']
-                ? GateTestLogic::configValue($smartAfterRaw['body'], 'SmartMotionDetect[0].Enable')
-                : null;
-            if ($smartAfter !== null && strtolower($smartAfter) !== 'true') {
-                $error = 'STOP – IVS und bestehende SMD-Personenerkennung kollidieren auf dieser Firmware.';
-                $this->appendProtocol('SICHERHEITSABBRUCH: SmartMotionDetect wurde durch IVS deaktiviert.');
-                $this->rollbackPreparedP03Config($error);
-                $this->setResult($error . ' Ausgangszustand wiederhergestellt.');
-                return;
-            }
-        }
 
+        $this->WriteAttributeString('P03HumanEvents', '[]');
+        $this->WriteAttributeString('P03PendingCrossings', '[]');
+        $this->SetTimerInterval('P03ProofTimer', 0);
         $this->WriteAttributeBoolean('TestActive', true);
         $this->SetValue('TestActive', true);
-        $this->setResult('REGEL BEREIT – Eventstream verbindet noch …');
-        $this->appendProtocol('P03-Test nutzt CrossLineDetection auf Index ' . $idx . '.');
-        $this->appendProtocol($createdNow
-            ? 'Die P03-Linie wurde durch das Testmodul über RPC2 angelegt und vollständig rückgelesen.'
-            : 'Die vorhandene Liniengeometrie der Kamera wird unverändert verwendet.');
-        $this->appendProtocol('TESTVARIANTE P03: generische CrossLine mit ObjectTypes=Unknown, MinSize=0, Type=ByLength, Sensitivity=10. Die Linie liegt exakt auf der markierten HOME↔Lagerplatz-Grenze. SmartMotionHuman dient nur als zeitlich versetzte Personenbestätigung.');
-        $this->appendProtocol('TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. Entscheidend ist ausschließlich die Reihenfolge der beiden Mastkameras: JV_LEFT→WORK_LEFT=OUT, WORK_LEFT→JV_LEFT=IN.');
-        $this->appendProtocol('Eventzuordnung: Dahua event.index ist Kanalindex 0 und wird nicht mit dem IVS-Regelindex verwechselt.');
 
-        // Wenn die Tripwire gerade neu angelegt wurde, MUSS der Dahua-
-        // Eventstream neu verbunden werden. Bei dieser Firmware wurde der Stream
-        // bisher bereits vor dem RPC2-ADD aufgebaut; ein laufendes codes=[All]
-        // Abonnement übernimmt neu hinzugekommene IVS-Regeln nicht zuverlässig.
-        if ($createdNow || $smartPlanChangedNow || !$this->ReadAttributeBoolean('Streaming')) {
-            if ($createdNow || $smartPlanChangedNow) {
-                $this->appendProtocol('Eventstream wird nach P03-/Smart-Plan-Änderung zwingend neu aufgebaut.');
-            }
-            $this->Reconnect();
-            $this->WriteAttributeBoolean('TestActive', true);
-            $this->SetValue('TestActive', true);
-        }
+        $this->appendProtocol(
+            'TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. '
+            . 'Nur die Reihenfolge der zwei Mastkamera-Human-Ereignisse zählt.'
+        );
+        $this->setResult('P03 MASTTEST vorbereitet – warte auf beide P03-Mastkamera-Eventstreams …');
         $this->refreshReadyState();
+    }
+
+    /** @return array{ok:bool,error:string} */
+    private function restoreLegacyTerraceP03Config(): array
+    {
+        $errors = [];
+        $changed = false;
+
+        if ($this->ReadAttributeBoolean('Rpc2ModuleChangedByModule')) {
+            $changed = true;
+            $r = $this->restoreOriginalVideoAnalyseModuleViaRpc2();
+            if (!($r['ok'] ?? false)) {
+                $errors[] = 'VideoAnalyseModule: ' . (string) ($r['error'] ?? 'Restore fehlgeschlagen');
+            }
+        }
+
+        if ($this->ReadAttributeBoolean('Rpc2GlobalChangedByModule')) {
+            $changed = true;
+            $r = $this->restoreOriginalVideoAnalyseGlobalViaRpc2();
+            if (!($r['ok'] ?? false)) {
+                $errors[] = 'VideoAnalyseGlobal RPC2: ' . (string) ($r['error'] ?? 'Restore fehlgeschlagen');
+            }
+        }
+
+        if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
+            $changed = true;
+            $this->restoreGlobalSceneType();
+            if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
+                $errors[] = 'Scene.Type: Restore nicht bestätigt';
+            }
+        }
+
+        if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
+            $changed = true;
+            $r = $this->restoreOriginalVideoAnalyseRuleViaRpc2();
+            if (!($r['ok'] ?? false)) {
+                $errors[] = 'VideoAnalyseRule: ' . (string) ($r['error'] ?? 'Restore fehlgeschlagen');
+            }
+        }
+
+        if ($errors !== []) {
+            $this->appendProtocol('LEGACY TERRASSE RESTORE FEHLER: ' . implode(' | ', $errors));
+            return ['ok' => false, 'error' => implode(' | ', $errors)];
+        }
+
+        if ($changed) {
+            $this->appendProtocol(
+                'LEGACY TERRASSE: frühere P03-Teständerungen vollständig auf gesicherten Ausgangszustand zurückgesetzt.'
+            );
+        } else {
+            $this->appendProtocol('LEGACY TERRASSE: keine von P03 zu restaurierenden Altänderungen vorhanden.');
+        }
+
+        return ['ok' => true, 'error' => ''];
     }
 
     private function rollbackPreparedP03Config(string $reason): void
@@ -862,8 +737,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             && $out >= 2
             && $in >= 2
             && $this->ReadAttributeInteger('P03VerifiedCount') >= 4
-            && $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
+            && $this->ReadAttributeInteger('AuxJVEventCounterVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventCounterVarID') > 0
             && $this->p03AuxStreamsReady();
 
         if (!$ready) {
@@ -973,6 +848,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             'streaming' => $this->ReadAttributeBoolean('Streaming'),
             'lastCameraRx' => $this->ReadAttributeInteger('LastCameraRx'),
             'ruleIndex' => $this->ReadAttributeInteger('RuleIndex'),
+            'ruleID' => $this->ReadAttributeInteger('RuleID'),
             'ruleCreatedByModule' => $this->ReadAttributeBoolean('RuleCreatedByModule'),
             'globalChangedByModule' => $this->ReadAttributeBoolean('GlobalChangedByModule'),
             'rpc2GlobalChangedByModule' => $this->ReadAttributeBoolean('Rpc2GlobalChangedByModule'),
@@ -981,6 +857,11 @@ class JVPresenceP03MultiCamera extends IPSModule
             'auxWorkInstanceID' => $this->ReadAttributeInteger('AuxWorkInstanceID'),
             'auxJVPersonVarID' => $this->ReadAttributeInteger('AuxJVPersonVarID'),
             'auxWorkPersonVarID' => $this->ReadAttributeInteger('AuxWorkPersonVarID'),
+            'auxJVEventCounterVarID' => $this->ReadAttributeInteger('AuxJVEventCounterVarID'),
+            'auxWorkEventCounterVarID' => $this->ReadAttributeInteger('AuxWorkEventCounterVarID'),
+            'auxJVStreamVarID' => $this->ReadAttributeInteger('AuxJVStreamVarID'),
+            'auxWorkStreamVarID' => $this->ReadAttributeInteger('AuxWorkStreamVarID'),
+            'terraceDiagnosticsEnabled' => $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled'),
             'p03HumanEvents' => $this->getP03HumanEvents(),
             'p03PendingCrossings' => $this->getP03PendingCrossings(),
             'p03DirectionMap' => json_decode($this->ReadAttributeString('P03DirectionMap'), true),
@@ -993,10 +874,37 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->SendDebug('GateTestState', json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
     }
 
+    /** @param array<string,mixed> $event */
+    private function matchesP03TerraceRuleEvent(array $event): bool
+    {
+        if (strcasecmp((string) ($event['code'] ?? ''), 'CrossLineDetection') !== 0) {
+            return false;
+        }
+
+        $name = trim((string) ($event['ruleName'] ?? ''));
+        if ($name !== '') {
+            return strcasecmp($name, self::RULE_NAME) === 0;
+        }
+
+        $accepted = [];
+        foreach ([$this->ReadAttributeInteger('RuleID'), $this->ReadAttributeInteger('RuleIndex')] as $candidate) {
+            if ($candidate >= 0) {
+                $accepted[(string) $candidate] = true;
+            }
+        }
+        foreach (['cfgRuleId', 'ruleIdUpper', 'ruleIdLower', 'ruleId'] as $field) {
+            $value = $event[$field] ?? null;
+            if ($value !== null && $value !== '' && isset($accepted[(string) $value])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private function processEventData(string $chunk): void
     {
         $carry = $this->GetBuffer('EventCarry');
-        $events = DahuaEventParser::feed($chunk, $carry);
+        $events = JVP03DahuaEventParser::feed($chunk, $carry);
         $this->SetBuffer('EventCarry', $carry);
 
         foreach ($events as $event) {
@@ -1034,14 +942,23 @@ class JVPresenceP03MultiCamera extends IPSModule
                 continue;
             }
 
-            // Dahua eventManager "index" is the video channel. RuleID identifies
-            // the concrete P03 tripwire on this camera.
-            $ruleIndex = $this->ReadAttributeInteger('RuleIndex');
-            $eventRuleId = $event['ruleId'] ?? null;
-            if ($eventRuleId !== null && is_numeric($eventRuleId) && $ruleIndex >= 0
-                && (int) $eventRuleId !== $ruleIndex) {
+            // Rule name is authoritative. Dahua may emit CfgRuleId, RuleID
+            // and RuleId with different values; comparing one of them blindly to
+            // the table index caused the old false rejects.
+            if (!$this->matchesP03TerraceRuleEvent($event)) {
                 if ($this->ReadAttributeBoolean('TestActive')) {
-                    $this->appendProtocol('DIAG IVS ignoriert: fremde CrossLine RuleID=' . (string) $eventRuleId . ', erwartet=' . $ruleIndex);
+                    $this->appendProtocol(
+                        'DIAG IVS ignoriert: fremde CrossLine '
+                        . json_encode([
+                            'name' => $event['ruleName'] ?? null,
+                            'cfgRuleId' => $event['cfgRuleId'] ?? null,
+                            'RuleID' => $event['ruleIdUpper'] ?? null,
+                            'RuleId' => $event['ruleIdLower'] ?? null,
+                            'expectedName' => self::RULE_NAME,
+                            'expectedIndex' => $this->ReadAttributeInteger('RuleIndex'),
+                            'expectedId' => $this->ReadAttributeInteger('RuleID')
+                        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    );
                 }
                 continue;
             }
@@ -1056,6 +973,10 @@ class JVPresenceP03MultiCamera extends IPSModule
                 'classification' => $event['classification'] ?? null,
                 'direction' => $direction,
                 'eventId' => $event['eventId'],
+                'ruleName' => $event['ruleName'] ?? null,
+                'cfgRuleId' => $event['cfgRuleId'] ?? null,
+                'ruleIdUpper' => $event['ruleIdUpper'] ?? null,
+                'ruleIdLower' => $event['ruleIdLower'] ?? null,
                 'ruleId' => $event['ruleId'],
                 'groupId' => $event['groupId'],
                 'objectId' => $event['objectId']
@@ -1098,7 +1019,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     public function P03ProofTimer(): void
     {
-        $this->evaluateP03Pending();
+        // Only the ordered mast-camera pair may commit a transfer.
         $this->evaluateP03MastSequence();
     }
 
@@ -1302,47 +1223,19 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->setP03HumanEvents($events);
 
         $this->appendProtocol('P03 HUMAN ' . $source . ' @' . sprintf('%.3f', $now));
-        $this->evaluateP03Pending();
         $this->evaluateP03MastSequence();
     }
 
     /** @param array<string,mixed> $event */
     private function recordP03Crossing(array $event, ?string $direction): void
     {
-        $pending = $this->getP03PendingCrossings();
-        $now = microtime(true);
-        $eventId = trim((string) ($event['eventId'] ?? ''));
-        $id = $eventId !== '' ? ('cross:event:' . $eventId) : ('cross:' . sprintf('%.6f', $now));
-
-        foreach ($pending as $candidate) {
-            if (($candidate['id'] ?? '') === $id) {
-                return;
-            }
-        }
-
-        $candidate = [
-            'id' => $id,
-            'ts' => $now,
-            'direction' => $direction,
-            'eventId' => $event['eventId'] ?? null,
-            'ruleId' => $event['ruleId'] ?? null,
-            'objectId' => $event['objectId'] ?? null
-        ];
-        $pending[] = $candidate;
-        if (count($pending) > 20) {
-            $pending = array_slice($pending, -20);
-        }
-        $this->setP03PendingCrossings($pending);
-
-        $this->SetValue('P03ProofState', 'PENDING – CrossLine wartet auf Kamerabestätigung');
+        // Terrace CrossLine is diagnostics-only. It may never enter the pending
+        // proof queue, consume mast events or book a HOME/LAGER transfer.
         $this->appendProtocol(
-            'P03 CROSS id=' . $id
-                . ' Direction=' . ($direction ?? '<fehlt>')
-                . ' – wartet auf HOME/LAGER Human-Beweis'
+            'P03 TERRASSE DIAG CrossLine Direction=' . ($direction ?? '<fehlt>')
+                . ' EventID=' . (string) ($event['eventId'] ?? '<fehlt>')
+                . ' – kein Einfluss auf 2-Kamera-Beweis'
         );
-        $this->SetTimerInterval('P03ProofTimer', 1000);
-        $this->evaluateP03Pending();
-        $this->evaluateP03MastSequence();
     }
 
     public function P03AuxRescan(): void
@@ -1358,61 +1251,13 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function evaluateP03Pending(): void
     {
-        $pending = $this->getP03PendingCrossings();
-        if ($pending === []) {
-            $this->SetTimerInterval('P03ProofTimer', 0);
-            return;
+        // Migration safety only: old v0.6.x CrossLine pending entries must never
+        // commit after upgrading to the mast-only architecture.
+        if ($this->getP03PendingCrossings() !== []) {
+            $this->WriteAttributeString('P03PendingCrossings', '[]');
+            $this->appendProtocol('LEGACY CrossLine-Pending verworfen – Terrasse ist nur Diagnose.');
         }
-
-        $events = $this->getP03HumanEvents();
-        $remaining = [];
-        $now = microtime(true);
-        $near = max(5, $this->ReadPropertyInteger('NearProofWindowSeconds'));
-        $terrace = max($near, $this->ReadPropertyInteger('TerraceProofWindowSeconds'));
-
-        foreach ($pending as $cross) {
-            $result = P03ProofEngine::evaluate($cross, $events, $now, (float) $near, (float) $terrace);
-            $state = (string) ($result['state'] ?? P03ProofEngine::STATE_UNKNOWN);
-
-            if ($state === P03ProofEngine::STATE_PENDING) {
-                $remaining[] = $cross;
-                continue;
-            }
-
-            if (in_array($state, [P03ProofEngine::STATE_VERIFIED, P03ProofEngine::STATE_STRONG_VERIFIED], true)) {
-                $events = $this->commitP03VerifiedResult(
-                    $events,
-                    $cross,
-                    $result,
-                    (string) ($cross['id'] ?? 'cross')
-                );
-                continue;
-            }
-
-            if ($state === P03ProofEngine::STATE_CONTRADICTION) {
-                $this->SetValue('P03ProofState', 'CONTRADICTION – kein Übergang gebucht');
-                $this->SetValue('P03LastProof', $this->formatP03Proof($cross, $result));
-                $this->appendProtocol('P03 CONTRADICTION – CrossLine verworfen; keine Presence-Änderung.');
-                continue;
-            }
-
-            // PROVISIONAL / UNKNOWN are explicitly non-committing.
-            $this->SetValue('P03ProofState', $state . ' – kein Übergang gebucht');
-            $this->SetValue('P03LastProof', $this->formatP03Proof($cross, $result));
-            $this->appendProtocol('P03 ' . $state . ' – unvollständiger Beweis; keine Presence-Änderung.');
-        }
-
-        $this->setP03HumanEvents($events);
-        $this->setP03PendingCrossings($remaining);
-        $this->refreshP03DirectionStatus();
-
-        if ($remaining === []) {
-            $this->SetTimerInterval('P03ProofTimer', 0);
-        } else {
-            $this->SetTimerInterval('P03ProofTimer', 1000);
-        }
-
-        $this->checkP03CommissioningComplete();
+        $this->SetTimerInterval('P03ProofTimer', 0);
     }
 
     private function evaluateP03MastSequence(): void
@@ -1652,15 +1497,21 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $jvVar = $jv > 0 ? $this->findPersonDetectedVariable($jv) : 0;
         $workVar = $work > 0 ? $this->findPersonDetectedVariable($work) : 0;
+        $jvCounter = $jv > 0 ? $this->findAuxVariable($jv, 'HumanEventCounter') : 0;
+        $workCounter = $work > 0 ? $this->findAuxVariable($work, 'HumanEventCounter') : 0;
         $jvStream = $jv > 0 ? $this->findAuxVariable($jv, 'StreamOK') : 0;
         $workStream = $work > 0 ? $this->findAuxVariable($work, 'StreamOK') : 0;
         $this->updateP03AuxSubscription('AuxJVPersonVarID', $jvVar);
         $this->updateP03AuxSubscription('AuxWorkPersonVarID', $workVar);
+        $this->updateP03AuxSubscription('AuxJVEventCounterVarID', $jvCounter);
+        $this->updateP03AuxSubscription('AuxWorkEventCounterVarID', $workCounter);
         $this->updateP03AuxSubscription('AuxJVStreamVarID', $jvStream);
         $this->updateP03AuxSubscription('AuxWorkStreamVarID', $workStream);
 
         return [
-            'ok' => $jvVar > 0 && $workVar > 0 && $jvStream > 0 && $workStream > 0,
+            'ok' => $jvVar > 0 && $workVar > 0
+                && $jvCounter > 0 && $workCounter > 0
+                && $jvStream > 0 && $workStream > 0,
             'jv' => $jv,
             'work' => $work
         ];
@@ -1686,7 +1537,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function createP03AuxObserver(string $host, string $role, string $name): int
     {
-        if ($host === '' || !$this->cameraConfigurationReady()) {
+        if ($host === '' || !$this->credentialsReady()) {
             return 0;
         }
 
@@ -1700,6 +1551,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             IPS_SetProperty($id, 'Password', $this->ReadPropertyString('Password'));
             IPS_SetProperty($id, 'Role', $role);
             IPS_SetProperty($id, 'RuleIndex', -1);
+            IPS_SetProperty($id, 'RuleID', -1);
             IPS_ApplyChanges($id);
             $this->appendProtocol($role . ': eigener P03-Kameraobserver angelegt (#' . $id . ').');
             return $id;
@@ -1755,7 +1607,11 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function subscribeP03AuxVariables(): void
     {
-        foreach (['AuxJVPersonVarID', 'AuxWorkPersonVarID', 'AuxJVStreamVarID', 'AuxWorkStreamVarID'] as $attr) {
+        foreach ([
+            'AuxJVPersonVarID', 'AuxWorkPersonVarID',
+            'AuxJVEventCounterVarID', 'AuxWorkEventCounterVarID',
+            'AuxJVStreamVarID', 'AuxWorkStreamVarID'
+        ] as $attr) {
             $id = $this->ReadAttributeInteger($attr);
             if ($id > 0 && IPS_VariableExists($id)) {
                 try {
@@ -1877,13 +1733,103 @@ class JVPresenceP03MultiCamera extends IPSModule
         $ruleIndex = $this->ReadAttributeInteger($meta['ruleIndex']);
         $ruleId = $this->ReadAttributeInteger($meta['ruleId']);
         try {
-            IPS_SetProperty($instanceID, 'RuleIndex', $ruleIndex); // Diagnose/Legacy
-            IPS_SetProperty($instanceID, 'RuleID', $ruleId);     // echte Dahua Event RuleID
+            IPS_SetProperty($instanceID, 'RuleIndex', $ruleIndex);
+            IPS_SetProperty($instanceID, 'RuleID', $ruleId);
             IPS_ApplyChanges($instanceID);
             $this->appendProtocol($role . ': eigener P03-Eventstream nach IVS-Änderung neu aufgebaut.');
         } catch (Throwable $e) {
             $this->appendProtocol($role . ': WARNUNG – P03-Eventstream-Neuaufbau fehlgeschlagen: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Fetches a CrossRegionDetection template from the target camera itself.
+     * No hand-built fallback is allowed: if the firmware does not expose a
+     * usable native template, P03 fails closed and writes no IVS rule.
+     *
+     * @return array{ok:bool,error:string,template?:array,source?:string}
+     */
+    private function getP03AuxNativeCrossRegionTemplate(
+        string $host,
+        int $port,
+        string $username,
+        string $password,
+        string $session,
+        string $role
+    ): array {
+        // 1) Documented HTTP API (channel numbering starts at 1).
+        $cgi = $this->genericCameraGet(
+            $host,
+            $port,
+            $username,
+            $password,
+            '/cgi-bin/devVideoAnalyse.cgi?action=getTemplateRule&Class=Normal&Channel=1'
+        );
+        if ($cgi['ok'] ?? false) {
+            $template = P03DahuaTemplate::crossRegionFromFlat((string) ($cgi['body'] ?? ''));
+            if ($template !== null) {
+                return ['ok' => true, 'error' => '', 'template' => $template, 'source' => 'HTTP getTemplateRule'];
+            }
+        }
+
+        // 2) Native config default table.
+        $default = $this->rpc2Call(
+            $host,
+            $port,
+            $session,
+            201,
+            'configManager.getDefault',
+            ['name' => 'VideoAnalyseRule']
+        );
+        if ($default['ok'] ?? false) {
+            $template = P03DahuaTemplate::findCrossRegion($default['json']['params']['table'] ?? $default['json']);
+            if ($template !== null) {
+                return ['ok' => true, 'error' => '', 'template' => $template, 'source' => 'RPC2 VideoAnalyseRule default'];
+            }
+        }
+
+        // 3) Modern Web5 analysis object. Different firmware generations accept
+        // either the type string or a minimal rule object.
+        $factory = $this->rpc2Call(
+            $host,
+            $port,
+            $session,
+            202,
+            'devVideoAnalyse.factory.instance',
+            ['channel' => 0]
+        );
+        $object = $factory['json']['result'] ?? null;
+        if (($factory['ok'] ?? false) && $object !== null && $object !== false && $object !== '') {
+            $shapes = [
+                'CrossRegionDetection',
+                ['Type' => 'CrossRegionDetection'],
+                ['Class' => 'Normal', 'Type' => 'CrossRegionDetection']
+            ];
+            $id = 203;
+            foreach ($shapes as $shape) {
+                $result = $this->rpc2CallWithObject(
+                    $host,
+                    $port,
+                    $session,
+                    $id++,
+                    'devVideoAnalyse.getTemplateRule',
+                    ['rule' => $shape],
+                    $object
+                );
+                if (!($result['ok'] ?? false)) {
+                    continue;
+                }
+                $template = P03DahuaTemplate::findCrossRegion($result['json'] ?? null);
+                if ($template !== null) {
+                    return ['ok' => true, 'error' => '', 'template' => $template, 'source' => 'Web5 getTemplateRule'];
+                }
+            }
+        }
+
+        return [
+            'ok' => false,
+            'error' => $role . ': Kamera liefert kein sicher auswertbares natives CrossRegionDetection-Template'
+        ];
     }
 
     /**
@@ -1917,6 +1863,25 @@ class JVPresenceP03MultiCamera extends IPSModule
         $changed = false;
         $globalChangedThisRun = false;
         $globalOriginalThisRun = null;
+
+        // Fetch the firmware's own CrossRegion rule structure BEFORE changing
+        // anything. v0.6.4-v0.6.8 built a guessed rule and could therefore be
+        // accepted by setConfig without ever becoming an active IVS detector.
+        $native = $this->getP03AuxNativeCrossRegionTemplate(
+            $host,
+            $port,
+            (string) $cfg['username'],
+            (string) $cfg['password'],
+            $session,
+            $role
+        );
+        if (!($native['ok'] ?? false) || !is_array($native['template'] ?? null)) {
+            $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+            return ['ok' => false, 'error' => (string) ($native['error'] ?? ($role . ': natives IVS-Template fehlt'))];
+        }
+        $nativeTemplate = $native['template'];
+        $nativeSource = (string) ($native['source'] ?? '<unbekannt>');
+        $this->appendProtocol($role . ': natives CrossRegion-Template geladen via ' . $nativeSource . '.');
 
         $globalRead = $this->rpc2Call($host, $port, $session, 210, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
         $globalTable = $globalRead['json']['params']['table'] ?? null;
@@ -2044,7 +2009,17 @@ class JVPresenceP03MultiCamera extends IPSModule
             $newId = (int) $rules[0][$ownIndex]['Id'];
         }
 
-        $desired = P03AuxHumanRule::build($meta['name'], $newId, $eventHandler);
+        try {
+            $desired = P03AuxHumanRule::buildFromTemplate(
+                $meta['name'],
+                $newId,
+                $nativeTemplate,
+                $eventHandler
+            );
+        } catch (Throwable $e) {
+            $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+            return ['ok' => false, 'error' => $role . ': natives IVS-Template unbrauchbar – ' . $e->getMessage()];
+        }
         $candidate = $rules;
         if ($ownIndex >= 0) {
             $candidate[0][$ownIndex] = $desired;
@@ -2272,7 +2247,9 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $ivs = $this->ensureP03AuxHumanRule($instanceID, $role);
         $personVar = $this->findPersonDetectedVariable($instanceID);
-        $ok = ($ivs['ok'] ?? false) && $personVar > 0;
+        $counterVar = $this->findAuxVariable($instanceID, 'HumanEventCounter');
+        $streamVar = $this->findAuxVariable($instanceID, 'StreamOK');
+        $ok = ($ivs['ok'] ?? false) && $personVar > 0 && $counterVar > 0 && $streamVar > 0;
 
         $this->appendProtocol(
             'P03 AUX AUDIT ' . $role
@@ -2285,15 +2262,19 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'OK' : 'FEHLER')
                 . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
                 . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
-                . ', IVS-Actions=' . json_encode($ivs['actions'] ?? [], JSON_UNESCAPED_SLASHES)
+                . ', IVS-Actions=' . json_encode($ivs['actions'] ?? null, JSON_UNESCAPED_SLASHES)
                 . ', IVS-Direction=' . (string) ($ivs['direction'] ?? '<fehlt>')
                 . ', PersonVar=' . $personVar
+                . ', CounterVar=' . $counterVar
+                . ', StreamVar=' . $streamVar
                 . ' -> ' . ($ok ? 'OK' : 'FEHLER')
         );
 
         return [
             'ok' => $ok,
-            'error' => $ok ? '' : ($role . ': ' . (string) ($ivs['error'] ?? 'Human-IVS/PersonDetected nicht vollständig bereit')),
+            'error' => $ok
+                ? ''
+                : ($role . ': ' . (string) ($ivs['error'] ?? 'Human-IVS/Observervariablen nicht vollständig bereit')),
             'model' => $model,
             'firmware' => $firmware,
             'sensitivity' => $sensitivity
@@ -2332,17 +2313,35 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         $jv = $this->ReadAttributeInteger('AuxJVInstanceID');
         $work = $this->ReadAttributeInteger('AuxWorkInstanceID');
-        $jvVar = $this->ReadAttributeInteger('AuxJVPersonVarID');
-        $workVar = $this->ReadAttributeInteger('AuxWorkPersonVarID');
-        $terraceHost = trim($this->ReadPropertyString('TerraceHost'));
+        $jvCounter = $this->ReadAttributeInteger('AuxJVEventCounterVarID');
+        $workCounter = $this->ReadAttributeInteger('AuxWorkEventCounterVarID');
+        $jvStream = $this->ReadAttributeInteger('AuxJVStreamVarID');
+        $workStream = $this->ReadAttributeInteger('AuxWorkStreamVarID');
+
+        $streamState = static function (int $id): string {
+            if ($id <= 0 || !IPS_VariableExists($id)) {
+                return 'STREAM FEHLT';
+            }
+            try {
+                return (bool) GetValue($id) ? 'STREAM OK' : 'STREAM AUS';
+            } catch (Throwable $e) {
+                return 'STREAM ?';
+            }
+        };
+
+        $terrace = $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            ? 'Diagnose EIN'
+            : 'Diagnose AUS';
 
         $this->SetValue(
             'P03CameraStatus',
-            'Terrasse=' . ($terraceHost !== '' ? 'DIREKT ' . $terraceHost : 'FEHLT')
-                . ' | JV-links=' . ($jvVar > 0 ? 'P03#' . $jv : 'FEHLT')
+            'JV-links=' . ($jvCounter > 0 ? 'P03#' . $jv . ' Counter#' . $jvCounter : 'FEHLT')
+                . ' ' . $streamState($jvStream)
                 . ($this->ReadAttributeString('AuxJVModel') !== '' ? ' ' . $this->ReadAttributeString('AuxJVModel') : '')
-                . ' | Werkstatt-links=' . ($workVar > 0 ? 'P03#' . $work : 'FEHLT')
+                . ' | Werkstatt-links=' . ($workCounter > 0 ? 'P03#' . $work . ' Counter#' . $workCounter : 'FEHLT')
+                . ' ' . $streamState($workStream)
                 . ($this->ReadAttributeString('AuxWorkModel') !== '' ? ' ' . $this->ReadAttributeString('AuxWorkModel') : '')
+                . ' | Terrasse=' . $terrace
         );
     }
 
@@ -2373,8 +2372,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
-        $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
+        $auxReady = $this->ReadAttributeInteger('AuxJVEventCounterVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventCounterVarID') > 0
             && $this->p03AuxStreamsReady();
         $proofReady = $this->ReadAttributeBoolean('P03MultiAuditPassed')
             && $this->ReadAttributeBoolean('P03SimulationPassed');
@@ -2427,7 +2426,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->WriteAttributeInteger('DigestNC', $nc);
             $cnonce = substr(hash('sha256', $this->InstanceID . ':' . microtime(true) . ':' . mt_rand()), 0, 16);
             try {
-                $headers[] = 'Authorization: ' . DahuaDigest::buildAuthorization(
+                $headers[] = 'Authorization: ' . JVP03DahuaDigest::buildAuthorization(
                     (string) ($cfg['username'] ?? ''),
                     (string) ($cfg['password'] ?? ''),
                     'GET',
@@ -2457,7 +2456,9 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function scheduleSocketRestart(int $delayMs = 100): void
     {
-        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()) {
+        if (!$this->ReadPropertyBoolean('Enabled')
+            || !$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            || !$this->cameraConfigurationReady()) {
             return;
         }
         if ($this->ReadAttributeInteger('SocketRestartStage') !== 0) {
@@ -2473,7 +2474,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         if (!preg_match('/^WWW-Authenticate:\s*(Digest\s+.+)$/im', $header, $m)) {
             return [];
         }
-        return DahuaDigest::parseChallenge(trim((string) $m[1]));
+        return JVP03DahuaDigest::parseChallenge(trim((string) $m[1]));
     }
 
     /** @return array{host:string,port:int,username:string,password:string}|array{} */
@@ -2487,10 +2488,16 @@ class JVPresenceP03MultiCamera extends IPSModule
         ];
     }
 
+    private function credentialsReady(): bool
+    {
+        return trim($this->ReadPropertyString('Username')) !== ''
+            && $this->ReadPropertyString('Password') !== '';
+    }
+
     private function cameraConfigurationReady(): bool
     {
         $cfg = $this->cameraConfiguration();
-        return ($cfg['host'] ?? '') !== '' && ($cfg['username'] ?? '') !== '' && ($cfg['password'] ?? '') !== '';
+        return $this->credentialsReady() && ($cfg['host'] ?? '') !== '';
     }
 
     /** @return array{ok:bool,body:string,error:string,http:int} */
@@ -2563,8 +2570,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             if (is_array($rule)
                 && strcasecmp((string) ($rule['Type'] ?? ''), 'CrossLineDetection') === 0
                 && strcasecmp((string) ($rule['Name'] ?? ''), self::RULE_NAME) === 0) {
+                $existingId = (isset($rule['Id']) && is_numeric($rule['Id'])) ? (int) $rule['Id'] : -1;
                 $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
-                return ['ok' => true, 'error' => '', 'index' => (int) $i];
+                return ['ok' => true, 'error' => '', 'index' => (int) $i, 'id' => $existingId];
             }
         }
 
@@ -2743,10 +2751,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', true);
         $this->WriteAttributeBoolean('RuleCreatedByModule', true);
         $this->WriteAttributeInteger('RuleIndex', $newIndex);
+        $this->WriteAttributeInteger('RuleID', $newId);
         $this->appendProtocol('RPC2 P03 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', ObjectTypes=Unknown, MinSize=0, Type=ByLength, Direction=Both.');
         $this->appendProtocol('HINWEIS P03: Tripwire läuft generisch mit ObjectTypes=Unknown. SmartMotionHuman wird separat als zeitversetzte Personenbestätigung protokolliert.');
         $this->appendProtocol('P03 Geometrie (HOME↔Lagerplatz-Grenze): ' . json_encode(self::P03_LINE, JSON_UNESCAPED_SLASHES) . '.');
-        return ['ok' => true, 'error' => '', 'index' => $newIndex];
+        return ['ok' => true, 'error' => '', 'index' => $newIndex, 'id' => $newId];
     }
 
     /** @return array{ok:bool,error:string} */
@@ -2791,6 +2800,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', false);
         $this->WriteAttributeBoolean('RuleCreatedByModule', false);
         $this->WriteAttributeInteger('RuleIndex', -1);
+        $this->WriteAttributeInteger('RuleID', -1);
         return ['ok' => true, 'error' => ''];
     }
 
@@ -4017,7 +4027,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         try {
             IPS_SetProperty($parentID, 'Host', (string) $cfg['host']);
             IPS_SetProperty($parentID, 'Port', (int) $cfg['port']);
-            IPS_SetProperty($parentID, 'Open', $this->ReadPropertyBoolean('Enabled'));
+            IPS_SetProperty(
+                $parentID,
+                'Open',
+                $this->ReadPropertyBoolean('Enabled') && $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            );
             IPS_ApplyChanges($parentID);
         } catch (Throwable $e) {
             $this->setResult('Client Socket konnte nicht automatisch konfiguriert werden: ' . $e->getMessage());
@@ -4072,20 +4086,24 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function refreshReadyState(): void
     {
-        $ruleReady = $this->ReadAttributeInteger('RuleIndex') >= 0;
-        $stream = $this->ReadAttributeBoolean('Streaming');
         $active = $this->ReadAttributeBoolean('TestActive');
-        $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0;
+        $auxReady = $this->ReadAttributeInteger('AuxJVEventCounterVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventCounterVarID') > 0
+            && $this->p03AuxStreamsReady();
         $preflight = $this->ReadAttributeBoolean('P03MultiAuditPassed')
             && $this->ReadAttributeBoolean('P03SimulationPassed');
 
-        $ready = $ruleReady && $stream && $active && $auxReady && $preflight;
+        // Terrace/CrossLine is deliberately absent from readiness.
+        $ready = $active && $auxReady && $preflight;
         $this->setReady($ready);
+
         if ($ready && $this->GetValue('CrossingCount') === 0) {
             $this->setResult(
-                'BEREIT – P03 Mehrkamera-Test aktiv: CrossLine JV Terrasse + Human-Bestätigung JV-links/Werkstatt-links. Normal HOME→LAGER und zurück gehen.'
+                'BEREIT – P03 2-Kamera-Test aktiv. JV_LEFT→WORK_LEFT=HOME→LAGER; '
+                . 'WORK_LEFT→JV_LEFT=LAGER→HOME. Terrasse ist nicht erforderlich.'
             );
+        } elseif ($active && !$ready) {
+            $this->setResult('P03 MASTTEST wartet auf beide P03-Mastkamera-Eventstreams.');
         }
     }
 

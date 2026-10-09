@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-final class DahuaEventParser
+final class JVP03DahuaEventParser
 {
     private const MAX_CARRY = 524288;
 
@@ -19,6 +19,10 @@ final class DahuaEventParser
      *   classification:string|null,
      *   eventId:int|string|null,
      *   ruleId:int|string|null,
+     *   cfgRuleId:int|string|null,
+     *   ruleIdUpper:int|string|null,
+     *   ruleIdLower:int|string|null,
+     *   ruleName:string|null,
      *   groupId:int|string|null,
      *   objectId:int|string|null,
      *   raw:string,
@@ -215,6 +219,10 @@ final class DahuaEventParser
      *   classification:string|null,
      *   eventId:int|string|null,
      *   ruleId:int|string|null,
+     *   cfgRuleId:int|string|null,
+     *   ruleIdUpper:int|string|null,
+     *   ruleIdLower:int|string|null,
+     *   ruleName:string|null,
      *   groupId:int|string|null,
      *   objectId:int|string|null,
      *   raw:string,
@@ -273,6 +281,21 @@ final class DahuaEventParser
             );
         }
 
+        // These keys are deliberately case-sensitive. Dahua can emit
+        // CfgRuleId, RuleID and RuleId simultaneously with DIFFERENT values.
+        $cfgRuleId = self::findExactIdentifier($data, ['CfgRuleId', 'CfgRuleID']);
+        $ruleIdUpper = self::findExactIdentifier($data, ['RuleID']);
+        $ruleIdLower = self::findExactIdentifier($data, ['RuleId']);
+        $ruleName = null;
+        if (is_array($data)) {
+            foreach (['Name', 'RuleName'] as $key) {
+                if (isset($data[$key]) && is_string($data[$key]) && trim($data[$key]) !== '') {
+                    $ruleName = trim($data[$key]);
+                    break;
+                }
+            }
+        }
+
         return [
             'code' => $code,
             'action' => $action,
@@ -280,7 +303,14 @@ final class DahuaEventParser
             'human' => $human,
             'classification' => $classification,
             'eventId' => self::findIdentifier($data, ['EventID', 'EventId', 'EventIdEx']),
-            'ruleId' => self::findIdentifier($data, ['RuleID', 'RuleId', 'CfgRuleId', 'CfgRuleID']),
+            // Canonical fallback only. Matching code should prefer ruleName and
+            // inspect the three raw identifiers separately because Dahua can emit
+            // CfgRuleId, RuleID and RuleId with different values in one event.
+            'ruleId' => $cfgRuleId ?? $ruleIdUpper ?? $ruleIdLower,
+            'cfgRuleId' => $cfgRuleId,
+            'ruleIdUpper' => $ruleIdUpper,
+            'ruleIdLower' => $ruleIdLower,
+            'ruleName' => $ruleName,
             'groupId' => self::findIdentifier($data, ['GroupID', 'GroupId']),
             'objectId' => self::findIdentifier($data, ['ObjectID', 'ObjectId', 'TrackID', 'TrackId']),
             'raw' => $raw,
@@ -346,6 +376,34 @@ final class DahuaEventParser
     }
 
     /**
+     * Case-sensitive identifier lookup for Dahua fields whose capitalization
+     * has semantic meaning (RuleID vs RuleId).
+     *
+     * @param array<string|int,mixed>|null $node
+     * @param string[] $keys
+     * @return int|string|null
+     */
+    private static function findExactIdentifier(?array $node, array $keys): int|string|null
+    {
+        if ($node === null) {
+            return null;
+        }
+
+        foreach ($node as $key => $value) {
+            if (in_array((string) $key, $keys, true) && (is_int($value) || is_string($value))) {
+                return $value;
+            }
+            if (is_array($value)) {
+                $nested = self::findExactIdentifier($value, $keys);
+                if ($nested !== null) {
+                    return $nested;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * @param array<string|int,mixed>|null $node
      * @param string[] $keys
      * @return int|string|null
@@ -363,6 +421,34 @@ final class DahuaEventParser
             }
             if (is_array($value)) {
                 $nested = self::findIdentifier($value, $keys);
+                if ($nested !== null) {
+                    return $nested;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @param array<string|int,mixed>|null $node
+     * @param string[] $keys
+     */
+    private static function findString(?array $node, array $keys): ?string
+    {
+        if ($node === null) {
+            return null;
+        }
+        $wanted = array_map('strtolower', $keys);
+
+        foreach ($node as $key => $value) {
+            if (in_array(strtolower((string) $key), $wanted, true) && is_string($value)) {
+                $value = trim($value);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+            if (is_array($value)) {
+                $nested = self::findString($value, $keys);
                 if ($nested !== null) {
                     return $nested;
                 }
