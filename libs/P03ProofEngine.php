@@ -5,14 +5,14 @@ declare(strict_types=1);
 /**
  * Deterministic multi-camera proof engine for portal P03 HOME <-> LAGERPLATZ.
  *
- * The physical boundary is observed only by JV Terrasse (CrossLineDetection).
- * Human confirmation is supplied by:
- * - TERRACE: JV Terrasse, HOME side / farther fallback
- * - JV_LEFT: Lagerplatz JV links, HOME side / near boundary
- * - WORK_LEFT: Lagerplatz Werkstatt links, LAGER/WORK side / near boundary
+ * The actual P03 transfer is determined by the two mast cameras.
  *
- * No score is used. A transfer is VERIFIED only when a named proof path is
- * complete around the same CrossLine event.
+ * - JV_LEFT -> WORK_LEFT = HOME_TO_LAGER
+ * - WORK_LEFT -> JV_LEFT = LAGER_TO_HOME
+ *
+ * Both detections must occur one after another inside the configured time
+ * window. Terrace/CrossLine is optional supporting/diagnostic evidence only.
+ * No score is used.
  */
 final class P03ProofEngine
 {
@@ -61,47 +61,37 @@ final class P03ProofEngine
         $preTerrace = self::latestBefore($events, self::SRC_TERRACE, $crossTs, $terraceWindow);
         $postTerrace = self::earliestAfter($events, self::SRC_TERRACE, $crossTs, $terraceWindow);
 
-        // Primary proof paths use the two cameras physically close to the boundary.
-        // Terrace-Human is only a fallback/support because its classification starts
-        // farther away from P03 in one travel direction.
-        $outPrimary = $preJv !== null && $postWork !== null;
-        $outFallback = $preJv === null && $preTerrace !== null && $postWork !== null;
-        $inPrimary = $preWork !== null && $postJv !== null;
-        $inFallback = $postJv === null && $preWork !== null && $postTerrace !== null;
-
-        $out = $outPrimary || $outFallback;
-        $in = $inPrimary || $inFallback;
+        // CrossLine may strengthen/diagnose a transfer, but it may never
+        // substitute either mast camera. Both mast detections are mandatory.
+        $out = $preJv !== null && $postWork !== null;
+        $in = $preWork !== null && $postJv !== null;
 
         if ($out && $in) {
             return self::result(
                 self::STATE_CONTRADICTION,
                 null,
-                'BOTH_DIRECTIONS_MATCH',
+                'BOTH_MAST_DIRECTIONS_MATCH_AROUND_CROSSLINE',
                 [],
                 self::evidence($preTerrace, $preJv, $preWork, $postTerrace, $postJv, $postWork)
             );
         }
 
         if ($out) {
-            $used = self::ids(array_filter([$preJv ?? $preTerrace, $postWork]));
-            $strong = $outPrimary && $preTerrace !== null;
             return self::result(
-                $strong ? self::STATE_STRONG_VERIFIED : self::STATE_VERIFIED,
+                self::STATE_STRONG_VERIFIED,
                 self::ACTION_HOME_TO_LAGER,
-                $outPrimary ? 'P03_OUT_PRIMARY' : 'P03_OUT_TERRACE_FALLBACK',
-                $used,
+                'P03_OUT_MAST_PAIR_PLUS_CROSSLINE',
+                self::ids([$preJv, $postWork]),
                 self::evidence($preTerrace, $preJv, $preWork, $postTerrace, $postJv, $postWork)
             );
         }
 
         if ($in) {
-            $used = self::ids(array_filter([$preWork, $postJv ?? $postTerrace]));
-            $strong = $inPrimary && $postTerrace !== null;
             return self::result(
-                $strong ? self::STATE_STRONG_VERIFIED : self::STATE_VERIFIED,
+                self::STATE_STRONG_VERIFIED,
                 self::ACTION_LAGER_TO_HOME,
-                $inPrimary ? 'P03_IN_PRIMARY' : 'P03_IN_TERRACE_FALLBACK',
-                $used,
+                'P03_IN_MAST_PAIR_PLUS_CROSSLINE',
+                self::ids([$preWork, $postJv]),
                 self::evidence($preTerrace, $preJv, $preWork, $postTerrace, $postJv, $postWork)
             );
         }
@@ -151,6 +141,141 @@ final class P03ProofEngine
 
         $map[$direction][$action] = (int) ($map[$direction][$action] ?? 0) + 1;
         return $map;
+    }
+
+    /**
+     * Primary P03 transfer proof from the two mast cameras.
+     *
+     * OUT: JV_LEFT -> WORK_LEFT
+     * IN:  WORK_LEFT -> JV_LEFT
+     *
+     * The order itself defines direction. Both events must be unconsumed and
+     * strictly sequential inside maxGap. A short settle delay prevents an
+     * immediate reversal/overlap from being guessed as a clean transfer.
+     *
+     * @param array<int,array<string,mixed>> $events
+     * @return array<string,mixed>
+     */
+    public static function evaluateTwoCameraSequence(
+        array $events,
+        float $now,
+        float $maxGap = 30.0,
+        float $settleDelay = 2.0
+    ): array {
+        $events = array_values(array_filter($events, static function ($e) {
+            return is_array($e)
+                && empty($e['used'])
+                && isset($e['ts'], $e['source'])
+                && in_array((string) $e['source'], [self::SRC_JV_LEFT, self::SRC_WORK_LEFT], true)
+                && (float) $e['ts'] > 0.0;
+        }));
+        usort($events, static fn(array $a, array $b) => ((float) $a['ts']) <=> ((float) $b['ts']));
+
+        $out = self::latestTwoCameraSequence(
+            $events,
+            self::SRC_JV_LEFT,
+            self::SRC_WORK_LEFT,
+            $maxGap
+        );
+        $in = self::latestTwoCameraSequence(
+            $events,
+            self::SRC_WORK_LEFT,
+            self::SRC_JV_LEFT,
+            $maxGap
+        );
+
+        if ($out !== null && $in !== null) {
+            $outIds = self::ids($out);
+            $inIds = self::ids($in);
+            $outEnd = (float) ($out[1]['ts'] ?? 0.0);
+            $inEnd = (float) ($in[1]['ts'] ?? 0.0);
+
+            // Overlapping opposite paths are ambiguous and fail closed.
+            if (array_intersect($outIds, $inIds) !== []
+                || abs($outEnd - $inEnd) <= max(0.0, $settleDelay)) {
+                return self::result(
+                    self::STATE_CONTRADICTION,
+                    null,
+                    'P03_2CAM_BOTH_DIRECTIONS',
+                    [],
+                    [
+                        'out' => array_map([self::class, 'compact'], $out),
+                        'in' => array_map([self::class, 'compact'], $in)
+                    ]
+                );
+            }
+
+            // Two non-overlapping historical transfers may coexist; process latest.
+            if ($outEnd > $inEnd) {
+                $in = null;
+            } else {
+                $out = null;
+            }
+        }
+
+        $sequence = $out ?? $in;
+        if ($sequence === null) {
+            return self::result(self::STATE_UNKNOWN, null, 'NO_2CAM_SEQUENCE', [], []);
+        }
+
+        $endTs = (float) ($sequence[1]['ts'] ?? 0.0);
+        if ($now < ($endTs + max(0.0, $settleDelay))) {
+            return self::result(
+                self::STATE_PENDING,
+                null,
+                'P03_2CAM_SETTLE',
+                [],
+                ['sequence' => array_map([self::class, 'compact'], $sequence)]
+            );
+        }
+
+        $isOut = $out !== null;
+        return self::result(
+            self::STATE_VERIFIED,
+            $isOut ? self::ACTION_HOME_TO_LAGER : self::ACTION_LAGER_TO_HOME,
+            $isOut ? 'P03_2CAM_JV_THEN_WORK' : 'P03_2CAM_WORK_THEN_JV',
+            self::ids($sequence),
+            ['sequence' => array_map([self::class, 'compact'], $sequence)]
+        );
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $events
+     * @return array<int,array<string,mixed>>|null
+     */
+    private static function latestTwoCameraSequence(
+        array $events,
+        string $firstSource,
+        string $secondSource,
+        float $maxGap
+    ): ?array {
+        $best = null;
+        $bestEnd = -INF;
+
+        foreach ($events as $i => $first) {
+            if (($first['source'] ?? '') !== $firstSource) {
+                continue;
+            }
+            $t1 = (float) ($first['ts'] ?? 0.0);
+
+            foreach ($events as $j => $second) {
+                if ($j === $i || ($second['source'] ?? '') !== $secondSource) {
+                    continue;
+                }
+                $t2 = (float) ($second['ts'] ?? 0.0);
+                $gap = $t2 - $t1;
+                if ($gap <= 0.0 || $gap > max(0.0, $maxGap)) {
+                    continue;
+                }
+
+                if ($t2 > $bestEnd) {
+                    $best = [$first, $second];
+                    $bestEnd = $t2;
+                }
+            }
+        }
+
+        return $best;
     }
 
     /**
