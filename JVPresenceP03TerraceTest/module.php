@@ -108,6 +108,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('AuxWorkInstanceID', 0);
         $this->RegisterAttributeInteger('AuxJVPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
+        $this->RegisterAttributeInteger('AuxJVStreamVarID', 0);
+        $this->RegisterAttributeInteger('AuxWorkStreamVarID', 0);
         $this->RegisterAttributeString('AuxJVModel', '');
         $this->RegisterAttributeString('AuxWorkModel', '');
         $this->RegisterAttributeString('AuxJVFirmware', '');
@@ -328,6 +330,13 @@ class JVPresenceP03MultiCamera extends IPSModule
             $sender = (int) $SenderID;
             $jvVar = $this->ReadAttributeInteger('AuxJVPersonVarID');
             $workVar = $this->ReadAttributeInteger('AuxWorkPersonVarID');
+            $jvStreamVar = $this->ReadAttributeInteger('AuxJVStreamVarID');
+            $workStreamVar = $this->ReadAttributeInteger('AuxWorkStreamVarID');
+
+            if ($sender === $jvStreamVar || $sender === $workStreamVar) {
+                $this->refreshProductionState();
+                return;
+            }
 
             if ($sender === $jvVar || $sender === $workVar) {
                 $changed = true;
@@ -797,7 +806,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             ? 'Die P03-Linie wurde durch das Testmodul über RPC2 angelegt und vollständig rückgelesen.'
             : 'Die vorhandene Liniengeometrie der Kamera wird unverändert verwendet.');
         $this->appendProtocol('TESTVARIANTE P03: generische CrossLine mit ObjectTypes=Unknown, MinSize=0, Type=ByLength, Sensitivity=10. Die Linie liegt exakt auf der markierten HOME↔Lagerplatz-Grenze. SmartMotionHuman dient nur als zeitlich versetzte Personenbestätigung.');
-        $this->appendProtocol('TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. Jeweils normal vollständig über die rote P03-Grenze gehen.');
+        $this->appendProtocol('TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. Entscheidend ist ausschließlich die Reihenfolge der beiden Mastkameras: JV_LEFT→WORK_LEFT=OUT, WORK_LEFT→JV_LEFT=IN.');
         $this->appendProtocol('Eventzuordnung: Dahua event.index ist Kanalindex 0 und wird nicht mit dem IVS-Regelindex verwechselt.');
 
         // Wenn die Tripwire gerade neu angelegt wurde, MUSS der Dahua-
@@ -853,12 +862,12 @@ class JVPresenceP03MultiCamera extends IPSModule
             && $this->ReadAttributeInteger('P03VerifiedCount') >= 4
             && $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
             && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
-            && $this->ReadAttributeBoolean('Streaming');
+            && $this->p03AuxStreamsReady();
 
         if (!$ready) {
             $this->WriteAttributeBoolean('ProductionEnabled', false);
             $this->refreshProductionState();
-            $this->setResult('P03 Produktivbetrieb gesperrt – Gesamtaudit, Simulation, 2× HOME→LAGER, 2× LAGER→HOME und laufender Terrassen-Eventstream sind erforderlich. CrossLine ist bevorzugt, 3-Kamera-Fallback ist zulässig.');
+            $this->setResult('P03 Produktivbetrieb gesperrt – Gesamtaudit, Simulation, 2× HOME→LAGER, 2× LAGER→HOME und beide laufenden P03-Mastkamera-Eventstreams sind erforderlich. Terrasse/CrossLine ist nur Zusatzdiagnose.');
             return;
         }
 
@@ -867,8 +876,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeBoolean('ProductionEnabled', true);
         $this->subscribeP03AuxVariables();
         $this->refreshProductionState();
-        $this->setResult('P03 PRODUKTIV – Mehrkamera-Proof aktiv. Nur VERIFIED/STRONG_VERIFIED erzeugt einen Zonenwechsel.');
-        $this->appendProtocol('PRODUKTION: P03 Mehrkamera-Proof aktiviert.');
+        $this->setResult('P03 PRODUKTIV – 2-Kamera-Sequenz aktiv. JV_LEFT→WORK_LEFT=OUT, WORK_LEFT→JV_LEFT=IN.');
+        $this->appendProtocol('PRODUKTION: P03 2-Kamera-Sequenz aktiviert; Terrasse/CrossLine nur Zusatzdiagnose.');
     }
 
     public function DisableProductionP03(): void
@@ -1088,7 +1097,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function P03ProofTimer(): void
     {
         $this->evaluateP03Pending();
-        $this->evaluateP03NoLineFallback();
+        $this->evaluateP03MastSequence();
     }
 
     public function RunP03Simulation(): void
@@ -1114,113 +1123,28 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $cases = [
             [
-                'name' => 'OUT primary',
-                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
+                'name' => '2CAM OUT order',
                 'events' => [
-                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 8],
-                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 6]
-                ],
-                'now' => $base + 7,
-                'state' => P03ProofEngine::STATE_VERIFIED,
-                'action' => P03ProofEngine::ACTION_HOME_TO_LAGER
-            ],
-            [
-                'name' => 'IN primary',
-                'cross' => ['ts' => $base, 'direction' => 'LeftToRight'],
-                'events' => [
-                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 7],
-                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base + 5]
-                ],
-                'now' => $base + 6,
-                'state' => P03ProofEngine::STATE_VERIFIED,
-                'action' => P03ProofEngine::ACTION_LAGER_TO_HOME
-            ],
-            [
-                'name' => 'OUT terrace fallback',
-                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
-                'events' => [
-                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 40],
-                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 8]
-                ],
-                'now' => $base + 9,
-                'state' => P03ProofEngine::STATE_VERIFIED,
-                'action' => P03ProofEngine::ACTION_HOME_TO_LAGER
-            ],
-            [
-                'name' => 'false crossline without human',
-                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
-                'events' => [],
-                'now' => $base + 61,
-                'state' => P03ProofEngine::STATE_UNKNOWN,
-                'action' => null
-            ],
-            [
-                'name' => 'incomplete one-side proof',
-                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
-                'events' => [
-                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5]
-                ],
-                'now' => $base + 61,
-                'state' => P03ProofEngine::STATE_PROVISIONAL,
-                'action' => null
-            ],
-            [
-                'name' => 'contradictory simultaneous traffic',
-                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
-                'events' => [
-                    ['id' => 'jpre', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 7],
-                    ['id' => 'wpre', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 6],
-                    ['id' => 'jpost', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base + 6],
-                    ['id' => 'wpost', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 7]
-                ],
-                'now' => $base + 8,
-                'state' => P03ProofEngine::STATE_CONTRADICTION,
-                'action' => null
-            ]
-        ];
-
-        foreach ($cases as $case) {
-            $result = P03ProofEngine::evaluate(
-                $case['cross'],
-                $case['events'],
-                (float) $case['now'],
-                30.0,
-                60.0
-            );
-            $pass = ($result['state'] ?? null) === $case['state']
-                && ($result['action'] ?? null) === $case['action'];
-            $details[] = $case['name'] . '=' . ($pass ? 'OK' : 'FAIL');
-            $ok = $ok && $pass;
-        }
-
-        $noLineCases = [
-            [
-                'name' => '3CAM OUT no-line',
-                'events' => [
-                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 20],
                     ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 8],
                     ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base]
                 ],
-                'now' => $base + 4,
-                'state' => P03ProofEngine::STATE_STRONG_VERIFIED,
+                'now' => $base + 3,
+                'state' => P03ProofEngine::STATE_VERIFIED,
                 'action' => P03ProofEngine::ACTION_HOME_TO_LAGER
             ],
             [
-                'name' => '3CAM IN no-line',
+                'name' => '2CAM IN order',
                 'events' => [
                     ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 8],
-                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base],
-                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base + 20]
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base]
                 ],
-                'now' => $base + 24,
-                'state' => P03ProofEngine::STATE_STRONG_VERIFIED,
+                'now' => $base + 3,
+                'state' => P03ProofEngine::STATE_VERIFIED,
                 'action' => P03ProofEngine::ACTION_LAGER_TO_HOME
             ],
             [
-                'name' => '3CAM wrong order',
+                'name' => 'single camera no transfer',
                 'events' => [
-                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 20],
-                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 8],
                     ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base]
                 ],
                 'now' => $base + 10,
@@ -1228,25 +1152,64 @@ class JVPresenceP03MultiCamera extends IPSModule
                 'action' => null
             ],
             [
-                'name' => '3CAM stale',
+                'name' => 'same camera twice no transfer',
                 'events' => [
-                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 120],
-                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 8],
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5],
+                    ['id' => 'j2', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 10,
+                'state' => P03ProofEngine::STATE_UNKNOWN,
+                'action' => null
+            ],
+            [
+                'name' => 'over time limit rejected',
+                'events' => [
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 31],
                     ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base]
                 ],
                 'now' => $base + 10,
                 'state' => P03ProofEngine::STATE_UNKNOWN,
                 'action' => null
+            ],
+            [
+                'name' => 'settle delay pending',
+                'events' => [
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 1,
+                'state' => P03ProofEngine::STATE_PENDING,
+                'action' => null
+            ],
+            [
+                'name' => 'quick reversal contradiction',
+                'events' => [
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 4],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 2],
+                    ['id' => 'j2', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 1,
+                'state' => P03ProofEngine::STATE_CONTRADICTION,
+                'action' => null
+            ],
+            [
+                'name' => 'consumed evidence ignored',
+                'events' => [
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5, 'used' => true],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 5,
+                'state' => P03ProofEngine::STATE_UNKNOWN,
+                'action' => null
             ]
         ];
 
-        foreach ($noLineCases as $case) {
-            $result = P03ProofEngine::evaluateThreeCameraSequence(
+        foreach ($cases as $case) {
+            $result = P03ProofEngine::evaluateTwoCameraSequence(
                 $case['events'],
                 (float) $case['now'],
                 30.0,
-                60.0,
-                3.0
+                2.0
             );
             $pass = ($result['state'] ?? null) === $case['state']
                 && ($result['action'] ?? null) === $case['action'];
@@ -1254,15 +1217,37 @@ class JVPresenceP03MultiCamera extends IPSModule
             $ok = $ok && $pass;
         }
 
-        $map = [];
-        $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
-        $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
-        $map = P03ProofEngine::learnDirection($map, 'LeftToRight', P03ProofEngine::ACTION_LAGER_TO_HOME);
-        $map = P03ProofEngine::learnDirection($map, 'LeftToRight', P03ProofEngine::ACTION_LAGER_TO_HOME);
-        $direction = P03ProofEngine::directionStatus($map);
-        $dirPass = ($direction['stable'] ?? false) === true;
-        $details[] = 'direction learning=' . ($dirPass ? 'OK' : 'FAIL');
-        $ok = $ok && $dirPass;
+        // Terrace/CrossLine must never substitute one of the two mast cameras.
+        $cross = P03ProofEngine::evaluate(
+            ['ts' => $base, 'direction' => 'RightToLeft'],
+            [
+                ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 5],
+                ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 5]
+            ],
+            $base + 61,
+            30.0,
+            60.0
+        );
+        $crossPass = ($cross['action'] ?? null) === null
+            && !in_array((string) ($cross['state'] ?? ''), [P03ProofEngine::STATE_VERIFIED, P03ProofEngine::STATE_STRONG_VERIFIED], true);
+        $details[] = 'terrace cannot replace mast camera=' . ($crossPass ? 'OK' : 'FAIL');
+        $ok = $ok && $crossPass;
+
+        // With both mast cameras, CrossLine is optional strengthening only.
+        $cross = P03ProofEngine::evaluate(
+            ['ts' => $base, 'direction' => 'RightToLeft'],
+            [
+                ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5],
+                ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 5]
+            ],
+            $base + 6,
+            30.0,
+            60.0
+        );
+        $crossPass = ($cross['state'] ?? null) === P03ProofEngine::STATE_STRONG_VERIFIED
+            && ($cross['action'] ?? null) === P03ProofEngine::ACTION_HOME_TO_LAGER;
+        $details[] = 'crossline only strengthens mast pair=' . ($crossPass ? 'OK' : 'FAIL');
+        $ok = $ok && $crossPass;
 
         return ['ok' => $ok, 'details' => $details];
     }
@@ -1316,7 +1301,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $this->appendProtocol('P03 HUMAN ' . $source . ' @' . sprintf('%.3f', $now));
         $this->evaluateP03Pending();
-        $this->evaluateP03NoLineFallback();
+        $this->evaluateP03MastSequence();
     }
 
     /** @param array<string,mixed> $event */
@@ -1355,7 +1340,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         );
         $this->SetTimerInterval('P03ProofTimer', 1000);
         $this->evaluateP03Pending();
-        $this->evaluateP03NoLineFallback();
+        $this->evaluateP03MastSequence();
     }
 
     public function P03AuxRescan(): void
@@ -1428,32 +1413,30 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->checkP03CommissioningComplete();
     }
 
-    private function evaluateP03NoLineFallback(): void
+    private function evaluateP03MastSequence(): void
     {
         if (!$this->ReadAttributeBoolean('TestActive') && !$this->ReadAttributeBoolean('ProductionEnabled')) {
             return;
         }
 
         $events = $this->getP03HumanEvents();
-        $near = max(5, $this->ReadPropertyInteger('NearProofWindowSeconds'));
-        $terrace = max($near, $this->ReadPropertyInteger('TerraceProofWindowSeconds'));
-        $result = P03ProofEngine::evaluateThreeCameraSequence(
+        $maxGap = max(5, $this->ReadPropertyInteger('NearProofWindowSeconds'));
+        $result = P03ProofEngine::evaluateTwoCameraSequence(
             $events,
             microtime(true),
-            (float) $near,
-            (float) $terrace,
-            3.0
+            (float) $maxGap,
+            2.0
         );
 
         $state = (string) ($result['state'] ?? P03ProofEngine::STATE_UNKNOWN);
         if ($state === P03ProofEngine::STATE_PENDING) {
-            $this->SetValue('P03ProofState', 'PENDING – 3-Kamera-Fallback wartet 3 s auf CrossLine');
-            $this->SetTimerInterval('P03ProofTimer', 1000);
+            $this->SetValue('P03ProofState', 'PENDING – zweite Mastkamera erkannt; 2 s Plausibilitätswartezeit');
+            $this->SetTimerInterval('P03ProofTimer', 500);
             return;
         }
 
-        if (in_array($state, [P03ProofEngine::STATE_VERIFIED, P03ProofEngine::STATE_STRONG_VERIFIED], true)) {
-            $proofId = '3cam:' . sprintf('%.6f', microtime(true));
+        if ($state === P03ProofEngine::STATE_VERIFIED) {
+            $proofId = '2cam:' . sprintf('%.6f', microtime(true));
             $pseudoCross = ['id' => $proofId, 'direction' => null, 'ts' => microtime(true)];
             $events = $this->commitP03VerifiedResult($events, $pseudoCross, $result, $proofId);
             $this->setP03HumanEvents($events);
@@ -1462,8 +1445,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
 
         if ($state === P03ProofEngine::STATE_CONTRADICTION) {
-            $this->SetValue('P03ProofState', 'CONTRADICTION – 3-Kamera-Reihenfolge widersprüchlich');
-            $this->appendProtocol('P03 3CAM CONTRADICTION – keine Zonenänderung.');
+            $this->SetValue('P03ProofState', 'CONTRADICTION – überlappende Gegenrichtung; kein Übergang');
+            $this->appendProtocol('P03 2CAM CONTRADICTION – keine Zonenänderung.');
         }
     }
 
@@ -1527,14 +1510,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->WriteAttributeBoolean('TestActive', false);
             $this->SetValue('TestActive', false);
             $this->setReady(false);
-            $dir = P03ProofEngine::directionStatus(
-                json_decode($this->ReadAttributeString('P03DirectionMap'), true) ?: []
-            );
-            $suffix = ($dir['stable'] ?? false)
-                ? ' CrossLine-Richtungen zusätzlich stabil gelernt.'
-                : ' Betrieb ist auch über den 3-Kamera-Fallback ohne CrossLine möglich.';
-            $this->setResult('P03 MEHRKAMERA VERIFIZIERT – 2× HOME→LAGER und 2× LAGER→HOME bestätigt.' . $suffix);
-            $this->appendProtocol('P03 COMMISSIONING COMPLETE: OUT=' . $out . ', IN=' . $in . '.' . $suffix);
+            $this->setResult('P03 2-KAMERA-SEQUENZ VERIFIZIERT – 2× HOME→LAGER und 2× LAGER→HOME durch Reihenfolge JV_LEFT/WORK_LEFT bestätigt.');
+            $this->appendProtocol('P03 COMMISSIONING COMPLETE: OUT=' . $out . ', IN=' . $in . ' – ausschließlich Mastkamera-Reihenfolge.');
         }
     }
 
@@ -1591,7 +1568,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $action = (string) ($result['action'] ?? 'NONE');
         $path = (string) ($result['path'] ?? '');
         $direction = (string) ($cross['direction'] ?? '<fehlt>');
-        return $action . ' via ' . $path . ' / CrossLine=' . $direction;
+        return $action . ' via ' . $path . ($direction !== '' && $direction !== '<fehlt>' ? ' / Zusatz-CrossLine=' . $direction : '');
     }
 
     /** @param array<string,mixed> $cross @param array<string,mixed> $result */
@@ -1673,10 +1650,18 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $jvVar = $jv > 0 ? $this->findPersonDetectedVariable($jv) : 0;
         $workVar = $work > 0 ? $this->findPersonDetectedVariable($work) : 0;
+        $jvStream = $jv > 0 ? $this->findAuxVariable($jv, 'StreamOK') : 0;
+        $workStream = $work > 0 ? $this->findAuxVariable($work, 'StreamOK') : 0;
         $this->updateP03AuxSubscription('AuxJVPersonVarID', $jvVar);
         $this->updateP03AuxSubscription('AuxWorkPersonVarID', $workVar);
+        $this->updateP03AuxSubscription('AuxJVStreamVarID', $jvStream);
+        $this->updateP03AuxSubscription('AuxWorkStreamVarID', $workStream);
 
-        return ['ok' => $jvVar > 0 && $workVar > 0, 'jv' => $jv, 'work' => $work];
+        return [
+            'ok' => $jvVar > 0 && $workVar > 0 && $jvStream > 0 && $workStream > 0,
+            'jv' => $jv,
+            'work' => $work
+        ];
     }
 
     private function findP03AuxObserver(string $host, string $role): int
@@ -1735,9 +1720,40 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
     }
 
+    private function findAuxVariable(int $instanceID, string $ident): int
+    {
+        if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
+            return 0;
+        }
+        try {
+            $id = (int) IPS_GetObjectIDByIdent($ident, $instanceID);
+            return ($id > 0 && IPS_VariableExists($id)) ? $id : 0;
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    private function p03AuxStreamsReady(): bool
+    {
+        foreach (['AuxJVStreamVarID', 'AuxWorkStreamVarID'] as $attr) {
+            $id = $this->ReadAttributeInteger($attr);
+            if ($id <= 0 || !IPS_VariableExists($id)) {
+                return false;
+            }
+            try {
+                if (!(bool) GetValue($id)) {
+                    return false;
+                }
+            } catch (Throwable $e) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private function subscribeP03AuxVariables(): void
     {
-        foreach (['AuxJVPersonVarID', 'AuxWorkPersonVarID'] as $attr) {
+        foreach (['AuxJVPersonVarID', 'AuxWorkPersonVarID', 'AuxJVStreamVarID', 'AuxWorkStreamVarID'] as $attr) {
             $id = $this->ReadAttributeInteger($attr);
             if ($id > 0 && IPS_VariableExists($id)) {
                 try {
@@ -2337,22 +2353,16 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
-        $streaming = $this->ReadAttributeBoolean('Streaming');
         $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0;
-        $direction = P03ProofEngine::directionStatus(
-            json_decode($this->ReadAttributeString('P03DirectionMap'), true) ?: []
-        );
+            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
+            && $this->p03AuxStreamsReady();
         $proofReady = $this->ReadAttributeBoolean('P03MultiAuditPassed')
             && $this->ReadAttributeBoolean('P03SimulationPassed');
 
-        if ($streaming && $auxReady && $proofReady) {
-            $state = ($direction['stable'] ?? false)
-                ? 'P03 PRODUKTIV – CrossLine + 3-Kamera-Proof'
-                : 'P03 PRODUKTIV – 3-Kamera-Fallback, CrossLine-Richtung noch lernend';
-        } else {
-            $state = 'P03 DEGRADED – kein Übergang ohne vollständigen Proof';
-        }
+        $state = ($auxReady && $proofReady)
+            ? 'P03 PRODUKTIV – 2-Kamera-Sequenz JV_LEFT ↔ WORK_LEFT'
+            : 'P03 DEGRADED – kein Übergang ohne beide Mastkamera-Eventstreams';
+
         $this->SetValue('PresenceSystemState', $state);
         $this->SetValue('HouseStatus', 'unverändert – P03 verschiebt nur HOME↔WORK');
         $this->SetValue('PresentPersons', 'unverändert durch P03');

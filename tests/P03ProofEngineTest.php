@@ -25,306 +25,195 @@ function assertSameValue($expected, $actual, string $label): void
 
 $base = 1000.0;
 
-// OUT primary: JV-left before boundary, workshop-left after.
-$r = P03ProofEngine::evaluate(
-    c($base),
-    [e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8), e('w1', P03ProofEngine::SRC_WORK_LEFT, $base + 6)],
-    $base + 7
+// Primary truth: two mast cameras, sequential order determines direction.
+$r = P03ProofEngine::evaluateTwoCameraSequence(
+    [e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8), e('w1', P03ProofEngine::SRC_WORK_LEFT, $base)],
+    $base + 3,
+    30.0,
+    2.0
 );
-assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'OUT primary state');
-assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER, $r['action'], 'OUT primary action');
-assertSameValue('P03_OUT_PRIMARY', $r['path'], 'OUT primary path');
+assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], '2cam OUT state');
+assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER, $r['action'], '2cam OUT action');
+assertSameValue('P03_2CAM_JV_THEN_WORK', $r['path'], '2cam OUT path');
+assertSameValue(['j1', 'w1'], $r['usedEventIds'], '2cam OUT consumes both cameras');
 
-// OUT strong: terrace also sees person on HOME side.
-$r = P03ProofEngine::evaluate(
-    c($base),
-    [
-        e('t1', P03ProofEngine::SRC_TERRACE, $base - 30),
-        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8),
-        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base + 6)
-    ],
-    $base + 7
+$r = P03ProofEngine::evaluateTwoCameraSequence(
+    [e('w1', P03ProofEngine::SRC_WORK_LEFT, $base - 8), e('j1', P03ProofEngine::SRC_JV_LEFT, $base)],
+    $base + 3,
+    30.0,
+    2.0
 );
-assertSameValue(P03ProofEngine::STATE_STRONG_VERIFIED, $r['state'], 'OUT strong state');
+assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], '2cam IN state');
+assertSameValue(P03ProofEngine::ACTION_LAGER_TO_HOME, $r['action'], '2cam IN action');
+assertSameValue('P03_2CAM_WORK_THEN_JV', $r['path'], '2cam IN path');
 
-// IN primary: workshop-left before boundary, JV-left after.
-$r = P03ProofEngine::evaluate(
-    c($base, 'LeftToRight'),
-    [e('w1', P03ProofEngine::SRC_WORK_LEFT, $base - 7), e('j1', P03ProofEngine::SRC_JV_LEFT, $base + 5)],
-    $base + 6
-);
-assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'IN primary state');
-assertSameValue(P03ProofEngine::ACTION_LAGER_TO_HOME, $r['action'], 'IN primary action');
-assertSameValue('P03_IN_PRIMARY', $r['path'], 'IN primary path');
-
-// IN strong: terrace also confirms later on HOME side.
-$r = P03ProofEngine::evaluate(
-    c($base, 'LeftToRight'),
-    [
-        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base - 7),
-        e('j1', P03ProofEngine::SRC_JV_LEFT, $base + 5),
-        e('t1', P03ProofEngine::SRC_TERRACE, $base + 25)
-    ],
-    $base + 26
-);
-assertSameValue(P03ProofEngine::STATE_STRONG_VERIFIED, $r['state'], 'IN strong state');
-
-// OUT fallback: terrace before, JV-left misses, workshop-left after.
-$r = P03ProofEngine::evaluate(
-    c($base),
-    [e('t1', P03ProofEngine::SRC_TERRACE, $base - 40), e('w1', P03ProofEngine::SRC_WORK_LEFT, $base + 8)],
-    $base + 9
-);
-assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'OUT fallback state');
-assertSameValue('P03_OUT_TERRACE_FALLBACK', $r['path'], 'OUT fallback path');
-
-// IN fallback: workshop-left before, JV-left misses, terrace after.
-$r = P03ProofEngine::evaluate(
-    c($base, 'LeftToRight'),
-    [e('w1', P03ProofEngine::SRC_WORK_LEFT, $base - 8), e('t1', P03ProofEngine::SRC_TERRACE, $base + 35)],
-    $base + 36
-);
-assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'IN fallback state');
-assertSameValue('P03_IN_TERRACE_FALLBACK', $r['path'], 'IN fallback path');
-
-// Pending until post-side confirmation window has elapsed.
-$r = P03ProofEngine::evaluate(
-    c($base),
-    [e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 5)],
+// One camera alone or repeated same camera may never create a transfer.
+$r = P03ProofEngine::evaluateTwoCameraSequence(
+    [e('j1', P03ProofEngine::SRC_JV_LEFT, $base)],
     $base + 10
 );
-assertSameValue(P03ProofEngine::STATE_PENDING, $r['state'], 'Pending state');
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], 'single camera rejected');
 
-// Incomplete after timeout becomes provisional, never verified.
-$r = P03ProofEngine::evaluate(
-    c($base),
-    [e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 5)],
-    $base + 61
-);
-assertSameValue(P03ProofEngine::STATE_PROVISIONAL, $r['state'], 'Provisional after timeout');
-
-// No human evidence becomes unknown.
-$r = P03ProofEngine::evaluate(c($base), [], $base + 61);
-assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], 'Unknown without human proof');
-
-// Both directions match -> contradiction, no action.
-$r = P03ProofEngine::evaluate(
-    c($base),
+$r = P03ProofEngine::evaluateTwoCameraSequence(
     [
-        e('j-pre', P03ProofEngine::SRC_JV_LEFT, $base - 7),
-        e('w-pre', P03ProofEngine::SRC_WORK_LEFT, $base - 6),
-        e('j-post', P03ProofEngine::SRC_JV_LEFT, $base + 6),
-        e('w-post', P03ProofEngine::SRC_WORK_LEFT, $base + 7)
-    ],
-    $base + 8
-);
-assertSameValue(P03ProofEngine::STATE_CONTRADICTION, $r['state'], 'Contradiction with both proof paths');
-assertSameValue(null, $r['action'], 'Contradiction has no action');
-
-// Used events must not be reused for a second crossing.
-$r = P03ProofEngine::evaluate(
-    c($base),
-    [
-        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 5, true),
-        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base + 5, true)
-    ],
-    $base + 61
-);
-assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], 'Consumed evidence ignored');
-
-// Three-camera fallback without CrossLine: OUT.
-$r = P03ProofEngine::evaluateThreeCameraSequence(
-    [
-        e('t1', P03ProofEngine::SRC_TERRACE, $base - 20),
-        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8),
-        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base)
-    ],
-    $base + 4
-);
-assertSameValue(P03ProofEngine::STATE_STRONG_VERIFIED, $r['state'], '3cam OUT no-line state');
-assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER, $r['action'], '3cam OUT no-line action');
-assertSameValue('P03_3CAM_OUT_NO_LINE', $r['path'], '3cam OUT no-line path');
-
-// Three-camera fallback without CrossLine: IN.
-$r = P03ProofEngine::evaluateThreeCameraSequence(
-    [
-        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base - 8),
-        e('j1', P03ProofEngine::SRC_JV_LEFT, $base),
-        e('t1', P03ProofEngine::SRC_TERRACE, $base + 20)
-    ],
-    $base + 24
-);
-assertSameValue(P03ProofEngine::STATE_STRONG_VERIFIED, $r['state'], '3cam IN no-line state');
-assertSameValue(P03ProofEngine::ACTION_LAGER_TO_HOME, $r['action'], '3cam IN no-line action');
-assertSameValue('P03_3CAM_IN_NO_LINE', $r['path'], '3cam IN no-line path');
-
-// Before settle delay, no-line proof stays pending.
-$r = P03ProofEngine::evaluateThreeCameraSequence(
-    [
-        e('t1', P03ProofEngine::SRC_TERRACE, $base - 20),
-        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8),
-        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base)
-    ],
-    $base + 1
-);
-assertSameValue(P03ProofEngine::STATE_PENDING, $r['state'], '3cam settle pending');
-
-// Wrong/incomplete order may never become a verified transfer.
-$r = P03ProofEngine::evaluateThreeCameraSequence(
-    [
-        e('t1', P03ProofEngine::SRC_TERRACE, $base - 20),
-        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base - 8),
-        e('j1', P03ProofEngine::SRC_JV_LEFT, $base)
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 5),
+        e('j2', P03ProofEngine::SRC_JV_LEFT, $base)
     ],
     $base + 10
 );
-assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam wrong order rejected');
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], 'same camera twice rejected');
 
-// Stale camera event outside the permitted gap is rejected.
-$r = P03ProofEngine::evaluateThreeCameraSequence(
+// Exact max-gap accepted, just outside rejected.
+$r = P03ProofEngine::evaluateTwoCameraSequence(
     [
-        e('t1', P03ProofEngine::SRC_TERRACE, $base - 120),
-        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8),
-        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base)
+        e('j-edge', P03ProofEngine::SRC_JV_LEFT, $base - 30),
+        e('w-edge', P03ProofEngine::SRC_WORK_LEFT, $base)
     ],
-    $base + 10
+    $base + 3,
+    30.0,
+    2.0
 );
-assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam stale evidence rejected');
+assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'exact 30s gap accepted');
 
-// Consumed human evidence may not create a second no-line transfer.
-$r = P03ProofEngine::evaluateThreeCameraSequence(
+$r = P03ProofEngine::evaluateTwoCameraSequence(
     [
-        e('t1', P03ProofEngine::SRC_TERRACE, $base - 20, true),
-        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 8, true),
-        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base, true)
+        e('j-stale', P03ProofEngine::SRC_JV_LEFT, $base - 30.01),
+        e('w-new', P03ProofEngine::SRC_WORK_LEFT, $base)
     ],
-    $base + 10
+    $base + 10,
+    30.0,
+    2.0
 );
-assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam consumed evidence ignored');
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], 'over-gap rejected');
 
-// CrossLine proof must not reuse a consumed event on only one side.
-$r = P03ProofEngine::evaluate(
-    c($base),
-    [
-        e('j-used', P03ProofEngine::SRC_JV_LEFT, $base - 6, true),
-        e('w-new', P03ProofEngine::SRC_WORK_LEFT, $base + 5)
-    ],
-    $base + 61
-);
-assertSameValue(P03ProofEngine::STATE_PROVISIONAL, $r['state'], 'Partly consumed proof rejected');
-
-// Event exactly on the boundary timestamp is accepted as before/after evidence,
-// but opposite complete paths at the same instant must fail closed.
-$r = P03ProofEngine::evaluate(
-    c($base),
+// The two detections must really be sequential, not simultaneous.
+$r = P03ProofEngine::evaluateTwoCameraSequence(
     [
         e('j0', P03ProofEngine::SRC_JV_LEFT, $base),
         e('w0', P03ProofEngine::SRC_WORK_LEFT, $base)
     ],
-    $base + 1
+    $base + 5
 );
-assertSameValue(P03ProofEngine::STATE_CONTRADICTION, $r['state'], 'Simultaneous opposite evidence fails closed');
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], 'simultaneous timestamps rejected');
 
-// Three-camera fallback with duplicated source order must not verify.
-$r = P03ProofEngine::evaluateThreeCameraSequence(
+// Settle delay prevents committing before an immediate reversal can be seen.
+$r = P03ProofEngine::evaluateTwoCameraSequence(
+    [
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 5),
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base)
+    ],
+    $base + 1,
+    30.0,
+    2.0
+);
+assertSameValue(P03ProofEngine::STATE_PENDING, $r['state'], 'settle pending');
+
+$r = P03ProofEngine::evaluateTwoCameraSequence(
+    [
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 4),
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base - 2),
+        e('j2', P03ProofEngine::SRC_JV_LEFT, $base)
+    ],
+    $base + 1,
+    30.0,
+    2.0
+);
+assertSameValue(P03ProofEngine::STATE_CONTRADICTION, $r['state'], 'quick reversal fails closed');
+assertSameValue(null, $r['action'], 'quick reversal no action');
+
+// Repeated first-camera detections select the latest useful pair.
+$r = P03ProofEngine::evaluateTwoCameraSequence(
+    [
+        e('j-old', P03ProofEngine::SRC_JV_LEFT, $base - 20),
+        e('j-near', P03ProofEngine::SRC_JV_LEFT, $base - 4),
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base)
+    ],
+    $base + 3,
+    30.0,
+    2.0
+);
+assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'repeated first camera still verifies');
+assertSameValue(['j-near', 'w1'], $r['usedEventIds'], 'nearest ordered pair consumed');
+
+// Consumed proof may not be reused.
+$r = P03ProofEngine::evaluateTwoCameraSequence(
+    [
+        e('j-used', P03ProofEngine::SRC_JV_LEFT, $base - 5, true),
+        e('w-new', P03ProofEngine::SRC_WORK_LEFT, $base)
+    ],
+    $base + 5
+);
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], 'consumed evidence ignored');
+
+// Terrace Human does not participate in the primary sequence.
+$r = P03ProofEngine::evaluateTwoCameraSequence(
+    [
+        e('t1', P03ProofEngine::SRC_TERRACE, $base - 8),
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base)
+    ],
+    $base + 5
+);
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], 'terrace cannot replace JV_LEFT');
+
+// CrossLine likewise can only strengthen a pair where BOTH mast cameras exist.
+$r = P03ProofEngine::evaluate(
+    c($base),
     [
         e('t1', P03ProofEngine::SRC_TERRACE, $base - 20),
-        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 10),
-        e('j2', P03ProofEngine::SRC_JV_LEFT, $base - 5)
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base + 5)
     ],
-    $base + 10
-);
-assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam missing work-side camera rejected');
-
-// Missing Dahua Direction must not suppress a physically verified transfer.
-// Direction is only learned when the camera actually supplies it.
-$r = P03ProofEngine::evaluate(
-    c($base, ''),
-    [e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 5), e('w1', P03ProofEngine::SRC_WORK_LEFT, $base + 5)],
-    $base + 6
-);
-assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'CrossLine without Direction still verifies');
-assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER, $r['action'], 'CrossLine without Direction action');
-
-// Exact near-window boundaries are valid.
-$r = P03ProofEngine::evaluate(
-    c($base),
-    [e('j-edge', P03ProofEngine::SRC_JV_LEFT, $base - 30), e('w-edge', P03ProofEngine::SRC_WORK_LEFT, $base + 30)],
-    $base + 31,
-    30.0,
-    60.0
-);
-assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'Exact near-window edge accepted');
-
-// A same-side event just outside the permitted window may not be used.
-$r = P03ProofEngine::evaluate(
-    c($base),
-    [e('j-stale-edge', P03ProofEngine::SRC_JV_LEFT, $base - 30.01), e('w-new', P03ProofEngine::SRC_WORK_LEFT, $base + 5)],
     $base + 61,
     30.0,
     60.0
 );
-assertSameValue(P03ProofEngine::STATE_PROVISIONAL, $r['state'], 'Just-outside near-window rejected');
-assertSameValue(null, $r['action'], 'Just-outside near-window no action');
+assertSameValue(P03ProofEngine::STATE_PROVISIONAL, $r['state'], 'crossline plus terrace/work incomplete');
+assertSameValue(null, $r['action'], 'crossline incomplete no action');
 
-// With multiple HOME-side detections, the event nearest the boundary is used.
 $r = P03ProofEngine::evaluate(
     c($base),
     [
-        e('j-old', P03ProofEngine::SRC_JV_LEFT, $base - 20),
-        e('j-new', P03ProofEngine::SRC_JV_LEFT, $base - 2),
-        e('w-new', P03ProofEngine::SRC_WORK_LEFT, $base + 4)
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 5),
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base + 5)
     ],
-    $base + 5
-);
-assertSameValue(P03ProofEngine::STATE_VERIFIED, $r['state'], 'Nearest same-side event selected');
-assertSameValue(['j-new', 'w-new'], $r['usedEventIds'], 'Only nearest required evidence consumed');
-
-// Three-camera fallback accepts an event exactly at both configured gap limits.
-$r = P03ProofEngine::evaluateThreeCameraSequence(
-    [
-        e('t-edge', P03ProofEngine::SRC_TERRACE, $base - 90),
-        e('j-edge', P03ProofEngine::SRC_JV_LEFT, $base - 30),
-        e('w-edge', P03ProofEngine::SRC_WORK_LEFT, $base)
-    ],
-    $base + 4,
+    $base + 6,
     30.0,
-    60.0,
-    3.0
+    60.0
 );
-assertSameValue(P03ProofEngine::STATE_STRONG_VERIFIED, $r['state'], '3cam exact gap limits accepted');
-assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER, $r['action'], '3cam exact gap action');
+assertSameValue(P03ProofEngine::STATE_STRONG_VERIFIED, $r['state'], 'crossline strengthens OUT pair');
+assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER, $r['action'], 'crossline OUT pair action');
+assertSameValue('P03_OUT_MAST_PAIR_PLUS_CROSSLINE', $r['path'], 'crossline OUT path');
 
-// A three-camera gap exceeding the limit by a fraction must fail closed.
-$r = P03ProofEngine::evaluateThreeCameraSequence(
+$r = P03ProofEngine::evaluate(
+    c($base, 'LeftToRight'),
     [
-        e('t-over', P03ProofEngine::SRC_TERRACE, $base - 90.01),
-        e('j-over', P03ProofEngine::SRC_JV_LEFT, $base - 30),
-        e('w-over', P03ProofEngine::SRC_WORK_LEFT, $base)
+        e('w1', P03ProofEngine::SRC_WORK_LEFT, $base - 5),
+        e('j1', P03ProofEngine::SRC_JV_LEFT, $base + 5)
     ],
-    $base + 10,
+    $base + 6,
     30.0,
-    60.0,
-    3.0
+    60.0
 );
-assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], '3cam over-limit gap rejected');
+assertSameValue(P03ProofEngine::STATE_STRONG_VERIFIED, $r['state'], 'crossline strengthens IN pair');
+assertSameValue(P03ProofEngine::ACTION_LAGER_TO_HOME, $r['action'], 'crossline IN pair action');
 
-// Direction map requires two consistent proofs in both opposite directions.
+// CrossLine without both mast detections must never create a transfer.
+$r = P03ProofEngine::evaluate(c($base), [], $base + 61);
+assertSameValue(P03ProofEngine::STATE_UNKNOWN, $r['state'], 'crossline alone rejected');
+
+$r = P03ProofEngine::evaluate(
+    c($base),
+    [e('j1', P03ProofEngine::SRC_JV_LEFT, $base - 5)],
+    $base + 61
+);
+assertSameValue(P03ProofEngine::STATE_PROVISIONAL, $r['state'], 'crossline plus one mast rejected');
+
+// Direction-learning remains diagnostic only.
 $map = [];
 $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
 $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
 $map = P03ProofEngine::learnDirection($map, 'LeftToRight', P03ProofEngine::ACTION_LAGER_TO_HOME);
 $map = P03ProofEngine::learnDirection($map, 'LeftToRight', P03ProofEngine::ACTION_LAGER_TO_HOME);
 $status = P03ProofEngine::directionStatus($map);
-assertSameValue(true, $status['stable'], 'Direction map stable');
-assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER, $status['resolved']['RightToLeft'] ?? null, 'RightToLeft learned OUT');
-assertSameValue(P03ProofEngine::ACTION_LAGER_TO_HOME, $status['resolved']['LeftToRight'] ?? null, 'LeftToRight learned IN');
+assertSameValue(true, $status['stable'], 'diagnostic CrossLine direction map stable');
 
-// Same direction observed as both physical actions -> contradiction.
-$map = [];
-$map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
-$map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_LAGER_TO_HOME);
-$status = P03ProofEngine::directionStatus($map);
-assertSameValue(true, $status['contradiction'], 'Direction map contradiction');
-
-echo "ALL P03 PROOF ENGINE TESTS PASSED" . PHP_EOL;
+echo "ALL P03 2-CAMERA PROOF TESTS PASSED" . PHP_EOL;

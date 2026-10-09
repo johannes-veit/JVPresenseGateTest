@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03 Mehrkamera-Portal HOME ↔ Lagerplatz. Alle drei Kameraverbindungen gehören jetzt ausschließlich zum Presence-Modul; die Außenlichtautomatik wird weder aufgerufen noch verändert."
+      "caption": "P03 Portal HOME ↔ Lagerplatz. Der Grenzübertritt wird ausschließlich aus der zeitlichen Reihenfolge der beiden Lagerplatzkameras ermittelt. Terrasse/CrossLine dient nur als Zusatzdiagnose."
     },
     {
       "type": "CheckBox",
@@ -64,28 +64,25 @@
         {
           "type": "NumberSpinner",
           "name": "NearProofWindowSeconds",
-          "caption": "Zeitfenster Mastkameras (s)",
+          "caption": "Max. Zeit zwischen beiden Mastkameras (s)",
           "minimum": 5,
           "maximum": 120
         },
         {
-          "type": "NumberSpinner",
-          "name": "TerraceProofWindowSeconds",
-          "caption": "Zeitfenster JV Terrasse Human / Fallback (s)",
-          "minimum": 10,
-          "maximum": 180
+          "type": "Label",
+          "caption": "Primärlogik: JV_LEFT → WORK_LEFT = HOME→LAGER. WORK_LEFT → JV_LEFT = LAGER→HOME."
         },
         {
           "type": "Label",
-          "caption": "Primär mit CrossLine: HOME→LAGER = HOME-seitige Human-Erkennung vor Linie + Werkstatt-seitige Human-Erkennung danach. LAGER→HOME entsprechend umgekehrt."
+          "caption": "Nur wenn beide Kameras nacheinander innerhalb des Zeitfensters eine Person erkennen, wird ein Grenzübertritt gebucht."
         },
         {
           "type": "Label",
-          "caption": "Fallback ohne CrossLine: OUT = Terrasse → JV links → Werkstatt links. IN = Werkstatt links → JV links → Terrasse."
+          "caption": "Nur eine Kamera, dieselbe Kamera zweimal, gleichzeitige/unklare Gegenrichtung oder zu großer Zeitabstand = kein Übergang."
         },
         {
           "type": "Label",
-          "caption": "Nur vollständige, widerspruchsfreie Beweispfade buchen einen Übergang. Verwendete Ereignisse werden nicht wiederverwendet."
+          "caption": "JV Terrasse und ihre CrossLine sind nur Zusatzdiagnose und dürfen niemals eine der beiden Mastkameras ersetzen."
         },
         {
           "type": "Label",

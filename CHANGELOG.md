@@ -1,3 +1,16 @@
+# v0.6.6
+
+- P03-Grundlogik geändert: der eigentliche HOME↔LAGER-Grenzübertritt wird jetzt ausschließlich aus der zeitlichen Reihenfolge der beiden Lagerplatzkameras bestimmt.
+- `JV_LEFT -> WORK_LEFT` innerhalb des konfigurierten Zeitfensters = `HOME_TO_LAGER`; `WORK_LEFT -> JV_LEFT` = `LAGER_TO_HOME`.
+- Nur eine Kamera, dieselbe Kamera mehrfach, gleichzeitige Erkennung, zu großer Zeitabstand oder eine überlappende Gegenrichtung erzeugen keinen Übergang.
+- JV Terrasse und ihre CrossLine bleiben nur Zusatzdiagnose/Bestätigung und dürfen keine der beiden Mastkameras ersetzen.
+- Die Produktfreigabe verlangt jetzt die beiden laufenden P03-Mastkamera-Eventstreams; der Terrassen-Eventstream ist dafür nicht mehr Voraussetzung.
+- Die P03-Aux-Observer behandeln jedes passende Event der dedizierten `CrossRegionDetection`-Regel als Human-Beweis, weil die Kamera-Regel selbst bereits `ObjectTypes=Human` filtert. Ein fehlendes `Human`-Feld im Event-Payload führt daher nicht mehr zu einem falschen AUS.
+- `Person erkannt` bleibt nach einem Treffer 5 Sekunden sichtbar; ein sofort folgendes STOP-Ereignis löscht den Puls nicht mehr vorzeitig.
+- Interne Simulation und Regressionstests wurden auf die neue 2-Kamera-Sequenzlogik umgestellt, inklusive Zeitfenstergrenzen, gleichzeitiger Erkennung, Wiederverwendung, schneller Gegenrichtung und CrossLine-nur-als-Zusatz.
+- Außenlichtautomatik bleibt vollständig unabhängig und unverändert.
+- Keine Änderung an P05 oder der P03-CrossLine-Geometrie.
+
 # v0.6.5
 
 - P03 vollständig von `AussenlichtAutomatik2` entkoppelt. Das Presence-Modul ruft keine ALA2-Funktion mehr auf, verwendet keine ALA2-Modul-GUID und liest keine ALA2-Instanz als Laufzeitquelle.
