@@ -19,6 +19,11 @@ final class DahuaEventParser
      *   classification:string|null,
      *   eventId:int|string|null,
      *   ruleId:int|string|null,
+     *   cfgRuleId:int|string|null,
+     *   ruleIdPrimary:int|string|null,
+     *   ruleIdLegacy:int|string|null,
+     *   ruleIds:array<int,int|string>,
+     *   ruleName:string|null,
      *   groupId:int|string|null,
      *   objectId:int|string|null,
      *   raw:string,
@@ -215,6 +220,11 @@ final class DahuaEventParser
      *   classification:string|null,
      *   eventId:int|string|null,
      *   ruleId:int|string|null,
+     *   cfgRuleId:int|string|null,
+     *   ruleIdPrimary:int|string|null,
+     *   ruleIdLegacy:int|string|null,
+     *   ruleIds:array<int,int|string>,
+     *   ruleName:string|null,
      *   groupId:int|string|null,
      *   objectId:int|string|null,
      *   raw:string,
@@ -273,6 +283,25 @@ final class DahuaEventParser
             );
         }
 
+        // Dahua IVS firmwares can emit CfgRuleId, RuleID and RuleId in the
+        // same event, and they are not guaranteed to be numerically identical.
+        // Keep them separate. Never collapse rule identity by JSON key order.
+        $cfgRuleId = self::topLevelIdentifier($data, ['CfgRuleId', 'CfgRuleID']);
+        $ruleIdPrimary = self::topLevelIdentifier($data, ['RuleID']);
+        $ruleIdLegacy = self::topLevelIdentifier($data, ['RuleId']);
+        $ruleIds = [];
+        foreach ([$ruleIdPrimary, $cfgRuleId, $ruleIdLegacy] as $candidate) {
+            if ($candidate === null) {
+                continue;
+            }
+            $key = (string) $candidate;
+            if (!array_key_exists($key, $ruleIds)) {
+                $ruleIds[$key] = $candidate;
+            }
+        }
+        $ruleIds = array_values($ruleIds);
+        $preferredRuleId = $ruleIdPrimary ?? $cfgRuleId ?? $ruleIdLegacy;
+
         return [
             'code' => $code,
             'action' => $action,
@@ -280,7 +309,13 @@ final class DahuaEventParser
             'human' => $human,
             'classification' => $classification,
             'eventId' => self::findIdentifier($data, ['EventID', 'EventId', 'EventIdEx']),
-            'ruleId' => self::findIdentifier($data, ['RuleID', 'RuleId', 'CfgRuleId', 'CfgRuleID']),
+            // Compatibility field. New code must prefer ruleName/ruleIds.
+            'ruleId' => $preferredRuleId,
+            'cfgRuleId' => $cfgRuleId,
+            'ruleIdPrimary' => $ruleIdPrimary,
+            'ruleIdLegacy' => $ruleIdLegacy,
+            'ruleIds' => $ruleIds,
+            'ruleName' => self::topLevelString($data, ['Name']),
             'groupId' => self::findIdentifier($data, ['GroupID', 'GroupId']),
             'objectId' => self::findIdentifier($data, ['ObjectID', 'ObjectId', 'TrackID', 'TrackId']),
             'raw' => $raw,
@@ -341,6 +376,51 @@ final class DahuaEventParser
                     return $nested;
                 }
             }
+        }
+        return null;
+    }
+
+    /**
+     * Reads only the top-level Dahua event Data object. Rule identifiers must
+     * not be found recursively because nested objects can contain unrelated IDs.
+     *
+     * @param array<string|int,mixed>|null $node
+     * @param string[] $keys
+     * @return int|string|null
+     */
+    private static function topLevelIdentifier(?array $node, array $keys): int|string|null
+    {
+        if ($node === null) {
+            return null;
+        }
+        $wanted = array_map('strtolower', $keys);
+        foreach ($node as $key => $value) {
+            if (!in_array(strtolower((string) $key), $wanted, true)) {
+                continue;
+            }
+            if (is_int($value) || is_string($value)) {
+                return $value;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @param array<string|int,mixed>|null $node
+     * @param string[] $keys
+     */
+    private static function topLevelString(?array $node, array $keys): ?string
+    {
+        if ($node === null) {
+            return null;
+        }
+        $wanted = array_map('strtolower', $keys);
+        foreach ($node as $key => $value) {
+            if (!in_array(strtolower((string) $key), $wanted, true) || !is_string($value)) {
+                continue;
+            }
+            $value = trim($value);
+            return $value !== '' ? $value : null;
         }
         return null;
     }
