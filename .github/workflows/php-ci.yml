@@ -159,8 +159,13 @@ jobs:
           for token in ["$lastReq", "> 12", "scheduleSocketRestart(100)"]:
               if token not in watchdog_obs:
                   raise SystemExit('Aux observer watchdog misses handshake recovery: '+token)
-          if "syncParentSocket()" in apply_obs:
-              raise SystemExit('Aux observer still manually applies parent socket during ApplyChanges')
+          if "ensureParentSocketConfigured()" not in apply_obs:
+              raise SystemExit('Aux observer does not deterministically configure its parent socket')
+          if "ObserverStatus" not in observer or "refreshObserverStatus" not in observer:
+              raise SystemExit('Aux observer diagnostics missing')
+          for token in ["IPS_GetProperty($parentID, 'Host')", "IPS_GetProperty($parentID, 'Port')", "IPS_GetProperty($parentID, 'Open')", "IPS_HasChanges($parentID)"]:
+              if token not in observer:
+                  raise SystemExit('Aux observer parent synchronization contract missing: '+token)
 
           for token in ["ruleName", "cfgRuleId", "ruleIdUpper", "ruleIdLower"]:
               if token not in parser:
@@ -185,6 +190,24 @@ jobs:
               raise SystemExit('Correct Dahua VideoInAnalyse getTemplateRule endpoint missing')
           if "/cgi-bin/devVideoAnalyse.cgi?action=getTemplateRule" in main:
               raise SystemExit('Obsolete/wrong devVideoAnalyse getTemplateRule endpoint present')
+          reconnect=main[main.index("private function reconnectP03AuxObserver"):main.index("private function getP03AuxNativeCrossRegionTemplate")]
+          for token in ["CameraHost", "CameraPort", "Username", "Password", "Role", "RuleIndex", "RuleID"]:
+              if ("IPS_SetProperty($instanceID, '" + token + "'") not in reconnect:
+                  raise SystemExit('P03 audit does not synchronize aux observer property: '+token)
+
+          # Mast IPC Human AI must be explicitly activated and read back. A
+          # stale SmartMotionDetect=true display is not sufficient.
+          for token in [
+              "ensureP03AuxHumanAiEnabled",
+              "SmartMotionDetect[0].Enable=true",
+              "SmartMotionDetect[0].ObjectTypes.Human=true",
+              "SmartMotionDetect[0].Sensitivity=High",
+              "MotionDetect[0].Enable=true",
+              "MotionDetect-Readback nach Aktivierung nicht eindeutig TRUE",
+              "AI-IVS-Plan=Normal"
+          ]:
+              if token not in main:
+                  raise SystemExit('Missing explicit mast Human-AI prerequisite: '+token)
 
           # Existing aux instances must gain new variables on module update.
           apply=observer[observer.index("public function ApplyChanges"):observer.index("public function GetConfigurationForParent")]

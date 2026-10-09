@@ -45,6 +45,8 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
         $this->RegisterVariableString('LastEvent', 'Letztes Human-IVS-Ereignis', '', 30);
         $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
+        $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
+        $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03AUX_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03AUX_SocketRestartTimer($_IPS["TARGET"]);');
@@ -87,14 +89,13 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetValue('PersonDetected', false);
         $this->SetValue('StreamOK', false);
 
-        // Match the proven AussenlichtAutomatik2 socket lifecycle: RequireParent()
-        // + GetConfigurationForParent() owns parent configuration. Do not ApplyChanges()
-        // the parent here; doing so can race with the staged digest reconnect.
         $this->updateParentSubscription($this->getParentID());
+        $this->ensureParentSocketConfigured();
 
         if ($this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
             $this->scheduleSocketRestart(300);
         }
+        $this->refreshObserverStatus('ApplyChanges');
     }
 
     public function GetConfigurationForParent(): string
@@ -153,6 +154,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             }
 
             $this->WriteAttributeString('DigestChallenge', json_encode($challenge));
+            $this->refreshObserverStatus('HTTP 401');
             $wasAuthenticated = $this->ReadAttributeBoolean('LastRequestAuthenticated');
             if (!$wasAuthenticated) {
                 $this->WriteAttributeBoolean('AuthPending', true);
@@ -180,6 +182,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->WriteAttributeBoolean('AuthBlocked', false);
             $this->WriteAttributeInteger('AuthFailureCount', 0);
             $this->SetValue('StreamOK', true);
+            $this->refreshObserverStatus('HTTP 200 / Stream aktiv');
             if ($body !== '') {
                 $this->processEventData($body);
             }
@@ -210,12 +213,14 @@ class JVPresenceP03AuxObserver extends IPSModule
             if (!$this->ReadAttributeBoolean('AuthBlocked')) {
                 $this->SetTimerInterval('HandshakeTimer', 250);
             }
+            $this->refreshObserverStatus('Parent aktiv');
             return;
         }
 
         $this->WriteAttributeBoolean('Streaming', false);
         $this->SetValue('StreamOK', false);
         $this->clearPersonPulse();
+        $this->refreshObserverStatus('Parent nicht aktiv');
     }
 
     public function HandshakeTimer(): void
@@ -253,6 +258,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             }
             $this->WriteAttributeInteger('SocketRestartStage', 2);
             $this->SetTimerInterval('SocketRestartTimer', 300);
+            $this->refreshObserverStatus('Socket geschlossen');
             return;
         }
 
@@ -273,6 +279,7 @@ class JVPresenceP03AuxObserver extends IPSModule
 
             $this->WriteAttributeInteger('LastSocketRestart', time());
             $this->SetTimerInterval('HandshakeTimer', 1000);
+            $this->refreshObserverStatus('Socket geöffnet');
         }
     }
 
@@ -357,6 +364,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
         $this->scheduleSocketRestart(100);
+        $this->refreshObserverStatus('Reconnect angefordert');
     }
 
     private function processEventData(string $chunk): void
@@ -498,7 +506,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $headers = [
             'GET ' . $uri . ' HTTP/1.1',
             'Host: ' . $hostHeader,
-            'User-Agent: IP-Symcon-JVPresenceP03Aux/0.6.12',
+            'User-Agent: IP-Symcon-JVPresenceP03Aux/0.6.13',
             'Accept: multipart/x-mixed-replace, */*',
             'Connection: keep-alive'
         ];
@@ -553,6 +561,70 @@ class JVPresenceP03AuxObserver extends IPSModule
         return trim($this->ReadPropertyString('CameraHost')) !== ''
             && trim($this->ReadPropertyString('Username')) !== ''
             && $this->ReadPropertyString('Password') !== '';
+    }
+
+    private function ensureParentSocketConfigured(): void
+    {
+        $parentID = $this->getParentID();
+        if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
+            $this->refreshObserverStatus('Kein Parent');
+            return;
+        }
+
+        $host = trim($this->ReadPropertyString('CameraHost'));
+        $port = max(1, $this->ReadPropertyInteger('CameraPort'));
+        $open = $this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady();
+
+        try {
+            if ((string) IPS_GetProperty($parentID, 'Host') !== $host) {
+                IPS_SetProperty($parentID, 'Host', $host);
+            }
+            if ((int) IPS_GetProperty($parentID, 'Port') !== $port) {
+                IPS_SetProperty($parentID, 'Port', $port);
+            }
+            if ((bool) IPS_GetProperty($parentID, 'Open') !== $open) {
+                IPS_SetProperty($parentID, 'Open', $open);
+            }
+            if (function_exists('IPS_HasChanges') && IPS_HasChanges($parentID)) {
+                IPS_ApplyChanges($parentID);
+            }
+        } catch (Throwable $e) {
+            $this->SetValue('ObserverStatus', 'Parent-Konfiguration FEHLER: ' . $e->getMessage());
+        }
+    }
+
+    private function refreshObserverStatus(string $reason = ''): void
+    {
+        $parentID = $this->getParentID();
+        $parentStatus = -1;
+        $parentOpen = null;
+        if ($parentID > 0 && IPS_InstanceExists($parentID)) {
+            try {
+                $parentStatus = (int) IPS_GetInstance($parentID)['InstanceStatus'];
+                $parentOpen = (bool) IPS_GetProperty($parentID, 'Open');
+            } catch (Throwable $e) {
+            }
+        }
+
+        $status = [
+            'reason' => $reason,
+            'role' => $this->ReadPropertyString('Role'),
+            'configReady' => $this->cameraConfigurationReady(),
+            'host' => trim($this->ReadPropertyString('CameraHost')),
+            'userSet' => trim($this->ReadPropertyString('Username')) !== '',
+            'passwordSet' => $this->ReadPropertyString('Password') !== '',
+            'parentID' => $parentID,
+            'parentStatus' => $parentStatus,
+            'parentOpen' => $parentOpen,
+            'streaming' => $this->ReadAttributeBoolean('Streaming'),
+            'restartStage' => $this->ReadAttributeInteger('SocketRestartStage'),
+            'authPending' => $this->ReadAttributeBoolean('AuthPending'),
+            'authBlocked' => $this->ReadAttributeBoolean('AuthBlocked'),
+            'lastHttpRequest' => $this->ReadAttributeInteger('LastHttpRequest'),
+            'lastCameraRx' => $this->ReadAttributeInteger('LastCameraRx')
+        ];
+        $json = json_encode($status, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $this->SetValue('ObserverStatus', $json === false ? '' : $json);
     }
 
     private function getParentID(): int
