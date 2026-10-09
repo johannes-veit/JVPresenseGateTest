@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-final class DahuaDigest
+final class JVP03DahuaDigest
 {
     /**
      * @return array<string,string>
