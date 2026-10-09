@@ -286,7 +286,15 @@ final class JVP03DahuaEventParser
         $cfgRuleId = self::findExactIdentifier($data, ['CfgRuleId', 'CfgRuleID']);
         $ruleIdUpper = self::findExactIdentifier($data, ['RuleID']);
         $ruleIdLower = self::findExactIdentifier($data, ['RuleId']);
-        $ruleName = self::findString($data, ['Name', 'RuleName']);
+        $ruleName = null;
+        if (is_array($data)) {
+            foreach (['Name', 'RuleName'] as $key) {
+                if (isset($data[$key]) && is_string($data[$key]) && trim($data[$key]) !== '') {
+                    $ruleName = trim($data[$key]);
+                    break;
+                }
+            }
+        }
 
         return [
             'code' => $code,
