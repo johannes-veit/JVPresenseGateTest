@@ -58,6 +58,16 @@ $rule = P03AuxHumanRule::buildFromTemplate(
     $handler
 );
 
+$incompleteRejected = false;
+try {
+    $badTemplate = $nativeTemplate;
+    unset($badTemplate['Config']['Action']);
+    P03AuxHumanRule::buildFromTemplate('P03_BAD', 9, $badTemplate, $handler);
+} catch (InvalidArgumentException $e) {
+    $incompleteRejected = true;
+}
+expectAux($incompleteRejected, 'incomplete native template fails closed');
+
 expectAux(($rule['Type'] ?? null) === 'CrossRegionDetection', 'rule type');
 expectAux(($rule['ObjectTypes'] ?? null) === ['Human'], 'Human-only object filter');
 expectAux(($rule['Config']['DetectRegion'] ?? null) === P03AuxHumanRule::REGION, 'fixed broad region');
