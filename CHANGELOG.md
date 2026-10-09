@@ -1,3 +1,16 @@
+# v0.6.8
+
+- Gründliche Dahua-IVS-Korrektur für die beiden Lagerplatzkameras.
+- Die P03-`CrossRegionDetection`-Regel enthielt bisher keinen `Config.Action`-Eintrag. Dahua erwartet für Intrusion/CrossRegion eine Aktion wie `Cross`, `Appear` oder `Inside`; reale Dahua-Regeln verwenden typischerweise `Action[0]=Cross`, `Action[1]=Appear` plus `Direction=Enter`.
+- P03 erzeugt die Human-Regel jetzt mit `Action=[Cross,Appear]`, `Direction=Enter`, `MinDuration=1`, `Sensitivity=10`, `TrackDuration=30`, `MinTargets=1`, `MaxTargets=100`, `ReportInterval=1` und Human-`AccuracySnap`.
+- Die Detektionsregion ist jetzt ein sauberes 4-Punkt-Polygon ohne redundant wiederholten Startpunkt.
+- Der Audit akzeptiert eine Human-IVS-Regel nur noch, wenn `Action` und `Direction` korrekt zurückgelesen wurden. Damit ist das bisherige falsche `IVS-Human=OK` bei einer funktional unvollständigen Regel ausgeschlossen.
+- Dahua-Ereignisse mit `CfgRuleId` / `CfgRuleID` werden jetzt zusätzlich zu `RuleID` / `RuleId` ausgewertet.
+- Auditprotokoll zeigt zusätzlich `IVS-Actions` und `IVS-Direction`.
+- Regressionstests prüfen fehlende/fehlerhafte Actions, Direction, Polygonform und `CfgRuleId`-Parsing.
+- 2-Kamera-Sequenzlogik bleibt unverändert: `JV_LEFT→WORK_LEFT` = HOME→LAGER, `WORK_LEFT→JV_LEFT` = LAGER→HOME.
+- Außenlichtautomatik bleibt vollständig unabhängig und unverändert.
+
 # v0.6.7
 
 - Fehler in den beiden P03-Lagerplatz-Observern behoben: Dahua-`event.RuleID` wurde fälschlich gegen den `VideoAnalyseRule`-Tabellenindex verglichen.
