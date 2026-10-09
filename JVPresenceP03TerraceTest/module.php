@@ -763,9 +763,13 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
+        $ruleId = (isset($rule['Id']) && is_numeric($rule['Id']))
+            ? (int) $rule['Id']
+            : (int) (($createdRpc['id'] ?? -1));
         $this->WriteAttributeInteger('RuleIndex', $idx);
+        $this->WriteAttributeInteger('RuleID', $ruleId);
         $this->WriteAttributeBoolean('RuleCreatedByModule', $createdNow || $this->ReadAttributeBoolean('Rpc2RuleCreatedByModule'));
-        $this->appendProtocol(($createdNow ? 'Neu erzeugte' : 'Vorhandene') . ' Tripwire wird verwendet: Index ' . $idx . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
+        $this->appendProtocol(($createdNow ? 'Neu erzeugte' : 'Vorhandene') . ' Tripwire wird verwendet: Index ' . $idx . ', Id=' . $ruleId . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
 
         // Scene.Type wurde oben bereits über den von Dahua dokumentierten
         // HTTP-API-Pfad gesetzt und rückgelesen. Jetzt erfolgt eine unabhängige
@@ -975,6 +979,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             'streaming' => $this->ReadAttributeBoolean('Streaming'),
             'lastCameraRx' => $this->ReadAttributeInteger('LastCameraRx'),
             'ruleIndex' => $this->ReadAttributeInteger('RuleIndex'),
+            'ruleID' => $this->ReadAttributeInteger('RuleID'),
             'ruleCreatedByModule' => $this->ReadAttributeBoolean('RuleCreatedByModule'),
             'globalChangedByModule' => $this->ReadAttributeBoolean('GlobalChangedByModule'),
             'rpc2GlobalChangedByModule' => $this->ReadAttributeBoolean('Rpc2GlobalChangedByModule'),
@@ -2687,8 +2692,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             if (is_array($rule)
                 && strcasecmp((string) ($rule['Type'] ?? ''), 'CrossLineDetection') === 0
                 && strcasecmp((string) ($rule['Name'] ?? ''), self::RULE_NAME) === 0) {
+                $existingId = (isset($rule['Id']) && is_numeric($rule['Id'])) ? (int) $rule['Id'] : -1;
                 $this->rpc2Call($host, $port, $session, 99, 'global.logout', null);
-                return ['ok' => true, 'error' => '', 'index' => (int) $i];
+                return ['ok' => true, 'error' => '', 'index' => (int) $i, 'id' => $existingId];
             }
         }
 
@@ -2867,10 +2873,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', true);
         $this->WriteAttributeBoolean('RuleCreatedByModule', true);
         $this->WriteAttributeInteger('RuleIndex', $newIndex);
+        $this->WriteAttributeInteger('RuleID', $newId);
         $this->appendProtocol('RPC2 P03 VERIFY: OK, Index=' . $newIndex . ', Id=' . $newId . ', ObjectTypes=Unknown, MinSize=0, Type=ByLength, Direction=Both.');
         $this->appendProtocol('HINWEIS P03: Tripwire läuft generisch mit ObjectTypes=Unknown. SmartMotionHuman wird separat als zeitversetzte Personenbestätigung protokolliert.');
         $this->appendProtocol('P03 Geometrie (HOME↔Lagerplatz-Grenze): ' . json_encode(self::P03_LINE, JSON_UNESCAPED_SLASHES) . '.');
-        return ['ok' => true, 'error' => '', 'index' => $newIndex];
+        return ['ok' => true, 'error' => '', 'index' => $newIndex, 'id' => $newId];
     }
 
     /** @return array{ok:bool,error:string} */
@@ -2915,6 +2922,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeBoolean('Rpc2RuleCreatedByModule', false);
         $this->WriteAttributeBoolean('RuleCreatedByModule', false);
         $this->WriteAttributeInteger('RuleIndex', -1);
+        $this->WriteAttributeInteger('RuleID', -1);
         return ['ok' => true, 'error' => ''];
     }
 
