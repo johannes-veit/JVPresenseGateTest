@@ -50,6 +50,8 @@ jobs:
           PY
       - name: P03 proof simulations
         run: php tests/P03ProofEngineTest.php
+      - name: P03 auxiliary Human IVS rule tests
+        run: php tests/P03AuxHumanRuleTest.php
       - name: P03 hardened module contract
         run: |
           python3 - <<'PY'
@@ -58,8 +60,10 @@ jobs:
           required=[
             "&& $this->ReadAttributeBoolean('Streaming');",
             "P03 PRODUKTIV – 3-Kamera-Fallback, CrossLine-Richtung noch lernend",
-            "MotionDetect-Readback nach Aktivierung nicht eindeutig TRUE",
-            "if ($human === null)",
+            "P03AuxHumanRule::matches",
+            "CrossRegionDetection",
+            "ObjectTypes=Human",
+            "restoreP03AuxHumanRule",
             "if ($auditOnly) {",
             "$this->ResetTest();"
           ]

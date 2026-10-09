@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/libs/DahuaDigest.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/GateTestLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ProofEngine.php';
+require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
 
 class JVPresenceP03MultiCamera extends IPSModule
 {
@@ -103,6 +104,16 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeString('AuxWorkFirmware', '');
         $this->RegisterAttributeString('AuxJVSensitivity', '');
         $this->RegisterAttributeString('AuxWorkSensitivity', '');
+        $this->RegisterAttributeInteger('AuxJVHumanRuleIndex', -1);
+        $this->RegisterAttributeInteger('AuxWorkHumanRuleIndex', -1);
+        $this->RegisterAttributeBoolean('AuxJVHumanRuleCreatedByModule', false);
+        $this->RegisterAttributeBoolean('AuxWorkHumanRuleCreatedByModule', false);
+        $this->RegisterAttributeString('AuxJVOriginalVideoAnalyseRuleRpc2', '');
+        $this->RegisterAttributeString('AuxWorkOriginalVideoAnalyseRuleRpc2', '');
+        $this->RegisterAttributeBoolean('AuxJVGlobalChangedByModule', false);
+        $this->RegisterAttributeBoolean('AuxWorkGlobalChangedByModule', false);
+        $this->RegisterAttributeString('AuxJVOriginalVideoAnalyseGlobalRpc2', '');
+        $this->RegisterAttributeString('AuxWorkOriginalVideoAnalyseGlobalRpc2', '');
         $this->RegisterAttributeString('P03HumanEvents', '[]');
         $this->RegisterAttributeString('P03PendingCrossings', '[]');
         $this->RegisterAttributeString('P03DirectionMap', '{}');
@@ -937,6 +948,22 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->appendProtocol('Keine vom Testmodul erzeugte IVS-Regel vorhanden; bestehende Kamera-Regeln bleiben unverändert.');
         }
         $this->restoreGlobalSceneType();
+
+        $jvRestore = $this->restoreP03AuxHumanRule(
+            $this->ReadAttributeInteger('AuxJVInstanceID'),
+            self::AUX_JV_ROLE
+        );
+        $workRestore = $this->restoreP03AuxHumanRule(
+            $this->ReadAttributeInteger('AuxWorkInstanceID'),
+            self::AUX_WORK_ROLE
+        );
+        $this->appendProtocol(($jvRestore['ok'] ?? false)
+            ? 'P03 JV_LEFT Human-IVS sauber zurückgesetzt.'
+            : 'WARNUNG: ' . (string) ($jvRestore['error'] ?? 'JV_LEFT Restore fehlgeschlagen'));
+        $this->appendProtocol(($workRestore['ok'] ?? false)
+            ? 'P03 WORK_LEFT Human-IVS sauber zurückgesetzt.'
+            : 'WARNUNG: ' . (string) ($workRestore['error'] ?? 'WORK_LEFT Restore fehlgeschlagen'));
+
         $this->WriteAttributeBoolean('TestActive', false);
         $this->SetTimerInterval('P03ProofTimer', 0);
         $this->WriteAttributeString('P03PendingCrossings', '[]');
@@ -1819,6 +1846,388 @@ class JVPresenceP03MultiCamera extends IPSModule
         return ['ok' => true, 'error' => '', 'http' => $http, 'body' => (string) $body];
     }
 
+    /** @return array<string,string> */
+    private function p03AuxHumanRuleMeta(string $role): array
+    {
+        if ($role === self::AUX_JV_ROLE) {
+            return [
+                'name' => 'P03_JV_LEFT_HUMAN',
+                'ruleIndex' => 'AuxJVHumanRuleIndex',
+                'ruleCreated' => 'AuxJVHumanRuleCreatedByModule',
+                'ruleBackup' => 'AuxJVOriginalVideoAnalyseRuleRpc2',
+                'globalChanged' => 'AuxJVGlobalChangedByModule',
+                'globalBackup' => 'AuxJVOriginalVideoAnalyseGlobalRpc2'
+            ];
+        }
+
+        return [
+            'name' => 'P03_WORK_LEFT_HUMAN',
+            'ruleIndex' => 'AuxWorkHumanRuleIndex',
+            'ruleCreated' => 'AuxWorkHumanRuleCreatedByModule',
+            'ruleBackup' => 'AuxWorkOriginalVideoAnalyseRuleRpc2',
+            'globalChanged' => 'AuxWorkGlobalChangedByModule',
+            'globalBackup' => 'AuxWorkOriginalVideoAnalyseGlobalRpc2'
+        ];
+    }
+
+    /** @return array{host:string,port:int,username:string,password:string}|array{} */
+    private function p03AuxCameraConfiguration(int $instanceID): array
+    {
+        if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
+            return [];
+        }
+
+        try {
+            return [
+                'host' => trim((string) IPS_GetProperty($instanceID, 'CameraHost')),
+                'port' => max(1, (int) IPS_GetProperty($instanceID, 'CameraPort')),
+                'username' => (string) IPS_GetProperty($instanceID, 'Username'),
+                'password' => (string) IPS_GetProperty($instanceID, 'Password')
+            ];
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    private function reconnectP03AuxObserver(int $instanceID, string $role): void
+    {
+        if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
+            return;
+        }
+
+        try {
+            if (function_exists('ALA2_Reconnect')) {
+                ALA2_Reconnect($instanceID);
+            } else {
+                IPS_ApplyChanges($instanceID);
+            }
+            $this->appendProtocol($role . ': Eventstream nach IVS-Änderung neu aufgebaut.');
+        } catch (Throwable $e) {
+            $this->appendProtocol($role . ': WARNUNG – Eventstream-Neuaufbau fehlgeschlagen: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Ensures a P03-owned Human-only CrossRegion rule on an auxiliary mast IPC.
+     * Existing foreign IVS rules are never modified. The complete original rule
+     * table and, if necessary, the original smart-plan table are kept for cleanup.
+     *
+     * @return array{ok:bool,error:string,index?:int,changed?:bool}
+     */
+    private function ensureP03AuxHumanRule(int $instanceID, string $role): array
+    {
+        $cfg = $this->p03AuxCameraConfiguration($instanceID);
+        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
+            return ['ok' => false, 'error' => $role . ': Kamerakonfiguration unvollständig'];
+        }
+
+        $meta = $this->p03AuxHumanRuleMeta($role);
+        $login = $this->rpc2Login(
+            (string) $cfg['host'],
+            (int) $cfg['port'],
+            (string) $cfg['username'],
+            (string) $cfg['password']
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'error' => $role . ': RPC2-Login fehlgeschlagen'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+        $changed = false;
+        $globalChangedThisRun = false;
+        $globalOriginalThisRun = null;
+
+        $globalRead = $this->rpc2Call($host, $port, $session, 210, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+        $globalTable = $globalRead['json']['params']['table'] ?? null;
+        if (!($globalRead['ok'] ?? false) || !is_array($globalTable) || !isset($globalTable[0]['Scene']) || !is_array($globalTable[0]['Scene'])) {
+            $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+            return ['ok' => false, 'error' => $role . ': VideoAnalyseGlobal nicht sicher lesbar'];
+        }
+
+        $sceneType = $globalTable[0]['Scene']['Type'] ?? null;
+        $normalizedScene = strtolower(trim((string) ($sceneType ?? '')));
+        if ($normalizedScene !== '' && $normalizedScene !== '0' && $normalizedScene !== 'normal') {
+            $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+            return ['ok' => false, 'error' => $role . ': anderer AI-Smart-Plan aktiv (' . (string) $sceneType . '), keine Änderung'];
+        }
+
+        if ($normalizedScene === '' || $normalizedScene === '0') {
+            $globalOriginalThisRun = $globalTable;
+            if ($this->ReadAttributeString($meta['globalBackup']) === '') {
+                $backup = json_encode($globalTable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                if (!is_string($backup) || $backup === '') {
+                    $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+                    return ['ok' => false, 'error' => $role . ': VideoAnalyseGlobal-Backup fehlgeschlagen'];
+                }
+                $this->WriteAttributeString($meta['globalBackup'], $backup);
+            }
+
+            $candidateGlobal = $globalTable;
+            $candidateGlobal[0]['Scene']['Type'] = 'Normal';
+            $writeGlobal = $this->rpc2Call(
+                $host, $port, $session, 211, 'configManager.setConfig',
+                ['name' => 'VideoAnalyseGlobal', 'table' => $candidateGlobal, 'options' => []]
+            );
+            $verifyGlobal = $this->rpc2Call($host, $port, $session, 212, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+            $verifyType = $verifyGlobal['json']['params']['table'][0]['Scene']['Type'] ?? null;
+            if (!($writeGlobal['ok'] ?? false) || !($verifyGlobal['ok'] ?? false) || $verifyType !== 'Normal') {
+                if (is_array($globalOriginalThisRun)) {
+                    $this->rpc2Call(
+                        $host, $port, $session, 213, 'configManager.setConfig',
+                        ['name' => 'VideoAnalyseGlobal', 'table' => $globalOriginalThisRun, 'options' => []]
+                    );
+                }
+                $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+                return ['ok' => false, 'error' => $role . ': Scene.Type=Normal nicht sicher setzbar'];
+            }
+
+            $this->WriteAttributeBoolean($meta['globalChanged'], true);
+            $globalChangedThisRun = true;
+            $changed = true;
+            $this->appendProtocol($role . ': IVS-Szene Normal aktiviert und rückgelesen.');
+        }
+
+        $read = $this->rpc2Call($host, $port, $session, 220, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
+        $rules = $read['json']['params']['table'] ?? null;
+        if (!($read['ok'] ?? false) || !is_array($rules) || !isset($rules[0]) || !is_array($rules[0])) {
+            if ($globalChangedThisRun && is_array($globalOriginalThisRun)) {
+                $this->rpc2Call($host, $port, $session, 221, 'configManager.setConfig', ['name' => 'VideoAnalyseGlobal', 'table' => $globalOriginalThisRun, 'options' => []]);
+                $this->WriteAttributeBoolean($meta['globalChanged'], false);
+            }
+            $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+            return ['ok' => false, 'error' => $role . ': VideoAnalyseRule nicht sicher lesbar'];
+        }
+
+        $ownIndex = -1;
+        foreach ($rules[0] as $i => $rule) {
+            if (!is_array($rule) || strcasecmp((string) ($rule['Name'] ?? ''), $meta['name']) !== 0) {
+                continue;
+            }
+            $ownIndex = (int) $i;
+            if (P03AuxHumanRule::matches($rule, $meta['name'])) {
+                $this->WriteAttributeInteger($meta['ruleIndex'], $ownIndex);
+                $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+                if ($changed) {
+                    $this->reconnectP03AuxObserver($instanceID, $role);
+                }
+                return ['ok' => true, 'error' => '', 'index' => $ownIndex, 'changed' => $changed];
+            }
+
+            if (!$this->ReadAttributeBoolean($meta['ruleCreated'])) {
+                $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+                return ['ok' => false, 'error' => $role . ': Regelname ' . $meta['name'] . ' existiert fremd/abweichend; kein Überschreiben'];
+            }
+            break;
+        }
+
+        if ($this->ReadAttributeString($meta['ruleBackup']) === '') {
+            $backup = json_encode($rules, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (!is_string($backup) || $backup === '') {
+                $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+                return ['ok' => false, 'error' => $role . ': IVS-Regelbackup fehlgeschlagen'];
+            }
+            $this->WriteAttributeString($meta['ruleBackup'], $backup);
+        }
+
+        $eventHandler = [];
+        if ($ownIndex >= 0 && is_array($rules[0][$ownIndex]['EventHandler'] ?? null)) {
+            $eventHandler = $rules[0][$ownIndex]['EventHandler'];
+        } else {
+            foreach ($rules[0] as $rule) {
+                if (is_array($rule) && is_array($rule['EventHandler'] ?? null)) {
+                    $eventHandler = $rule['EventHandler'];
+                    break;
+                }
+            }
+        }
+        if ($eventHandler === []) {
+            $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+            return ['ok' => false, 'error' => $role . ': keine sichere EventHandler-Vorlage für IVS-Regel vorhanden'];
+        }
+
+        $ids = [];
+        foreach ($rules[0] as $rule) {
+            if (is_array($rule) && isset($rule['Id']) && is_numeric($rule['Id'])) {
+                $ids[(int) $rule['Id']] = true;
+            }
+        }
+        $newId = 0;
+        while (isset($ids[$newId])) {
+            $newId++;
+        }
+        if ($ownIndex >= 0 && isset($rules[0][$ownIndex]['Id']) && is_numeric($rules[0][$ownIndex]['Id'])) {
+            $newId = (int) $rules[0][$ownIndex]['Id'];
+        }
+
+        $desired = P03AuxHumanRule::build($meta['name'], $newId, $eventHandler);
+        $candidate = $rules;
+        if ($ownIndex >= 0) {
+            $candidate[0][$ownIndex] = $desired;
+        } else {
+            $candidate[0][] = $desired;
+            $ownIndex = count($candidate[0]) - 1;
+        }
+
+        // Same safe pattern as the verified terrace writer: a no-op full-table
+        // write must work before any semantic change is attempted.
+        $noop = $this->rpc2Call(
+            $host, $port, $session, 230, 'configManager.setConfig',
+            ['name' => 'VideoAnalyseRule', 'table' => $rules, 'options' => []]
+        );
+        if (!($noop['ok'] ?? false)) {
+            if ($globalChangedThisRun && is_array($globalOriginalThisRun)) {
+                $this->rpc2Call($host, $port, $session, 231, 'configManager.setConfig', ['name' => 'VideoAnalyseGlobal', 'table' => $globalOriginalThisRun, 'options' => []]);
+                $this->WriteAttributeBoolean($meta['globalChanged'], false);
+            }
+            $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+            return ['ok' => false, 'error' => $role . ': Firmware lehnt sicheren IVS-NO-OP-Write ab'];
+        }
+
+        $write = $this->rpc2Call(
+            $host, $port, $session, 232, 'configManager.setConfig',
+            ['name' => 'VideoAnalyseRule', 'table' => $candidate, 'options' => []]
+        );
+        $verify = $this->rpc2Call($host, $port, $session, 233, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
+        $verifiedTable = $verify['json']['params']['table'] ?? null;
+        $verifiedIndex = -1;
+        $verified = false;
+        if (($write['ok'] ?? false) && ($verify['ok'] ?? false) && is_array($verifiedTable) && is_array($verifiedTable[0] ?? null)) {
+            foreach ($verifiedTable[0] as $i => $rule) {
+                if (is_array($rule) && P03AuxHumanRule::matches($rule, $meta['name'])) {
+                    $verified = true;
+                    $verifiedIndex = (int) $i;
+                    break;
+                }
+            }
+        }
+
+        // Foreign rules must keep their Name/Type/Enable tuple.
+        if ($verified) {
+            foreach ($rules[0] as $i => $before) {
+                if ((int) $i === $ownIndex || !is_array($before)) {
+                    continue;
+                }
+                $after = $verifiedTable[0][$i] ?? null;
+                if (!is_array($after)
+                    || (string) ($before['Name'] ?? '') !== (string) ($after['Name'] ?? '')
+                    || (string) ($before['Type'] ?? '') !== (string) ($after['Type'] ?? '')
+                    || (bool) ($before['Enable'] ?? false) !== (bool) ($after['Enable'] ?? false)) {
+                    $verified = false;
+                    break;
+                }
+            }
+        }
+
+        if (!$verified) {
+            $this->rpc2Call(
+                $host, $port, $session, 234, 'configManager.setConfig',
+                ['name' => 'VideoAnalyseRule', 'table' => $rules, 'options' => []]
+            );
+            if ($globalChangedThisRun && is_array($globalOriginalThisRun)) {
+                $this->rpc2Call(
+                    $host, $port, $session, 235, 'configManager.setConfig',
+                    ['name' => 'VideoAnalyseGlobal', 'table' => $globalOriginalThisRun, 'options' => []]
+                );
+                $this->WriteAttributeBoolean($meta['globalChanged'], false);
+            }
+            $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+            return ['ok' => false, 'error' => $role . ': Human-IVS-Regel Readback fehlgeschlagen; Rollback ausgeführt'];
+        }
+
+        $this->WriteAttributeBoolean($meta['ruleCreated'], true);
+        $this->WriteAttributeInteger($meta['ruleIndex'], $verifiedIndex);
+        $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+        $this->appendProtocol(
+            $role . ': P03 Human-IVS aktiv – ' . $meta['name']
+                . ', CrossRegionDetection, ObjectTypes=Human, Region='
+                . json_encode(P03AuxHumanRule::REGION, JSON_UNESCAPED_SLASHES)
+        );
+        $this->reconnectP03AuxObserver($instanceID, $role);
+        return ['ok' => true, 'error' => '', 'index' => $verifiedIndex, 'changed' => true];
+    }
+
+    /** @return array{ok:bool,error:string} */
+    private function restoreP03AuxHumanRule(int $instanceID, string $role): array
+    {
+        $meta = $this->p03AuxHumanRuleMeta($role);
+        $needRule = $this->ReadAttributeBoolean($meta['ruleCreated']);
+        $needGlobal = $this->ReadAttributeBoolean($meta['globalChanged']);
+        if (!$needRule && !$needGlobal) {
+            return ['ok' => true, 'error' => ''];
+        }
+
+        $cfg = $this->p03AuxCameraConfiguration($instanceID);
+        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
+            return ['ok' => false, 'error' => $role . ': Kamerakonfiguration für Restore fehlt'];
+        }
+
+        $login = $this->rpc2Login(
+            (string) $cfg['host'],
+            (int) $cfg['port'],
+            (string) $cfg['username'],
+            (string) $cfg['password']
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'error' => $role . ': RPC2-Login für Restore fehlgeschlagen'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+        $errors = [];
+
+        if ($needRule) {
+            $ruleBackup = json_decode($this->ReadAttributeString($meta['ruleBackup']), true);
+            if (!is_array($ruleBackup)) {
+                $errors[] = 'IVS-Regelbackup fehlt';
+            } else {
+                $write = $this->rpc2Call(
+                    $host, $port, $session, 250, 'configManager.setConfig',
+                    ['name' => 'VideoAnalyseRule', 'table' => $ruleBackup, 'options' => []]
+                );
+                $verify = $this->rpc2Call($host, $port, $session, 251, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
+                $current = $verify['json']['params']['table'] ?? null;
+                if (!($write['ok'] ?? false) || !($verify['ok'] ?? false) || !is_array($current) || $current != $ruleBackup) {
+                    $errors[] = 'IVS-Regelrestore nicht eindeutig bestätigt';
+                } else {
+                    $this->WriteAttributeBoolean($meta['ruleCreated'], false);
+                    $this->WriteAttributeInteger($meta['ruleIndex'], -1);
+                    $this->WriteAttributeString($meta['ruleBackup'], '');
+                }
+            }
+        }
+
+        if ($needGlobal) {
+            $globalBackup = json_decode($this->ReadAttributeString($meta['globalBackup']), true);
+            if (!is_array($globalBackup)) {
+                $errors[] = 'VideoAnalyseGlobal-Backup fehlt';
+            } else {
+                $write = $this->rpc2Call(
+                    $host, $port, $session, 252, 'configManager.setConfig',
+                    ['name' => 'VideoAnalyseGlobal', 'table' => $globalBackup, 'options' => []]
+                );
+                $verify = $this->rpc2Call($host, $port, $session, 253, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+                $current = $verify['json']['params']['table'] ?? null;
+                if (!($write['ok'] ?? false) || !($verify['ok'] ?? false) || !is_array($current) || $current != $globalBackup) {
+                    $errors[] = 'VideoAnalyseGlobal-Restore nicht eindeutig bestätigt';
+                } else {
+                    $this->WriteAttributeBoolean($meta['globalChanged'], false);
+                    $this->WriteAttributeString($meta['globalBackup'], '');
+                }
+            }
+        }
+
+        $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+        if ($errors !== []) {
+            return ['ok' => false, 'error' => $role . ': ' . implode('; ', $errors)];
+        }
+
+        $this->reconnectP03AuxObserver($instanceID, $role);
+        return ['ok' => true, 'error' => ''];
+    }
+
     /** @return array{ok:bool,error:string,model:string,firmware:string,sensitivity:string} */
     private function auditP03AuxCamera(int $instanceID, string $role): array
     {
@@ -1826,14 +2235,15 @@ class JVPresenceP03MultiCamera extends IPSModule
             return ['ok' => false, 'error' => $role . ': Instanz fehlt', 'model' => '', 'firmware' => '', 'sensitivity' => ''];
         }
 
-        try {
-            $host = trim((string) IPS_GetProperty($instanceID, 'CameraHost'));
-            $port = max(1, (int) IPS_GetProperty($instanceID, 'CameraPort'));
-            $username = (string) IPS_GetProperty($instanceID, 'Username');
-            $password = (string) IPS_GetProperty($instanceID, 'Password');
-        } catch (Throwable $e) {
+        $cfg = $this->p03AuxCameraConfiguration($instanceID);
+        if (($cfg['host'] ?? '') === '') {
             return ['ok' => false, 'error' => $role . ': Kamerakonfiguration nicht lesbar', 'model' => '', 'firmware' => '', 'sensitivity' => ''];
         }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $username = (string) $cfg['username'];
+        $password = (string) $cfg['password'];
 
         $type = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/magicBox.cgi?action=getDeviceType');
         $model = '';
@@ -1851,134 +2261,46 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
 
+        // SMD is kept as diagnostic/fallback only. Field testing on both
+        // IPC-HFW5442E-ZE cameras showed VideoMotion/VideoMotionInfo without
+        // SmartMotionHuman, despite SMD=Human. P03 therefore no longer trusts
+        // the SMD configuration as proof that a Human event will be emitted.
+        $enable = null;
+        $human = null;
+        $sensitivity = '';
         $smart = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
-        if (!($smart['ok'] ?? false)) {
-            return ['ok' => false, 'error' => $role . ': SmartMotionDetect nicht lesbar', 'model' => $model, 'firmware' => $firmware, 'sensitivity' => ''];
-        }
-
-        $raw = (string) $smart['body'];
-        $enable = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Enable');
-        $human = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes.Human');
-        if ($human === null) {
-            $object0 = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes[0]');
-            $human = (strcasecmp((string) $object0, 'Human') === 0) ? 'true' : $human;
-        }
-        $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
-
-        // Dahua HTTP API: SMD supports Low/Middle/High. For these two mast IPCs
-        // the crossing area is close but partly in the blind spot, therefore use High.
-        // Only the SMD keys relevant to P03 are changed; Vehicle and link actions stay untouched.
-        if (strtolower((string) $enable) !== 'true'
-            || strtolower((string) $human) !== 'true'
-            || strcasecmp($sensitivity, 'High') !== 0) {
-            $setSmd = $this->genericCameraGet(
-                $host,
-                $port,
-                $username,
-                $password,
-                '/cgi-bin/configManager.cgi?action=setConfig'
-                    . '&SmartMotionDetect[0].Enable=true'
-                    . '&SmartMotionDetect[0].Sensitivity=High'
-                    . '&SmartMotionDetect[0].ObjectTypes.Human=true'
-            );
-            if (!($setSmd['ok'] ?? false) || trim((string) ($setSmd['body'] ?? '')) !== 'OK') {
-                return [
-                    'ok' => false,
-                    'error' => $role . ': SMD Human/High konnte nicht gesetzt werden',
-                    'model' => $model,
-                    'firmware' => $firmware,
-                    'sensitivity' => $sensitivity
-                ];
-            }
-
-            $smart = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
-            if (!($smart['ok'] ?? false)) {
-                return [
-                    'ok' => false,
-                    'error' => $role . ': SMD-Readback nach Konfiguration fehlgeschlagen',
-                    'model' => $model,
-                    'firmware' => $firmware,
-                    'sensitivity' => ''
-                ];
-            }
+        if ($smart['ok'] ?? false) {
             $raw = (string) $smart['body'];
             $enable = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Enable');
             $human = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes.Human');
             if ($human === null) {
                 $object0 = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes[0]');
-                $human = (strcasecmp((string) $object0, 'Human') === 0) ? 'true' : $human;
+                $human = (strcasecmp((string) $object0, 'Human') === 0) ? 'true' : null;
             }
             $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
-            $this->appendProtocol($role . ': SMD automatisch auf Human + High gesetzt und rückgelesen.');
         }
 
-        // Dahua Web 3.x documents Motion Detection as prerequisite for SMD.
-        // Newer firmware may not expose the same flat key, so only an explicit
-        // "false" blocks the audit; a missing key is logged but not guessed.
-        $motion = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/configManager.cgi?action=getConfig&name=MotionDetect');
-        $motionEnable = null;
-        if ($motion['ok'] ?? false) {
-            $motionEnable = GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable');
-        }
-
-        if ($motionEnable !== null && strtolower((string) $motionEnable) !== 'true') {
-            $setMotion = $this->genericCameraGet(
-                $host,
-                $port,
-                $username,
-                $password,
-                '/cgi-bin/configManager.cgi?action=setConfig&MotionDetect[0].Enable=true'
-            );
-            if (!($setMotion['ok'] ?? false) || trim((string) ($setMotion['body'] ?? '')) !== 'OK') {
-                return [
-                    'ok' => false,
-                    'error' => $role . ': MotionDetect als SMD-Voraussetzung konnte nicht aktiviert werden',
-                    'model' => $model,
-                    'firmware' => $firmware,
-                    'sensitivity' => $sensitivity
-                ];
-            }
-            $motion = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/configManager.cgi?action=getConfig&name=MotionDetect');
-            $motionEnable = ($motion['ok'] ?? false)
-                ? GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable')
-                : null;
-            if ($motionEnable === null || strtolower((string) $motionEnable) !== 'true') {
-                return [
-                    'ok' => false,
-                    'error' => $role . ': MotionDetect-Readback nach Aktivierung nicht eindeutig TRUE',
-                    'model' => $model,
-                    'firmware' => $firmware,
-                    'sensitivity' => $sensitivity
-                ];
-            }
-            $this->appendProtocol($role . ': MotionDetect als SMD-Voraussetzung aktiviert und eindeutig TRUE rückgelesen.');
-        }
-
+        $ivs = $this->ensureP03AuxHumanRule($instanceID, $role);
         $personVar = $this->findPersonDetectedVariable($instanceID);
-        $motionOK = $motionEnable === null || strtolower((string) $motionEnable) === 'true';
-        $sensitivityOK = $sensitivity === '' || strcasecmp($sensitivity, 'High') === 0;
-        $ok = strtolower((string) $enable) === 'true'
-            && strtolower((string) $human) === 'true'
-            && $sensitivityOK
-            && $motionOK
-            && $personVar > 0;
+        $ok = ($ivs['ok'] ?? false) && $personVar > 0;
 
         $this->appendProtocol(
             'P03 AUX AUDIT ' . $role
                 . ': host=' . $host
                 . ', model=' . ($model !== '' ? $model : '<nicht gemeldet>')
                 . ', firmware=' . ($firmware !== '' ? $firmware : '<nicht gemeldet>')
-                . ', SMD=' . (string) $enable
-                . ', Human=' . (string) $human
+                . ', SMD=' . ($enable === null ? '<nur Diagnose/nicht gemeldet>' : (string) $enable)
+                . ', SMD-Human=' . ($human === null ? '<nur Diagnose/nicht gemeldet>' : (string) $human)
                 . ', Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
-                . ', MotionDetect=' . ($motionEnable === null ? '<nicht gemeldet>' : (string) $motionEnable)
+                . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'OK' : 'FEHLER')
+                . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
                 . ', PersonVar=' . $personVar
                 . ' -> ' . ($ok ? 'OK' : 'FEHLER')
         );
 
         return [
             'ok' => $ok,
-            'error' => $ok ? '' : ($role . ': SMD Human/PersonDetected nicht vollständig aktiv'),
+            'error' => $ok ? '' : ($role . ': ' . (string) ($ivs['error'] ?? 'Human-IVS/PersonDetected nicht vollständig bereit')),
             'model' => $model,
             'firmware' => $firmware,
             'sensitivity' => $sensitivity
