@@ -2205,6 +2205,157 @@ class JVPresenceP03MultiCamera extends IPSModule
         return ['ok' => true, 'error' => ''];
     }
 
+    /**
+     * Explicitly enables the Dahua Human-AI prerequisites used on the two
+     * IPC-HFW5442E-ZE mast cameras and verifies every changed value.
+     *
+     * @return array{ok:bool,error:string,smd:string,human:string,sensitivity:string,motion:string}
+     */
+    private function ensureP03AuxHumanAiEnabled(
+        string $host,
+        int $port,
+        string $username,
+        string $password,
+        string $role
+    ): array {
+        $smart = $this->genericCameraGet(
+            $host, $port, $username, $password,
+            '/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect'
+        );
+        if (!($smart['ok'] ?? false)) {
+            return [
+                'ok' => false,
+                'error' => $role . ': SmartMotionDetect nicht lesbar',
+                'smd' => '', 'human' => '', 'sensitivity' => '', 'motion' => ''
+            ];
+        }
+
+        $parseSmd = static function (string $raw): array {
+            $enable = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Enable');
+            $human = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes.Human');
+            if ($human === null) {
+                $object0 = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes[0]');
+                $human = (strcasecmp((string) $object0, 'Human') === 0) ? 'true' : null;
+            }
+            $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
+            return [$enable, $human, $sensitivity];
+        };
+
+        [$enable, $human, $sensitivity] = $parseSmd((string) $smart['body']);
+        $needsSmd = strtolower((string) $enable) !== 'true'
+            || strtolower((string) $human) !== 'true'
+            || ($sensitivity !== '' && strcasecmp($sensitivity, 'High') !== 0);
+
+        if ($needsSmd) {
+            $setSmd = $this->genericCameraGet(
+                $host,
+                $port,
+                $username,
+                $password,
+                '/cgi-bin/configManager.cgi?action=setConfig'
+                    . '&SmartMotionDetect[0].Enable=true'
+                    . '&SmartMotionDetect[0].ObjectTypes.Human=true'
+                    . '&SmartMotionDetect[0].Sensitivity=High'
+            );
+            if (!($setSmd['ok'] ?? false) || trim((string) ($setSmd['body'] ?? '')) !== 'OK') {
+                return [
+                    'ok' => false,
+                    'error' => $role . ': SMD Human/High konnte nicht aktiviert werden',
+                    'smd' => (string) $enable,
+                    'human' => (string) $human,
+                    'sensitivity' => $sensitivity,
+                    'motion' => ''
+                ];
+            }
+
+            $smart = $this->genericCameraGet(
+                $host, $port, $username, $password,
+                '/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect'
+            );
+            if (!($smart['ok'] ?? false)) {
+                return [
+                    'ok' => false,
+                    'error' => $role . ': SMD-Readback nach Aktivierung fehlgeschlagen',
+                    'smd' => '', 'human' => '', 'sensitivity' => '', 'motion' => ''
+                ];
+            }
+            [$enable, $human, $sensitivity] = $parseSmd((string) $smart['body']);
+            $this->appendProtocol($role . ': KI-Personenerkennung SMD Human + High aktiv gesetzt und rückgelesen.');
+        }
+
+        $motion = $this->genericCameraGet(
+            $host, $port, $username, $password,
+            '/cgi-bin/configManager.cgi?action=getConfig&name=MotionDetect'
+        );
+        $motionEnable = null;
+        if ($motion['ok'] ?? false) {
+            $motionEnable = GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable');
+        }
+
+        // Dahua documents SMD as an object filter on Motion Detection. Only an
+        // explicit false is changed; a firmware that does not expose this key is
+        // not guessed.
+        if ($motionEnable !== null && strtolower((string) $motionEnable) !== 'true') {
+            $setMotion = $this->genericCameraGet(
+                $host, $port, $username, $password,
+                '/cgi-bin/configManager.cgi?action=setConfig&MotionDetect[0].Enable=true'
+            );
+            if (!($setMotion['ok'] ?? false) || trim((string) ($setMotion['body'] ?? '')) !== 'OK') {
+                return [
+                    'ok' => false,
+                    'error' => $role . ': MotionDetect als SMD-Voraussetzung konnte nicht aktiviert werden',
+                    'smd' => (string) $enable,
+                    'human' => (string) $human,
+                    'sensitivity' => $sensitivity,
+                    'motion' => (string) $motionEnable
+                ];
+            }
+            $motion = $this->genericCameraGet(
+                $host, $port, $username, $password,
+                '/cgi-bin/configManager.cgi?action=getConfig&name=MotionDetect'
+            );
+            $motionEnable = ($motion['ok'] ?? false)
+                ? GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable')
+                : null;
+            if ($motionEnable === null || strtolower((string) $motionEnable) !== 'true') {
+                return [
+                    'ok' => false,
+                    'error' => $role . ': MotionDetect-Readback nach Aktivierung nicht eindeutig TRUE',
+                    'smd' => (string) $enable,
+                    'human' => (string) $human,
+                    'sensitivity' => $sensitivity,
+                    'motion' => (string) $motionEnable
+                ];
+            }
+            $this->appendProtocol($role . ': MotionDetect als SMD-Basis aktiv gesetzt und rückgelesen.');
+        }
+
+        $smdOk = strtolower((string) $enable) === 'true'
+            && strtolower((string) $human) === 'true'
+            && ($sensitivity === '' || strcasecmp($sensitivity, 'High') === 0);
+        $motionOk = $motionEnable === null || strtolower((string) $motionEnable) === 'true';
+
+        if (!$smdOk || !$motionOk) {
+            return [
+                'ok' => false,
+                'error' => $role . ': KI-Personenerkennung nach Readback nicht vollständig aktiv',
+                'smd' => (string) $enable,
+                'human' => (string) $human,
+                'sensitivity' => $sensitivity,
+                'motion' => $motionEnable === null ? '<nicht gemeldet>' : (string) $motionEnable
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'error' => '',
+            'smd' => (string) $enable,
+            'human' => (string) $human,
+            'sensitivity' => $sensitivity,
+            'motion' => $motionEnable === null ? '<nicht gemeldet>' : (string) $motionEnable
+        ];
+    }
+
     /** @return array{ok:bool,error:string,model:string,firmware:string,sensitivity:string} */
     private function auditP03AuxCamera(int $instanceID, string $role): array
     {
@@ -2238,23 +2389,23 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
 
-        // SMD is kept as diagnostic/fallback only. Field testing on both
-        // IPC-HFW5442E-ZE cameras showed VideoMotion/VideoMotionInfo without
-        // SmartMotionHuman, despite SMD=Human. P03 therefore no longer trusts
-        // the SMD configuration as proof that a Human event will be emitted.
-        $enable = null;
-        $human = null;
-        $sensitivity = '';
-        $smart = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
-        if ($smart['ok'] ?? false) {
-            $raw = (string) $smart['body'];
-            $enable = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Enable');
-            $human = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes.Human');
-            if ($human === null) {
-                $object0 = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes[0]');
-                $human = (strcasecmp((string) $object0, 'Human') === 0) ? 'true' : null;
-            }
-            $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
+        // Explicitly activate and verify Human AI before provisioning IVS.
+        // SMD itself is not used as the P03 transfer proof, but this guarantees
+        // that the camera-side Human classifier is enabled instead of merely
+        // assuming it from a stale configuration.
+        $ai = $this->ensureP03AuxHumanAiEnabled($host, $port, $username, $password, $role);
+        $enable = (string) ($ai['smd'] ?? '');
+        $human = (string) ($ai['human'] ?? '');
+        $sensitivity = (string) ($ai['sensitivity'] ?? '');
+        $motionEnable = (string) ($ai['motion'] ?? '');
+        if (!($ai['ok'] ?? false)) {
+            return [
+                'ok' => false,
+                'error' => (string) ($ai['error'] ?? ($role . ': KI-Personenerkennung nicht aktiv')),
+                'model' => $model,
+                'firmware' => $firmware,
+                'sensitivity' => $sensitivity
+            ];
         }
 
         $ivs = $this->ensureP03AuxHumanRule($instanceID, $role);
@@ -2271,6 +2422,8 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', SMD=' . ($enable === null ? '<nur Diagnose/nicht gemeldet>' : (string) $enable)
                 . ', SMD-Human=' . ($human === null ? '<nur Diagnose/nicht gemeldet>' : (string) $human)
                 . ', Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
+                . ', MotionDetect=' . ($motionEnable !== '' ? $motionEnable : '<nicht gemeldet>')
+                . ', AI-IVS-Plan=Normal'
                 . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'OK' : 'FEHLER')
                 . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
                 . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
