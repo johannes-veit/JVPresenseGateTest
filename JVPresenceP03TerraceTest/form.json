@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03 Portal HOME ↔ Lagerplatz. Der Grenzübertritt wird ausschließlich aus der zeitlichen Reihenfolge der beiden Lagerplatzkameras ermittelt. Terrasse/CrossLine dient nur als Zusatzdiagnose."
+      "caption": "P03 Portal HOME ↔ Lagerplatz. Ausschließlicher Grenzbeweis: Reihenfolge der beiden Mastkameras. JV Terrasse/CrossLine ist optional und hat keine Proof-/Zonenwirkung."
     },
     {
       "type": "CheckBox",
@@ -17,7 +17,7 @@
         {
           "type": "ValidationTextBox",
           "name": "TerraceHost",
-          "caption": "JV Terrasse – IP"
+          "caption": "JV Terrasse – IP (optional, nur Diagnose)"
         },
         {
           "type": "NumberSpinner",
@@ -48,11 +48,11 @@
         },
         {
           "type": "Label",
-          "caption": "Standard: Terrasse 192.168.107.110, JV links 192.168.107.96, Werkstatt links 192.168.107.99. Für die beiden Mastkameras legt P03 eigene interne Kamera-Observer und eigene Human-IVS-Regeln an."
+          "caption": "Pflicht: JV links 192.168.107.96 und Werkstatt links 192.168.107.99. P03 legt für beide eigene Human-IVS-Regeln und eigene Eventstream-Observer an. Terrasse 192.168.107.110 ist optional."
         },
         {
           "type": "Label",
-          "caption": "AussenlichtAutomatik2 bleibt vollständig unabhängig und wird von P03 nicht verwendet."
+          "caption": "AussenlichtAutomatik2 bleibt vollständig unabhängig: keine Instanz wird aufgerufen, geändert oder neu gestartet."
         }
       ]
     },
@@ -70,23 +70,23 @@
         },
         {
           "type": "Label",
-          "caption": "Primärlogik: JV_LEFT → WORK_LEFT = HOME→LAGER. WORK_LEFT → JV_LEFT = LAGER→HOME."
+          "caption": "JV_LEFT → WORK_LEFT = HOME→LAGER. WORK_LEFT → JV_LEFT = LAGER→HOME."
         },
         {
           "type": "Label",
-          "caption": "Nur wenn beide Kameras nacheinander innerhalb des Zeitfensters eine Person erkennen, wird ein Grenzübertritt gebucht."
+          "caption": "Nur zwei aufeinanderfolgende Personenerkennungen verschiedener Mastkameras innerhalb des Zeitfensters erzeugen einen Übergang."
         },
         {
           "type": "Label",
-          "caption": "Nur eine Kamera, dieselbe Kamera zweimal, gleichzeitige/unklare Gegenrichtung oder zu großer Zeitabstand = kein Übergang."
+          "caption": "Nur eine Kamera, dieselbe Kamera zweimal, gleichzeitige Erkennung, zu großer Abstand oder schnelle Gegenrichtung = kein Übergang."
         },
         {
           "type": "Label",
-          "caption": "JV Terrasse und ihre CrossLine sind nur Zusatzdiagnose und dürfen niemals eine der beiden Mastkameras ersetzen."
+          "caption": "Terrassen-Human und Terrassen-CrossLine werden nicht in den Proof-Puffer übernommen und dürfen den Übergangszähler nicht erhöhen."
         },
         {
           "type": "Label",
-          "caption": "Produktfreigabe erst nach mindestens 2× HOME→LAGER und 2× LAGER→HOME."
+          "caption": "Produktfreigabe erst nach erfolgreichem Mastkamera-Audit/Simulation und mindestens 2× HOME→LAGER + 2× LAGER→HOME."
         }
       ]
     }
@@ -94,7 +94,7 @@
   "actions": [
     {
       "type": "Button",
-      "caption": "P03 Gesamtaudit – 3 Kameras (kein Lauftest)",
+      "caption": "P03 Gesamtaudit – 2 Mastkameras (Terrasse optional)",
       "onClick": "JVP03MC_AuditCameraConfiguration($id);"
     },
     {
@@ -109,7 +109,7 @@
     },
     {
       "type": "Button",
-      "caption": "P03 Mehrkamera-Test vorbereiten & starten",
+      "caption": "P03 2-Kamera-Lauftest vorbereiten & starten",
       "onClick": "JVP03MC_PrepareAndStartTest($id);"
     },
     {
@@ -129,7 +129,7 @@
     },
     {
       "type": "Button",
-      "caption": "Terrassen-Eventstream neu aufbauen",
+      "caption": "Optional: Terrassen-Diagnosestream neu aufbauen",
       "onClick": "JVP03MC_Reconnect($id);"
     },
     {
