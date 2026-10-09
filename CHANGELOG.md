@@ -1,3 +1,12 @@
+# v0.6.11
+
+- Behebt den Mastkamera-Auditfehler aus v0.6.10: der native Dahua-Regeltemplate-Abruf verwendete den falschen CGI-Endpunkt `devVideoAnalyse.cgi`.
+- Korrekt laut Dahua/Intelbras-HTTP-API: `/cgi-bin/VideoInAnalyse.cgi?action=getTemplateRule&Channel=1&Class=Normal`.
+- Der falsche Endpunkt erklärte, warum beide identischen IPC-HFW5442E-ZE gleichzeitig kein natives `CrossRegionDetection`-Template liefern konnten, obwohl Anmeldung, SMD und Geräteabfrage funktionierten.
+- Wenn alle Template-Wege trotzdem fehlschlagen, protokolliert P03 jetzt die Ergebnisse von HTTP-`VideoInAnalyse`, RPC2-`getDefault` und Web5-`factory`, statt nur `IVS-Human=FEHLER` auszugeben.
+- CI verhindert künftig eine Rückkehr zum falschen `devVideoAnalyse.cgi?action=getTemplateRule`-Pfad.
+- 2-Kamera-Logik, Parent-Isolation, P05-Fix und Außenlicht-Unabhängigkeit bleiben unverändert.
+
 # v0.6.10
 
 - Behebt die roten IP-Symcon-Instanzfehler „übergeordnete Instanz fehlerhaft / Schnittstelle geschlossen“ nach v0.6.9.
