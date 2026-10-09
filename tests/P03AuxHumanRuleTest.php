@@ -94,6 +94,18 @@ unset($bad['Config']['SizeFilter']['CalibrateBoxs']);
 expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing calibration rejected');
 
 $bad = $rule;
+$bad['Config']['Sensitivity'] = 5;
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong rule sensitivity rejected');
+
+$bad = $rule;
+unset($bad['Config']['AccuracySnap']['HumanBody']);
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing HumanBody accuracy snap rejected');
+
+$bad = $rule;
+$bad['Config']['MinDuration'] = 0;
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong minimum duration rejected');
+
+$bad = $rule;
 $bad['EventHandler']['TimeSection'][3][0] = '0 00:00:00-23:59:59';
 expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'non-24x7 schedule rejected');
 
