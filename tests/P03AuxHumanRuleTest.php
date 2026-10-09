@@ -123,6 +123,22 @@ expectAux(
     'matching rule name wins even if numeric mapping differs'
 );
 
+$explicitVehicle = $event;
+$explicitVehicle['classification'] = 'Vehicle';
+$explicitVehicle['human'] = false;
+expectAux(
+    !P03AuxObserverLogic::isHumanProofStart($explicitVehicle, 3, 'P03_JV_LEFT_HUMAN'),
+    'explicit Vehicle classification rejected fail closed'
+);
+
+$classificationOmitted = $event;
+$classificationOmitted['classification'] = null;
+$classificationOmitted['human'] = false;
+expectAux(
+    P03AuxObserverLogic::isHumanProofStart($classificationOmitted, 3, 'P03_JV_LEFT_HUMAN'),
+    'missing classification may rely on Human-only camera rule'
+);
+
 $genericNameStrongId = $event;
 $genericNameStrongId['ruleName'] = 'IVS-1';
 expectAux(
