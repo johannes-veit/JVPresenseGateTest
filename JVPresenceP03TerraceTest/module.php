@@ -2133,7 +2133,8 @@ class JVPresenceP03MultiCamera extends IPSModule
     /** @param array<string|int,mixed> $node @return array<string,mixed>|null */
     private function findNormalVideoAnalyseModule(array $node): ?array
     {
-        if (strcasecmp((string) ($node['Type'] ?? ''), 'Normal') === 0) {
+        if (strcasecmp((string) ($node['Type'] ?? ''), 'Normal') === 0
+            && (is_array($node['DetectRegion'] ?? null) || is_array($node['SizeFilter'] ?? null))) {
             return $node;
         }
         foreach ($node as $child) {
