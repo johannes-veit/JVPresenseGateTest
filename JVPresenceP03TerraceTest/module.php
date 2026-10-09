@@ -877,16 +877,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             $action = strtolower(trim((string) ($event['action'] ?? '')));
 
             if (strcasecmp($code, 'CrossLineDetection') !== 0) {
-                if (strcasecmp($code, 'SmartMotionHuman') === 0
-                    && in_array($action, ['start', 'on', 'pulse'], true)
-                    && ($this->ReadAttributeBoolean('TestActive') || $this->ReadAttributeBoolean('ProductionEnabled'))) {
-                    $this->recordP03HumanEvent(P03ProofEngine::SRC_TERRACE, [
-                        'eventId' => $event['eventId'] ?? null,
-                        'objectId' => $event['objectId'] ?? null,
-                        'classification' => $event['classification'] ?? null
-                    ]);
-                }
-
+                // Terrace Human events are diagnostic only and are deliberately
+                // not inserted into P03HumanEvents. Only JV_LEFT/WORK_LEFT may
+                // participate in the transfer proof.
                 if ($this->ReadAttributeBoolean('TestActive')
                     && in_array($action, ['start', 'on', 'pulse'], true)
                     && in_array(strtolower($code), [
