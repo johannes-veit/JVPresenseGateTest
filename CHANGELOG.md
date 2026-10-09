@@ -1,3 +1,14 @@
+# v0.6.7
+
+- Fehler in den beiden P03-Lagerplatz-Observern behoben: Dahua-`event.RuleID` wurde fälschlich gegen den `VideoAnalyseRule`-Tabellenindex verglichen.
+- Korrekt ist: `RuleID` muss gegen das echte Dahua-Regelfeld `Id` geprüft werden. Index und Id werden jetzt getrennt gespeichert und protokolliert.
+- Beispiel aus dem bereits bekannten Dahua-Verhalten: Tabellenindex 3 kann zur Regel-`Id` 0 gehören; ein Event mit `RuleID=0` darf deshalb nicht als fremde Regel verworfen werden.
+- P03-Audit zeigt künftig für beide Mastkameras `IVS-RuleIndex` und `IVS-RuleID` separat.
+- Die internen P03-Observer erhalten zusätzlich die Diagnosevariable `Letztes CrossRegion-Ereignis roh` und Debug-Ausgabe für jedes empfangene CrossRegion-Ereignis.
+- Regressionstest stellt sicher, dass Tabellenindex und Dahua-RuleID nicht mehr verwechselt werden.
+- 2-Kamera-Sequenzlogik aus v0.6.6 bleibt unverändert: JV_LEFT→WORK_LEFT=HOME→LAGER, umgekehrt=LAGER→HOME.
+- Außenlichtautomatik bleibt vollständig unabhängig und unverändert.
+
 # v0.6.6
 
 - P03-Grundlogik geändert: der eigentliche HOME↔LAGER-Grenzübertritt wird jetzt ausschließlich aus der zeitlichen Reihenfolge der beiden Lagerplatzkameras bestimmt.
