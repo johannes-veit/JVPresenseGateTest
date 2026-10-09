@@ -337,7 +337,7 @@ class JVPresenceP03AuxObserver extends IPSModule
     private function processEventData(string $chunk): void
     {
         $carry = $this->GetBuffer('EventCarry');
-        $events = JVP03DahuaEventParser::feed($chunk, $carry);
+        $events = JVP03JVP03DahuaEventParser::feed($chunk, $carry);
         $this->SetBuffer('EventCarry', $carry);
 
         $wantedName = $this->expectedRuleName();
@@ -488,7 +488,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->WriteAttributeInteger('DigestNC', $nc);
             $cnonce = substr(hash('sha256', $this->InstanceID . ':' . microtime(true) . ':' . mt_rand()), 0, 16);
             try {
-                $headers[] = 'Authorization: ' . JVP03DahuaDigest::buildAuthorization(
+                $headers[] = 'Authorization: ' . JVP03JVP03DahuaDigest::buildAuthorization(
                     $this->ReadPropertyString('Username'),
                     $this->ReadPropertyString('Password'),
                     'GET',
@@ -520,7 +520,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         if (!preg_match('/^WWW-Authenticate:\s*(Digest\s+.+)$/im', $header, $m)) {
             return [];
         }
-        return JVP03DahuaDigest::parseChallenge(trim((string) $m[1]));
+        return JVP03JVP03DahuaDigest::parseChallenge(trim((string) $m[1]));
     }
 
     private function cameraConfigurationReady(): bool
