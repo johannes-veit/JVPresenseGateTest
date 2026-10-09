@@ -161,6 +161,11 @@ jobs:
           if "P03AuxHumanRule::build(" in main:
               raise SystemExit('Unsafe hand-built aux IVS rule path still present')
 
+          if "/cgi-bin/VideoInAnalyse.cgi?action=getTemplateRule&Channel=1&Class=Normal" not in main:
+              raise SystemExit('Correct Dahua VideoInAnalyse getTemplateRule endpoint missing')
+          if "/cgi-bin/devVideoAnalyse.cgi?action=getTemplateRule" in main:
+              raise SystemExit('Obsolete/wrong devVideoAnalyse getTemplateRule endpoint present')
+
           # Existing aux instances must gain new variables on module update.
           apply=observer[observer.index("public function ApplyChanges"):observer.index("public function GetConfigurationForParent")]
           if "RegisterVariableInteger('HumanEventCounter'" not in apply:
