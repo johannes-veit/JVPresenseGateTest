@@ -728,6 +728,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         // Deshalb: vorhandene Tripwire automatisch wiederverwenden. Ist noch
         // keine vorhanden, keinerlei weitere Schreibversuche an der Kamera.
         $createdNow = false;
+        $createdRpc = [];
         // Ausschließlich die eigene P03-Regel wiederverwenden.
         // Fremde CrossLine-Regeln dürfen weder übernommen noch verändert werden.
         $idx = GateTestLogic::findRuleIndex($rules, self::RULE_NAME);
