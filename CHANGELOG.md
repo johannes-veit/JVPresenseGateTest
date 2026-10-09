@@ -1,3 +1,14 @@
+# v0.6.5
+
+- P03 vollständig von `AussenlichtAutomatik2` entkoppelt. Das Presence-Modul ruft keine ALA2-Funktion mehr auf, verwendet keine ALA2-Modul-GUID und liest keine ALA2-Instanz als Laufzeitquelle.
+- Neue interne Modulinstanz `JV Presence P03 Aux Observer` für JV links und Werkstatt links. Jeder Observer besitzt einen eigenen Dahua-`codes=[All]`-Eventstream und liefert ausschließlich die P03-Variable `Person erkannt`.
+- JV Terrasse wird ebenfalls direkt im P03-Modul konfiguriert: Host, HTTP-Port, Dahua-Benutzername und Passwort stehen nun in der P03-Konfiguration.
+- Die in v0.6.4 eingeführten P03-eigenen Human-IVS-Regeln (`CrossRegionDetection`, `ObjectTypes=Human`) bleiben bestehen, werden aber nur noch von den P03-eigenen Observern ausgewertet.
+- Der v0.6.4-Fatalfehler `Cannot redeclare class DahuaDigest` ist konstruktiv ausgeschlossen, weil P03 keine generierten ALA2-Wrapper mehr aufruft.
+- Bestehende Außenlicht-Instanzen werden nicht geändert, neu konfiguriert, neu gestartet oder gelöscht.
+- CI sperrt jede erneute direkte Abhängigkeit zu `AussenlichtAutomatik2` und prüft den neuen Aux-Observer sowie Human-`CrossRegionDetection`-Parsing.
+- Keine Änderung an P05, der P03-Grenzgeometrie oder der Proof-Engine.
+
 # v0.6.4
 
 - P03-Zusatzkameras `JV_LEFT` und `WORK_LEFT` verwenden jetzt eine eigene P03-IVS-Human-Regel statt auf `SmartMotionHuman`/SMD zu vertrauen.
