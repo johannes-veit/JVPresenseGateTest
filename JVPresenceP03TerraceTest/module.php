@@ -196,7 +196,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->subscribeP03AuxVariables();
         $this->refreshP03CameraStatus();
 
-        if (!$this->cameraConfigurationReady()) {
+        if (!$this->credentialsReady()) {
             $this->setResult('NICHT BEREIT – P03 Dahua-Benutzername/Passwort direkt im P03-Modul eintragen.');
             return;
         }
@@ -215,9 +215,11 @@ class JVPresenceP03MultiCamera extends IPSModule
             return (string) $raw;
         }
 
-        $host = trim($this->ReadPropertyString('TerraceHost'));
-        $sourceCaption = 'P03 direkt: JV Terrasse ' . ($host !== '' ? $host : '<IP fehlt>')
-            . ' – keine Abhängigkeit zur Außenlichtautomatik';
+        $jvHost = trim($this->ReadPropertyString('AuxJVHost'));
+        $workHost = trim($this->ReadPropertyString('AuxWorkHost'));
+        $sourceCaption = 'P03 Primär: JV_LEFT ' . ($jvHost !== '' ? $jvHost : '<IP fehlt>')
+            . ' ↔ WORK_LEFT ' . ($workHost !== '' ? $workHost : '<IP fehlt>')
+            . ' – Terrasse nur optional';
 
         $result = '';
         $resultID = $this->GetIDForIdent('Result');
@@ -1611,7 +1613,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function createP03AuxObserver(string $host, string $role, string $name): int
     {
-        if ($host === '' || !$this->cameraConfigurationReady()) {
+        if ($host === '' || !$this->credentialsReady()) {
             return 0;
         }
 
@@ -2562,10 +2564,16 @@ class JVPresenceP03MultiCamera extends IPSModule
         ];
     }
 
+    private function credentialsReady(): bool
+    {
+        return trim($this->ReadPropertyString('Username')) !== ''
+            && $this->ReadPropertyString('Password') !== '';
+    }
+
     private function cameraConfigurationReady(): bool
     {
         $cfg = $this->cameraConfiguration();
-        return ($cfg['host'] ?? '') !== '' && ($cfg['username'] ?? '') !== '' && ($cfg['password'] ?? '') !== '';
+        return $this->credentialsReady() && ($cfg['host'] ?? '') !== '';
     }
 
     /** @return array{ok:bool,body:string,error:string,http:int} */
