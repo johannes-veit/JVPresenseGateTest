@@ -37,13 +37,11 @@ $rule = P03AuxHumanRule::build('P03_JV_LEFT_HUMAN', 7, $template);
 expectAux(($rule['Type'] ?? null) === 'CrossRegionDetection', 'rule type');
 expectAux(($rule['ObjectTypes'] ?? null) === ['Human'], 'Human-only object filter');
 expectAux(($rule['Config']['DetectRegion'] ?? null) === P03AuxHumanRule::REGION, 'fixed region');
-expectAux(($rule['Config']['Action'] ?? null) === ['Cross', 'Appear'], 'CrossRegion action is Cross+Appear');
-expectAux(($rule['Config']['Direction'] ?? null) === 'Enter', 'CrossRegion direction is Enter');
+expectAux(($rule['Config']['Action'] ?? null) === ['Appear'], 'CrossRegion action is Appear only');
+expectAux(!array_key_exists('Direction', $rule['Config']), 'Direction omitted because it is valid only for Cross');
 expectAux(count(P03AuxHumanRule::REGION) === 4, 'polygon is not redundantly closed');
 expectAux(($rule['Config']['SizeFilter']['MinSize'] ?? null) === [0, 0], 'min size');
 expectAux(($rule['Config']['SizeFilter']['MaxSize'] ?? null) === [8191, 8191], 'max size');
-expectAux(($rule['Config']['SizeFilter']['CalibrateBoxs'][0]['CenterPoint'] ?? null) === [4096, 4096], 'calibrate center');
-expectAux(($rule['Config']['SizeFilter']['CalibrateBoxs'][0]['Ratio'] ?? null) === 1, 'calibrate ratio');
 expectAux(count($rule['EventHandler']['TimeSection'] ?? []) === 7, '7-day arming schedule');
 for ($day = 0; $day < 7; $day++) {
     expectAux(($rule['EventHandler']['TimeSection'][$day][0] ?? null) === '1 00:00:00-23:59:59', 'day ' . $day . ' full-day arming');
@@ -83,27 +81,15 @@ expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing Action 
 
 $bad = $rule;
 $bad['Config']['Action'] = ['Cross'];
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing Appear action rejected');
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'Cross-only action rejected');
 
 $bad = $rule;
-$bad['Config']['Direction'] = 'Leave';
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong direction rejected');
+$bad['Config']['Action'] = ['Appear', 'Cross'];
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'mixed Cross+Appear rejected for P03 full-frame detection');
 
 $bad = $rule;
-unset($bad['Config']['SizeFilter']['CalibrateBoxs']);
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing calibration rejected');
-
-$bad = $rule;
-$bad['Config']['Sensitivity'] = 5;
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong rule sensitivity rejected');
-
-$bad = $rule;
-unset($bad['Config']['AccuracySnap']['HumanBody']);
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing HumanBody accuracy snap rejected');
-
-$bad = $rule;
-$bad['Config']['MinDuration'] = 0;
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong minimum duration rejected');
+$bad['Config']['SizeFilter']['Type'] = 'ByArea';
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong size filter type rejected');
 
 $bad = $rule;
 $bad['EventHandler']['TimeSection'][3][0] = '0 00:00:00-23:59:59';
