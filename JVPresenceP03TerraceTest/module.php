@@ -1123,113 +1123,28 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $cases = [
             [
-                'name' => 'OUT primary',
-                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
+                'name' => '2CAM OUT order',
                 'events' => [
-                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 8],
-                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 6]
-                ],
-                'now' => $base + 7,
-                'state' => P03ProofEngine::STATE_VERIFIED,
-                'action' => P03ProofEngine::ACTION_HOME_TO_LAGER
-            ],
-            [
-                'name' => 'IN primary',
-                'cross' => ['ts' => $base, 'direction' => 'LeftToRight'],
-                'events' => [
-                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 7],
-                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base + 5]
-                ],
-                'now' => $base + 6,
-                'state' => P03ProofEngine::STATE_VERIFIED,
-                'action' => P03ProofEngine::ACTION_LAGER_TO_HOME
-            ],
-            [
-                'name' => 'OUT terrace fallback',
-                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
-                'events' => [
-                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 40],
-                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 8]
-                ],
-                'now' => $base + 9,
-                'state' => P03ProofEngine::STATE_VERIFIED,
-                'action' => P03ProofEngine::ACTION_HOME_TO_LAGER
-            ],
-            [
-                'name' => 'false crossline without human',
-                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
-                'events' => [],
-                'now' => $base + 61,
-                'state' => P03ProofEngine::STATE_UNKNOWN,
-                'action' => null
-            ],
-            [
-                'name' => 'incomplete one-side proof',
-                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
-                'events' => [
-                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5]
-                ],
-                'now' => $base + 61,
-                'state' => P03ProofEngine::STATE_PROVISIONAL,
-                'action' => null
-            ],
-            [
-                'name' => 'contradictory simultaneous traffic',
-                'cross' => ['ts' => $base, 'direction' => 'RightToLeft'],
-                'events' => [
-                    ['id' => 'jpre', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 7],
-                    ['id' => 'wpre', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 6],
-                    ['id' => 'jpost', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base + 6],
-                    ['id' => 'wpost', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 7]
-                ],
-                'now' => $base + 8,
-                'state' => P03ProofEngine::STATE_CONTRADICTION,
-                'action' => null
-            ]
-        ];
-
-        foreach ($cases as $case) {
-            $result = P03ProofEngine::evaluate(
-                $case['cross'],
-                $case['events'],
-                (float) $case['now'],
-                30.0,
-                60.0
-            );
-            $pass = ($result['state'] ?? null) === $case['state']
-                && ($result['action'] ?? null) === $case['action'];
-            $details[] = $case['name'] . '=' . ($pass ? 'OK' : 'FAIL');
-            $ok = $ok && $pass;
-        }
-
-        $noLineCases = [
-            [
-                'name' => '3CAM OUT no-line',
-                'events' => [
-                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 20],
                     ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 8],
                     ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base]
                 ],
-                'now' => $base + 4,
-                'state' => P03ProofEngine::STATE_STRONG_VERIFIED,
+                'now' => $base + 3,
+                'state' => P03ProofEngine::STATE_VERIFIED,
                 'action' => P03ProofEngine::ACTION_HOME_TO_LAGER
             ],
             [
-                'name' => '3CAM IN no-line',
+                'name' => '2CAM IN order',
                 'events' => [
                     ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 8],
-                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base],
-                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base + 20]
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base]
                 ],
-                'now' => $base + 24,
-                'state' => P03ProofEngine::STATE_STRONG_VERIFIED,
+                'now' => $base + 3,
+                'state' => P03ProofEngine::STATE_VERIFIED,
                 'action' => P03ProofEngine::ACTION_LAGER_TO_HOME
             ],
             [
-                'name' => '3CAM wrong order',
+                'name' => 'single camera no transfer',
                 'events' => [
-                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 20],
-                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 8],
                     ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base]
                 ],
                 'now' => $base + 10,
@@ -1237,25 +1152,64 @@ class JVPresenceP03MultiCamera extends IPSModule
                 'action' => null
             ],
             [
-                'name' => '3CAM stale',
+                'name' => 'same camera twice no transfer',
                 'events' => [
-                    ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 120],
-                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 8],
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5],
+                    ['id' => 'j2', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 10,
+                'state' => P03ProofEngine::STATE_UNKNOWN,
+                'action' => null
+            ],
+            [
+                'name' => 'over time limit rejected',
+                'events' => [
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 31],
                     ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base]
                 ],
                 'now' => $base + 10,
                 'state' => P03ProofEngine::STATE_UNKNOWN,
                 'action' => null
+            ],
+            [
+                'name' => 'settle delay pending',
+                'events' => [
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 1,
+                'state' => P03ProofEngine::STATE_PENDING,
+                'action' => null
+            ],
+            [
+                'name' => 'quick reversal contradiction',
+                'events' => [
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 4],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base - 2],
+                    ['id' => 'j2', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 1,
+                'state' => P03ProofEngine::STATE_CONTRADICTION,
+                'action' => null
+            ],
+            [
+                'name' => 'consumed evidence ignored',
+                'events' => [
+                    ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5, 'used' => true],
+                    ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base]
+                ],
+                'now' => $base + 5,
+                'state' => P03ProofEngine::STATE_UNKNOWN,
+                'action' => null
             ]
         ];
 
-        foreach ($noLineCases as $case) {
-            $result = P03ProofEngine::evaluateThreeCameraSequence(
+        foreach ($cases as $case) {
+            $result = P03ProofEngine::evaluateTwoCameraSequence(
                 $case['events'],
                 (float) $case['now'],
                 30.0,
-                60.0,
-                3.0
+                2.0
             );
             $pass = ($result['state'] ?? null) === $case['state']
                 && ($result['action'] ?? null) === $case['action'];
@@ -1263,15 +1217,37 @@ class JVPresenceP03MultiCamera extends IPSModule
             $ok = $ok && $pass;
         }
 
-        $map = [];
-        $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
-        $map = P03ProofEngine::learnDirection($map, 'RightToLeft', P03ProofEngine::ACTION_HOME_TO_LAGER);
-        $map = P03ProofEngine::learnDirection($map, 'LeftToRight', P03ProofEngine::ACTION_LAGER_TO_HOME);
-        $map = P03ProofEngine::learnDirection($map, 'LeftToRight', P03ProofEngine::ACTION_LAGER_TO_HOME);
-        $direction = P03ProofEngine::directionStatus($map);
-        $dirPass = ($direction['stable'] ?? false) === true;
-        $details[] = 'direction learning=' . ($dirPass ? 'OK' : 'FAIL');
-        $ok = $ok && $dirPass;
+        // Terrace/CrossLine must never substitute one of the two mast cameras.
+        $cross = P03ProofEngine::evaluate(
+            ['ts' => $base, 'direction' => 'RightToLeft'],
+            [
+                ['id' => 't1', 'source' => P03ProofEngine::SRC_TERRACE, 'ts' => $base - 5],
+                ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 5]
+            ],
+            $base + 61,
+            30.0,
+            60.0
+        );
+        $crossPass = ($cross['action'] ?? null) === null
+            && !in_array((string) ($cross['state'] ?? ''), [P03ProofEngine::STATE_VERIFIED, P03ProofEngine::STATE_STRONG_VERIFIED], true);
+        $details[] = 'terrace cannot replace mast camera=' . ($crossPass ? 'OK' : 'FAIL');
+        $ok = $ok && $crossPass;
+
+        // With both mast cameras, CrossLine is optional strengthening only.
+        $cross = P03ProofEngine::evaluate(
+            ['ts' => $base, 'direction' => 'RightToLeft'],
+            [
+                ['id' => 'j1', 'source' => P03ProofEngine::SRC_JV_LEFT, 'ts' => $base - 5],
+                ['id' => 'w1', 'source' => P03ProofEngine::SRC_WORK_LEFT, 'ts' => $base + 5]
+            ],
+            $base + 6,
+            30.0,
+            60.0
+        );
+        $crossPass = ($cross['state'] ?? null) === P03ProofEngine::STATE_STRONG_VERIFIED
+            && ($cross['action'] ?? null) === P03ProofEngine::ACTION_HOME_TO_LAGER;
+        $details[] = 'crossline only strengthens mast pair=' . ($crossPass ? 'OK' : 'FAIL');
+        $ok = $ok && $crossPass;
 
         return ['ok' => $ok, 'details' => $details];
     }
