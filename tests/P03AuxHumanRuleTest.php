@@ -36,6 +36,12 @@ expectAux(($rule['Config']['Direction'] ?? null) === 'Enter', 'CrossRegion direc
 expectAux(count(P03AuxHumanRule::REGION) === 4, 'polygon is not redundantly closed');
 expectAux(($rule['Config']['SizeFilter']['MinSize'] ?? null) === [0, 0], 'min size');
 expectAux(($rule['Config']['SizeFilter']['MaxSize'] ?? null) === [8191, 8191], 'max size');
+expectAux(($rule['Config']['SizeFilter']['CalibrateBoxs'][0]['CenterPoint'] ?? null) === [4096, 4096], 'calibrate center');
+expectAux(($rule['Config']['SizeFilter']['CalibrateBoxs'][0]['Ratio'] ?? null) === 1, 'calibrate ratio');
+expectAux(count($rule['EventHandler']['TimeSection'] ?? []) === 7, '7-day arming schedule');
+for ($day = 0; $day < 7; $day++) {
+    expectAux(($rule['EventHandler']['TimeSection'][$day][0] ?? null) === '1 00:00:00-23:59:59', 'day ' . $day . ' full-day arming');
+}
 expectAux(($rule['EventHandler']['RecordEnable'] ?? true) === false, 'record side effect disabled');
 expectAux(($rule['EventHandler']['SnapshotEnable'] ?? true) === false, 'snapshot side effect disabled');
 expectAux(($rule['EventHandler']['MailEnable'] ?? true) === false, 'mail side effect disabled');
@@ -66,6 +72,14 @@ $bad['Config']['Direction'] = 'Leave';
 expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong direction rejected');
 
 $bad = $rule;
+unset($bad['Config']['SizeFilter']['CalibrateBoxs']);
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing calibration rejected');
+
+$bad = $rule;
+$bad['EventHandler']['TimeSection'][3][0] = '0 00:00:00-23:59:59';
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'non-24x7 schedule rejected');
+
+$bad = $rule;
 $bad['Enable'] = false;
 expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'disabled rule rejected');
 
@@ -74,47 +88,56 @@ $bad['Type'] = 'CrossLineDetection';
 expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong rule type rejected');
 
 $carry = '';
-$rawEvent = "Code=CrossRegionDetection;action=Start;index=0;data={\"RuleID\":4,\"EventID\":101,\"Object\":{\"ObjectType\":\"Human\",\"ObjectID\":99}}\r\n";
+$rawEvent = "Code=CrossRegionDetection;action=Start;index=0;data={\"CfgRuleId\":3,\"RuleID\":3,\"RuleId\":1,\"Name\":\"P03_JV_LEFT_HUMAN\",\"EventID\":101,\"Action\":\"Appear\",\"Object\":{\"ObjectType\":\"Human\",\"ObjectID\":99}}\r\n";
 $events = DahuaEventParser::feed($rawEvent, $carry);
-expectAux(count($events) === 1, 'CrossRegion event parsed');
-expectAux(($events[0]['ruleId'] ?? null) === 4, 'CrossRegion RuleID parsed');
-expectAux(($events[0]['human'] ?? false) === true, 'CrossRegion Human classification parsed');
-expectAux(($events[0]['classification'] ?? null) === 'Human', 'CrossRegion Human classification exposed');
+expectAux(count($events) === 1, 'real-style CrossRegion event parsed');
+$event = $events[0];
+expectAux(($event['cfgRuleId'] ?? null) === 3, 'CfgRuleId kept separately');
+expectAux(($event['ruleIdPrimary'] ?? null) === 3, 'RuleID kept separately');
+expectAux(($event['ruleIdLegacy'] ?? null) === 1, 'RuleId kept separately');
+expectAux(($event['ruleName'] ?? null) === 'P03_JV_LEFT_HUMAN', 'rule Name parsed');
+expectAux(($event['ruleIds'] ?? null) === [3, 1], 'all unique Dahua rule ids exposed');
+expectAux(($event['ruleId'] ?? null) === 3, 'compatibility ruleId uses primary RuleID');
+expectAux(($event['human'] ?? false) === true, 'Human classification parsed');
 
-$carry = '';
-$cfgRuleEvent = "Code=CrossRegionDetection;action=Pulse;index=0;data={\"CfgRuleId\":7,\"EventID\":102,\"Action\":\"Appear\",\"Object\":{\"ObjectType\":\"Human\"}}\r\n";
-$events = DahuaEventParser::feed($cfgRuleEvent, $carry);
-expectAux(count($events) === 1, 'CrossRegion CfgRuleId event parsed');
-expectAux(($events[0]['ruleId'] ?? null) === 7, 'CfgRuleId accepted as Dahua rule id');
-expectAux(($events[0]['human'] ?? false) === true, 'CfgRuleId event Human parsed');
-
-
-
-$matchingWithoutHumanPayload = [
-    'code' => 'CrossRegionDetection',
-    'action' => 'Start',
-    // Event RuleID is the Dahua rule Id, NOT the VideoAnalyseRule array index.
-    'ruleId' => 0,
-    'human' => false,
-    'classification' => null
-];
 expectAux(
-    P03AuxObserverLogic::isHumanProofStart($matchingWithoutHumanPayload, 0),
-    'Dahua rule Id 0 matches even when table index is different'
+    P03AuxObserverLogic::isHumanProofStart($event, 99, 'P03_JV_LEFT_HUMAN'),
+    'matching rule name wins even if numeric mapping differs'
 );
 
-$wrongRule = $matchingWithoutHumanPayload;
-$wrongRule['ruleId'] = 3; // typical table index; must NOT be mistaken for Dahua Id=0
+$foreignName = $event;
+$foreignName['ruleName'] = 'FOREIGN_RULE';
 expectAux(
-    !P03AuxObserverLogic::isHumanProofStart($wrongRule, 0),
-    'VideoAnalyseRule array index is not accepted as Dahua RuleID'
+    !P03AuxObserverLogic::isHumanProofStart($foreignName, 3, 'P03_JV_LEFT_HUMAN'),
+    'explicit foreign rule name rejected even if id matches'
 );
 
-$stopEvent = $matchingWithoutHumanPayload;
+$noName = $event;
+$noName['ruleName'] = null;
+expectAux(
+    P03AuxObserverLogic::isHumanProofStart($noName, 1, 'P03_JV_LEFT_HUMAN'),
+    'fallback accepts any known Dahua rule id when Name is absent'
+);
+
+$noName['ruleIds'] = [8, 9];
+$noName['ruleId'] = 8;
+expectAux(
+    !P03AuxObserverLogic::isHumanProofStart($noName, 1, 'P03_JV_LEFT_HUMAN'),
+    'wrong fallback ids rejected'
+);
+
+$stopEvent = $event;
 $stopEvent['action'] = 'Stop';
 expectAux(
-    !P03AuxObserverLogic::isHumanProofStart($stopEvent, 0),
+    !P03AuxObserverLogic::isHumanProofStart($stopEvent, 3, 'P03_JV_LEFT_HUMAN'),
     'STOP event does not create a new Human proof'
 );
+
+$carry = '';
+$cfgOnly = "Code=CrossRegionDetection;action=Pulse;index=0;data={\"CfgRuleId\":7,\"Name\":\"P03_WORK_LEFT_HUMAN\",\"EventID\":102,\"Action\":\"Appear\",\"Object\":{\"ObjectType\":\"Human\"}}\r\n";
+$events = DahuaEventParser::feed($cfgOnly, $carry);
+expectAux(count($events) === 1, 'CfgRuleId-only event parsed');
+expectAux(($events[0]['ruleIds'] ?? null) === [7], 'CfgRuleId-only candidate exposed');
+expectAux(P03AuxObserverLogic::isHumanProofStart($events[0], 7, 'P03_WORK_LEFT_HUMAN'), 'CfgRuleId-only event matches');
 
 echo "P03 auxiliary Human IVS rule tests PASS\n";
