@@ -76,6 +76,10 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->WriteAttributeBoolean('LastRequestAuthenticated', false);
         $this->WriteAttributeBoolean('AuthBlocked', false);
         $this->WriteAttributeInteger('AuthFailureCount', 0);
+        $this->WriteAttributeInteger('SocketRestartStage', 0);
+        $this->WriteAttributeInteger('LastSocketRestart', 0);
+        $this->WriteAttributeInteger('LastCameraRx', 0);
+        $this->WriteAttributeInteger('LastHttpRequest', 0);
         $this->WriteAttributeInteger('DigestNC', 0);
         $this->WriteAttributeString('DigestChallenge', '{}');
         $this->WriteAttributeInteger('HumanPulseUntil', 0);
@@ -83,7 +87,9 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetValue('PersonDetected', false);
         $this->SetValue('StreamOK', false);
 
-        $this->syncParentSocket();
+        // Match the proven AussenlichtAutomatik2 socket lifecycle: RequireParent()
+        // + GetConfigurationForParent() owns parent configuration. Do not ApplyChanges()
+        // the parent here; doing so can race with the staged digest reconnect.
         $this->updateParentSubscription($this->getParentID());
 
         if ($this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
@@ -284,9 +290,11 @@ class JVPresenceP03AuxObserver extends IPSModule
         $now = time();
         $status = (int) IPS_GetInstance($parentID)['InstanceStatus'];
         if ($status !== 102) {
-            $this->WriteAttributeBoolean('Streaming', false);
-            $this->SetValue('StreamOK', false);
-            $this->clearPersonPulse();
+            if ($this->ReadAttributeBoolean('Streaming')) {
+                $this->WriteAttributeBoolean('Streaming', false);
+                $this->SetValue('StreamOK', false);
+                $this->clearPersonPulse();
+            }
             if ($this->ReadAttributeInteger('SocketRestartStage') === 0
                 && ($now - $this->ReadAttributeInteger('LastSocketRestart')) >= 20) {
                 $this->scheduleSocketRestart(100);
@@ -295,7 +303,10 @@ class JVPresenceP03AuxObserver extends IPSModule
         }
 
         $lastRx = $this->ReadAttributeInteger('LastCameraRx');
-        if ($this->ReadAttributeBoolean('Streaming') && $lastRx > 0 && ($now - $lastRx) > 25) {
+        $lastReq = $this->ReadAttributeInteger('LastHttpRequest');
+        $streaming = $this->ReadAttributeBoolean('Streaming');
+
+        if ($streaming && $lastRx > 0 && ($now - $lastRx) > 25) {
             $this->WriteAttributeBoolean('Streaming', false);
             $this->SetValue('StreamOK', false);
             $this->clearPersonPulse();
@@ -303,6 +314,16 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->WriteAttributeBoolean('LastRequestAuthenticated', false);
             $this->WriteAttributeInteger('DigestNC', 0);
             $this->WriteAttributeString('DigestChallenge', '{}');
+            $this->scheduleSocketRestart(100);
+            return;
+        }
+
+        // Critical recovery path copied from the proven AussenlichtAutomatik2
+        // eventstream lifecycle: if TCP is open but the Dahua digest handshake
+        // never reaches HTTP 200, force a fresh socket instead of remaining
+        // permanently StreamOK=false.
+        if (!$streaming && ($lastReq === 0 || ($now - $lastReq) > 12)
+            && $this->ReadAttributeInteger('SocketRestartStage') === 0) {
             $this->scheduleSocketRestart(100);
         }
     }
@@ -319,6 +340,10 @@ class JVPresenceP03AuxObserver extends IPSModule
 
     public function Reconnect(): void
     {
+        $this->SetTimerInterval('HandshakeTimer', 0);
+        $this->SetTimerInterval('SocketRestartTimer', 0);
+        $this->WriteAttributeInteger('SocketRestartStage', 0);
+        $this->WriteAttributeInteger('LastHttpRequest', 0);
         $this->WriteAttributeBoolean('Streaming', false);
         $this->SetValue('StreamOK', false);
         $this->clearPersonPulse();
@@ -473,7 +498,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $headers = [
             'GET ' . $uri . ' HTTP/1.1',
             'Host: ' . $hostHeader,
-            'User-Agent: IP-Symcon-JVPresenceP03Aux/0.6.9',
+            'User-Agent: IP-Symcon-JVPresenceP03Aux/0.6.12',
             'Accept: multipart/x-mixed-replace, */*',
             'Connection: keep-alive'
         ];
@@ -528,22 +553,6 @@ class JVPresenceP03AuxObserver extends IPSModule
         return trim($this->ReadPropertyString('CameraHost')) !== ''
             && trim($this->ReadPropertyString('Username')) !== ''
             && $this->ReadPropertyString('Password') !== '';
-    }
-
-    private function syncParentSocket(): void
-    {
-        $parentID = $this->getParentID();
-        if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
-            return;
-        }
-
-        try {
-            IPS_SetProperty($parentID, 'Host', trim($this->ReadPropertyString('CameraHost')));
-            IPS_SetProperty($parentID, 'Port', max(1, $this->ReadPropertyInteger('CameraPort')));
-            IPS_SetProperty($parentID, 'Open', $this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady());
-            IPS_ApplyChanges($parentID);
-        } catch (Throwable $e) {
-        }
     }
 
     private function getParentID(): int
