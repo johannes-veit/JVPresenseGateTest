@@ -7,7 +7,7 @@ require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/GateTestLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ProofEngine.php';
 
-class JVPresenceP03TerraceTest extends IPSModule
+class JVPresenceP03MultiCamera extends IPSModule
 {
     private const CLIENT_SOCKET_GUID = '{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}';
     private const SOCKET_TX_GUID = '{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}';
@@ -129,10 +129,10 @@ class JVPresenceP03TerraceTest extends IPSModule
         $this->RegisterVariableString('LastEvent', 'Letztes IVS-Ereignis', '', 60);
         $this->RegisterVariableString('Protocol', 'Testprotokoll', '', 70);
 
-        $this->RegisterTimer('HandshakeTimer', 0, 'JVP03_HandshakeTimer($_IPS["TARGET"]);');
-        $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03_SocketRestartTimer($_IPS["TARGET"]);');
-        $this->RegisterTimer('Watchdog', 15000, 'JVP03_Watchdog($_IPS["TARGET"]);');
-        $this->RegisterTimer('P03ProofTimer', 0, 'JVP03_P03ProofTimer($_IPS["TARGET"]);');
+        $this->RegisterTimer('HandshakeTimer', 0, 'JVP03MC_HandshakeTimer($_IPS["TARGET"]);');
+        $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03MC_SocketRestartTimer($_IPS["TARGET"]);');
+        $this->RegisterTimer('Watchdog', 15000, 'JVP03MC_Watchdog($_IPS["TARGET"]);');
+        $this->RegisterTimer('P03ProofTimer', 0, 'JVP03MC_P03ProofTimer($_IPS["TARGET"]);');
 
         $this->RequireParent(self::CLIENT_SOCKET_GUID);
     }
