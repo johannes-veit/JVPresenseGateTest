@@ -18,8 +18,20 @@ final class P03AuxObserverLogic
     public static function isHumanProofStart(array $event, int $wantedRuleId, string $wantedRuleName = ''): bool
     {
         $action = strtolower(trim((string) ($event['action'] ?? '')));
-        return in_array($action, ['start', 'on', 'pulse'], true)
-            && self::isMatchingRuleEvent($event, $wantedRuleId, $wantedRuleName);
+        if (!in_array($action, ['start', 'on', 'pulse'], true)
+            || !self::isMatchingRuleEvent($event, $wantedRuleId, $wantedRuleName)) {
+            return false;
+        }
+
+        // If the payload explicitly classifies an object, require Human.
+        // Only an omitted classification may rely on the dedicated Human-only
+        // camera rule as the classification source.
+        $classification = trim((string) ($event['classification'] ?? ''));
+        if ($classification !== '') {
+            return in_array(strtolower($classification), ['human', 'person', 'pedestrian'], true);
+        }
+
+        return true;
     }
 
     /**
