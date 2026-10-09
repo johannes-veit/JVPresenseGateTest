@@ -966,7 +966,6 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     public function P03ProofTimer(): void
     {
-        $this->evaluateP03Pending();
         $this->evaluateP03MastSequence();
     }
 
@@ -1170,47 +1169,47 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->setP03HumanEvents($events);
 
         $this->appendProtocol('P03 HUMAN ' . $source . ' @' . sprintf('%.3f', $now));
-        $this->evaluateP03Pending();
         $this->evaluateP03MastSequence();
     }
 
     /** @param array<string,mixed> $event */
     private function recordP03Crossing(array $event, ?string $direction): void
     {
-        $pending = $this->getP03PendingCrossings();
+        // Terrace/CrossLine is diagnostic only. It must never enter the proof
+        // queue or consume/commit mast-camera evidence.
         $now = microtime(true);
         $eventId = trim((string) ($event['eventId'] ?? ''));
         $id = $eventId !== '' ? ('cross:event:' . $eventId) : ('cross:' . sprintf('%.6f', $now));
 
-        foreach ($pending as $candidate) {
+        $crossings = $this->getCrossings();
+        foreach ($crossings as $candidate) {
             if (($candidate['id'] ?? '') === $id) {
                 return;
             }
         }
 
-        $candidate = [
+        $crossings[] = [
             'id' => $id,
             'ts' => $now,
             'direction' => $direction,
             'eventId' => $event['eventId'] ?? null,
-            'ruleId' => $event['ruleId'] ?? null,
+            'ruleName' => $event['ruleName'] ?? null,
+            'ruleIds' => $event['ruleIds'] ?? [],
             'objectId' => $event['objectId'] ?? null
         ];
-        $pending[] = $candidate;
-        if (count($pending) > 20) {
-            $pending = array_slice($pending, -20);
+        if (count($crossings) > 50) {
+            $crossings = array_slice($crossings, -50);
         }
-        $this->setP03PendingCrossings($pending);
-
-        $this->SetValue('P03ProofState', 'PENDING – CrossLine wartet auf Kamerabestätigung');
-        $this->appendProtocol(
-            'P03 CROSS id=' . $id
-                . ' Direction=' . ($direction ?? '<fehlt>')
-                . ' – wartet auf HOME/LAGER Human-Beweis'
+        $this->WriteAttributeString(
+            'Crossings',
+            json_encode(array_values($crossings), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]'
         );
-        $this->SetTimerInterval('P03ProofTimer', 1000);
-        $this->evaluateP03Pending();
-        $this->evaluateP03MastSequence();
+
+        $this->appendProtocol(
+            'P03 CROSS DIAGNOSE id=' . $id
+                . ' Direction=' . ($direction ?? '<fehlt>')
+                . ' – keine Proof-/Zonenwirkung'
+        );
     }
 
     public function P03AuxRescan(): void
@@ -1226,61 +1225,13 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function evaluateP03Pending(): void
     {
-        $pending = $this->getP03PendingCrossings();
-        if ($pending === []) {
-            $this->SetTimerInterval('P03ProofTimer', 0);
-            return;
+        // Legacy safety only. Since v0.6.9 CrossLine/Terrace is diagnostic and
+        // may never commit a transfer. Clear any pending entries left by older
+        // releases so they cannot influence the new two-camera proof.
+        if ($this->getP03PendingCrossings() !== []) {
+            $this->setP03PendingCrossings([]);
+            $this->appendProtocol('P03 LEGACY: alte CrossLine-Proof-Warteschlange verworfen.');
         }
-
-        $events = $this->getP03HumanEvents();
-        $remaining = [];
-        $now = microtime(true);
-        $near = max(5, $this->ReadPropertyInteger('NearProofWindowSeconds'));
-        $terrace = max($near, $this->ReadPropertyInteger('TerraceProofWindowSeconds'));
-
-        foreach ($pending as $cross) {
-            $result = P03ProofEngine::evaluate($cross, $events, $now, (float) $near, (float) $terrace);
-            $state = (string) ($result['state'] ?? P03ProofEngine::STATE_UNKNOWN);
-
-            if ($state === P03ProofEngine::STATE_PENDING) {
-                $remaining[] = $cross;
-                continue;
-            }
-
-            if (in_array($state, [P03ProofEngine::STATE_VERIFIED, P03ProofEngine::STATE_STRONG_VERIFIED], true)) {
-                $events = $this->commitP03VerifiedResult(
-                    $events,
-                    $cross,
-                    $result,
-                    (string) ($cross['id'] ?? 'cross')
-                );
-                continue;
-            }
-
-            if ($state === P03ProofEngine::STATE_CONTRADICTION) {
-                $this->SetValue('P03ProofState', 'CONTRADICTION – kein Übergang gebucht');
-                $this->SetValue('P03LastProof', $this->formatP03Proof($cross, $result));
-                $this->appendProtocol('P03 CONTRADICTION – CrossLine verworfen; keine Presence-Änderung.');
-                continue;
-            }
-
-            // PROVISIONAL / UNKNOWN are explicitly non-committing.
-            $this->SetValue('P03ProofState', $state . ' – kein Übergang gebucht');
-            $this->SetValue('P03LastProof', $this->formatP03Proof($cross, $result));
-            $this->appendProtocol('P03 ' . $state . ' – unvollständiger Beweis; keine Presence-Änderung.');
-        }
-
-        $this->setP03HumanEvents($events);
-        $this->setP03PendingCrossings($remaining);
-        $this->refreshP03DirectionStatus();
-
-        if ($remaining === []) {
-            $this->SetTimerInterval('P03ProofTimer', 0);
-        } else {
-            $this->SetTimerInterval('P03ProofTimer', 1000);
-        }
-
-        $this->checkP03CommissioningComplete();
     }
 
     private function evaluateP03MastSequence(): void
@@ -4185,19 +4136,19 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function refreshReadyState(): void
     {
-        $ruleReady = $this->ReadAttributeInteger('RuleIndex') >= 0;
-        $stream = $this->ReadAttributeBoolean('Streaming');
         $active = $this->ReadAttributeBoolean('TestActive');
-        $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0;
         $preflight = $this->ReadAttributeBoolean('P03MultiAuditPassed')
             && $this->ReadAttributeBoolean('P03SimulationPassed');
+        $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
+            && $this->p03AuxStreamsReady();
 
-        $ready = $ruleReady && $stream && $active && $auxReady && $preflight;
+        $ready = $active && $preflight && $auxReady;
         $this->setReady($ready);
-        if ($ready && $this->GetValue('CrossingCount') === 0) {
+        if ($ready) {
             $this->setResult(
-                'BEREIT – P03 Mehrkamera-Test aktiv: CrossLine JV Terrasse + Human-Bestätigung JV-links/Werkstatt-links. Normal HOME→LAGER und zurück gehen.'
+                'BEREIT – P03 2-Kamera-Test: JV_LEFT→WORK_LEFT=HOME→LAGER, '
+                    . 'WORK_LEFT→JV_LEFT=LAGER→HOME. Terrasse nur Diagnose.'
             );
         }
     }
