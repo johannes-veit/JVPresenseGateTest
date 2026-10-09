@@ -1995,7 +1995,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 $this->WriteAttributeInteger($meta['ruleId'], $ownId);
                 $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
                 $this->reconnectP03AuxObserver($instanceID, $role);
-                return ['ok' => true, 'error' => '', 'index' => $ownIndex, 'id' => $ownId, 'changed' => $changed];
+                return ['ok' => true, 'error' => '', 'index' => $ownIndex, 'id' => $ownId, 'actions' => $rule['Config']['Action'] ?? [], 'direction' => $rule['Config']['Direction'] ?? null, 'changed' => $changed];
             }
 
             if (!$this->ReadAttributeBoolean($meta['ruleCreated'])) {
@@ -2134,7 +2134,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . json_encode(P03AuxHumanRule::REGION, JSON_UNESCAPED_SLASHES)
         );
         $this->reconnectP03AuxObserver($instanceID, $role);
-        return ['ok' => true, 'error' => '', 'index' => $verifiedIndex, 'id' => $verifiedId, 'changed' => true];
+        return ['ok' => true, 'error' => '', 'index' => $verifiedIndex, 'id' => $verifiedId, 'actions' => $verifiedTable[0][$verifiedIndex]['Config']['Action'] ?? [], 'direction' => $verifiedTable[0][$verifiedIndex]['Config']['Direction'] ?? null, 'changed' => true];
     }
 
     /** @return array{ok:bool,error:string} */
@@ -2285,6 +2285,8 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'OK' : 'FEHLER')
                 . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
                 . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
+                . ', IVS-Actions=' . json_encode($ivs['actions'] ?? [], JSON_UNESCAPED_SLASHES)
+                . ', IVS-Direction=' . (string) ($ivs['direction'] ?? '<fehlt>')
                 . ', PersonVar=' . $personVar
                 . ' -> ' . ($ok ? 'OK' : 'FEHLER')
         );

@@ -31,6 +31,9 @@ $rule = P03AuxHumanRule::build('P03_JV_LEFT_HUMAN', 7, $template);
 expectAux(($rule['Type'] ?? null) === 'CrossRegionDetection', 'rule type');
 expectAux(($rule['ObjectTypes'] ?? null) === ['Human'], 'Human-only object filter');
 expectAux(($rule['Config']['DetectRegion'] ?? null) === P03AuxHumanRule::REGION, 'fixed region');
+expectAux(($rule['Config']['Action'] ?? null) === ['Cross', 'Appear'], 'CrossRegion action is Cross+Appear');
+expectAux(($rule['Config']['Direction'] ?? null) === 'Enter', 'CrossRegion direction is Enter');
+expectAux(count(P03AuxHumanRule::REGION) === 4, 'polygon is not redundantly closed');
 expectAux(($rule['Config']['SizeFilter']['MinSize'] ?? null) === [0, 0], 'min size');
 expectAux(($rule['Config']['SizeFilter']['MaxSize'] ?? null) === [8191, 8191], 'max size');
 expectAux(($rule['EventHandler']['RecordEnable'] ?? true) === false, 'record side effect disabled');
@@ -51,6 +54,18 @@ $bad['Config']['DetectRegion'][1][0] = 7000;
 expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong region rejected');
 
 $bad = $rule;
+unset($bad['Config']['Action']);
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing Action rejected');
+
+$bad = $rule;
+$bad['Config']['Action'] = ['Cross'];
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing Appear action rejected');
+
+$bad = $rule;
+$bad['Config']['Direction'] = 'Leave';
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong direction rejected');
+
+$bad = $rule;
 $bad['Enable'] = false;
 expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'disabled rule rejected');
 
@@ -65,6 +80,13 @@ expectAux(count($events) === 1, 'CrossRegion event parsed');
 expectAux(($events[0]['ruleId'] ?? null) === 4, 'CrossRegion RuleID parsed');
 expectAux(($events[0]['human'] ?? false) === true, 'CrossRegion Human classification parsed');
 expectAux(($events[0]['classification'] ?? null) === 'Human', 'CrossRegion Human classification exposed');
+
+$carry = '';
+$cfgRuleEvent = "Code=CrossRegionDetection;action=Pulse;index=0;data={\"CfgRuleId\":7,\"EventID\":102,\"Action\":\"Appear\",\"Object\":{\"ObjectType\":\"Human\"}}\r\n";
+$events = DahuaEventParser::feed($cfgRuleEvent, $carry);
+expectAux(count($events) === 1, 'CrossRegion CfgRuleId event parsed');
+expectAux(($events[0]['ruleId'] ?? null) === 7, 'CfgRuleId accepted as Dahua rule id');
+expectAux(($events[0]['human'] ?? false) === true, 'CfgRuleId event Human parsed');
 
 
 

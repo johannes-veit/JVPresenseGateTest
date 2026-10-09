@@ -18,11 +18,10 @@ final class P03AuxHumanRule
      * A small inset avoids firmware edge/pathological polygon handling.
      */
     public const REGION = [
-        [128, 128],
-        [8063, 128],
-        [8063, 8063],
-        [128, 8063],
-        [128, 128],
+        [256, 256],
+        [7935, 256],
+        [7935, 7935],
+        [256, 7935],
     ];
 
     /** @param array<string,mixed> $eventHandler */
@@ -33,7 +32,23 @@ final class P03AuxHumanRule
         return [
             'Class' => 'Normal',
             'Config' => [
+                // Dahua CrossRegionDetection is not functional without an
+                // explicit Action. "Cross"+"Appear" with Enter mirrors real
+                // Dahua IVS rules and detects a person whether tracking starts
+                // inside the region or the target crosses into it.
+                'Action' => ['Cross', 'Appear'],
+                'Direction' => 'Enter',
                 'DetectRegion' => self::REGION,
+                'AccuracySnap' => [
+                    'HumanBody' => true,
+                    'Normal' => true,
+                ],
+                'MaxTargets' => 100,
+                'MinDuration' => 1,
+                'MinTargets' => 1,
+                'ReportInterval' => 1,
+                'Sensitivity' => 10,
+                'TrackDuration' => 30,
                 'SizeFilter' => [
                     'MaxSize' => [8191, 8191],
                     'MinSize' => [0, 0],
@@ -56,6 +71,8 @@ final class P03AuxHumanRule
     {
         $objects = $rule['ObjectTypes'] ?? [];
         $region = $rule['Config']['DetectRegion'] ?? null;
+        $actions = $rule['Config']['Action'] ?? [];
+        $direction = $rule['Config']['Direction'] ?? null;
         $min = $rule['Config']['SizeFilter']['MinSize'] ?? null;
         $max = $rule['Config']['SizeFilter']['MaxSize'] ?? null;
 
@@ -67,6 +84,10 @@ final class P03AuxHumanRule
             && in_array('Human', $objects, true)
             && is_array($region)
             && $region === self::REGION
+            && is_array($actions)
+            && in_array('Appear', $actions, true)
+            && in_array('Cross', $actions, true)
+            && strcasecmp((string) $direction, 'Enter') === 0
             && $min === [0, 0]
             && $max === [8191, 8191];
     }

@@ -97,6 +97,13 @@ jobs:
                   raise SystemExit('Missing aux observer logic contract: '+token)
           if "ReadPropertyInteger('RuleID')" not in observer:
               raise SystemExit('Aux observer does not match events using Dahua RuleID')
+          rule=Path('libs/P03AuxHumanRule.php').read_text(encoding='utf-8')
+          for token in ["'Action' => ['Cross', 'Appear']", "'Direction' => 'Enter'", "in_array('Appear', $actions, true)"]:
+              if token not in rule:
+                  raise SystemExit('Missing functional CrossRegion rule contract: '+token)
+          parser=Path('libs/DahuaEventParser.php').read_text(encoding='utf-8')
+          if "'CfgRuleId'" not in parser:
+              raise SystemExit('Dahua parser does not support CfgRuleId')
           audit=s[s.index("public function PrepareAndStartTest"):s.index("private function rollbackPreparedP03Config")]
           if audit.index("if ($auditOnly) {") > audit.index("$this->ResetTest();"):
               raise SystemExit('Audit-only guard does not protect field evidence')
