@@ -1892,6 +1892,96 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /**
+     * Fetches a CrossRegionDetection template from the target camera itself.
+     * No hand-built fallback is allowed: if the firmware does not expose a
+     * usable native template, P03 fails closed and writes no IVS rule.
+     *
+     * @return array{ok:bool,error:string,template?:array,source?:string}
+     */
+    private function getP03AuxNativeCrossRegionTemplate(
+        string $host,
+        int $port,
+        string $username,
+        string $password,
+        string $session,
+        string $role
+    ): array {
+        // 1) Documented HTTP API (channel numbering starts at 1).
+        $cgi = $this->genericCameraGet(
+            $host,
+            $port,
+            $username,
+            $password,
+            '/cgi-bin/devVideoAnalyse.cgi?action=getTemplateRule&Class=Normal&Channel=1'
+        );
+        if ($cgi['ok'] ?? false) {
+            $template = P03DahuaTemplate::crossRegionFromFlat((string) ($cgi['body'] ?? ''));
+            if ($template !== null) {
+                return ['ok' => true, 'error' => '', 'template' => $template, 'source' => 'HTTP getTemplateRule'];
+            }
+        }
+
+        // 2) Native config default table.
+        $default = $this->rpc2Call(
+            $host,
+            $port,
+            $session,
+            201,
+            'configManager.getDefault',
+            ['name' => 'VideoAnalyseRule']
+        );
+        if ($default['ok'] ?? false) {
+            $template = P03DahuaTemplate::findCrossRegion($default['json']['params']['table'] ?? $default['json']);
+            if ($template !== null) {
+                return ['ok' => true, 'error' => '', 'template' => $template, 'source' => 'RPC2 VideoAnalyseRule default'];
+            }
+        }
+
+        // 3) Modern Web5 analysis object. Different firmware generations accept
+        // either the type string or a minimal rule object.
+        $factory = $this->rpc2Call(
+            $host,
+            $port,
+            $session,
+            202,
+            'devVideoAnalyse.factory.instance',
+            ['channel' => 0]
+        );
+        $object = $factory['json']['result'] ?? null;
+        if (($factory['ok'] ?? false) && $object !== null && $object !== false && $object !== '') {
+            $shapes = [
+                'CrossRegionDetection',
+                ['Type' => 'CrossRegionDetection'],
+                ['Class' => 'Normal', 'Type' => 'CrossRegionDetection']
+            ];
+            $id = 203;
+            foreach ($shapes as $shape) {
+                $result = $this->rpc2CallWithObject(
+                    $host,
+                    $port,
+                    $session,
+                    $id++,
+                    'devVideoAnalyse.getTemplateRule',
+                    ['rule' => $shape],
+                    $object
+                );
+                if (!($result['ok'] ?? false)) {
+                    continue;
+                }
+                $template = P03DahuaTemplate::findCrossRegion($result['json'] ?? null);
+                if ($template !== null) {
+                    return ['ok' => true, 'error' => '', 'template' => $template, 'source' => 'Web5 getTemplateRule'];
+                }
+            }
+        }
+
+        return [
+            'ok' => false,
+            'error' => $role . ': Kamera liefert kein sicher auswertbares natives CrossRegionDetection-Template'
+        ];
+    }
+
+    /**
      * Ensures a P03-owned Human-only CrossRegion rule on an auxiliary mast IPC.
      * Existing foreign IVS rules are never modified. The complete original rule
      * table and, if necessary, the original smart-plan table are kept for cleanup.
