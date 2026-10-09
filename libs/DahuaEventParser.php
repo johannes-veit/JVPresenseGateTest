@@ -393,11 +393,14 @@ final class DahuaEventParser
         if ($node === null) {
             return null;
         }
-        $wanted = array_map('strtolower', $keys);
-        foreach ($node as $key => $value) {
-            if (!in_array(strtolower((string) $key), $wanted, true)) {
+
+        // JSON object keys are case-sensitive. This is essential for Dahua:
+        // one IVS event may contain BOTH RuleID and RuleId with different values.
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $node)) {
                 continue;
             }
+            $value = $node[$key];
             if (is_int($value) || is_string($value)) {
                 return $value;
             }
@@ -414,12 +417,11 @@ final class DahuaEventParser
         if ($node === null) {
             return null;
         }
-        $wanted = array_map('strtolower', $keys);
-        foreach ($node as $key => $value) {
-            if (!in_array(strtolower((string) $key), $wanted, true) || !is_string($value)) {
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $node) || !is_string($node[$key])) {
                 continue;
             }
-            $value = trim($value);
+            $value = trim($node[$key]);
             return $value !== '' ? $value : null;
         }
         return null;
