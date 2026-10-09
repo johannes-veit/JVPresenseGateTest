@@ -19,6 +19,12 @@ $template = [
     'SnapshotEnable' => true,
     'MailEnable' => true,
     'VoiceEnable' => true,
+    'FlashEnable' => true,
+    'LightEnable' => true,
+    'FTPEnable' => true,
+    'MsgtoNetEnable' => true,
+    'OnVideoMessageEnable' => true,
+    'LightingLink' => ['Enable' => true, 'LightDuration' => 10],
     'TrigerHttp' => [
         'TrigerHttpEnable' => true,
         'TrigerHttpCommand' => 'http://example.invalid',
@@ -46,6 +52,12 @@ expectAux(($rule['EventHandler']['RecordEnable'] ?? true) === false, 'record sid
 expectAux(($rule['EventHandler']['SnapshotEnable'] ?? true) === false, 'snapshot side effect disabled');
 expectAux(($rule['EventHandler']['MailEnable'] ?? true) === false, 'mail side effect disabled');
 expectAux(($rule['EventHandler']['VoiceEnable'] ?? true) === false, 'voice side effect disabled');
+expectAux(($rule['EventHandler']['FlashEnable'] ?? true) === false, 'flash side effect disabled');
+expectAux(($rule['EventHandler']['LightEnable'] ?? true) === false, 'light side effect disabled');
+expectAux(($rule['EventHandler']['FTPEnable'] ?? true) === false, 'FTP side effect disabled');
+expectAux(($rule['EventHandler']['MsgtoNetEnable'] ?? true) === false, 'network linkage disabled');
+expectAux(($rule['EventHandler']['OnVideoMessageEnable'] ?? true) === false, 'video message linkage disabled');
+expectAux(($rule['EventHandler']['LightingLink']['Enable'] ?? true) === false, 'LightingLink disabled');
 expectAux(($rule['EventHandler']['TrigerHttp']['TrigerHttpEnable'] ?? true) === false, 'HTTP side effect disabled');
 expectAux(($rule['EventHandler']['TrigerHttp']['TrigerHttpCommand'] ?? 'x') === '', 'HTTP command cleared');
 expectAux(($rule['EventHandler']['KeepUnrelated'] ?? null) === 123, 'unrelated event handler fields preserved');
