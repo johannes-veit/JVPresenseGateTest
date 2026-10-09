@@ -96,9 +96,10 @@ jobs:
           # these names. P03 must never declare or call them.
           if "final class DahuaDigest" in digest or "final class DahuaEventParser" in parser:
               raise SystemExit('P03 helper classes still collide globally with AussenlichtAutomatik2')
-          if "DahuaDigest::" in main or "DahuaDigest::" in observer:
+          import re
+          if re.search(r'(?<!JVP03)DahuaDigest::', main) or re.search(r'(?<!JVP03)DahuaDigest::', observer):
               raise SystemExit('P03 still calls shared DahuaDigest class')
-          if "DahuaEventParser::" in main or "DahuaEventParser::" in observer:
+          if re.search(r'(?<!JVP03)DahuaEventParser::', main) or re.search(r'(?<!JVP03)DahuaEventParser::', observer):
               raise SystemExit('P03 still calls shared DahuaEventParser class')
           if "final class JVP03DahuaDigest" not in digest or "final class JVP03DahuaEventParser" not in parser:
               raise SystemExit('Unique P03 Dahua helper classes missing')
@@ -124,7 +125,7 @@ jobs:
               if token not in logic:
                   raise SystemExit('Missing aux identity logic contract: '+token)
 
-          for token in ["buildFromTemplate", "'Appear'", "'Both'", "Firmware-specific"]:
+          for token in ["buildFromTemplate", "'Appear'", "'Both'", "firmware-specific"]:
               if token not in rule:
                   raise SystemExit('Missing native-template Human IVS contract: '+token)
 
