@@ -56,56 +56,88 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          s=Path('JVPresenceP03TerraceTest/module.php').read_text(encoding='utf-8')
-          required=[
-            "evaluateTwoCameraSequence",
-            "P03 PRODUKTIV – 2-Kamera-Sequenz",
-            "p03AuxStreamsReady",
-            "P03AuxHumanRule::matches",
-            "CrossRegionDetection",
-            "ObjectTypes=Human",
-            "restoreP03AuxHumanRule",
-            "if ($auditOnly) {",
-            "$this->ResetTest();"
+
+          main=Path('JVPresenceP03TerraceTest/module.php').read_text(encoding='utf-8')
+          observer=Path('JVPresenceP03AuxObserver/module.php').read_text(encoding='utf-8')
+          rule=Path('libs/P03AuxHumanRule.php').read_text(encoding='utf-8')
+          parser=Path('libs/DahuaEventParser.php').read_text(encoding='utf-8')
+          digest=Path('libs/DahuaDigest.php').read_text(encoding='utf-8')
+          logic=Path('libs/P03AuxObserverLogic.php').read_text(encoding='utf-8')
+          template=Path('libs/P03DahuaTemplate.php').read_text(encoding='utf-8')
+
+          required_main=[
+              "evaluateTwoCameraSequence",
+              "P03 PRODUKTIV – 2-Kamera-Sequenz",
+              "p03AuxStreamsReady",
+              "getP03AuxNativeCrossRegionTemplate",
+              "P03AuxHumanRule::buildFromTemplate",
+              "P03AuxHumanRule::matches",
+              "restoreP03AuxHumanRule",
+              "matchesP03TerraceRuleEvent",
+              "JVP03DahuaEventParser::feed",
+              "JVP03DahuaDigest::",
+              "if ($auditOnly) {",
+              "$this->ResetTest();"
           ]
-          missing=[x for x in required if x not in s]
+          missing=[x for x in required_main if x not in main]
           if missing:
               raise SystemExit('Missing hardened P03 contracts: '+repr(missing))
+
           forbidden=[
               "ALA2_Reconnect",
               "ALA2_MODULE_GUID",
               "{5E08D4EE-9727-4682-A23E-E8625EB2337E}"
           ]
-          leaked=[x for x in forbidden if x in s]
+          leaked=[x for x in forbidden if x in main or x in observer]
           if leaked:
               raise SystemExit('P03 still depends on AussenlichtAutomatik2: '+repr(leaked))
-          observer=Path('JVPresenceP03AuxObserver/module.php').read_text(encoding='utf-8')
+
+          # Critical isolation: AussenlichtAutomatik2 owns global classes with
+          # these names. P03 must never declare or call them.
+          if "final class DahuaDigest" in digest or "final class DahuaEventParser" in parser:
+              raise SystemExit('P03 helper classes still collide globally with AussenlichtAutomatik2')
+          if "DahuaDigest::" in main or "DahuaDigest::" in observer:
+              raise SystemExit('P03 still calls shared DahuaDigest class')
+          if "DahuaEventParser::" in main or "DahuaEventParser::" in observer:
+              raise SystemExit('P03 still calls shared DahuaEventParser class')
+          if "final class JVP03DahuaDigest" not in digest or "final class JVP03DahuaEventParser" not in parser:
+              raise SystemExit('Unique P03 Dahua helper classes missing')
+
           observer_required=[
               "class JVPresenceP03AuxObserver extends IPSModule",
+              "RuleName",
               "RuleIndex",
               "RuleID",
               "PersonDetected",
-              "DahuaDigest::buildAuthorization",
+              "JVP03DahuaDigest::buildAuthorization",
               "P03AuxObserverLogic::isHumanProofStart"
           ]
           observer_missing=[x for x in observer_required if x not in observer]
           if observer_missing:
               raise SystemExit('Missing independent aux observer contracts: '+repr(observer_missing))
-          observer_logic=Path('libs/P03AuxObserverLogic.php').read_text(encoding='utf-8')
-          for token in ["CrossRegionDetection", "isHumanProofStart", "isMatchingRuleEvent"]:
-              if token not in observer_logic:
-                  raise SystemExit('Missing aux observer logic contract: '+token)
-          if "ReadPropertyInteger('RuleID')" not in observer:
-              raise SystemExit('Aux observer does not match events using Dahua RuleID')
-          rule=Path('libs/P03AuxHumanRule.php').read_text(encoding='utf-8')
-          for token in ["'Action' => ['Cross', 'Appear']", "'Direction' => 'Enter'", "in_array('Appear', $actions, true)"]:
+
+          for token in ["ruleName", "cfgRuleId", "ruleIdUpper", "ruleIdLower"]:
+              if token not in parser:
+                  raise SystemExit('Parser does not preserve Dahua rule identity field: '+token)
+
+          for token in ["wantedName", "wantedIndex", "wantedId", "isHumanProofStart", "isMatchingRuleEvent"]:
+              if token not in logic:
+                  raise SystemExit('Missing aux identity logic contract: '+token)
+
+          for token in ["buildFromTemplate", "'Appear'", "'Both'", "Firmware-specific"]:
               if token not in rule:
-                  raise SystemExit('Missing functional CrossRegion rule contract: '+token)
-          parser=Path('libs/DahuaEventParser.php').read_text(encoding='utf-8')
-          if "'CfgRuleId'" not in parser:
-              raise SystemExit('Dahua parser does not support CfgRuleId')
-          audit=s[s.index("public function PrepareAndStartTest"):s.index("private function rollbackPreparedP03Config")]
+                  raise SystemExit('Missing native-template Human IVS contract: '+token)
+
+          for token in ["crossRegionFromFlat", "findCrossRegion", "Rule.Normal.CrossRegionDetection"]:
+              if token not in template:
+                  raise SystemExit('Missing Dahua native-template parser contract: '+token)
+
+          if "P03AuxHumanRule::build(" in main:
+              raise SystemExit('Unsafe hand-built aux IVS rule path still present')
+
+          audit=main[main.index("public function PrepareAndStartTest"):main.index("private function rollbackPreparedP03Config")]
           if audit.index("if ($auditOnly) {") > audit.index("$this->ResetTest();"):
               raise SystemExit('Audit-only guard does not protect field evidence')
+
           print('P03 hardened module contract PASS')
           PY
