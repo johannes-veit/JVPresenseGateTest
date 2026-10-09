@@ -2013,6 +2013,25 @@ class JVPresenceP03MultiCamera extends IPSModule
         $globalChangedThisRun = false;
         $globalOriginalThisRun = null;
 
+        // Fetch the firmware's own CrossRegion rule structure BEFORE changing
+        // anything. v0.6.4-v0.6.8 built a guessed rule and could therefore be
+        // accepted by setConfig without ever becoming an active IVS detector.
+        $native = $this->getP03AuxNativeCrossRegionTemplate(
+            $host,
+            $port,
+            (string) $cfg['username'],
+            (string) $cfg['password'],
+            $session,
+            $role
+        );
+        if (!($native['ok'] ?? false) || !is_array($native['template'] ?? null)) {
+            $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+            return ['ok' => false, 'error' => (string) ($native['error'] ?? ($role . ': natives IVS-Template fehlt'))];
+        }
+        $nativeTemplate = $native['template'];
+        $nativeSource = (string) ($native['source'] ?? '<unbekannt>');
+        $this->appendProtocol($role . ': natives CrossRegion-Template geladen via ' . $nativeSource . '.');
+
         $globalRead = $this->rpc2Call($host, $port, $session, 210, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
         $globalTable = $globalRead['json']['params']['table'] ?? null;
         if (!($globalRead['ok'] ?? false) || !is_array($globalTable) || !isset($globalTable[0]['Scene']) || !is_array($globalTable[0]['Scene'])) {
@@ -2139,7 +2158,17 @@ class JVPresenceP03MultiCamera extends IPSModule
             $newId = (int) $rules[0][$ownIndex]['Id'];
         }
 
-        $desired = P03AuxHumanRule::build($meta['name'], $newId, $eventHandler);
+        try {
+            $desired = P03AuxHumanRule::buildFromTemplate(
+                $meta['name'],
+                $newId,
+                $nativeTemplate,
+                $eventHandler
+            );
+        } catch (Throwable $e) {
+            $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+            return ['ok' => false, 'error' => $role . ': natives IVS-Template unbrauchbar – ' . $e->getMessage()];
+        }
         $candidate = $rules;
         if ($ownIndex >= 0) {
             $candidate[0][$ownIndex] = $desired;
