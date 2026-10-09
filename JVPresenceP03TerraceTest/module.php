@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/libs/DahuaDigest.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/GateTestLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ProofEngine.php';
+require_once dirname(__DIR__) . '/libs/P03DahuaTemplate.php';
 require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
 
 class JVPresenceP03MultiCamera extends IPSModule
@@ -84,6 +85,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('SocketRestartStage', 0);
         $this->RegisterAttributeInteger('LastSocketRestart', 0);
         $this->RegisterAttributeInteger('RuleIndex', -1);
+        $this->RegisterAttributeInteger('RuleID', -1);
         $this->RegisterAttributeBoolean('RuleCreatedByModule', false);
         $this->RegisterAttributeBoolean('GlobalChangedByModule', false);
         $this->RegisterAttributeString('OriginalGlobalSceneType', '');
@@ -996,7 +998,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     private function processEventData(string $chunk): void
     {
         $carry = $this->GetBuffer('EventCarry');
-        $events = DahuaEventParser::feed($chunk, $carry);
+        $events = JVP03DahuaEventParser::feed($chunk, $carry);
         $this->SetBuffer('EventCarry', $carry);
 
         foreach ($events as $event) {
@@ -2427,7 +2429,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->WriteAttributeInteger('DigestNC', $nc);
             $cnonce = substr(hash('sha256', $this->InstanceID . ':' . microtime(true) . ':' . mt_rand()), 0, 16);
             try {
-                $headers[] = 'Authorization: ' . DahuaDigest::buildAuthorization(
+                $headers[] = 'Authorization: ' . JVP03DahuaDigest::buildAuthorization(
                     (string) ($cfg['username'] ?? ''),
                     (string) ($cfg['password'] ?? ''),
                     'GET',
@@ -2473,7 +2475,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         if (!preg_match('/^WWW-Authenticate:\s*(Digest\s+.+)$/im', $header, $m)) {
             return [];
         }
-        return DahuaDigest::parseChallenge(trim((string) $m[1]));
+        return JVP03DahuaDigest::parseChallenge(trim((string) $m[1]));
     }
 
     /** @return array{host:string,port:int,username:string,password:string}|array{} */
