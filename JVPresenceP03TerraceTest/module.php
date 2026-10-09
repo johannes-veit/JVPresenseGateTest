@@ -515,6 +515,14 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function PrepareAndStartTest(): void
     {
         $auditOnly = $this->ReadAttributeBoolean('AuditOnlyNextRun');
+
+        // Audit/test preparation must never run concurrently with productive
+        // transfer commits. Re-enabling production is an explicit later action.
+        if ($this->ReadAttributeBoolean('ProductionEnabled')) {
+            $this->WriteAttributeBoolean('ProductionEnabled', false);
+            $this->appendProtocol('SICHERHEIT: Produktivbetrieb für Audit/Teststart deaktiviert.');
+            $this->refreshProductionState();
+        }
         if ($auditOnly) {
             // Read-only/commissioning audit must not erase already verified field evidence.
             // Only transient stream/proof buffers are cleared.
@@ -743,6 +751,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     public function ResetTest(): void
     {
+        $this->WriteAttributeBoolean('ProductionEnabled', false);
         $this->WriteAttributeString('SeenEventKeys', '{}');
         $this->WriteAttributeString('Crossings', '[]');
         $this->WriteAttributeString('P03HumanEvents', '[]');
