@@ -1,3 +1,16 @@
+# v0.6.4
+
+- P03-Zusatzkameras `JV_LEFT` und `WORK_LEFT` verwenden jetzt eine eigene P03-IVS-Human-Regel statt auf `SmartMotionHuman`/SMD zu vertrauen.
+- Für beide IPC-HFW5442E-ZE wird eine P03-eigene `CrossRegionDetection` mit `ObjectTypes=Human` und nahezu vollflächiger Region angelegt; die bestehenden `AussenlichtAutomatik2`-Instanzen werten deren echte Human-IVS-Events über `PersonDetected` aus.
+- SMD bleibt nur Diagnose/Fallback und wird vom P03-Audit nicht mehr als Beweis für funktionierende Human-Events akzeptiert.
+- Fremde IVS-Regeln werden nicht verändert. Vor Änderungen werden vollständige `VideoAnalyseRule`-/`VideoAnalyseGlobal`-Tabellen gesichert; Readback, No-Op-Write und Rollback sind fail-closed.
+- Falls für IVS nötig, wird auf den Zusatzkameras nur `Scene.Type=Normal` aktiviert; ein bereits aktiver anderer AI-Smart-Plan führt zum Sicherheitsabbruch.
+- Alle Alarm-/Record-/Snapshot-/Mail-/Voice-/HTTP-Nebenwirkungen der P03-Human-Regeln werden deaktiviert.
+- Nach IVS-Änderungen wird der jeweilige `AussenlichtAutomatik2`-Eventstream neu aufgebaut.
+- Beim expliziten P03-Cleanup/Deaktivieren werden die von P03 erzeugten Zusatzkamera-Regeln und Smart-Plan-Änderungen aus den gesicherten Originaltabellen zurückgesetzt.
+- Neue Regressionstests prüfen Aufbau, Human-Filter, Region und deaktivierte Nebenwirkungen der Zusatzkamera-IVS-Regel.
+- Keine Änderung an P05, der P03-Grenzgeometrie oder der eigentlichen Proof-Engine.
+
 # v0.6.3
 
 - Behebt den IP-Symcon-Ladefehler des neuen Moduls: Klassenname jetzt exakt `JVPresenceP03MultiCamera` passend zu `JV Presence P03 Multi Camera`.
