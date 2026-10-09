@@ -2184,6 +2184,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             ? $normalModule['DetectRegion']
             : [];
         $moduleRegionPoints = count($moduleRegion);
+        if ($normalModule !== null && $moduleRegionPoints < 3) {
+            $errors[] = 'VideoAnalyseModule Normal hat keine gültige DetectRegion';
+        }
 
         // Web5 capabilities are a second, independent read. Failure to expose
         // caps is logged as UNKNOWN, but an explicit contradiction is fatal.
