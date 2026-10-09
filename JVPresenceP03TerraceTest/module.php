@@ -967,8 +967,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
             $this->WriteAttributeString('SeenEventKeys', json_encode($seen));
 
-            $count = (int) $this->GetValue('CrossingCount') + 1;
-            $this->SetValue('CrossingCount', $count);
+            // Terrace CrossLine is diagnostic only and must not increment
+            // the visible/semantic boundary-transfer counter.
             $this->recordP03Crossing($event, $direction);
         }
     }
@@ -1313,6 +1313,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         $verified = $this->ReadAttributeInteger('P03VerifiedCount') + 1;
         $this->WriteAttributeInteger('P03VerifiedCount', $verified);
         $this->SetValue('P03VerifiedTransfers', $verified);
+        // CrossingCount now means exactly what the UI says: a verified transfer
+        // from the ordered JV_LEFT/WORK_LEFT mast-camera proof.
+        $this->SetValue('CrossingCount', $verified);
 
         $proofText = $this->formatP03Proof($cross, $result);
         $this->SetValue('P03ProofState', (string) ($result['state'] ?? P03ProofEngine::STATE_VERIFIED));
