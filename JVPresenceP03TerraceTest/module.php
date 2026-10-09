@@ -192,13 +192,14 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->subscribeP03AuxVariables();
         $this->refreshP03CameraStatus();
 
-        if (!$this->cameraConfigurationReady()) {
+        if (!$this->p03CredentialsReady()) {
             $this->setResult('NICHT BEREIT – P03 Dahua-Benutzername/Passwort direkt im P03-Modul eintragen.');
             return;
         }
 
-        $this->setResult('Installiert. P03 arbeitet vollständig unabhängig von der Außenlichtautomatik.');
-        if ($this->ReadPropertyBoolean('Enabled')) {
+        $this->setResult('Installiert. Mastkamera-Pfad ist unabhängig von Terrasse und Außenlichtautomatik.');
+        if ($this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
+            // Optionaler Terrassen-Diagnosestream.
             $this->scheduleSocketRestart(500);
         }
     }
@@ -212,8 +213,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
 
         $host = trim($this->ReadPropertyString('TerraceHost'));
-        $sourceCaption = 'P03 direkt: JV Terrasse ' . ($host !== '' ? $host : '<IP fehlt>')
-            . ' – keine Abhängigkeit zur Außenlichtautomatik';
+        $sourceCaption = 'P03 Primär: JV_LEFT ↔ WORK_LEFT. Terrasse '
+            . ($host !== '' ? $host : '<nicht konfiguriert>')
+            . ' ist nur optionale Diagnose.';
 
         $result = '';
         $resultID = $this->GetIDForIdent('Result');
@@ -544,17 +546,28 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->updateParentSubscription($this->getParentID());
 
         $cfg = $this->cameraConfiguration();
-        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
-            $this->setResult('FEHLER – P03 Dahua-IP/Zugangsdaten fehlen. Keine Außenlicht-Instanz wird mehr als Quelle verwendet.');
+        if (!$this->p03CredentialsReady()) {
+            $this->setResult('FEHLER – P03 Dahua-Zugangsdaten fehlen.');
+            return;
+        }
+        if (trim($this->ReadPropertyString('AuxJVHost')) === '' || trim($this->ReadPropertyString('AuxWorkHost')) === '') {
+            $this->setResult('FEHLER – IP der beiden P03-Mastkameras fehlt.');
             return;
         }
 
-        $this->appendProtocol('=== P03 HOME-LAGER TEST ===');
-        $this->appendProtocol('Quelle: JV Terrasse / ' . $cfg['host'] . ':' . $cfg['port']);
+        $this->appendProtocol('=== P03 HOME-LAGER 2-KAMERA TEST ===');
+        $this->appendProtocol(
+            'Primär: JV_LEFT=' . trim($this->ReadPropertyString('AuxJVHost'))
+                . ' → WORK_LEFT=' . trim($this->ReadPropertyString('AuxWorkHost'))
+                . ' bzw. umgekehrt.'
+        );
+        $this->appendProtocol(
+            'Terrasse=' . (($cfg['host'] ?? '') !== '' ? (string) $cfg['host'] : '<nicht konfiguriert>')
+                . ' ist nur optionale Diagnose.'
+        );
         $this->appendProtocol('Keine Zugangsdaten werden im Protokoll ausgegeben.');
 
-        // Multi-camera preflight: JV Terrasse provides the physical boundary,
-        // the two mast cameras provide human confirmation on both sides.
+        // Multi-camera preflight: the two mast cameras are the complete proof path.
         $auxDiscovery = $this->discoverP03AuxSources(true);
         $this->subscribeP03AuxVariables();
         $this->refreshP03CameraStatus();
@@ -1469,7 +1482,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $jv = $this->findP03AuxObserver($jvHost, self::AUX_JV_ROLE);
         $work = $this->findP03AuxObserver($workHost, self::AUX_WORK_ROLE);
 
-        if ($allowCreate && $this->cameraConfigurationReady()) {
+        if ($allowCreate && $this->p03CredentialsReady()) {
             if ($jv <= 0) {
                 $jv = $this->createP03AuxObserver($jvHost, self::AUX_JV_ROLE, 'P03 – Lagerplatz JV links');
             }
@@ -1517,7 +1530,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function createP03AuxObserver(string $host, string $role, string $name): int
     {
-        if ($host === '' || !$this->cameraConfigurationReady()) {
+        if ($host === '' || !$this->p03CredentialsReady()) {
             return 0;
         }
 
@@ -2556,6 +2569,13 @@ class JVPresenceP03MultiCamera extends IPSModule
             'username' => $this->ReadPropertyString('Username'),
             'password' => $this->ReadPropertyString('Password')
         ];
+    }
+
+    private function p03CredentialsReady(): bool
+    {
+        return trim($this->ReadPropertyString('Username')) !== ''
+            && $this->ReadPropertyString('Password') !== ''
+            && $this->ReadPropertyInteger('CameraPort') > 0;
     }
 
     private function cameraConfigurationReady(): bool
