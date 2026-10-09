@@ -43,8 +43,10 @@ class JVPresenceP03AuxObserver extends IPSModule
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
-        $this->RegisterVariableString('LastEvent', 'Letztes Human-IVS-Ereignis', '', 30);
-        $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
+        $this->RegisterVariableInteger('HumanEventSeq', 'Human-Ereignis Sequenz', '', 30);
+        $this->RegisterVariableString('LastHumanEvent', 'Letztes Human-Ereignis intern', '', 40);
+        $this->RegisterVariableString('LastEvent', 'Letztes passendes IVS-Ereignis', '', 50);
+        $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 60);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03AUX_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03AUX_SocketRestartTimer($_IPS["TARGET"]);');
@@ -74,6 +76,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->WriteAttributeString('SeenEventKeys', '{}');
         $this->SetValue('PersonDetected', false);
         $this->SetValue('StreamOK', false);
+        $this->SetValue('LastHumanEvent', '');
 
         $this->syncParentSocket();
         $this->updateParentSubscription($this->getParentID());
@@ -404,14 +407,44 @@ class JVPresenceP03AuxObserver extends IPSModule
                 'payloadHuman' => (bool) ($event['human'] ?? false),
                 'classification' => $event['classification'] ?? null,
                 'eventId' => $event['eventId'] ?? null,
-                'objectId' => $event['objectId'] ?? null
+                'objectId' => $event['objectId'] ?? null,
+                'utc' => $event['utc'] ?? null,
+                'utcMs' => $event['utcMs'] ?? null
             ];
             $this->SetValue('LastEvent', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
-            // The dedicated P03 rule itself is ObjectTypes=Human. Therefore a
-            // matching START/ON/PULSE is a Human proof even if this firmware omits
-            // ObjectType from the event payload.
+            // The dedicated P03 rule itself is ObjectTypes=Human. Every accepted
+            // START/ON/PULSE must be transported as an event, not merely as a
+            // boolean state. HumanEventSeq changes for every new proof even while
+            // PersonDetected is already TRUE.
             if (P03AuxObserverLogic::isHumanProofStart($event, $wantedRuleId, $wantedRuleName)) {
+                $receiveTs = microtime(true);
+                $cameraTs = null;
+                $utc = $event['utc'] ?? null;
+                $utcMs = $event['utcMs'] ?? null;
+                if (is_numeric($utc) && (float) $utc > 1000000000.0) {
+                    $cameraTs = (float) $utc;
+                    if (is_numeric($utcMs)) {
+                        $ms = (int) $utcMs;
+                        if ($ms >= 0 && $ms <= 999) {
+                            $cameraTs += $ms / 1000.0;
+                        }
+                    }
+                }
+
+                $humanEvent = $summary;
+                $humanEvent['receiveTs'] = $receiveTs;
+                $humanEvent['cameraTs'] = $cameraTs;
+                $humanJson = json_encode($humanEvent, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                if (!is_string($humanJson)) {
+                    $humanJson = '{}';
+                }
+                $this->SetValue('LastHumanEvent', $humanJson);
+
+                $seq = (int) $this->GetValue('HumanEventSeq');
+                $seq = $seq >= 2147483646 ? 1 : ($seq + 1);
+                $this->SetValue('HumanEventSeq', $seq);
+
                 $until = time() + 5;
                 $this->WriteAttributeInteger('HumanPulseUntil', $until);
                 $this->SetValue('PersonDetected', true);
