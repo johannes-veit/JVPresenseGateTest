@@ -346,6 +346,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
             if ($sender === $jvStreamVar || $sender === $workStreamVar) {
                 $this->refreshProductionState();
+                $this->refreshReadyState();
                 return;
             }
 
@@ -734,8 +735,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             && $out >= 2
             && $in >= 2
             && $this->ReadAttributeInteger('P03VerifiedCount') >= 4
-            && $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
+            && $this->ReadAttributeInteger('AuxJVEventCounterVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventCounterVarID') > 0
             && $this->p03AuxStreamsReady();
 
         if (!$ready) {
@@ -2418,8 +2419,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
-        $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0
+        $auxReady = $this->ReadAttributeInteger('AuxJVEventCounterVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventCounterVarID') > 0
             && $this->p03AuxStreamsReady();
         $proofReady = $this->ReadAttributeBoolean('P03MultiAuditPassed')
             && $this->ReadAttributeBoolean('P03SimulationPassed');
@@ -4126,20 +4127,24 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function refreshReadyState(): void
     {
-        $ruleReady = $this->ReadAttributeInteger('RuleIndex') >= 0;
-        $stream = $this->ReadAttributeBoolean('Streaming');
         $active = $this->ReadAttributeBoolean('TestActive');
-        $auxReady = $this->ReadAttributeInteger('AuxJVPersonVarID') > 0
-            && $this->ReadAttributeInteger('AuxWorkPersonVarID') > 0;
+        $auxReady = $this->ReadAttributeInteger('AuxJVEventCounterVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventCounterVarID') > 0
+            && $this->p03AuxStreamsReady();
         $preflight = $this->ReadAttributeBoolean('P03MultiAuditPassed')
             && $this->ReadAttributeBoolean('P03SimulationPassed');
 
-        $ready = $ruleReady && $stream && $active && $auxReady && $preflight;
+        // Terrace/CrossLine is deliberately absent from readiness.
+        $ready = $active && $auxReady && $preflight;
         $this->setReady($ready);
+
         if ($ready && $this->GetValue('CrossingCount') === 0) {
             $this->setResult(
-                'BEREIT – P03 Mehrkamera-Test aktiv: CrossLine JV Terrasse + Human-Bestätigung JV-links/Werkstatt-links. Normal HOME→LAGER und zurück gehen.'
+                'BEREIT – P03 2-Kamera-Test aktiv. JV_LEFT→WORK_LEFT=HOME→LAGER; '
+                . 'WORK_LEFT→JV_LEFT=LAGER→HOME. Terrasse ist nicht erforderlich.'
             );
+        } elseif ($active && !$ready) {
+            $this->setResult('P03 MASTTEST wartet auf beide P03-Mastkamera-Eventstreams.');
         }
     }
 
