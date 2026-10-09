@@ -52,6 +52,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterPropertyBoolean('AutoCreateWorkObserver', true); // legacy, unused
 
         $this->RegisterPropertyString('TerraceHost', self::TERRACE_DEFAULT_HOST);
+        $this->RegisterPropertyBoolean('TerraceDiagnosticsEnabled', false);
         $this->RegisterPropertyInteger('CameraPort', 80);
         $this->RegisterPropertyString('Username', '');
         $this->RegisterPropertyString('Password', '');
@@ -201,7 +202,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
 
         $this->setResult('Installiert. P03 arbeitet vollständig unabhängig von der Außenlichtautomatik.');
-        if ($this->ReadPropertyBoolean('Enabled')) {
+        if ($this->ReadPropertyBoolean('Enabled') && $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')) {
             $this->scheduleSocketRestart(500);
         }
     }
@@ -241,7 +242,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         return json_encode([
             'Host' => $cfg['host'] ?? '',
             'Port' => $cfg['port'] ?? 80,
-            'Open' => $this->ReadPropertyBoolean('Enabled') && ($cfg['host'] ?? '') !== ''
+            'Open' => $this->ReadPropertyBoolean('Enabled')
+                && $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+                && ($cfg['host'] ?? '') !== ''
         ]);
     }
 
@@ -403,7 +406,10 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function HandshakeTimer(): void
     {
         $this->SetTimerInterval('HandshakeTimer', 0);
-        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady() || $this->ReadAttributeBoolean('AuthBlocked')) {
+        if (!$this->ReadPropertyBoolean('Enabled')
+            || !$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            || !$this->cameraConfigurationReady()
+            || $this->ReadAttributeBoolean('AuthBlocked')) {
             return;
         }
         $parentID = $this->getParentID();
@@ -439,7 +445,10 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         if ($stage === 2) {
             $this->WriteAttributeInteger('SocketRestartStage', 0);
-            if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady() || $this->ReadAttributeBoolean('AuthBlocked')) {
+            if (!$this->ReadPropertyBoolean('Enabled')
+            || !$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            || !$this->cameraConfigurationReady()
+            || $this->ReadAttributeBoolean('AuthBlocked')) {
                 return;
             }
             $cfg = $this->cameraConfiguration();
@@ -459,7 +468,10 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     public function Watchdog(): void
     {
-        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady() || $this->ReadAttributeBoolean('AuthBlocked')) {
+        if (!$this->ReadPropertyBoolean('Enabled')
+            || !$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            || !$this->cameraConfigurationReady()
+            || $this->ReadAttributeBoolean('AuthBlocked')) {
             return;
         }
         $parentID = $this->getParentID();
@@ -2646,7 +2658,9 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function scheduleSocketRestart(int $delayMs = 100): void
     {
-        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()) {
+        if (!$this->ReadPropertyBoolean('Enabled')
+            || !$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            || !$this->cameraConfigurationReady()) {
             return;
         }
         if ($this->ReadAttributeInteger('SocketRestartStage') !== 0) {
@@ -4209,7 +4223,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         try {
             IPS_SetProperty($parentID, 'Host', (string) $cfg['host']);
             IPS_SetProperty($parentID, 'Port', (int) $cfg['port']);
-            IPS_SetProperty($parentID, 'Open', $this->ReadPropertyBoolean('Enabled'));
+            IPS_SetProperty(
+                $parentID,
+                'Open',
+                $this->ReadPropertyBoolean('Enabled') && $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            );
             IPS_ApplyChanges($parentID);
         } catch (Throwable $e) {
             $this->setResult('Client Socket konnte nicht automatisch konfiguriert werden: ' . $e->getMessage());
