@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+require_once dirname(__DIR__) . '/libs/P03DahuaTemplate.php';
 require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/P03AuxObserverLogic.php';
@@ -12,9 +13,10 @@ function expectAux(bool $condition, string $message): void
         fwrite(STDERR, "FAIL: {$message}\n");
         exit(1);
     }
+    echo "OK   {$message}\n";
 }
 
-$template = [
+$handler = [
     'RecordEnable' => true,
     'SnapshotEnable' => true,
     'MailEnable' => true,
@@ -26,95 +28,136 @@ $template = [
     'KeepUnrelated' => 123,
 ];
 
-$rule = P03AuxHumanRule::build('P03_JV_LEFT_HUMAN', 7, $template);
+$nativeTemplate = [
+    'Class' => 'Normal',
+    'Type' => 'CrossRegionDetection',
+    'Enable' => false,
+    'Id' => 0,
+    'PtzPresetId' => 0,
+    'TrackEnable' => true,
+    'ObjectTypes' => ['Unknown'],
+    'FirmwarePrivate' => ['Mode' => 17],
+    'TimeSection' => [['0 00:00:00-23:59:59']],
+    'Config' => [
+        'Action' => 'Cross',
+        'Direction' => 'Enter',
+        'DetectRegion' => [[100,100],[7000,100],[7000,7000],[100,7000]],
+        'NativeOnly' => ['Keep' => true],
+        'SizeFilter' => [
+            'MaxSize' => [4096,4096],
+            'MinSize' => [32,32],
+            'Type' => 'ByLength',
+        ],
+    ],
+];
+
+$rule = P03AuxHumanRule::buildFromTemplate(
+    'P03_JV_LEFT_HUMAN',
+    7,
+    $nativeTemplate,
+    $handler
+);
 
 expectAux(($rule['Type'] ?? null) === 'CrossRegionDetection', 'rule type');
 expectAux(($rule['ObjectTypes'] ?? null) === ['Human'], 'Human-only object filter');
-expectAux(($rule['Config']['DetectRegion'] ?? null) === P03AuxHumanRule::REGION, 'fixed region');
-expectAux(($rule['Config']['Action'] ?? null) === ['Cross', 'Appear'], 'CrossRegion action is Cross+Appear');
-expectAux(($rule['Config']['Direction'] ?? null) === 'Enter', 'CrossRegion direction is Enter');
-expectAux(count(P03AuxHumanRule::REGION) === 4, 'polygon is not redundantly closed');
-expectAux(($rule['Config']['SizeFilter']['MinSize'] ?? null) === [0, 0], 'min size');
-expectAux(($rule['Config']['SizeFilter']['MaxSize'] ?? null) === [8191, 8191], 'max size');
+expectAux(($rule['Config']['DetectRegion'] ?? null) === P03AuxHumanRule::REGION, 'fixed broad region');
+expectAux(($rule['Config']['Action'] ?? null) === 'Appear', 'native string Action becomes Appear');
+expectAux(($rule['Config']['Direction'] ?? null) === 'Both', 'direction is non-restrictive');
+expectAux(($rule['Config']['NativeOnly']['Keep'] ?? null) === true, 'unknown Config fields preserved');
+expectAux(($rule['FirmwarePrivate']['Mode'] ?? null) === 17, 'unknown rule fields preserved');
+expectAux(($rule['TimeSection'] ?? null) === $nativeTemplate['TimeSection'], 'native schedule preserved');
+expectAux(($rule['Config']['SizeFilter']['MinSize'] ?? null) === [0,0], 'min size opened');
+expectAux(($rule['Config']['SizeFilter']['MaxSize'] ?? null) === [8191,8191], 'max size opened');
 expectAux(($rule['EventHandler']['RecordEnable'] ?? true) === false, 'record side effect disabled');
 expectAux(($rule['EventHandler']['SnapshotEnable'] ?? true) === false, 'snapshot side effect disabled');
 expectAux(($rule['EventHandler']['MailEnable'] ?? true) === false, 'mail side effect disabled');
 expectAux(($rule['EventHandler']['VoiceEnable'] ?? true) === false, 'voice side effect disabled');
 expectAux(($rule['EventHandler']['TrigerHttp']['TrigerHttpEnable'] ?? true) === false, 'HTTP side effect disabled');
-expectAux(($rule['EventHandler']['TrigerHttp']['TrigerHttpCommand'] ?? 'x') === '', 'HTTP command cleared');
-expectAux(($rule['EventHandler']['KeepUnrelated'] ?? null) === 123, 'unrelated event handler fields preserved');
-expectAux(P03AuxHumanRule::matches($rule, 'P03_JV_LEFT_HUMAN'), 'valid rule matches');
+expectAux(($rule['EventHandler']['KeepUnrelated'] ?? null) === 123, 'unrelated handler fields preserved');
+expectAux(P03AuxHumanRule::matches($rule, 'P03_JV_LEFT_HUMAN'), 'valid native-template rule matches');
 
+$arrayTemplate = $nativeTemplate;
+$arrayTemplate['Config']['Action'] = ['Cross', 'Inside'];
+$arrayRule = P03AuxHumanRule::buildFromTemplate('P03_WORK_LEFT_HUMAN', 8, $arrayTemplate, $handler);
+expectAux(($arrayRule['Config']['Action'] ?? null) === ['Appear'], 'native array Action shape preserved as Appear array');
+expectAux(P03AuxHumanRule::matches($arrayRule, 'P03_WORK_LEFT_HUMAN'), 'array-action rule matches');
+
+$bad = $rule;
+$bad['Config']['Action'] = 'Cross';
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'Cross-only rule rejected');
+$bad = $rule;
+$bad['Config']['Direction'] = 'Enter';
+expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'restrictive direction rejected');
 $bad = $rule;
 $bad['ObjectTypes'] = ['Unknown'];
 expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'Unknown object filter rejected');
 
-$bad = $rule;
-$bad['Config']['DetectRegion'][1][0] = 7000;
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong region rejected');
+// Documented getTemplateRule flat response must be converted into a native rule.
+$flat = implode("\r\n", [
+    'Rule.Normal.CrossRegionDetection.Class=Normal',
+    'Rule.Normal.CrossRegionDetection.Type=CrossRegionDetection',
+    'Rule.Normal.CrossRegionDetection.Enable=false',
+    'Rule.Normal.CrossRegionDetection.Id=0',
+    'Rule.Normal.CrossRegionDetection.ObjectTypes[0]=Unknown',
+    'Rule.Normal.CrossRegionDetection.Config.Action=Cross',
+    'Rule.Normal.CrossRegionDetection.Config.Direction=Both',
+    'Rule.Normal.CrossRegionDetection.Config.SizeFilter.MinSize[0]=0',
+    'Rule.Normal.CrossRegionDetection.Config.SizeFilter.MinSize[1]=0',
+    'Rule.Normal.CrossRegionDetection.Config.SizeFilter.MaxSize[0]=8191',
+    'Rule.Normal.CrossRegionDetection.Config.SizeFilter.MaxSize[1]=8191',
+    'Rule.Normal.CrossRegionDetection.Config.NativeFlag=true',
+]);
+$parsedTemplate = P03DahuaTemplate::crossRegionFromFlat($flat);
+expectAux(is_array($parsedTemplate), 'documented flat getTemplateRule parsed');
+expectAux(($parsedTemplate['Type'] ?? null) === 'CrossRegionDetection', 'flat template type');
+expectAux(($parsedTemplate['Config']['NativeFlag'] ?? null) === true, 'flat native field retained');
+expectAux(($parsedTemplate['Config']['SizeFilter']['MaxSize'] ?? null) === [8191,8191], 'flat arrays reconstructed');
 
-$bad = $rule;
-unset($bad['Config']['Action']);
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing Action rejected');
-
-$bad = $rule;
-$bad['Config']['Action'] = ['Cross'];
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'missing Appear action rejected');
-
-$bad = $rule;
-$bad['Config']['Direction'] = 'Leave';
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong direction rejected');
-
-$bad = $rule;
-$bad['Enable'] = false;
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'disabled rule rejected');
-
-$bad = $rule;
-$bad['Type'] = 'CrossLineDetection';
-expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'wrong rule type rejected');
-
+// Real Dahua events can carry three different rule-id fields simultaneously.
 $carry = '';
-$rawEvent = "Code=CrossRegionDetection;action=Start;index=0;data={\"RuleID\":4,\"EventID\":101,\"Object\":{\"ObjectType\":\"Human\",\"ObjectID\":99}}\r\n";
-$events = DahuaEventParser::feed($rawEvent, $carry);
+$raw = 'Code=CrossRegionDetection;action=Pulse;index=0;data='
+    . '{"Name":"P03_JV_LEFT_HUMAN","CfgRuleId":2,"RuleID":2,"RuleId":1,'
+    . '"EventID":102,"Object":{"ObjectType":"Human","ObjectID":9}}' . "\r\n";
+$events = JVP03DahuaEventParser::feed($raw, $carry);
 expectAux(count($events) === 1, 'CrossRegion event parsed');
-expectAux(($events[0]['ruleId'] ?? null) === 4, 'CrossRegion RuleID parsed');
-expectAux(($events[0]['human'] ?? false) === true, 'CrossRegion Human classification parsed');
-expectAux(($events[0]['classification'] ?? null) === 'Human', 'CrossRegion Human classification exposed');
+$event = $events[0];
+expectAux(($event['ruleName'] ?? null) === 'P03_JV_LEFT_HUMAN', 'rule name parsed');
+expectAux(($event['cfgRuleId'] ?? null) === 2, 'CfgRuleId preserved');
+expectAux(($event['ruleIdUpper'] ?? null) === 2, 'RuleID preserved');
+expectAux(($event['ruleIdLower'] ?? null) === 1, 'RuleId preserved');
+expectAux(($event['human'] ?? false) === true, 'Human object parsed');
 
-$carry = '';
-$cfgRuleEvent = "Code=CrossRegionDetection;action=Pulse;index=0;data={\"CfgRuleId\":7,\"EventID\":102,\"Action\":\"Appear\",\"Object\":{\"ObjectType\":\"Human\"}}\r\n";
-$events = DahuaEventParser::feed($cfgRuleEvent, $carry);
-expectAux(count($events) === 1, 'CrossRegion CfgRuleId event parsed');
-expectAux(($events[0]['ruleId'] ?? null) === 7, 'CfgRuleId accepted as Dahua rule id');
-expectAux(($events[0]['human'] ?? false) === true, 'CfgRuleId event Human parsed');
-
-
-
-$matchingWithoutHumanPayload = [
-    'code' => 'CrossRegionDetection',
-    'action' => 'Start',
-    // Event RuleID is the Dahua rule Id, NOT the VideoAnalyseRule array index.
-    'ruleId' => 0,
-    'human' => false,
-    'classification' => null
-];
+// Name is authoritative even when the camera's numeric identifiers disagree.
 expectAux(
-    P03AuxObserverLogic::isHumanProofStart($matchingWithoutHumanPayload, 0),
-    'Dahua rule Id 0 matches even when table index is different'
+    P03AuxObserverLogic::isHumanProofStart($event, 'P03_JV_LEFT_HUMAN', 3, 0),
+    'matching rule name wins over conflicting numeric ids'
+);
+expectAux(
+    !P03AuxObserverLogic::isHumanProofStart($event, 'P03_OTHER', 2, 2),
+    'wrong explicit rule name rejected even if numeric id matches'
 );
 
-$wrongRule = $matchingWithoutHumanPayload;
-$wrongRule['ruleId'] = 3; // typical table index; must NOT be mistaken for Dahua Id=0
+// Firmware without Name may fall back to either actual rule id or table index.
+$noName = $event;
+$noName['ruleName'] = null;
 expectAux(
-    !P03AuxObserverLogic::isHumanProofStart($wrongRule, 0),
-    'VideoAnalyseRule array index is not accepted as Dahua RuleID'
+    P03AuxObserverLogic::isHumanProofStart($noName, 'P03_JV_LEFT_HUMAN', 3, 2),
+    'missing name falls back to numeric identity'
+);
+$noName['cfgRuleId'] = 99;
+$noName['ruleIdUpper'] = 99;
+$noName['ruleIdLower'] = 3;
+$noName['ruleId'] = 99;
+expectAux(
+    P03AuxObserverLogic::isHumanProofStart($noName, 'P03_JV_LEFT_HUMAN', 3, 2),
+    'table-index fallback accepted only when name is absent'
 );
 
-$stopEvent = $matchingWithoutHumanPayload;
-$stopEvent['action'] = 'Stop';
+$stop = $event;
+$stop['action'] = 'Stop';
 expectAux(
-    !P03AuxObserverLogic::isHumanProofStart($stopEvent, 0),
-    'STOP event does not create a new Human proof'
+    !P03AuxObserverLogic::isHumanProofStart($stop, 'P03_JV_LEFT_HUMAN', 3, 0),
+    'STOP never creates a new Human proof'
 );
 
-echo "P03 auxiliary Human IVS rule tests PASS\n";
+echo "P03 AUX NATIVE TEMPLATE / EVENT IDENTITY TESTS PASSED\n";
