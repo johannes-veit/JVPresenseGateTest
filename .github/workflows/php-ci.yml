@@ -195,6 +195,20 @@ jobs:
               if ("IPS_SetProperty($instanceID, '" + token + "'") not in reconnect:
                   raise SystemExit('P03 audit does not synchronize aux observer property: '+token)
 
+          # Mast IPC Human AI must be explicitly activated and read back. A
+          # stale SmartMotionDetect=true display is not sufficient.
+          for token in [
+              "ensureP03AuxHumanAiEnabled",
+              "SmartMotionDetect[0].Enable=true",
+              "SmartMotionDetect[0].ObjectTypes.Human=true",
+              "SmartMotionDetect[0].Sensitivity=High",
+              "MotionDetect[0].Enable=true",
+              "MotionDetect-Readback nach Aktivierung nicht eindeutig TRUE",
+              "AI-IVS-Plan=Normal"
+          ]:
+              if token not in main:
+                  raise SystemExit('Missing explicit mast Human-AI prerequisite: '+token)
+
           # Existing aux instances must gain new variables on module update.
           apply=observer[observer.index("public function ApplyChanges"):observer.index("public function GetConfigurationForParent")]
           if "RegisterVariableInteger('HumanEventCounter'" not in apply:
