@@ -78,9 +78,11 @@ final class P03AuxHumanRule
         $region = $rule['Config']['DetectRegion'] ?? null;
         $actions = $rule['Config']['Action'] ?? [];
         $direction = $rule['Config']['Direction'] ?? null;
-        $calibrate = $rule['Config']['SizeFilter']['CalibrateBoxs'][0] ?? null;
-        $min = $rule['Config']['SizeFilter']['MinSize'] ?? null;
-        $max = $rule['Config']['SizeFilter']['MaxSize'] ?? null;
+        $config = is_array($rule['Config'] ?? null) ? $rule['Config'] : [];
+        $calibrate = $config['SizeFilter']['CalibrateBoxs'][0] ?? null;
+        $min = $config['SizeFilter']['MinSize'] ?? null;
+        $max = $config['SizeFilter']['MaxSize'] ?? null;
+        $accuracySnap = is_array($config['AccuracySnap'] ?? null) ? $config['AccuracySnap'] : [];
         $eventHandler = is_array($rule['EventHandler'] ?? null) ? $rule['EventHandler'] : [];
 
         return strcasecmp((string) ($rule['Name'] ?? ''), $name) === 0
@@ -95,11 +97,21 @@ final class P03AuxHumanRule
             && in_array('Appear', $actions, true)
             && in_array('Cross', $actions, true)
             && strcasecmp((string) $direction, 'Enter') === 0
+            && (($accuracySnap['HumanBody'] ?? false) === true)
+            && (($accuracySnap['Normal'] ?? false) === true)
+            && (int) ($config['MinDuration'] ?? -1) === 1
+            && (int) ($config['MinTargets'] ?? -1) === 1
+            && (int) ($config['MaxTargets'] ?? -1) === 100
+            && (int) ($config['ReportInterval'] ?? -1) === 1
+            && (int) ($config['Sensitivity'] ?? -1) === 10
+            && (int) ($config['TrackDuration'] ?? -1) === 30
             && is_array($calibrate)
             && ($calibrate['CenterPoint'] ?? null) === [4096, 4096]
             && (int) ($calibrate['Ratio'] ?? 0) === 1
             && $min === [0, 0]
             && $max === [8191, 8191]
+            && (($rule['TrackEnable'] ?? true) === false)
+            && (int) ($rule['PtzPresetId'] ?? -1) === 0
             && self::has24x7Schedule($eventHandler);
     }
 
