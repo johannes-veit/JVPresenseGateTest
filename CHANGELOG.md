@@ -1,3 +1,13 @@
+# v0.6.13
+
+- Behebt den nach v0.6.12 weiterhin real beobachteten Zustand `Dahua Eventstream OK = AUS` auf beiden P03-Mastkamera-Observern.
+- Bestehende P03-Observer werden beim Audit jetzt vollständig mit Host, Port, Benutzername, Passwort, Rolle, RuleIndex und RuleID aus der P03-Hauptinstanz synchronisiert. Alte/leer gebliebene Verbindungsdaten aus früheren Versionen können den Stream damit nicht mehr still blockieren.
+- Der Observer prüft und konfiguriert seinen eigenen Client Socket jetzt deterministisch: Host, Port und Open werden mit den Sollwerten verglichen und nur bei echten Änderungen angewendet.
+- Die Restart-/Digest-Logik aus v0.6.12 bleibt erhalten; nach der Parent-Synchronisierung wird ein kontrollierter frischer Socket aufgebaut.
+- Neue sichtbare Variable `Observer Diagnose` zeigt ohne Zugangsdaten u. a. configReady, Parent-ID, Parent-Status, Open, Streaming, RestartStage, AuthPending/AuthBlocked sowie Zeitpunkte der letzten HTTP-Anfrage und Kameraantwort.
+- CI prüft künftig sowohl die vollständige Observer-Property-Synchronisierung als auch die Parent-Socket-Konfiguration.
+- IVS-Regeln, 2-Kamera-Richtungslogik, P05 und Außenlichtautomatik bleiben unverändert.
+
 # v0.6.12
 
 - Behebt den real beobachteten Zustand, dass beide P03-Mastkamera-Observer dauerhaft `Dahua Eventstream OK = AUS` bleiben, obwohl die IVS-Regeln korrekt angelegt wurden.
