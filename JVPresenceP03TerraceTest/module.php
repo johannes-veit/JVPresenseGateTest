@@ -2446,6 +2446,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $port = (int) $cfg['port'];
         $username = (string) $cfg['username'];
         $password = (string) $cfg['password'];
+        $meta = $this->p03AuxHumanRuleMeta($role);
 
         $type = $this->genericCameraGet($host, $port, $username, $password, '/cgi-bin/magicBox.cgi?action=getDeviceType');
         $model = '';
@@ -2463,10 +2464,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
 
-        // SMD is kept as diagnostic/fallback only. Field testing on both
-        // IPC-HFW5442E-ZE cameras showed VideoMotion/VideoMotionInfo without
-        // SmartMotionHuman, despite SMD=Human. P03 therefore no longer trusts
-        // the SMD configuration as proof that a Human event will be emitted.
+        // SMD remains diagnostic only. The dedicated P03 CrossRegion Human rule
+        // is the actual mast-camera proof source.
         $enable = null;
         $human = null;
         $sensitivity = '';
@@ -2483,8 +2482,51 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
 
         $ivs = $this->ensureP03AuxHumanRule($instanceID, $role);
+        $runtime = ($ivs['ok'] ?? false)
+            ? $this->inspectP03AuxIvsRuntime($instanceID, $role)
+            : ['ok' => false, 'error' => 'IVS-Regel nicht bereit', 'moduleSensitivity' => null, 'moduleRegionPoints' => 0, 'caps' => 'SKIPPED'];
+
+        // The audit is operational, not merely a config readback. The observer
+        // must have its own correct socket and complete the authenticated event stream.
+        $streamOK = false;
+        if ($ivs['ok'] ?? false) {
+            $streamOK = $this->waitForP03AuxStream($instanceID, 5000);
+        }
+        $transport = $this->p03AuxTransportState($instanceID, $host, $port);
+
         $personVar = $this->findPersonDetectedVariable($instanceID);
-        $ok = ($ivs['ok'] ?? false) && $personVar > 0;
+        $streamVar = $this->findAuxVariable($instanceID, 'StreamOK');
+
+        $observerIdentityOK = false;
+        try {
+            $observerIdentityOK =
+                trim((string) IPS_GetProperty($instanceID, 'RuleName')) === $meta['name']
+                && (int) IPS_GetProperty($instanceID, 'RuleID') === (int) ($ivs['id'] ?? -9999);
+        } catch (Throwable $e) {
+            $observerIdentityOK = false;
+        }
+
+        $errors = [];
+        if (!($ivs['ok'] ?? false)) {
+            $errors[] = (string) ($ivs['error'] ?? 'Human-IVS-Regel nicht bereit');
+        }
+        if (!($runtime['ok'] ?? false)) {
+            $errors[] = (string) ($runtime['error'] ?? 'IVS-Runtime nicht bereit');
+        }
+        if (!($transport['ok'] ?? false)) {
+            $errors[] = (string) ($transport['error'] ?? 'ClientSocket nicht bereit');
+        }
+        if (!$streamOK) {
+            $errors[] = 'eigener Dahua Eventstream nicht verbunden';
+        }
+        if (!$observerIdentityOK) {
+            $errors[] = 'Observer-Regelidentität stimmt nicht mit Kamera-Regel überein';
+        }
+        if ($personVar <= 0 || $streamVar <= 0) {
+            $errors[] = 'Observer-Variablen fehlen';
+        }
+
+        $ok = $errors === [];
 
         $this->appendProtocol(
             'P03 AUX AUDIT ' . $role
@@ -2493,19 +2535,28 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', firmware=' . ($firmware !== '' ? $firmware : '<nicht gemeldet>')
                 . ', SMD=' . ($enable === null ? '<nur Diagnose/nicht gemeldet>' : (string) $enable)
                 . ', SMD-Human=' . ($human === null ? '<nur Diagnose/nicht gemeldet>' : (string) $human)
-                . ', Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
+                . ', SMD-Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
                 . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'OK' : 'FEHLER')
                 . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
                 . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
+                . ', IVS-RuleName=' . $meta['name']
                 . ', IVS-Actions=' . json_encode($ivs['actions'] ?? [], JSON_UNESCAPED_SLASHES)
                 . ', IVS-Direction=' . (string) ($ivs['direction'] ?? '<fehlt>')
+                . ', NormalModule=' . (($runtime['ok'] ?? false) ? 'OK' : 'FEHLER')
+                . ', ModuleSensitivity=' . var_export($runtime['moduleSensitivity'] ?? null, true)
+                . ', ModuleRegionPoints=' . (int) ($runtime['moduleRegionPoints'] ?? 0)
+                . ', Web5Caps=' . (string) ($runtime['caps'] ?? 'UNKNOWN')
+                . ', Socket=#' . (int) ($transport['parent'] ?? 0)
+                . ' ' . (string) ($transport['host'] ?? '') . ':' . (int) ($transport['port'] ?? 0)
+                . '/status=' . (int) ($transport['status'] ?? 0)
+                . ', Stream=' . ($streamOK ? 'OK' : 'FEHLER')
                 . ', PersonVar=' . $personVar
                 . ' -> ' . ($ok ? 'OK' : 'FEHLER')
         );
 
         return [
             'ok' => $ok,
-            'error' => $ok ? '' : ($role . ': ' . (string) ($ivs['error'] ?? 'Human-IVS/PersonDetected nicht vollständig bereit')),
+            'error' => $ok ? '' : ($role . ': ' . implode('; ', array_values(array_unique(array_filter($errors))))),
             'model' => $model,
             'firmware' => $firmware,
             'sensitivity' => $sensitivity
