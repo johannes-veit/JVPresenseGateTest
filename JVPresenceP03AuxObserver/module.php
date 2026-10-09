@@ -332,24 +332,29 @@ class JVPresenceP03AuxObserver extends IPSModule
         $events = JVP03DahuaEventParser::feed($chunk, $carry);
         $this->SetBuffer('EventCarry', $carry);
 
-        $wantedRuleId = $this->ReadPropertyInteger('RuleID');
-        if ($wantedRuleId < 0) {
+        $wantedName = trim($this->ReadPropertyString('RuleName'));
+        $wantedIndex = $this->ReadPropertyInteger('RuleIndex');
+        $wantedId = $this->ReadPropertyInteger('RuleID');
+        if ($wantedName === '' && $wantedIndex < 0 && $wantedId < 0) {
             return;
         }
 
         foreach ($events as $event) {
             $code = trim((string) ($event['code'] ?? ''));
             $action = strtolower(trim((string) ($event['action'] ?? '')));
-            $ruleId = $event['ruleId'] ?? null;
 
             if (strcasecmp($code, 'CrossRegionDetection') === 0) {
                 $rawSummary = [
                     'time' => date('H:i:s'),
                     'role' => $this->ReadPropertyString('Role'),
                     'action' => $event['action'] ?? '',
-                    'ruleId' => $ruleId,
-                    'expectedRuleId' => $wantedRuleId,
-                    'configuredIndex' => $this->ReadPropertyInteger('RuleIndex'),
+                    'ruleName' => $event['ruleName'] ?? null,
+                    'cfgRuleId' => $event['cfgRuleId'] ?? null,
+                    'ruleIdUpper' => $event['ruleIdUpper'] ?? null,
+                    'ruleIdLower' => $event['ruleIdLower'] ?? null,
+                    'expectedRuleName' => $wantedName,
+                    'expectedIndex' => $wantedIndex,
+                    'expectedId' => $wantedId,
                     'payloadHuman' => (bool) ($event['human'] ?? false),
                     'classification' => $event['classification'] ?? null,
                     'eventId' => $event['eventId'] ?? null
@@ -358,7 +363,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                 $this->SendDebug('CrossRegionDetection', json_encode($rawSummary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
             }
 
-            if (!P03AuxObserverLogic::isMatchingRuleEvent($event, $wantedRuleId)) {
+            if (!P03AuxObserverLogic::isMatchingRuleEvent($event, $wantedName, $wantedIndex, $wantedId)) {
                 continue;
             }
 
@@ -385,7 +390,10 @@ class JVPresenceP03AuxObserver extends IPSModule
                 'role' => $this->ReadPropertyString('Role'),
                 'code' => $code,
                 'action' => $event['action'] ?? '',
-                'ruleId' => $ruleId,
+                'ruleName' => $event['ruleName'] ?? null,
+                'cfgRuleId' => $event['cfgRuleId'] ?? null,
+                'ruleIdUpper' => $event['ruleIdUpper'] ?? null,
+                'ruleIdLower' => $event['ruleIdLower'] ?? null,
                 'human' => true,
                 'humanFromRule' => true,
                 'payloadHuman' => (bool) ($event['human'] ?? false),
@@ -395,10 +403,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             ];
             $this->SetValue('LastEvent', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
-            // The dedicated P03 rule itself is ObjectTypes=Human. Therefore a
-            // matching START/ON/PULSE is a Human proof even if this firmware omits
-            // ObjectType from the event payload.
-            if (P03AuxObserverLogic::isHumanProofStart($event, $wantedRuleId)) {
+            if (P03AuxObserverLogic::isHumanProofStart($event, $wantedName, $wantedIndex, $wantedId)) {
                 $until = time() + 5;
                 $this->WriteAttributeInteger('HumanPulseUntil', $until);
                 $this->SetValue('PersonDetected', true);
@@ -406,8 +411,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                 continue;
             }
 
-            // Do not clear immediately on STOP. Keep the 5 s pulse visible and
-            // usable by the parent P03 sequence engine; the timer clears it.
+            // Keep the 5-second pulse even if Dahua sends a STOP immediately.
             if (in_array($action, ['stop', 'off'], true)
                 && $this->ReadAttributeInteger('HumanPulseUntil') <= time()) {
                 $this->clearPersonPulse();
@@ -447,7 +451,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $headers = [
             'GET ' . $uri . ' HTTP/1.1',
             'Host: ' . $hostHeader,
-            'User-Agent: IP-Symcon-JVPresenceP03Aux/0.6.7',
+            'User-Agent: IP-Symcon-JVPresenceP03Aux/0.6.9',
             'Accept: multipart/x-mixed-replace, */*',
             'Connection: keep-alive'
         ];
