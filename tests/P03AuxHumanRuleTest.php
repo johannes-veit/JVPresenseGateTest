@@ -89,7 +89,7 @@ expectAux(P03AuxHumanRule::matches($rule, 'P03_JV_LEFT_HUMAN'), 'valid native-te
 $arrayTemplate = $nativeTemplate;
 $arrayTemplate['Config']['Action'] = ['Cross', 'Inside'];
 $arrayRule = P03AuxHumanRule::buildFromTemplate('P03_WORK_LEFT_HUMAN', 8, $arrayTemplate, $handler);
-expectAux(($arrayRule['Config']['Action'] ?? null) === ['Appear'], 'native array Action shape preserved as Appear array');
+expectAux(($arrayRule['Config']['Action'] ?? null) === ['Appear', 'Cross'], 'native array Action enables Appear+Cross');
 expectAux(P03AuxHumanRule::matches($arrayRule, 'P03_WORK_LEFT_HUMAN'), 'array-action rule matches');
 
 $bad = $rule;
