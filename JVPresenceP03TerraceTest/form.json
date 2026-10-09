@@ -91,47 +91,47 @@
     {
       "type": "Button",
       "caption": "P03 Gesamtaudit – 3 Kameras (kein Lauftest)",
-      "onClick": "JVP03_AuditCameraConfiguration($id);"
+      "onClick": "JVP03MC_AuditCameraConfiguration($id);"
     },
     {
       "type": "Button",
       "caption": "Interne P03 Simulation ausführen",
-      "onClick": "JVP03_RunP03Simulation($id);"
+      "onClick": "JVP03MC_RunP03Simulation($id);"
     },
     {
       "type": "Button",
       "caption": "Zusatzkameras neu suchen / prüfen",
-      "onClick": "JVP03_P03AuxRescan($id);"
+      "onClick": "JVP03MC_P03AuxRescan($id);"
     },
     {
       "type": "Button",
       "caption": "P03 Mehrkamera-Test vorbereiten & starten",
-      "onClick": "JVP03_PrepareAndStartTest($id);"
+      "onClick": "JVP03MC_PrepareAndStartTest($id);"
     },
     {
       "type": "Button",
       "caption": "P03 Produktivbetrieb aktivieren",
-      "onClick": "JVP03_EnableProductionP03($id);"
+      "onClick": "JVP03MC_EnableProductionP03($id);"
     },
     {
       "type": "Button",
       "caption": "P03 Produktivbetrieb deaktivieren / Testkonfiguration zurücksetzen",
-      "onClick": "JVP03_DisableProductionP03($id);"
+      "onClick": "JVP03MC_DisableProductionP03($id);"
     },
     {
       "type": "Button",
       "caption": "Testzustand zurücksetzen",
-      "onClick": "JVP03_ResetTest($id);"
+      "onClick": "JVP03MC_ResetTest($id);"
     },
     {
       "type": "Button",
       "caption": "Terrassen-Eventstream neu aufbauen",
-      "onClick": "JVP03_Reconnect($id);"
+      "onClick": "JVP03MC_Reconnect($id);"
     },
     {
       "type": "Button",
       "caption": "Zustand ins Debug schreiben",
-      "onClick": "JVP03_DumpState($id);"
+      "onClick": "JVP03MC_DumpState($id);"
     }
   ]
 }
