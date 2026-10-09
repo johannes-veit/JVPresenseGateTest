@@ -788,7 +788,7 @@ class JVPresenceGateTest extends IPSModule
     private function processEventData(string $chunk): void
     {
         $carry = $this->GetBuffer('EventCarry');
-        $events = DahuaEventParser::feed($chunk, $carry);
+        $events = JVP03DahuaEventParser::feed($chunk, $carry);
         $this->SetBuffer('EventCarry', $carry);
 
         foreach ($events as $event) {
@@ -1165,7 +1165,7 @@ class JVPresenceGateTest extends IPSModule
             $this->WriteAttributeInteger('DigestNC', $nc);
             $cnonce = substr(hash('sha256', $this->InstanceID . ':' . microtime(true) . ':' . mt_rand()), 0, 16);
             try {
-                $headers[] = 'Authorization: ' . DahuaDigest::buildAuthorization(
+                $headers[] = 'Authorization: ' . JVP03DahuaDigest::buildAuthorization(
                     (string) ($cfg['username'] ?? ''),
                     (string) ($cfg['password'] ?? ''),
                     'GET',
@@ -1211,7 +1211,7 @@ class JVPresenceGateTest extends IPSModule
         if (!preg_match('/^WWW-Authenticate:\s*(Digest\s+.+)$/im', $header, $m)) {
             return [];
         }
-        return DahuaDigest::parseChallenge(trim((string) $m[1]));
+        return JVP03DahuaDigest::parseChallenge(trim((string) $m[1]));
     }
 
     private function resolveSourceInstance(): int
