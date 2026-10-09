@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
+require_once dirname(__DIR__) . '/libs/P03AuxObserverLogic.php';
 
 function expectAux(bool $condition, string $message): void
 {
@@ -64,5 +65,33 @@ expectAux(count($events) === 1, 'CrossRegion event parsed');
 expectAux(($events[0]['ruleId'] ?? null) === 4, 'CrossRegion RuleID parsed');
 expectAux(($events[0]['human'] ?? false) === true, 'CrossRegion Human classification parsed');
 expectAux(($events[0]['classification'] ?? null) === 'Human', 'CrossRegion Human classification exposed');
+
+
+
+$matchingWithoutHumanPayload = [
+    'code' => 'CrossRegionDetection',
+    'action' => 'Start',
+    'ruleId' => 3,
+    'human' => false,
+    'classification' => null
+];
+expectAux(
+    P03AuxObserverLogic::isHumanProofStart($matchingWithoutHumanPayload, 3),
+    'dedicated Human-only rule counts even when payload omits Human classification'
+);
+
+$wrongRule = $matchingWithoutHumanPayload;
+$wrongRule['ruleId'] = 2;
+expectAux(
+    !P03AuxObserverLogic::isHumanProofStart($wrongRule, 3),
+    'foreign CrossRegion rule rejected'
+);
+
+$stopEvent = $matchingWithoutHumanPayload;
+$stopEvent['action'] = 'Stop';
+expectAux(
+    !P03AuxObserverLogic::isHumanProofStart($stopEvent, 3),
+    'STOP event does not create a new Human proof'
+);
 
 echo "P03 auxiliary Human IVS rule tests PASS\n";
