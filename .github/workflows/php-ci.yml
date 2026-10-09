@@ -22,6 +22,32 @@ jobs:
           done < <(find . -type f -name '*.php' -print0)
       - name: Legacy direction/config logic
         run: php tests/test_logic.php
+      - name: Module loader contracts
+        run: |
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          modules=[]
+          for p in Path('.').glob('*/module.json'):
+              data=json.loads(p.read_text(encoding='utf-8'))
+              php=p.with_name('module.php')
+              if not php.exists():
+                  raise SystemExit(f'Missing module.php for {p}')
+              src=php.read_text(encoding='utf-8')
+              m=re.search(r'class\s+([A-Za-z0-9_]+)\s+extends\s+IPSModule', src)
+              if not m:
+                  raise SystemExit(f'No IPSModule class in {php}')
+              expected=re.sub(r'[^A-Za-z0-9_]', '', data['name'])
+              if m.group(1) != expected:
+                  raise SystemExit(f'Loader class mismatch: {p}: expected {expected}, got {m.group(1)}')
+              modules.append((str(p), data['prefix']))
+          prefixes={}
+          for p,prefix in modules:
+              if prefix in prefixes:
+                  raise SystemExit(f'Duplicate module prefix {prefix}: {prefixes[prefix]} and {p}')
+              prefixes[prefix]=p
+          print('Module loader contracts PASS')
+          PY
       - name: P03 proof simulations
         run: php tests/P03ProofEngineTest.php
       - name: P03 hardened module contract
