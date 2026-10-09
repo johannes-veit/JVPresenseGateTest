@@ -1,3 +1,18 @@
+# v0.6.9
+
+- P03 vollständig gegen die Außenlichtautomatik isoliert: die P03-Hilfsklassen heißen jetzt `JVP03DahuaDigest` und `JVP03DahuaEventParser`. Dadurch können die gleichnamigen globalen Klassen des Außenlichtmoduls nicht mehr kollidieren oder dessen Eventverarbeitung abbrechen.
+- Die bereits beobachtete Folge „Hof Person erkannt bleibt dauerhaft AN“ ist damit als mögliche Klassenkollisions-/Callback-Störung aus P03 konstruktiv ausgeschlossen. Das Außenlichtmodul selbst wird weiterhin nicht verändert.
+- Die beiden Lagerplatzkameras verwenden keine handgebaute IVS-Regel mehr. P03 liest zuerst ein natives `CrossRegionDetection`-Template direkt aus der jeweiligen Dahua-Firmware (HTTP getTemplateRule, RPC2 Default oder Web5 getTemplateRule) und übernimmt alle firmware-spezifischen Felder.
+- Falls kein sicher auswertbares natives CrossRegion-Template geliefert wird, erfolgt Sicherheitsabbruch ohne neue IVS-Regel.
+- Die P03-Mastregel ist Human-only, breitflächig und richtungsneutral. Bei Firmware mit Action-Liste werden `Appear + Cross` aktiviert; bei String-Action wird `Appear` verwendet. `Direction=Both`.
+- Dahua-`CfgRuleId`, `RuleID` und `RuleId` werden nicht mehr zusammengeworfen. Zusätzlich wird der Regelname ausgewertet. Exakter Regelname ist maßgeblich; numerische IDs dienen nur als Fallback.
+- Die beiden Mastkamera-Observer haben einen monotonen `HumanEventCounter`. Die P03-Beweislogik arbeitet künftig mit diesen Eventzählern, nicht mit dem sichtbaren 5-s-Boolean `Person erkannt`. Dadurch gehen aufeinanderfolgende Treffer nicht verloren, wenn das Boolean noch AN ist.
+- JV Terrasse/CrossLine ist für P03 jetzt standardmäßig deaktivierte Zusatzdiagnose. Audit, Lauftest und Produktivbetrieb benötigen nur JV_LEFT und WORK_LEFT.
+- Beim ersten Audit/Test werden ausschließlich von älteren P03-Versionen gespeicherte Terrassen-Teständerungen zurückgerollt; danach wird die Terrasse im normalen Mastkamera-Ablauf nicht mehr konfiguriert.
+- Der alte RuleID-vs-Index-Fehler der Terrassen-Diagnose wurde ebenfalls gehärtet; Name/mehrere Dahua-ID-Felder werden berücksichtigt.
+- Erweiterte CI-Verträge prüfen Klassenisolation, natives Dahua-Template, getrennte Rule-IDs, Eventcounter-basierte 2-Kamera-Logik und verhindern erneute Abhängigkeiten zur Außenlichtautomatik.
+- 2-Kamera-Richtungslogik bleibt: `JV_LEFT→WORK_LEFT = HOME→LAGER`, `WORK_LEFT→JV_LEFT = LAGER→HOME`.
+
 # v0.6.8
 
 - Gründliche Dahua-IVS-Korrektur für die beiden Lagerplatzkameras.
