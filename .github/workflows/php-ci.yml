@@ -58,6 +58,7 @@ jobs:
           from pathlib import Path
 
           main=Path('JVPresenceP03TerraceTest/module.php').read_text(encoding='utf-8')
+          gate=Path('JVPresenceGateTest/module.php').read_text(encoding='utf-8')
           observer=Path('JVPresenceP03AuxObserver/module.php').read_text(encoding='utf-8')
           rule=Path('libs/P03AuxHumanRule.php').read_text(encoding='utf-8')
           parser=Path('libs/DahuaEventParser.php').read_text(encoding='utf-8')
@@ -107,6 +108,25 @@ jobs:
               raise SystemExit('P03 still calls shared DahuaEventParser class')
           if "final class JVP03DahuaDigest" not in digest or "final class JVP03DahuaEventParser" not in parser:
               raise SystemExit('Unique P03 Dahua helper classes missing')
+
+          # P05 must use the same repository-isolated helpers; otherwise the
+          # v0.6.9 rename leaves the Schiebetor module broken at runtime.
+          if "JVP03DahuaDigest::" not in gate or "JVP03DahuaEventParser::" not in gate:
+              raise SystemExit('P05 gate module still references obsolete Dahua helper class names')
+
+          # The P03 main module has no live parent interface anymore. Its two
+          # internal mast observers own their own sockets. A closed optional
+          # terrace parent must never put the P03 main instance into error.
+          import json
+          p03meta=json.loads(Path('JVPresenceP03TerraceTest/module.json').read_text(encoding='utf-8'))
+          if p03meta.get('parentRequirements') not in ([], None):
+              raise SystemExit('P03 main module still declares a parent requirement')
+          if p03meta.get('implemented') not in ([], None):
+              raise SystemExit('P03 main module still implements a parent data interface')
+          if "RequireParent(" in main:
+              raise SystemExit('P03 main module still calls RequireParent')
+          if "disconnectLegacyParentSocket" not in main or "IPS_DisconnectInstance" not in main:
+              raise SystemExit('P03 update does not detach legacy parent socket')
 
           observer_required=[
               "class JVPresenceP03AuxObserver extends IPSModule",
