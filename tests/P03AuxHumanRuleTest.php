@@ -188,4 +188,30 @@ expectAux(count($events) === 1, 'CfgRuleId-only event parsed');
 expectAux(($events[0]['ruleIds'] ?? null) === [7], 'CfgRuleId-only candidate exposed');
 expectAux(P03AuxObserverLogic::isHumanProofStart($events[0], 7, 'P03_WORK_LEFT_HUMAN'), 'CfgRuleId-only event matches');
 
+// TCP fragmentation: Code= and JSON may be split across arbitrary chunks.
+$carry = '';
+$fragmented = "Code=CrossRegionDetection;action=Start;index=0;data={\"CfgRuleId\":4,\"RuleID\":4,\"RuleId\":2,\"Name\":\"P03_JV_LEFT_HUMAN\",\"Object\":{\"ObjectType\":\"Human\"}}\r\n";
+$parts = [
+    substr($fragmented, 0, 3),
+    substr($fragmented, 3, 41),
+    substr($fragmented, 44, 37),
+    substr($fragmented, 81)
+];
+$parsed = [];
+foreach ($parts as $part) {
+    $parsed = array_merge($parsed, DahuaEventParser::feed($part, $carry));
+}
+expectAux(count($parsed) === 1, 'fragmented CrossRegion event reassembled exactly once');
+expectAux(($parsed[0]['ruleIdPrimary'] ?? null) === 4, 'fragmented RuleID preserved');
+expectAux(($parsed[0]['ruleIdLegacy'] ?? null) === 2, 'fragmented RuleId preserved separately');
+expectAux(($parsed[0]['ruleName'] ?? null) === 'P03_JV_LEFT_HUMAN', 'fragmented Name preserved');
+
+// Multiple events in one stream chunk must stay separate.
+$carry = '';
+$multi = "Code=VideoMotion;action=Start;index=0\r\n"
+    . "Code=CrossRegionDetection;action=Start;index=0;data={\"RuleID\":9,\"Name\":\"P03_WORK_LEFT_HUMAN\",\"Object\":{\"ObjectType\":\"Human\"}}\r\n";
+$parsed = DahuaEventParser::feed($multi, $carry);
+expectAux(count($parsed) === 2, 'multiple events in one chunk parsed separately');
+expectAux(($parsed[1]['ruleName'] ?? null) === 'P03_WORK_LEFT_HUMAN', 'second event identity intact');
+
 echo "P03 auxiliary Human IVS rule tests PASS\n";
