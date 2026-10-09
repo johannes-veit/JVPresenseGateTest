@@ -2316,7 +2316,9 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $ivs = $this->ensureP03AuxHumanRule($instanceID, $role);
         $personVar = $this->findPersonDetectedVariable($instanceID);
-        $ok = ($ivs['ok'] ?? false) && $personVar > 0;
+        $counterVar = $this->findAuxVariable($instanceID, 'HumanEventCounter');
+        $streamVar = $this->findAuxVariable($instanceID, 'StreamOK');
+        $ok = ($ivs['ok'] ?? false) && $personVar > 0 && $counterVar > 0 && $streamVar > 0;
 
         $this->appendProtocol(
             'P03 AUX AUDIT ' . $role
@@ -2329,15 +2331,19 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'OK' : 'FEHLER')
                 . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
                 . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
-                . ', IVS-Actions=' . json_encode($ivs['actions'] ?? [], JSON_UNESCAPED_SLASHES)
+                . ', IVS-Actions=' . json_encode($ivs['actions'] ?? null, JSON_UNESCAPED_SLASHES)
                 . ', IVS-Direction=' . (string) ($ivs['direction'] ?? '<fehlt>')
                 . ', PersonVar=' . $personVar
+                . ', CounterVar=' . $counterVar
+                . ', StreamVar=' . $streamVar
                 . ' -> ' . ($ok ? 'OK' : 'FEHLER')
         );
 
         return [
             'ok' => $ok,
-            'error' => $ok ? '' : ($role . ': ' . (string) ($ivs['error'] ?? 'Human-IVS/PersonDetected nicht vollständig bereit')),
+            'error' => $ok
+                ? ''
+                : ($role . ': ' . (string) ($ivs['error'] ?? 'Human-IVS/Observervariablen nicht vollständig bereit')),
             'model' => $model,
             'firmware' => $firmware,
             'sensitivity' => $sensitivity
