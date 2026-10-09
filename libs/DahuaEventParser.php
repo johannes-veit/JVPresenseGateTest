@@ -281,9 +281,11 @@ final class JVP03DahuaEventParser
             );
         }
 
-        $cfgRuleId = self::findIdentifier($data, ['CfgRuleId', 'CfgRuleID']);
-        $ruleIdUpper = self::findIdentifier($data, ['RuleID']);
-        $ruleIdLower = self::findIdentifier($data, ['RuleId']);
+        // These keys are deliberately case-sensitive. Dahua can emit
+        // CfgRuleId, RuleID and RuleId simultaneously with DIFFERENT values.
+        $cfgRuleId = self::findExactIdentifier($data, ['CfgRuleId', 'CfgRuleID']);
+        $ruleIdUpper = self::findExactIdentifier($data, ['RuleID']);
+        $ruleIdLower = self::findExactIdentifier($data, ['RuleId']);
         $ruleName = self::findString($data, ['Name', 'RuleName']);
 
         return [
@@ -357,6 +359,34 @@ final class JVP03DahuaEventParser
             if (is_array($value)) {
                 $childContext = $objectContext || in_array($normalizedKey, ['object', 'objects', 'target', 'targets'], true);
                 $nested = self::findClassification($value, $childContext);
+                if ($nested !== null) {
+                    return $nested;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Case-sensitive identifier lookup for Dahua fields whose capitalization
+     * has semantic meaning (RuleID vs RuleId).
+     *
+     * @param array<string|int,mixed>|null $node
+     * @param string[] $keys
+     * @return int|string|null
+     */
+    private static function findExactIdentifier(?array $node, array $keys): int|string|null
+    {
+        if ($node === null) {
+            return null;
+        }
+
+        foreach ($node as $key => $value) {
+            if (in_array((string) $key, $keys, true) && (is_int($value) || is_string($value))) {
+                return $value;
+            }
+            if (is_array($value)) {
+                $nested = self::findExactIdentifier($value, $keys);
                 if ($nested !== null) {
                     return $nested;
                 }
