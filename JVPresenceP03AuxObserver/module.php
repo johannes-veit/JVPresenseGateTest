@@ -43,6 +43,7 @@ class JVPresenceP03AuxObserver extends IPSModule
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
+        $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
         $this->RegisterVariableString('LastEvent', 'Letztes Human-IVS-Ereignis', '', 30);
         $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
 
@@ -404,6 +405,11 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->SetValue('LastEvent', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
             if (P03AuxObserverLogic::isHumanProofStart($event, $wantedName, $wantedIndex, $wantedId)) {
+                $counterID = $this->GetIDForIdent('HumanEventCounter');
+                if ($counterID > 0 && IPS_VariableExists($counterID)) {
+                    $this->SetValue('HumanEventCounter', ((int) GetValue($counterID)) + 1);
+                }
+
                 $until = time() + 5;
                 $this->WriteAttributeInteger('HumanPulseUntil', $until);
                 $this->SetValue('PersonDetected', true);
