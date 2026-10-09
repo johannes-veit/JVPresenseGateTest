@@ -58,8 +58,9 @@ jobs:
           from pathlib import Path
           s=Path('JVPresenceP03TerraceTest/module.php').read_text(encoding='utf-8')
           required=[
-            "&& $this->ReadAttributeBoolean('Streaming');",
-            "P03 PRODUKTIV – 3-Kamera-Fallback, CrossLine-Richtung noch lernend",
+            "evaluateTwoCameraSequence",
+            "P03 PRODUKTIV – 2-Kamera-Sequenz",
+            "p03AuxStreamsReady",
             "P03AuxHumanRule::matches",
             "CrossRegionDetection",
             "ObjectTypes=Human",
@@ -84,7 +85,8 @@ jobs:
               "CrossRegionDetection",
               "RuleIndex",
               "PersonDetected",
-              "DahuaDigest::buildAuthorization"
+              "DahuaDigest::buildAuthorization",
+              "P03AuxObserverLogic::isHumanProofStart"
           ]
           observer_missing=[x for x in observer_required if x not in observer]
           if observer_missing:
