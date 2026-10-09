@@ -380,6 +380,11 @@ class JVPresenceP03MultiCamera extends IPSModule
                 }
 
                 $meta['senderSeqVar'] = $sender;
+                try {
+                    $meta['eventSeq'] = (int) GetValue($sender);
+                } catch (Throwable $e) {
+                    $meta['eventSeq'] = null;
+                }
                 $meta['messageTimestamp'] = (int) $TimeStamp;
                 $this->recordP03HumanEvent($source, $meta);
                 return;
@@ -1235,7 +1240,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->appendProtocol(
             'P03 HUMAN ' . $source
                 . ' @' . sprintf('%.3f', $eventTs)
-                . ' seq=' . (string) ($meta['senderSeqVar'] ?? '?')
+                . ' seq=' . (string) ($meta['eventSeq'] ?? '?')
                 . ' eventId=' . ($externalId !== '' ? $externalId : '<fehlt>')
         );
         $this->evaluateP03MastSequence();
@@ -1666,6 +1671,18 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function subscribeP03AuxVariables(): void
     {
+        // v0.6.9+: boolean PersonDetected is display-only. Remove registrations
+        // left by older releases so only event-sequence updates drive the proof.
+        foreach (['AuxJVPersonVarID', 'AuxWorkPersonVarID'] as $legacyAttr) {
+            $legacyID = $this->ReadAttributeInteger($legacyAttr);
+            if ($legacyID > 0 && IPS_VariableExists($legacyID)) {
+                try {
+                    $this->UnregisterMessage($legacyID, self::VM_UPDATE_ID);
+                } catch (Throwable $e) {
+                }
+            }
+        }
+
         foreach (['AuxJVStreamVarID', 'AuxWorkStreamVarID', 'AuxJVEventSeqVarID', 'AuxWorkEventSeqVarID'] as $attr) {
             $id = $this->ReadAttributeInteger($attr);
             if ($id > 0 && IPS_VariableExists($id)) {
@@ -2383,6 +2400,8 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $personVar = $this->findPersonDetectedVariable($instanceID);
         $streamVar = $this->findAuxVariable($instanceID, 'StreamOK');
+        $eventSeqVar = $this->findAuxVariable($instanceID, 'HumanEventSeq');
+        $eventDataVar = $this->findAuxVariable($instanceID, 'LastHumanEvent');
 
         $observerIdentityOK = false;
         try {
@@ -2409,8 +2428,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         if (!$observerIdentityOK) {
             $errors[] = 'Observer-Regelidentität stimmt nicht mit Kamera-Regel überein';
         }
-        if ($personVar <= 0 || $streamVar <= 0) {
-            $errors[] = 'Observer-Variablen fehlen';
+        if ($personVar <= 0 || $streamVar <= 0 || $eventSeqVar <= 0 || $eventDataVar <= 0) {
+            $errors[] = 'Observer-Variablen/Eventtransport fehlen';
         }
 
         $ok = $errors === [];
@@ -2438,6 +2457,8 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . '/status=' . (int) ($transport['status'] ?? 0)
                 . ', Stream=' . ($streamOK ? 'OK' : 'FEHLER')
                 . ', PersonVar=' . $personVar
+                . ', EventSeqVar=' . $eventSeqVar
+                . ', EventDataVar=' . $eventDataVar
                 . ' -> ' . ($ok ? 'OK' : 'FEHLER')
         );
 
