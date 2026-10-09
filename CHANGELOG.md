@@ -1,3 +1,15 @@
+# v0.6.12
+
+- Behebt den real beobachteten Zustand, dass beide P03-Mastkamera-Observer dauerhaft `Dahua Eventstream OK = AUS` bleiben, obwohl die IVS-Regeln korrekt angelegt wurden.
+- Ursache 1: `ApplyChanges()` stoppte den Restart-Timer, setzte `SocketRestartStage` aber nicht auf 0 zurück. War die Stufe noch 1/2, konnte danach kein neuer Socket-Neustart mehr geplant werden.
+- Ursache 2: Der P03-Watchdog hatte im Gegensatz zur bewährten `AussenlichtAutomatik2`-Implementierung keinen Wiederanlauf für „Client Socket aktiv, aber Digest-Handshake erreicht kein HTTP 200“. Dadurch konnte `Streaming=false` dauerhaft hängen bleiben.
+- `ApplyChanges()` setzt jetzt Restart-Stufe, LastHttpRequest, LastCameraRx und LastSocketRestart definiert zurück.
+- `Reconnect()` verwirft ebenfalls jede alte Restart-Stufe und startet garantiert eine neue Digest-Verbindung.
+- Der Watchdog startet nach 12 s ohne erfolgreichen Stream einen frischen Socket neu.
+- Der zusätzliche manuelle `IPS_ApplyChanges` auf dem Parent-Socket wurde entfernt; Parent-Konfiguration erfolgt wie bei der funktionierenden Außenlichtautomatik über `RequireParent()` + `GetConfigurationForParent()`.
+- CI prüft künftig diese Restart-/Handshake-Verträge statisch.
+- IVS-Template, 2-Kamera-Reihenfolge, P05 und Außenlichtautomatik bleiben unverändert.
+
 # v0.6.11
 
 - Behebt den Mastkamera-Auditfehler aus v0.6.10: der native Dahua-Regeltemplate-Abruf verwendete den falschen CGI-Endpunkt `devVideoAnalyse.cgi`.
