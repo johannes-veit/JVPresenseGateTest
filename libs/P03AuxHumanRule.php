@@ -145,13 +145,21 @@ final class P03AuxHumanRule
     public static function disableSideEffects(array $eventHandler): array
     {
         foreach ([
-            'AlarmOutEnable', 'BeepEnable', 'ExAlarmOutEnable', 'LogEnable', 'MMSEnable',
-            'MailEnable', 'MatrixEnable', 'MessageEnable', 'PtzLinkEnable', 'RecordEnable',
-            'SnapshotEnable', 'TipEnable', 'TourEnable', 'VoiceEnable',
+            'AlarmOutEnable', 'AlarmUploadEnable', 'BeepEnable', 'ExAlarmOutEnable',
+            'FlashEnable', 'FTPEnable', 'FtpEnable', 'LightEnable', 'LogEnable',
+            'MMSEnable', 'MailEnable', 'MatrixEnable', 'MessageEnable',
+            'MsgtoNetEnable', 'MultimediaMsgEnable', 'OnVideoMessageEnable',
+            'PtzEnable', 'PtzLinkEnable', 'RecordEnable', 'ShortMsgEnable',
+            'ShowInfo', 'SnapEnable', 'SnapshotEnable', 'TipEnable', 'TourEnable',
+            'VoiceEnable',
         ] as $flag) {
             if (array_key_exists($flag, $eventHandler)) {
                 $eventHandler[$flag] = false;
             }
+        }
+
+        if (isset($eventHandler['LightingLink']) && is_array($eventHandler['LightingLink'])) {
+            $eventHandler['LightingLink']['Enable'] = false;
         }
 
         if (isset($eventHandler['TrigerHttp']) && is_array($eventHandler['TrigerHttp'])) {
