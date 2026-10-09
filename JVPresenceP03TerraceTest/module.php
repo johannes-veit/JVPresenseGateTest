@@ -235,14 +235,9 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     public function GetConfigurationForParent(): string
     {
-        $cfg = $this->cameraConfiguration();
-        return json_encode([
-            'Host' => $cfg['host'] ?? '',
-            'Port' => $cfg['port'] ?? 80,
-            'Open' => $this->ReadPropertyBoolean('Enabled')
-                && $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
-                && ($cfg['host'] ?? '') !== ''
-        ]);
+        // P03 main is intentionally parentless since v0.6.10.
+        // The two internal mast observers own their own Client Sockets.
+        return '{}';
     }
 
     public function ReceiveData($JSONString): string
