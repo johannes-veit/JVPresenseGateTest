@@ -1717,13 +1717,26 @@ class JVPresenceP03MultiCamera extends IPSModule
         $meta = $this->p03AuxHumanRuleMeta($role);
         $ruleIndex = $this->ReadAttributeInteger($meta['ruleIndex']);
         $ruleId = $this->ReadAttributeInteger($meta['ruleId']);
+        $host = $role === self::AUX_JV_ROLE
+            ? trim($this->ReadPropertyString('AuxJVHost'))
+            : trim($this->ReadPropertyString('AuxWorkHost'));
+
         try {
+            // Existing observers may originate from older releases. Synchronize
+            // every connection property on every audit so stale/blank credentials
+            // can never leave the observer silently unable to start its stream.
+            IPS_SetProperty($instanceID, 'Enabled', true);
+            IPS_SetProperty($instanceID, 'CameraHost', $host);
+            IPS_SetProperty($instanceID, 'CameraPort', max(1, $this->ReadPropertyInteger('CameraPort')));
+            IPS_SetProperty($instanceID, 'Username', $this->ReadPropertyString('Username'));
+            IPS_SetProperty($instanceID, 'Password', $this->ReadPropertyString('Password'));
+            IPS_SetProperty($instanceID, 'Role', $role);
             IPS_SetProperty($instanceID, 'RuleIndex', $ruleIndex);
             IPS_SetProperty($instanceID, 'RuleID', $ruleId);
             IPS_ApplyChanges($instanceID);
-            $this->appendProtocol($role . ': eigener P03-Eventstream nach IVS-Änderung neu aufgebaut.');
+            $this->appendProtocol($role . ': P03-Observer vollständig synchronisiert und Eventstream-Neuaufbau angefordert.');
         } catch (Throwable $e) {
-            $this->appendProtocol($role . ': WARNUNG – P03-Eventstream-Neuaufbau fehlgeschlagen: ' . $e->getMessage());
+            $this->appendProtocol($role . ': WARNUNG – P03-Observer-Synchronisierung fehlgeschlagen: ' . $e->getMessage());
         }
     }
 
