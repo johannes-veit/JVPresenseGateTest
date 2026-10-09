@@ -22,7 +22,6 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterPropertyString('Username', '');
         $this->RegisterPropertyString('Password', '');
         $this->RegisterPropertyString('Role', '');
-        $this->RegisterPropertyString('RuleName', '');
         $this->RegisterPropertyInteger('RuleIndex', -1); // Diagnose/Fallback
         $this->RegisterPropertyInteger('RuleID', -1);    // Diagnose/Fallback
 
@@ -58,6 +57,14 @@ class JVPresenceP03AuxObserver extends IPSModule
     public function ApplyChanges(): void
     {
         parent::ApplyChanges();
+
+        // Existing observer instances from v0.6.5-v0.6.8 must receive variables
+        // added by later versions as well; Create() is not relied upon for migration.
+        $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
+        $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
+        $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
+        $this->RegisterVariableString('LastEvent', 'Letztes Human-IVS-Ereignis', '', 30);
+        $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
@@ -333,7 +340,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $events = JVP03DahuaEventParser::feed($chunk, $carry);
         $this->SetBuffer('EventCarry', $carry);
 
-        $wantedName = trim($this->ReadPropertyString('RuleName'));
+        $wantedName = $this->expectedRuleName();
         $wantedIndex = $this->ReadPropertyInteger('RuleIndex');
         $wantedId = $this->ReadPropertyInteger('RuleID');
         if ($wantedName === '' && $wantedIndex < 0 && $wantedId < 0) {
@@ -423,6 +430,15 @@ class JVPresenceP03AuxObserver extends IPSModule
                 $this->clearPersonPulse();
             }
         }
+    }
+
+    private function expectedRuleName(): string
+    {
+        return match ($this->ReadPropertyString('Role')) {
+            'JV_LEFT' => 'P03_JV_LEFT_HUMAN',
+            'WORK_LEFT' => 'P03_WORK_LEFT_HUMAN',
+            default => ''
+        };
     }
 
     private function clearPersonPulse(): void
