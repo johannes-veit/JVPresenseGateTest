@@ -142,6 +142,26 @@ jobs:
           if observer_missing:
               raise SystemExit('Missing independent aux observer contracts: '+repr(observer_missing))
 
+          # The aux observer must never get stuck with StreamOK=false after an
+          # ApplyChanges/reconnect. Reset the staged restart state and keep the
+          # same handshake-timeout recovery used by the proven ALA2 stream.
+          apply_obs=observer[observer.index("public function ApplyChanges"):observer.index("public function GetConfigurationForParent")]
+          for token in [
+              "WriteAttributeInteger('SocketRestartStage', 0)",
+              "WriteAttributeInteger('LastHttpRequest', 0)"
+          ]:
+              if token not in apply_obs:
+                  raise SystemExit('Aux observer ApplyChanges does not reset restart state: '+token)
+          reconnect_obs=observer[observer.index("public function Reconnect"):observer.index("private function processEventData")]
+          if "WriteAttributeInteger('SocketRestartStage', 0)" not in reconnect_obs:
+              raise SystemExit('Aux observer Reconnect cannot recover a stale restart stage')
+          watchdog_obs=observer[observer.index("public function Watchdog"):observer.index("public function PersonPulseTimer")]
+          for token in ["$lastReq", "> 12", "scheduleSocketRestart(100)"]:
+              if token not in watchdog_obs:
+                  raise SystemExit('Aux observer watchdog misses handshake recovery: '+token)
+          if "syncParentSocket()" in apply_obs:
+              raise SystemExit('Aux observer still manually applies parent socket during ApplyChanges')
+
           for token in ["ruleName", "cfgRuleId", "ruleIdUpper", "ruleIdLower"]:
               if token not in parser:
                   raise SystemExit('Parser does not preserve Dahua rule identity field: '+token)
