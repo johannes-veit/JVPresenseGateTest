@@ -251,6 +251,7 @@ final class P03ProofEngine
     ): ?array {
         $best = null;
         $bestEnd = -INF;
+        $bestStart = -INF;
 
         foreach ($events as $i => $first) {
             if (($first['source'] ?? '') !== $firstSource) {
@@ -268,9 +269,10 @@ final class P03ProofEngine
                     continue;
                 }
 
-                if ($t2 > $bestEnd) {
+                if ($t2 > $bestEnd || ($t2 === $bestEnd && $t1 > $bestStart)) {
                     $best = [$first, $second];
                     $bestEnd = $t2;
+                    $bestStart = $t1;
                 }
             }
         }
