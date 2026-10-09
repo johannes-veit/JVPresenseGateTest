@@ -1001,6 +1001,33 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->SendDebug('GateTestState', json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
     }
 
+    /** @param array<string,mixed> $event */
+    private function matchesP03TerraceRuleEvent(array $event): bool
+    {
+        if (strcasecmp((string) ($event['code'] ?? ''), 'CrossLineDetection') !== 0) {
+            return false;
+        }
+
+        $name = trim((string) ($event['ruleName'] ?? ''));
+        if ($name !== '') {
+            return strcasecmp($name, self::RULE_NAME) === 0;
+        }
+
+        $accepted = [];
+        foreach ([$this->ReadAttributeInteger('RuleID'), $this->ReadAttributeInteger('RuleIndex')] as $candidate) {
+            if ($candidate >= 0) {
+                $accepted[(string) $candidate] = true;
+            }
+        }
+        foreach (['cfgRuleId', 'ruleIdUpper', 'ruleIdLower', 'ruleId'] as $field) {
+            $value = $event[$field] ?? null;
+            if ($value !== null && $value !== '' && isset($accepted[(string) $value])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private function processEventData(string $chunk): void
     {
         $carry = $this->GetBuffer('EventCarry');
@@ -1042,14 +1069,23 @@ class JVPresenceP03MultiCamera extends IPSModule
                 continue;
             }
 
-            // Dahua eventManager "index" is the video channel. RuleID identifies
-            // the concrete P03 tripwire on this camera.
-            $ruleIndex = $this->ReadAttributeInteger('RuleIndex');
-            $eventRuleId = $event['ruleId'] ?? null;
-            if ($eventRuleId !== null && is_numeric($eventRuleId) && $ruleIndex >= 0
-                && (int) $eventRuleId !== $ruleIndex) {
+            // Rule name is authoritative. Dahua may emit CfgRuleId, RuleID
+            // and RuleId with different values; comparing one of them blindly to
+            // the table index caused the old false rejects.
+            if (!$this->matchesP03TerraceRuleEvent($event)) {
                 if ($this->ReadAttributeBoolean('TestActive')) {
-                    $this->appendProtocol('DIAG IVS ignoriert: fremde CrossLine RuleID=' . (string) $eventRuleId . ', erwartet=' . $ruleIndex);
+                    $this->appendProtocol(
+                        'DIAG IVS ignoriert: fremde CrossLine '
+                        . json_encode([
+                            'name' => $event['ruleName'] ?? null,
+                            'cfgRuleId' => $event['cfgRuleId'] ?? null,
+                            'RuleID' => $event['ruleIdUpper'] ?? null,
+                            'RuleId' => $event['ruleIdLower'] ?? null,
+                            'expectedName' => self::RULE_NAME,
+                            'expectedIndex' => $this->ReadAttributeInteger('RuleIndex'),
+                            'expectedId' => $this->ReadAttributeInteger('RuleID')
+                        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    );
                 }
                 continue;
             }
@@ -1064,6 +1100,10 @@ class JVPresenceP03MultiCamera extends IPSModule
                 'classification' => $event['classification'] ?? null,
                 'direction' => $direction,
                 'eventId' => $event['eventId'],
+                'ruleName' => $event['ruleName'] ?? null,
+                'cfgRuleId' => $event['cfgRuleId'] ?? null,
+                'ruleIdUpper' => $event['ruleIdUpper'] ?? null,
+                'ruleIdLower' => $event['ruleIdLower'] ?? null,
                 'ruleId' => $event['ruleId'],
                 'groupId' => $event['groupId'],
                 'objectId' => $event['objectId']
