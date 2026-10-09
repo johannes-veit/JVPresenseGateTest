@@ -128,7 +128,7 @@ $carry = '';
 $raw = 'Code=CrossRegionDetection;action=Pulse;index=0;data='
     . '{"Name":"P03_JV_LEFT_HUMAN","CfgRuleId":2,"RuleID":2,"RuleId":1,'
     . '"EventID":102,"Object":{"ObjectType":"Human","ObjectID":9}}' . "\r\n";
-$events = JVP03JVP03DahuaEventParser::feed($raw, $carry);
+$events = JVP03DahuaEventParser::feed($raw, $carry);
 expectAux(count($events) === 1, 'CrossRegion event parsed');
 $event = $events[0];
 expectAux(($event['ruleName'] ?? null) === 'P03_JV_LEFT_HUMAN', 'rule name parsed');
