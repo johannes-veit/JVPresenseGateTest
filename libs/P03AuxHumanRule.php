@@ -62,10 +62,16 @@ final class P03AuxHumanRule
         // IVS action: a Human becoming visible anywhere inside this broad region
         // is sufficient. This also avoids depending on a region-edge crossing.
         $templateAction = $config['Action'] ?? 'Appear';
-        $config['Action'] = is_array($templateAction) ? ['Appear'] : 'Appear';
+        // If this firmware represents actions as a list, enable both modes:
+        // - Appear: target is first classified while already inside the region.
+        // - Cross: target is tracked before it enters the region.
+        // The two mast cameras only need a reliable Human hit; travel direction
+        // is derived later from camera order, never from this IVS direction.
+        $config['Action'] = is_array($templateAction)
+            ? ['Appear', 'Cross']
+            : 'Appear';
 
-        // Direction is irrelevant for Action=Appear, but keep it non-restrictive
-        // for firmwares that require the field to exist.
+        // Non-restrictive because HOME/LAGER direction comes from camera order.
         $config['Direction'] = 'Both';
 
         if (is_array($config['SizeFilter'] ?? null)) {
@@ -89,6 +95,7 @@ final class P03AuxHumanRule
         $appear = is_array($action)
             ? in_array('Appear', $action, true)
             : strcasecmp((string) $action, 'Appear') === 0;
+        $crossOk = !is_array($action) || in_array('Cross', $action, true);
 
         return strcasecmp((string) ($rule['Name'] ?? ''), $name) === 0
             && strcasecmp((string) ($rule['Type'] ?? ''), 'CrossRegionDetection') === 0
@@ -99,6 +106,7 @@ final class P03AuxHumanRule
             && is_array($region)
             && $region === self::REGION
             && $appear
+            && $crossOk
             && strcasecmp((string) $direction, 'Both') === 0;
     }
 
