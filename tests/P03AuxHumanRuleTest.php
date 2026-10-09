@@ -51,6 +51,12 @@ expectAux(($rule['EventHandler']['TrigerHttp']['TrigerHttpCommand'] ?? 'x') === 
 expectAux(($rule['EventHandler']['KeepUnrelated'] ?? null) === 123, 'unrelated event handler fields preserved');
 expectAux(P03AuxHumanRule::matches($rule, 'P03_JV_LEFT_HUMAN'), 'valid rule matches');
 
+$normalizedSchedule = $rule;
+for ($day = 0; $day < 7; $day++) {
+    $normalizedSchedule['EventHandler']['TimeSection'][$day][0] = '1 00:00:00-24:00:00';
+}
+expectAux(P03AuxHumanRule::matches($normalizedSchedule, 'P03_JV_LEFT_HUMAN'), 'Dahua 24:00 full-day normalization accepted');
+
 $bad = $rule;
 $bad['ObjectTypes'] = ['Unknown'];
 expectAux(!P03AuxHumanRule::matches($bad, 'P03_JV_LEFT_HUMAN'), 'Unknown object filter rejected');
@@ -105,11 +111,22 @@ expectAux(
     'matching rule name wins even if numeric mapping differs'
 );
 
-$foreignName = $event;
-$foreignName['ruleName'] = 'FOREIGN_RULE';
+$genericNameStrongId = $event;
+$genericNameStrongId['ruleName'] = 'IVS-1';
 expectAux(
-    !P03AuxObserverLogic::isHumanProofStart($foreignName, 3, 'P03_JV_LEFT_HUMAN'),
-    'explicit foreign rule name rejected even if id matches'
+    P03AuxObserverLogic::isHumanProofStart($genericNameStrongId, 3, 'P03_JV_LEFT_HUMAN'),
+    'strong CfgRuleId/RuleID still identifies rule if firmware reports generic Name'
+);
+
+$foreignWeakOnly = $event;
+$foreignWeakOnly['ruleName'] = 'FOREIGN_RULE';
+$foreignWeakOnly['cfgRuleId'] = 8;
+$foreignWeakOnly['ruleIdPrimary'] = 8;
+$foreignWeakOnly['ruleIdLegacy'] = 3;
+$foreignWeakOnly['ruleIds'] = [8, 3];
+expectAux(
+    !P03AuxObserverLogic::isHumanProofStart($foreignWeakOnly, 3, 'P03_JV_LEFT_HUMAN'),
+    'foreign Name cannot be rescued by weak legacy RuleId'
 );
 
 $noName = $event;
@@ -119,6 +136,9 @@ expectAux(
     'fallback accepts any known Dahua rule id when Name is absent'
 );
 
+$noName['cfgRuleId'] = 8;
+$noName['ruleIdPrimary'] = 8;
+$noName['ruleIdLegacy'] = 9;
 $noName['ruleIds'] = [8, 9];
 $noName['ruleId'] = 8;
 expectAux(
