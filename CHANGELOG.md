@@ -1,3 +1,13 @@
+# v0.6.10
+
+- Behebt die roten IP-Symcon-Instanzfehler „übergeordnete Instanz fehlerhaft / Schnittstelle geschlossen“ nach v0.6.9.
+- P03-Hauptmodul ist jetzt vollständig parentlos. Die zwei internen Mastkamera-Observer besitzen jeweils ihren eigenen Client Socket; das Hauptmodul braucht keine übergeordnete Schnittstelle.
+- Beim Update trennt P03 eine noch vorhandene Legacy-Parent-Verbindung aus älteren Versionen automatisch mit `IPS_DisconnectInstance`.
+- Die frühere optionale Terrassen-Eventstream-Schnittstelle wurde aus dem P03-Formular entfernt. Terrasse/CrossLine bleibt für die aktuelle 2-Kamera-Logik ohne Bedeutung.
+- Behebt gleichzeitig einen durch die Klassenisolation aus v0.6.9 entstandenen P05-Fehler: das Schiebetor-Modul verwendete noch die alten globalen Klassennamen `DahuaDigest` / `DahuaEventParser`. P05 verwendet jetzt ebenfalls die isolierten Repository-Helfer `JVP03DahuaDigest` und `JVP03DahuaEventParser`.
+- Neue CI-Prüfungen verhindern künftig erneut eine Parent-Abhängigkeit des P03-Hauptmoduls und verifizieren, dass P05 keine alten Dahua-Helfer mehr aufruft.
+- Außenlichtautomatik bleibt unverändert.
+
 # v0.6.9
 
 - P03 vollständig gegen die Außenlichtautomatik isoliert: die P03-Hilfsklassen heißen jetzt `JVP03DahuaDigest` und `JVP03DahuaEventParser`. Dadurch können die gleichnamigen globalen Klassen des Außenlichtmoduls nicht mehr kollidieren oder dessen Eventverarbeitung abbrechen.

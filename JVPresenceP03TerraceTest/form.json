@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03 HOME ↔ Lagerplatz: Der Grenzübertritt wird ausschließlich aus der Reihenfolge der beiden Lagerplatzkameras bestimmt. JV Terrasse ist keine Voraussetzung."
+      "caption": "P03 HOME ↔ Lagerplatz: Der Grenzübertritt wird ausschließlich aus der Reihenfolge der beiden Lagerplatzkameras bestimmt. Das P03-Hauptmodul benötigt keine übergeordnete Schnittstelle."
     },
     {
       "type": "CheckBox",
@@ -44,27 +44,6 @@
         {
           "type": "Label",
           "caption": "Standard: JV_LEFT 192.168.107.96, WORK_LEFT 192.168.107.99. P03 besitzt dafür eigene interne Observer und eigene Human-IVS-Regeln. AussenlichtAutomatik2 wird nicht verwendet oder verändert."
-        }
-      ]
-    },
-    {
-      "type": "ExpansionPanel",
-      "caption": "Optionale Terrasse-Diagnose",
-      "expanded": false,
-      "items": [
-        {
-          "type": "CheckBox",
-          "name": "TerraceDiagnosticsEnabled",
-          "caption": "JV Terrasse Eventstream nur für Diagnose aktivieren"
-        },
-        {
-          "type": "ValidationTextBox",
-          "name": "TerraceHost",
-          "caption": "JV Terrasse – IP"
-        },
-        {
-          "type": "Label",
-          "caption": "Standard 192.168.107.110. Standardmäßig AUS. Terrasse/CrossLine beeinflusst weder Audit, Lauftest noch Produktivbetrieb."
         }
       ]
     },
@@ -138,11 +117,6 @@
       "type": "Button",
       "caption": "Testzustand zurücksetzen",
       "onClick": "JVP03MC_ResetTest($id);"
-    },
-    {
-      "type": "Button",
-      "caption": "Optionale Terrasse-Diagnose neu verbinden",
-      "onClick": "JVP03MC_Reconnect($id);"
     },
     {
       "type": "Button",

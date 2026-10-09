@@ -164,7 +164,6 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterTimer('Watchdog', 15000, 'JVP03MC_Watchdog($_IPS["TARGET"]);');
         $this->RegisterTimer('P03ProofTimer', 0, 'JVP03MC_P03ProofTimer($_IPS["TARGET"]);');
 
-        $this->RequireParent(self::CLIENT_SOCKET_GUID);
     }
 
     public function ApplyChanges(): void
@@ -190,8 +189,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->refreshProductionState();
 
         $this->WriteAttributeInteger('SourceInstanceID', 0);
-        $this->syncParentSocket();
-        $this->updateParentSubscription($this->getParentID());
+        $this->disconnectLegacyParentSocket();
         $this->discoverP03AuxSources(false);
         $this->subscribeP03AuxVariables();
         $this->refreshP03CameraStatus();
@@ -201,10 +199,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
-        $this->setResult('Installiert. P03 arbeitet vollständig unabhängig von der Außenlichtautomatik.');
-        if ($this->ReadPropertyBoolean('Enabled') && $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')) {
-            $this->scheduleSocketRestart(500);
-        }
+        $this->setResult('Installiert. P03 nutzt nur die zwei eigenen Mastkamera-Observer; keine übergeordnete Schnittstelle erforderlich.');
     }
 
     public function GetConfigurationForm(): string
@@ -240,14 +235,9 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     public function GetConfigurationForParent(): string
     {
-        $cfg = $this->cameraConfiguration();
-        return json_encode([
-            'Host' => $cfg['host'] ?? '',
-            'Port' => $cfg['port'] ?? 80,
-            'Open' => $this->ReadPropertyBoolean('Enabled')
-                && $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
-                && ($cfg['host'] ?? '') !== ''
-        ]);
+        // P03 main is intentionally parentless since v0.6.10.
+        // The two internal mast observers own their own Client Sockets.
+        return '{}';
     }
 
     public function ReceiveData($JSONString): string
@@ -555,11 +545,6 @@ class JVPresenceP03MultiCamera extends IPSModule
         } else {
             $this->ResetTest();
         }
-
-        // Terrace is diagnostics-only. Keep its socket closed unless the optional
-        // diagnostic switch is explicitly enabled.
-        $this->syncParentSocket();
-        $this->updateParentSubscription($this->getParentID());
 
         $username = trim($this->ReadPropertyString('Username'));
         $password = $this->ReadPropertyString('Password');
@@ -4054,6 +4039,28 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
         $this->WriteAttributeInteger('RegisteredParentID', $newParentID);
+    }
+
+    private function disconnectLegacyParentSocket(): void
+    {
+        $parentID = $this->getParentID();
+        if ($parentID <= 0) {
+            return;
+        }
+
+        // v0.6.9 and earlier required a Client Socket only for the optional
+        // terrace diagnostic. That closed parent made the P03 instance appear
+        // faulty in IP-Symcon. P03 now has no parent requirement at all.
+        try {
+            if (function_exists('IPS_DisconnectInstance')) {
+                IPS_DisconnectInstance($this->InstanceID);
+            }
+        } catch (Throwable $e) {
+            $this->SendDebug('LegacyParent', 'Disconnect fehlgeschlagen: ' . $e->getMessage(), 0);
+        }
+        $this->WriteAttributeInteger('RegisteredParentID', 0);
+        $this->WriteAttributeBoolean('Streaming', false);
+        $this->setStreamOK(false);
     }
 
     private function getParentID(): int
