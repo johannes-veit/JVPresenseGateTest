@@ -110,6 +110,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('AuxWorkInstanceID', 0);
         $this->RegisterAttributeInteger('AuxJVPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
+        $this->RegisterAttributeInteger('AuxJVEventCounterVarID', 0);
+        $this->RegisterAttributeInteger('AuxWorkEventCounterVarID', 0);
         $this->RegisterAttributeInteger('AuxJVStreamVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkStreamVarID', 0);
         $this->RegisterAttributeString('AuxJVModel', '');
@@ -334,6 +336,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             $sender = (int) $SenderID;
             $jvVar = $this->ReadAttributeInteger('AuxJVPersonVarID');
             $workVar = $this->ReadAttributeInteger('AuxWorkPersonVarID');
+            $jvCounter = $this->ReadAttributeInteger('AuxJVEventCounterVarID');
+            $workCounter = $this->ReadAttributeInteger('AuxWorkEventCounterVarID');
             $jvStreamVar = $this->ReadAttributeInteger('AuxJVStreamVarID');
             $workStreamVar = $this->ReadAttributeInteger('AuxWorkStreamVarID');
 
@@ -342,25 +346,30 @@ class JVPresenceP03MultiCamera extends IPSModule
                 return;
             }
 
-            if ($sender === $jvVar || $sender === $workVar) {
+            // Internal proof uses the monotonic counter, not the visible Boolean.
+            // Every IVS Human event increments it, even while PersonDetected is
+            // already TRUE from the previous 5-second pulse.
+            if ($sender === $jvCounter || $sender === $workCounter) {
                 $changed = true;
                 if (is_array($Data) && array_key_exists(1, $Data)) {
                     $changed = (bool) $Data[1];
                 }
-
-                $active = false;
-                try {
-                    $active = (bool) GetValue($sender);
-                } catch (Throwable $e) {
-                }
-
-                if ($changed && $active) {
-                    $source = ($sender === $jvVar) ? P03ProofEngine::SRC_JV_LEFT : P03ProofEngine::SRC_WORK_LEFT;
+                if ($changed) {
+                    $source = ($sender === $jvCounter)
+                        ? P03ProofEngine::SRC_JV_LEFT
+                        : P03ProofEngine::SRC_WORK_LEFT;
                     $this->recordP03HumanEvent($source, [
                         'sender' => $sender,
+                        'counter' => GetValue($sender),
                         'messageTimestamp' => (int) $TimeStamp
                     ]);
                 }
+                return;
+            }
+
+            // PersonDetected remains subscribed only as a visible health/status
+            // signal. It must never create a second proof beside the counter.
+            if ($sender === $jvVar || $sender === $workVar) {
                 return;
             }
         }
@@ -1700,15 +1709,21 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $jvVar = $jv > 0 ? $this->findPersonDetectedVariable($jv) : 0;
         $workVar = $work > 0 ? $this->findPersonDetectedVariable($work) : 0;
+        $jvCounter = $jv > 0 ? $this->findAuxVariable($jv, 'HumanEventCounter') : 0;
+        $workCounter = $work > 0 ? $this->findAuxVariable($work, 'HumanEventCounter') : 0;
         $jvStream = $jv > 0 ? $this->findAuxVariable($jv, 'StreamOK') : 0;
         $workStream = $work > 0 ? $this->findAuxVariable($work, 'StreamOK') : 0;
         $this->updateP03AuxSubscription('AuxJVPersonVarID', $jvVar);
         $this->updateP03AuxSubscription('AuxWorkPersonVarID', $workVar);
+        $this->updateP03AuxSubscription('AuxJVEventCounterVarID', $jvCounter);
+        $this->updateP03AuxSubscription('AuxWorkEventCounterVarID', $workCounter);
         $this->updateP03AuxSubscription('AuxJVStreamVarID', $jvStream);
         $this->updateP03AuxSubscription('AuxWorkStreamVarID', $workStream);
 
         return [
-            'ok' => $jvVar > 0 && $workVar > 0 && $jvStream > 0 && $workStream > 0,
+            'ok' => $jvVar > 0 && $workVar > 0
+                && $jvCounter > 0 && $workCounter > 0
+                && $jvStream > 0 && $workStream > 0,
             'jv' => $jv,
             'work' => $work
         ];
@@ -1805,7 +1820,11 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function subscribeP03AuxVariables(): void
     {
-        foreach (['AuxJVPersonVarID', 'AuxWorkPersonVarID', 'AuxJVStreamVarID', 'AuxWorkStreamVarID'] as $attr) {
+        foreach ([
+            'AuxJVPersonVarID', 'AuxWorkPersonVarID',
+            'AuxJVEventCounterVarID', 'AuxWorkEventCounterVarID',
+            'AuxJVStreamVarID', 'AuxWorkStreamVarID'
+        ] as $attr) {
             $id = $this->ReadAttributeInteger($attr);
             if ($id > 0 && IPS_VariableExists($id)) {
                 try {
