@@ -2234,7 +2234,11 @@ class JVPresenceP03MultiCamera extends IPSModule
     private function findNormalVideoAnalyseModule(array $node): ?array
     {
         if (strcasecmp((string) ($node['Type'] ?? ''), 'Normal') === 0
-            && (is_array($node['DetectRegion'] ?? null) || is_array($node['SizeFilter'] ?? null))) {
+            && (
+                array_key_exists('Sensitivity', $node)
+                || is_array($node['DetectRegion'] ?? null)
+                || is_array($node['SizeFilter'] ?? null)
+            )) {
             return $node;
         }
         foreach ($node as $child) {
@@ -2260,7 +2264,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         $cfg = $this->p03AuxCameraConfiguration($instanceID);
         if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
-            return ['ok' => false, 'error' => $role . ': Kamerakonfiguration fehlt', 'moduleSensitivity' => null, 'moduleRegionPoints' => 0, 'caps' => 'FEHLT'];
+            return ['ok' => false, 'error' => $role . ': Kamerakonfiguration fehlt', 'moduleSensitivity' => null, 'moduleRegionPoints' => 0, 'caps' => 'FEHLT', 'template' => 'FEHLT'];
         }
 
         $login = $this->rpc2Login(
@@ -2270,7 +2274,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             (string) $cfg['password']
         );
         if (!($login['ok'] ?? false)) {
-            return ['ok' => false, 'error' => $role . ': RPC2 Runtime-Login fehlgeschlagen', 'moduleSensitivity' => null, 'moduleRegionPoints' => 0, 'caps' => 'FEHLT'];
+            return ['ok' => false, 'error' => $role . ': RPC2 Runtime-Login fehlgeschlagen', 'moduleSensitivity' => null, 'moduleRegionPoints' => 0, 'caps' => 'FEHLT', 'template' => 'FEHLT'];
         }
 
         $host = (string) $cfg['host'];
@@ -2298,10 +2302,6 @@ class JVPresenceP03MultiCamera extends IPSModule
             ? $normalModule['DetectRegion']
             : [];
         $moduleRegionPoints = count($moduleRegion);
-        if ($normalModule !== null && $moduleRegionPoints < 3) {
-            $errors[] = 'VideoAnalyseModule Normal hat keine gültige DetectRegion';
-        }
-
         // Web5 capabilities are a second, independent read. Failure to expose
         // caps is logged as UNKNOWN, but an explicit contradiction is fatal.
         $capsState = 'UNKNOWN';
@@ -2324,8 +2324,8 @@ class JVPresenceP03MultiCamera extends IPSModule
                     $supportedActions = $crossCaps['SupportedActions'] ?? null;
                     if (is_array($supportedActions) && $supportedActions !== []) {
                         $lower = array_map(static fn($v) => strtolower((string) $v), $supportedActions);
-                        if (!in_array('appear', $lower, true) || !in_array('cross', $lower, true)) {
-                            $errors[] = 'Web5-Caps unterstützen nicht Cross+Appear';
+                        if (!in_array('appear', $lower, true)) {
+                            $errors[] = 'Web5-Caps unterstützen Intrusion-Aktion Appear nicht';
                             $capsState = 'CONTRADICTION';
                         }
                     }
@@ -2341,6 +2341,26 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
 
+        // Dahua HTTP API documents getTemplateRule as the firmware's own
+        // default IVS rule schema. It is a useful independent capability check.
+        $templateState = 'UNKNOWN';
+        $template = $this->genericCameraGet(
+            $host,
+            $port,
+            (string) $cfg['username'],
+            (string) $cfg['password'],
+            '/cgi-bin/VideoInAnalyse.cgi?action=getTemplateRule&Channel=1&Class=Normal'
+        );
+        if ($template['ok'] ?? false) {
+            $templateBody = (string) ($template['body'] ?? '');
+            if (stripos($templateBody, 'CrossRegionDetection') === false) {
+                $templateState = 'UNSUPPORTED';
+                $errors[] = 'Dahua getTemplateRule enthält keine CrossRegionDetection';
+            } else {
+                $templateState = 'OK';
+            }
+        }
+
         $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
 
         return [
@@ -2348,7 +2368,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             'error' => implode('; ', $errors),
             'moduleSensitivity' => $moduleSensitivity,
             'moduleRegionPoints' => $moduleRegionPoints,
-            'caps' => $capsState
+            'caps' => $capsState,
+            'template' => $templateState
         ];
     }
 
@@ -2406,7 +2427,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $ivs = $this->ensureP03AuxHumanRule($instanceID, $role);
         $runtime = ($ivs['ok'] ?? false)
             ? $this->inspectP03AuxIvsRuntime($instanceID, $role)
-            : ['ok' => false, 'error' => 'IVS-Regel nicht bereit', 'moduleSensitivity' => null, 'moduleRegionPoints' => 0, 'caps' => 'SKIPPED'];
+            : ['ok' => false, 'error' => 'IVS-Regel nicht bereit', 'moduleSensitivity' => null, 'moduleRegionPoints' => 0, 'caps' => 'SKIPPED', 'template' => 'SKIPPED'];
 
         // The audit is operational, not merely a config readback. The observer
         // must have its own correct socket and complete the authenticated event stream.
@@ -2465,11 +2486,12 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
                 . ', IVS-RuleName=' . $meta['name']
                 . ', IVS-Actions=' . json_encode($ivs['actions'] ?? [], JSON_UNESCAPED_SLASHES)
-                . ', IVS-Direction=' . (string) ($ivs['direction'] ?? '<fehlt>')
+                . ', IVS-Direction=' . (string) ($ivs['direction'] ?? '<nicht verwendet>')
                 . ', NormalModule=' . (($runtime['ok'] ?? false) ? 'OK' : 'FEHLER')
                 . ', ModuleSensitivity=' . var_export($runtime['moduleSensitivity'] ?? null, true)
                 . ', ModuleRegionPoints=' . (int) ($runtime['moduleRegionPoints'] ?? 0)
                 . ', Web5Caps=' . (string) ($runtime['caps'] ?? 'UNKNOWN')
+                . ', TemplateRule=' . (string) ($runtime['template'] ?? 'UNKNOWN')
                 . ', Socket=#' . (int) ($transport['parent'] ?? 0)
                 . ' ' . (string) ($transport['host'] ?? '') . ':' . (int) ($transport['port'] ?? 0)
                 . '/status=' . (int) ($transport['status'] ?? 0)
