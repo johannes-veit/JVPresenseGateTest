@@ -8,8 +8,7 @@ declare(strict_types=1);
  * The two IPC-HFW5442E-ZE cameras used for JV_LEFT / WORK_LEFT were observed
  * to publish only VideoMotion/VideoMotionInfo although SMD was configured for
  * Human. A dedicated CrossRegionDetection rule therefore provides a native
- * IVS Human event that the existing AussenlichtAutomatik2 event parser already
- * understands.
+ * IVS Human event that the independent P03 auxiliary observers consume.
  */
 final class P03AuxHumanRule
 {
@@ -27,7 +26,7 @@ final class P03AuxHumanRule
     /** @param array<string,mixed> $eventHandler */
     public static function build(string $name, int $id, array $eventHandler): array
     {
-        $eventHandler = self::disableSideEffects($eventHandler);
+        $eventHandler = self::prepareEventHandler($eventHandler);
 
         return [
             'Class' => 'Normal',
@@ -50,6 +49,12 @@ final class P03AuxHumanRule
                 'Sensitivity' => 10,
                 'TrackDuration' => 30,
                 'SizeFilter' => [
+                    'CalibrateBoxs' => [
+                        [
+                            'CenterPoint' => [4096, 4096],
+                            'Ratio' => 1,
+                        ],
+                    ],
                     'MaxSize' => [8191, 8191],
                     'MinSize' => [0, 0],
                     'Type' => 'ByLength',
@@ -73,8 +78,10 @@ final class P03AuxHumanRule
         $region = $rule['Config']['DetectRegion'] ?? null;
         $actions = $rule['Config']['Action'] ?? [];
         $direction = $rule['Config']['Direction'] ?? null;
+        $calibrate = $rule['Config']['SizeFilter']['CalibrateBoxs'][0] ?? null;
         $min = $rule['Config']['SizeFilter']['MinSize'] ?? null;
         $max = $rule['Config']['SizeFilter']['MaxSize'] ?? null;
+        $eventHandler = is_array($rule['EventHandler'] ?? null) ? $rule['EventHandler'] : [];
 
         return strcasecmp((string) ($rule['Name'] ?? ''), $name) === 0
             && strcasecmp((string) ($rule['Type'] ?? ''), 'CrossRegionDetection') === 0
@@ -88,8 +95,47 @@ final class P03AuxHumanRule
             && in_array('Appear', $actions, true)
             && in_array('Cross', $actions, true)
             && strcasecmp((string) $direction, 'Enter') === 0
+            && is_array($calibrate)
+            && ($calibrate['CenterPoint'] ?? null) === [4096, 4096]
+            && (int) ($calibrate['Ratio'] ?? 0) === 1
             && $min === [0, 0]
-            && $max === [8191, 8191];
+            && $max === [8191, 8191]
+            && self::has24x7Schedule($eventHandler);
+    }
+
+    /** @param array<string,mixed> $eventHandler */
+    public static function prepareEventHandler(array $eventHandler): array
+    {
+        $eventHandler = self::disableSideEffects($eventHandler);
+
+        // The P03-owned Human proof must be available at all times. Never inherit
+        // a possibly restricted arming schedule from an unrelated camera rule.
+        $disabled = '0 00:00:00-23:59:59';
+        $fullDay = ['1 00:00:00-23:59:59', $disabled, $disabled, $disabled, $disabled, $disabled];
+        $eventHandler['TimeSection'] = [];
+        for ($day = 0; $day < 7; $day++) {
+            $eventHandler['TimeSection'][$day] = $fullDay;
+        }
+
+        return $eventHandler;
+    }
+
+    /** @param array<string,mixed> $eventHandler */
+    public static function has24x7Schedule(array $eventHandler): bool
+    {
+        $timeSection = $eventHandler['TimeSection'] ?? null;
+        if (!is_array($timeSection) || count($timeSection) !== 7) {
+            return false;
+        }
+
+        for ($day = 0; $day < 7; $day++) {
+            $periods = $timeSection[$day] ?? null;
+            if (!is_array($periods)
+                || ($periods[0] ?? null) !== '1 00:00:00-23:59:59') {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** @param array<string,mixed> $eventHandler */
