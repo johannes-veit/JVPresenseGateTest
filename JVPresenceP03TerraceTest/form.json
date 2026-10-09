@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03 Mehrkamera-Portal HOME ↔ Lagerplatz. JV Terrasse sieht als einzige Kamera die reale rote Grenzlinie; Lagerplatz JV links und Lagerplatz Werkstatt links bestätigen die Person auf beiden Seiten. P05/JV Hof Garage bleibt vollständig getrennt."
+      "caption": "P03 Mehrkamera-Portal HOME ↔ Lagerplatz. Alle drei Kameraverbindungen gehören jetzt ausschließlich zum Presence-Modul; die Außenlichtautomatik wird weder aufgerufen noch verändert."
     },
     {
       "type": "CheckBox",
@@ -11,18 +11,30 @@
     },
     {
       "type": "ExpansionPanel",
-      "caption": "Kameras / automatische Zuordnung",
+      "caption": "P03 Kameras / direkte Dahua-Verbindung",
       "expanded": true,
       "items": [
         {
-          "type": "CheckBox",
-          "name": "AutoDiscover",
-          "caption": "JV Terrasse automatisch finden"
+          "type": "ValidationTextBox",
+          "name": "TerraceHost",
+          "caption": "JV Terrasse – IP"
         },
         {
-          "type": "SelectInstance",
-          "name": "SourceCameraInstanceID",
-          "caption": "JV Terrasse nur manuell wählen, falls Automatik fehlschlägt"
+          "type": "NumberSpinner",
+          "name": "CameraPort",
+          "caption": "Dahua HTTP-Port",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "Username",
+          "caption": "Dahua Benutzername"
+        },
+        {
+          "type": "PasswordTextBox",
+          "name": "Password",
+          "caption": "Dahua Passwort"
         },
         {
           "type": "ValidationTextBox",
@@ -35,17 +47,12 @@
           "caption": "Lagerplatz Werkstatt links – IP"
         },
         {
-          "type": "CheckBox",
-          "name": "AutoCreateWorkObserver",
-          "caption": "Falls Werkstatt-links noch keine Personenerkennungs-Instanz hat: automatisch reine Personenerkennung anlegen"
+          "type": "Label",
+          "caption": "Standard: Terrasse 192.168.107.110, JV links 192.168.107.96, Werkstatt links 192.168.107.99. Für die beiden Mastkameras legt P03 eigene interne Kamera-Observer und eigene Human-IVS-Regeln an."
         },
         {
           "type": "Label",
-          "caption": "Standard: JV Terrasse 192.168.107.110, Lagerplatz JV links 192.168.107.96, Lagerplatz Werkstatt links 192.168.107.99. Bei automatisch angelegter Werkstatt-links-Instanz bleibt die Lichtautomatik AUS."
-        },
-        {
-          "type": "Label",
-          "caption": "Beim Gesamtaudit werden die beiden Mast-IPC – sofern vom Modell/Firmware unterstützt – auf Smart Motion Detection: Human + Sensitivity High geprüft und bei Bedarf gesetzt; Motion Detection wird nur dann aktiviert, wenn die Kamera sie als SMD-Voraussetzung deaktiviert meldet. Danach erfolgt jeweils ein Readback."
+          "caption": "AussenlichtAutomatik2 bleibt vollständig unabhängig und wird von P03 nicht verwendet."
         }
       ]
     },
@@ -74,15 +81,15 @@
         },
         {
           "type": "Label",
-          "caption": "Fallback ohne CrossLine: alle 3 Kameras müssen in plausibler Reihenfolge feuern. OUT: JV Terrasse → Lagerplatz JV links → Lagerplatz Werkstatt links. IN: Werkstatt links → JV links → JV Terrasse."
+          "caption": "Fallback ohne CrossLine: OUT = Terrasse → JV links → Werkstatt links. IN = Werkstatt links → JV links → Terrasse."
         },
         {
           "type": "Label",
-          "caption": "Reine CrossLine, nur eine Personenerkennung oder falsche/gleichzeitige widersprüchliche Reihenfolgen buchen keinen Übergang. Ereignisse werden nach Benutzung nicht wiederverwendet."
+          "caption": "Nur vollständige, widerspruchsfreie Beweispfade buchen einen Übergang. Verwendete Ereignisse werden nicht wiederverwendet."
         },
         {
           "type": "Label",
-          "caption": "Produktfreigabe erst nach mindestens 2× HOME→LAGER und 2× LAGER→HOME. CrossLine-Richtung wird zusätzlich automatisch gelernt, ist wegen des 3-Kamera-Fallbacks aber nicht alleinige Voraussetzung."
+          "caption": "Produktfreigabe erst nach mindestens 2× HOME→LAGER und 2× LAGER→HOME."
         }
       ]
     }
@@ -100,7 +107,7 @@
     },
     {
       "type": "Button",
-      "caption": "Zusatzkameras neu suchen / prüfen",
+      "caption": "P03 Kamera-Observer neu suchen / prüfen",
       "onClick": "JVP03MC_P03AuxRescan($id);"
     },
     {
