@@ -22,8 +22,9 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterPropertyString('Username', '');
         $this->RegisterPropertyString('Password', '');
         $this->RegisterPropertyString('Role', '');
-        $this->RegisterPropertyInteger('RuleIndex', -1); // Diagnose/Legacy
-        $this->RegisterPropertyInteger('RuleID', -1);    // echte Dahua Event RuleID
+        $this->RegisterPropertyString('RuleName', '');
+        $this->RegisterPropertyInteger('RuleIndex', -1); // Diagnose/Fallback
+        $this->RegisterPropertyInteger('RuleID', -1);    // Diagnose/Fallback
 
         $this->RegisterAttributeBoolean('Streaming', false);
         $this->RegisterAttributeInteger('LastCameraRx', 0);
@@ -328,7 +329,7 @@ class JVPresenceP03AuxObserver extends IPSModule
     private function processEventData(string $chunk): void
     {
         $carry = $this->GetBuffer('EventCarry');
-        $events = DahuaEventParser::feed($chunk, $carry);
+        $events = JVP03DahuaEventParser::feed($chunk, $carry);
         $this->SetBuffer('EventCarry', $carry);
 
         $wantedRuleId = $this->ReadPropertyInteger('RuleID');
@@ -461,7 +462,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->WriteAttributeInteger('DigestNC', $nc);
             $cnonce = substr(hash('sha256', $this->InstanceID . ':' . microtime(true) . ':' . mt_rand()), 0, 16);
             try {
-                $headers[] = 'Authorization: ' . DahuaDigest::buildAuthorization(
+                $headers[] = 'Authorization: ' . JVP03DahuaDigest::buildAuthorization(
                     $this->ReadPropertyString('Username'),
                     $this->ReadPropertyString('Password'),
                     'GET',
@@ -493,7 +494,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         if (!preg_match('/^WWW-Authenticate:\s*(Digest\s+.+)$/im', $header, $m)) {
             return [];
         }
-        return DahuaDigest::parseChallenge(trim((string) $m[1]));
+        return JVP03DahuaDigest::parseChallenge(trim((string) $m[1]));
     }
 
     private function cameraConfigurationReady(): bool
