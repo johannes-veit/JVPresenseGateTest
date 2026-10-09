@@ -29,6 +29,15 @@ final class P03AuxHumanRule
         if (!P03DahuaTemplate::looksLikeCrossRegion($template)) {
             throw new InvalidArgumentException('Kein gültiges natives CrossRegionDetection-Template');
         }
+        $nativeConfig = $template['Config'] ?? null;
+        if (!is_array($nativeConfig)
+            || !array_key_exists('Action', $nativeConfig)
+            || !is_array($nativeConfig['DetectRegion'] ?? null)
+            || !is_array($template['ObjectTypes'] ?? null)) {
+            throw new InvalidArgumentException(
+                'Natives CrossRegion-Template ist unvollständig (Action/DetectRegion/ObjectTypes)'
+            );
+        }
 
         // Preserve all firmware-specific template fields and only override the
         // semantics owned by P03.
