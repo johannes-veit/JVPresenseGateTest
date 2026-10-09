@@ -118,6 +118,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeString('AuxWorkSensitivity', '');
         $this->RegisterAttributeInteger('AuxJVHumanRuleIndex', -1);
         $this->RegisterAttributeInteger('AuxWorkHumanRuleIndex', -1);
+        $this->RegisterAttributeInteger('AuxJVHumanRuleID', -1);
+        $this->RegisterAttributeInteger('AuxWorkHumanRuleID', -1);
         $this->RegisterAttributeBoolean('AuxJVHumanRuleCreatedByModule', false);
         $this->RegisterAttributeBoolean('AuxWorkHumanRuleCreatedByModule', false);
         $this->RegisterAttributeString('AuxJVOriginalVideoAnalyseRuleRpc2', '');
@@ -1827,6 +1829,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             return [
                 'name' => 'P03_JV_LEFT_HUMAN',
                 'ruleIndex' => 'AuxJVHumanRuleIndex',
+                'ruleId' => 'AuxJVHumanRuleID',
                 'ruleCreated' => 'AuxJVHumanRuleCreatedByModule',
                 'ruleBackup' => 'AuxJVOriginalVideoAnalyseRuleRpc2',
                 'globalChanged' => 'AuxJVGlobalChangedByModule',
@@ -1837,6 +1840,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         return [
             'name' => 'P03_WORK_LEFT_HUMAN',
             'ruleIndex' => 'AuxWorkHumanRuleIndex',
+            'ruleId' => 'AuxWorkHumanRuleID',
             'ruleCreated' => 'AuxWorkHumanRuleCreatedByModule',
             'ruleBackup' => 'AuxWorkOriginalVideoAnalyseRuleRpc2',
             'globalChanged' => 'AuxWorkGlobalChangedByModule',
@@ -1871,8 +1875,10 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $meta = $this->p03AuxHumanRuleMeta($role);
         $ruleIndex = $this->ReadAttributeInteger($meta['ruleIndex']);
+        $ruleId = $this->ReadAttributeInteger($meta['ruleId']);
         try {
-            IPS_SetProperty($instanceID, 'RuleIndex', $ruleIndex);
+            IPS_SetProperty($instanceID, 'RuleIndex', $ruleIndex); // Diagnose/Legacy
+            IPS_SetProperty($instanceID, 'RuleID', $ruleId);     // echte Dahua Event RuleID
             IPS_ApplyChanges($instanceID);
             $this->appendProtocol($role . ': eigener P03-Eventstream nach IVS-Änderung neu aufgebaut.');
         } catch (Throwable $e) {
@@ -1885,7 +1891,7 @@ class JVPresenceP03MultiCamera extends IPSModule
      * Existing foreign IVS rules are never modified. The complete original rule
      * table and, if necessary, the original smart-plan table are kept for cleanup.
      *
-     * @return array{ok:bool,error:string,index?:int,changed?:bool}
+     * @return array{ok:bool,error:string,index?:int,id?:int,changed?:bool}
      */
     private function ensureP03AuxHumanRule(int $instanceID, string $role): array
     {
@@ -1980,12 +1986,16 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
             $ownIndex = (int) $i;
             if (P03AuxHumanRule::matches($rule, $meta['name'])) {
-                $this->WriteAttributeInteger($meta['ruleIndex'], $ownIndex);
-                $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
-                if ($changed) {
-                    $this->reconnectP03AuxObserver($instanceID, $role);
+                $ownId = (isset($rule['Id']) && is_numeric($rule['Id'])) ? (int) $rule['Id'] : -1;
+                if ($ownId < 0) {
+                    $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+                    return ['ok' => false, 'error' => $role . ': P03 Human-IVS hat keine gültige Dahua Id'];
                 }
-                return ['ok' => true, 'error' => '', 'index' => $ownIndex, 'changed' => $changed];
+                $this->WriteAttributeInteger($meta['ruleIndex'], $ownIndex);
+                $this->WriteAttributeInteger($meta['ruleId'], $ownId);
+                $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+                $this->reconnectP03AuxObserver($instanceID, $role);
+                return ['ok' => true, 'error' => '', 'index' => $ownIndex, 'id' => $ownId, 'changed' => $changed];
             }
 
             if (!$this->ReadAttributeBoolean($meta['ruleCreated'])) {
@@ -2065,12 +2075,17 @@ class JVPresenceP03MultiCamera extends IPSModule
         $verify = $this->rpc2Call($host, $port, $session, 233, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
         $verifiedTable = $verify['json']['params']['table'] ?? null;
         $verifiedIndex = -1;
+        $verifiedId = -1;
         $verified = false;
         if (($write['ok'] ?? false) && ($verify['ok'] ?? false) && is_array($verifiedTable) && is_array($verifiedTable[0] ?? null)) {
             foreach ($verifiedTable[0] as $i => $rule) {
                 if (is_array($rule) && P03AuxHumanRule::matches($rule, $meta['name'])) {
-                    $verified = true;
-                    $verifiedIndex = (int) $i;
+                    $candidateId = $rule['Id'] ?? null;
+                    if ($candidateId !== null && is_numeric($candidateId)) {
+                        $verified = true;
+                        $verifiedIndex = (int) $i;
+                        $verifiedId = (int) $candidateId;
+                    }
                     break;
                 }
             }
@@ -2111,14 +2126,15 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $this->WriteAttributeBoolean($meta['ruleCreated'], true);
         $this->WriteAttributeInteger($meta['ruleIndex'], $verifiedIndex);
+        $this->WriteAttributeInteger($meta['ruleId'], $verifiedId);
         $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
         $this->appendProtocol(
             $role . ': P03 Human-IVS aktiv – ' . $meta['name']
-                . ', CrossRegionDetection, ObjectTypes=Human, Region='
+                . ', CrossRegionDetection, ObjectTypes=Human, Index=' . $verifiedIndex . ', Id=' . $verifiedId . ', Region='
                 . json_encode(P03AuxHumanRule::REGION, JSON_UNESCAPED_SLASHES)
         );
         $this->reconnectP03AuxObserver($instanceID, $role);
-        return ['ok' => true, 'error' => '', 'index' => $verifiedIndex, 'changed' => true];
+        return ['ok' => true, 'error' => '', 'index' => $verifiedIndex, 'id' => $verifiedId, 'changed' => true];
     }
 
     /** @return array{ok:bool,error:string} */
@@ -2167,6 +2183,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 } else {
                     $this->WriteAttributeBoolean($meta['ruleCreated'], false);
                     $this->WriteAttributeInteger($meta['ruleIndex'], -1);
+                    $this->WriteAttributeInteger($meta['ruleId'], -1);
                     $this->WriteAttributeString($meta['ruleBackup'], '');
                 }
             }
@@ -2267,6 +2284,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
                 . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'OK' : 'FEHLER')
                 . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
+                . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
                 . ', PersonVar=' . $personVar
                 . ' -> ' . ($ok ? 'OK' : 'FEHLER')
         );
