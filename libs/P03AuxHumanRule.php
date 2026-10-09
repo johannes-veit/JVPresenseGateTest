@@ -130,8 +130,11 @@ final class P03AuxHumanRule
 
         for ($day = 0; $day < 7; $day++) {
             $periods = $timeSection[$day] ?? null;
-            if (!is_array($periods)
-                || ($periods[0] ?? null) !== '1 00:00:00-23:59:59') {
+            $first = is_array($periods) ? (string) ($periods[0] ?? '') : '';
+            if (!in_array($first, [
+                '1 00:00:00-23:59:59',
+                '1 00:00:00-24:00:00',
+            ], true)) {
                 return false;
             }
         }
