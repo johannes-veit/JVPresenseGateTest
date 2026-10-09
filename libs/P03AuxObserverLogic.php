@@ -5,41 +5,63 @@ declare(strict_types=1);
 final class P03AuxObserverLogic
 {
     /**
-     * A matching event from the dedicated P03 CrossRegion rule is already
-     * Human-filtered by the camera rule itself (ObjectTypes=Human).
-     * The event payload does not have to repeat the classification.
+     * Match a Dahua CrossRegion event to the P03-owned rule.
+     *
+     * Rule name is authoritative because Dahua firmwares can expose three
+     * different numeric fields in the same event (CfgRuleId, RuleID, RuleId).
+     * Numeric ids are only a fallback for firmwares that omit Name.
      *
      * @param array<string,mixed> $event
      */
-    public static function isHumanProofStart(array $event, int $wantedRule): bool
-    {
-        if ($wantedRule < 0) {
+    public static function isMatchingRuleEvent(
+        array $event,
+        string $wantedName,
+        int $wantedIndex,
+        int $wantedId
+    ): bool {
+        if (strcasecmp(trim((string) ($event['code'] ?? '')), 'CrossRegionDetection') !== 0) {
             return false;
         }
 
-        $code = trim((string) ($event['code'] ?? ''));
-        $action = strtolower(trim((string) ($event['action'] ?? '')));
-        $ruleId = $event['ruleId'] ?? null;
+        $eventName = trim((string) ($event['ruleName'] ?? ''));
+        if ($eventName !== '') {
+            return strcasecmp($eventName, $wantedName) === 0;
+        }
 
-        return strcasecmp($code, 'CrossRegionDetection') === 0
-            && in_array($action, ['start', 'on', 'pulse'], true)
-            && $ruleId !== null
-            && is_numeric($ruleId)
-            && (int) $ruleId === $wantedRule;
+        $accepted = [];
+        foreach ([$wantedId, $wantedIndex] as $candidate) {
+            if ($candidate >= 0) {
+                $accepted[(string) $candidate] = true;
+            }
+        }
+        if ($accepted === []) {
+            return false;
+        }
+
+        foreach (['cfgRuleId', 'ruleIdUpper', 'ruleIdLower', 'ruleId'] as $field) {
+            $value = $event[$field] ?? null;
+            if ($value !== null && $value !== '' && isset($accepted[(string) $value])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
+     * A matching event from the dedicated P03 rule is already Human-filtered
+     * by ObjectTypes=Human. The payload does not have to repeat ObjectType.
+     *
      * @param array<string,mixed> $event
      */
-    public static function isMatchingRuleEvent(array $event, int $wantedRule): bool
-    {
-        $code = trim((string) ($event['code'] ?? ''));
-        $ruleId = $event['ruleId'] ?? null;
-
-        return $wantedRule >= 0
-            && strcasecmp($code, 'CrossRegionDetection') === 0
-            && $ruleId !== null
-            && is_numeric($ruleId)
-            && (int) $ruleId === $wantedRule;
+    public static function isHumanProofStart(
+        array $event,
+        string $wantedName,
+        int $wantedIndex,
+        int $wantedId
+    ): bool {
+        $action = strtolower(trim((string) ($event['action'] ?? '')));
+        return in_array($action, ['start', 'on', 'pulse'], true)
+            && self::isMatchingRuleEvent($event, $wantedName, $wantedIndex, $wantedId);
     }
 }
