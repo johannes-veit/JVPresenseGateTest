@@ -1,3 +1,10 @@
+# v0.6.3
+
+- Behebt den IP-Symcon-Ladefehler des neuen Moduls: Klassenname jetzt exakt `JVPresenceP03MultiCamera` passend zu `JV Presence P03 Multi Camera`.
+- Neuer eindeutiger Prefix `JVP03MC` für das Mehrkamera-Modul; der alte P03-Test behält `JVP03` und kollidiert nicht mehr.
+- Alle Timer- und Formular-Callbacks des Mehrkamera-Moduls auf `JVP03MC_*` umgestellt.
+- CI prüft künftig automatisch Klassenname ↔ module.json sowie doppelte Modul-Prefixe.
+
 # v0.6.2
 
 - P03-Grundtest und Simulation erweitert: zusätzliche Zeitfenster-Grenzfälle, fehlendes Dahua-Direction-Feld, Auswahl des grenznächsten Human-Ereignisses und 3-Kamera-Grenzwerte werden regressionsgeprüft.
