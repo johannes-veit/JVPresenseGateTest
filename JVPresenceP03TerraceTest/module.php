@@ -3764,7 +3764,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             'VideoAnalyseGlobal' => '/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseGlobal',
             'SceneList' => '/cgi-bin/devVideoAnalyse.cgi?action=getSceneList',
             'AnalyseCapsCh1' => '/cgi-bin/devVideoAnalyse.cgi?action=getCaps&channel=1',
-            'TemplateNormalCh1' => '/cgi-bin/devVideoAnalyse.cgi?action=getTemplateRule&Class=Normal&Channel=1',
+            'TemplateNormalCh1' => '/cgi-bin/VideoInAnalyse.cgi?action=getTemplateRule&Channel=1&Class=Normal',
             'SoftwareVersion' => '/cgi-bin/magicBox.cgi?action=getSoftwareVersion',
             'DeviceType' => '/cgi-bin/magicBox.cgi?action=getDeviceType'
         ];
