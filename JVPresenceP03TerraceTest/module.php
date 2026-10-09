@@ -2247,6 +2247,189 @@ class JVPresenceP03MultiCamera extends IPSModule
         return ['ok' => true, 'error' => ''];
     }
 
+    /** @return array{ok:bool,error:string,parent:int,host:string,port:int,open:bool,status:int} */
+    private function p03AuxTransportState(int $instanceID, string $expectedHost, int $expectedPort): array
+    {
+        if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
+            return ['ok' => false, 'error' => 'Observer fehlt', 'parent' => 0, 'host' => '', 'port' => 0, 'open' => false, 'status' => 0];
+        }
+
+        $instance = IPS_GetInstance($instanceID);
+        $parentID = (int) ($instance['ConnectionID'] ?? 0);
+        if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
+            return ['ok' => false, 'error' => 'ClientSocket fehlt', 'parent' => $parentID, 'host' => '', 'port' => 0, 'open' => false, 'status' => 0];
+        }
+
+        try {
+            $host = trim((string) IPS_GetProperty($parentID, 'Host'));
+            $port = (int) IPS_GetProperty($parentID, 'Port');
+            $open = (bool) IPS_GetProperty($parentID, 'Open');
+        } catch (Throwable $e) {
+            return ['ok' => false, 'error' => 'ClientSocket-Properties nicht lesbar', 'parent' => $parentID, 'host' => '', 'port' => 0, 'open' => false, 'status' => 0];
+        }
+
+        $status = (int) (IPS_GetInstance($parentID)['InstanceStatus'] ?? 0);
+        $ok = $host === trim($expectedHost)
+            && $port === $expectedPort
+            && $open
+            && $status === 102;
+
+        return [
+            'ok' => $ok,
+            'error' => $ok ? '' : 'ClientSocket stimmt nicht mit Kamera überein/ist nicht aktiv',
+            'parent' => $parentID,
+            'host' => $host,
+            'port' => $port,
+            'open' => $open,
+            'status' => $status
+        ];
+    }
+
+    private function waitForP03AuxStream(int $instanceID, int $timeoutMs = 5000): bool
+    {
+        $streamVar = $this->findAuxVariable($instanceID, 'StreamOK');
+        if ($streamVar <= 0) {
+            return false;
+        }
+
+        $elapsed = 0;
+        while ($elapsed <= $timeoutMs) {
+            try {
+                if ((bool) GetValue($streamVar)) {
+                    return true;
+                }
+            } catch (Throwable $e) {
+                return false;
+            }
+
+            if ($elapsed >= $timeoutMs) {
+                break;
+            }
+            IPS_Sleep(250);
+            $elapsed += 250;
+        }
+
+        return false;
+    }
+
+    /** @param array<string|int,mixed> $node @return array<string,mixed>|null */
+    private function findNormalVideoAnalyseModule(array $node): ?array
+    {
+        if (strcasecmp((string) ($node['Type'] ?? ''), 'Normal') === 0) {
+            return $node;
+        }
+        foreach ($node as $child) {
+            if (!is_array($child)) {
+                continue;
+            }
+            $found = $this->findNormalVideoAnalyseModule($child);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Read-only runtime validation for the auxiliary camera. A rule table that
+     * can be written/read back is not enough: the Normal IVS engine must also
+     * exist and Scene.Type must actually be Normal.
+     *
+     * @return array{ok:bool,error:string,moduleSensitivity:mixed,moduleRegionPoints:int,caps:string}
+     */
+    private function inspectP03AuxIvsRuntime(int $instanceID, string $role): array
+    {
+        $cfg = $this->p03AuxCameraConfiguration($instanceID);
+        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
+            return ['ok' => false, 'error' => $role . ': Kamerakonfiguration fehlt', 'moduleSensitivity' => null, 'moduleRegionPoints' => 0, 'caps' => 'FEHLT'];
+        }
+
+        $login = $this->rpc2Login(
+            (string) $cfg['host'],
+            (int) $cfg['port'],
+            (string) $cfg['username'],
+            (string) $cfg['password']
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'error' => $role . ': RPC2 Runtime-Login fehlgeschlagen', 'moduleSensitivity' => null, 'moduleRegionPoints' => 0, 'caps' => 'FEHLT'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+        $errors = [];
+
+        $global = $this->rpc2Call($host, $port, $session, 270, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+        $sceneType = $global['json']['params']['table'][0]['Scene']['Type'] ?? null;
+        if (!($global['ok'] ?? false) || strcasecmp((string) $sceneType, 'Normal') !== 0) {
+            $errors[] = 'Scene.Type ist nicht Normal';
+        }
+
+        $module = $this->rpc2Call($host, $port, $session, 271, 'configManager.getConfig', ['name' => 'VideoAnalyseModule']);
+        $moduleTable = $module['json']['params']['table'] ?? null;
+        $normalModule = (($module['ok'] ?? false) && is_array($moduleTable))
+            ? $this->findNormalVideoAnalyseModule($moduleTable)
+            : null;
+        if ($normalModule === null) {
+            $errors[] = 'VideoAnalyseModule enthält keinen Normal-IVS-Modus';
+        }
+
+        $moduleSensitivity = is_array($normalModule) ? ($normalModule['Sensitivity'] ?? null) : null;
+        $moduleRegion = is_array($normalModule) && is_array($normalModule['DetectRegion'] ?? null)
+            ? $normalModule['DetectRegion']
+            : [];
+        $moduleRegionPoints = count($moduleRegion);
+
+        // Web5 capabilities are a second, independent read. Failure to expose
+        // caps is logged as UNKNOWN, but an explicit contradiction is fatal.
+        $capsState = 'UNKNOWN';
+        $factory = $this->rpc2Call($host, $port, $session, 272, 'devVideoAnalyse.factory.instance', ['channel' => 0]);
+        $object = $factory['json']['result'] ?? null;
+        if (($factory['ok'] ?? false) && $object !== null && $object !== false && $object !== '') {
+            $caps = $this->rpc2CallWithObject($host, $port, $session, 273, 'devVideoAnalyse.getCaps', null, $object);
+            $cap = $caps['json']['params']['caps'] ?? null;
+            if (($caps['ok'] ?? false) && is_array($cap)) {
+                $normalCaps = $cap['SupportedScenes']['Normal'] ?? null;
+                $crossCaps = is_array($normalCaps)
+                    ? ($normalCaps['SupportedRules']['CrossRegionDetection'] ?? null)
+                    : null;
+
+                if (!is_array($normalCaps) || !is_array($crossCaps)) {
+                    $capsState = 'UNSUPPORTED';
+                    $errors[] = 'Web5-Caps melden keine Normal/CrossRegionDetection-Unterstützung';
+                } else {
+                    $capsState = 'OK';
+                    $supportedActions = $crossCaps['SupportedActions'] ?? null;
+                    if (is_array($supportedActions) && $supportedActions !== []) {
+                        $lower = array_map(static fn($v) => strtolower((string) $v), $supportedActions);
+                        if (!in_array('appear', $lower, true) || !in_array('cross', $lower, true)) {
+                            $errors[] = 'Web5-Caps unterstützen nicht Cross+Appear';
+                            $capsState = 'CONTRADICTION';
+                        }
+                    }
+                    $supportedObjects = $crossCaps['SupportedObjectTypes'] ?? null;
+                    if (is_array($supportedObjects) && $supportedObjects !== []) {
+                        $lowerObjects = array_map(static fn($v) => strtolower((string) $v), $supportedObjects);
+                        if (!in_array('human', $lowerObjects, true)) {
+                            $errors[] = 'Web5-Caps unterstützen Human für CrossRegion nicht';
+                            $capsState = 'CONTRADICTION';
+                        }
+                    }
+                }
+            }
+        }
+
+        $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
+
+        return [
+            'ok' => $errors === [],
+            'error' => implode('; ', $errors),
+            'moduleSensitivity' => $moduleSensitivity,
+            'moduleRegionPoints' => $moduleRegionPoints,
+            'caps' => $capsState
+        ];
+    }
+
     /** @return array{ok:bool,error:string,model:string,firmware:string,sensitivity:string} */
     private function auditP03AuxCamera(int $instanceID, string $role): array
     {
