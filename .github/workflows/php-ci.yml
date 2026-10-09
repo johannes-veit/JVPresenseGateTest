@@ -82,7 +82,6 @@ jobs:
           observer=Path('JVPresenceP03AuxObserver/module.php').read_text(encoding='utf-8')
           observer_required=[
               "class JVPresenceP03AuxObserver extends IPSModule",
-              "CrossRegionDetection",
               "RuleIndex",
               "PersonDetected",
               "DahuaDigest::buildAuthorization",
@@ -91,6 +90,10 @@ jobs:
           observer_missing=[x for x in observer_required if x not in observer]
           if observer_missing:
               raise SystemExit('Missing independent aux observer contracts: '+repr(observer_missing))
+          observer_logic=Path('libs/P03AuxObserverLogic.php').read_text(encoding='utf-8')
+          for token in ["CrossRegionDetection", "isHumanProofStart", "isMatchingRuleEvent"]:
+              if token not in observer_logic:
+                  raise SystemExit('Missing aux observer logic contract: '+token)
           audit=s[s.index("public function PrepareAndStartTest"):s.index("private function rollbackPreparedP03Config")]
           if audit.index("if ($auditOnly) {") > audit.index("$this->ResetTest();"):
               raise SystemExit('Audit-only guard does not protect field evidence')
