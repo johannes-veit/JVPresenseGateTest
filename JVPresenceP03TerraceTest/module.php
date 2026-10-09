@@ -1701,7 +1701,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             IPS_SetProperty($id, 'Username', $this->ReadPropertyString('Username'));
             IPS_SetProperty($id, 'Password', $this->ReadPropertyString('Password'));
             IPS_SetProperty($id, 'Role', $role);
+            IPS_SetProperty($id, 'RuleName', $role === self::AUX_JV_ROLE ? 'P03_JV_LEFT_HUMAN' : 'P03_WORK_LEFT_HUMAN');
             IPS_SetProperty($id, 'RuleIndex', -1);
+            IPS_SetProperty($id, 'RuleID', -1);
             IPS_ApplyChanges($id);
             $this->appendProtocol($role . ': eigener P03-Kameraobserver angelegt (#' . $id . ').');
             return $id;
@@ -1879,8 +1881,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         $ruleIndex = $this->ReadAttributeInteger($meta['ruleIndex']);
         $ruleId = $this->ReadAttributeInteger($meta['ruleId']);
         try {
-            IPS_SetProperty($instanceID, 'RuleIndex', $ruleIndex); // Diagnose/Legacy
-            IPS_SetProperty($instanceID, 'RuleID', $ruleId);     // echte Dahua Event RuleID
+            IPS_SetProperty($instanceID, 'RuleName', $meta['name']);
+            IPS_SetProperty($instanceID, 'RuleIndex', $ruleIndex);
+            IPS_SetProperty($instanceID, 'RuleID', $ruleId);
             IPS_ApplyChanges($instanceID);
             $this->appendProtocol($role . ': eigener P03-Eventstream nach IVS-Änderung neu aufgebaut.');
         } catch (Throwable $e) {
