@@ -538,8 +538,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         $auditOnly = $this->ReadAttributeBoolean('AuditOnlyNextRun');
         if ($auditOnly) {
-            // Read-only/commissioning audit must not erase already verified field evidence.
-            // Only transient stream/proof buffers are cleared.
+            // Audit must not erase already verified field evidence.
             $this->WriteAttributeString('SeenEventKeys', '{}');
             $this->WriteAttributeString('P03HumanEvents', '[]');
             $this->WriteAttributeString('P03PendingCrossings', '[]');
@@ -554,33 +553,53 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->ResetTest();
         }
 
+        // Terrace is diagnostics-only. Keep its socket closed unless the optional
+        // diagnostic switch is explicitly enabled.
         $this->syncParentSocket();
         $this->updateParentSubscription($this->getParentID());
 
-        $cfg = $this->cameraConfiguration();
-        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
-            $this->setResult('FEHLER – P03 Dahua-IP/Zugangsdaten fehlen. Keine Außenlicht-Instanz wird mehr als Quelle verwendet.');
+        $username = trim($this->ReadPropertyString('Username'));
+        $password = $this->ReadPropertyString('Password');
+        $jvHost = trim($this->ReadPropertyString('AuxJVHost'));
+        $workHost = trim($this->ReadPropertyString('AuxWorkHost'));
+        if ($username === '' || $password === '' || $jvHost === '' || $workHost === '') {
+            $this->setResult('FEHLER – P03 Dahua-Zugangsdaten oder eine der beiden Mastkamera-IP-Adressen fehlen.');
             return;
         }
 
-        $this->appendProtocol('=== P03 HOME-LAGER TEST ===');
-        $this->appendProtocol('Quelle: JV Terrasse / ' . $cfg['host'] . ':' . $cfg['port']);
+        $this->appendProtocol('=== P03 MASTKAMERA HOME-LAGER TEST ===');
+        $this->appendProtocol('Primärsensoren: JV_LEFT=' . $jvHost . ' | WORK_LEFT=' . $workHost . '.');
+        $this->appendProtocol('Richtung: JV_LEFT→WORK_LEFT = HOME→LAGER; WORK_LEFT→JV_LEFT = LAGER→HOME.');
+        $this->appendProtocol('JV Terrasse/CrossLine ist optional und wird für Audit/Test/Produktion nicht benötigt.');
         $this->appendProtocol('Keine Zugangsdaten werden im Protokoll ausgegeben.');
 
-        // Multi-camera preflight: JV Terrasse provides the physical boundary,
-        // the two mast cameras provide human confirmation on both sides.
+        // v0.6.8 and earlier could have created/changed terrace IVS test config.
+        // Restore only those changes that P03 itself recorded as owned. Never
+        // create or modify terrace IVS as part of the new mast-camera workflow.
+        $legacyCleanup = $this->restoreLegacyTerraceP03Config();
+        if (!($legacyCleanup['ok'] ?? false)) {
+            $this->setResult(
+                'FEHLER – alte P03-Terrassen-Testkonfiguration konnte nicht sicher zurückgesetzt werden: '
+                . (string) ($legacyCleanup['error'] ?? 'unbekannt')
+            );
+            return;
+        }
+
         $auxDiscovery = $this->discoverP03AuxSources(true);
         $this->subscribeP03AuxVariables();
         $this->refreshP03CameraStatus();
         if (!($auxDiscovery['ok'] ?? false)) {
-            $this->setResult('FEHLER – P03 Zusatzkameras nicht vollständig verfügbar. JV-links und Werkstatt-links müssen PersonDetected liefern.');
-            $this->appendProtocol('P03 PREFLIGHT FEHLER: Zusatzkameras/PersonDetected fehlen.');
+            $this->setResult(
+                'FEHLER – P03 Mastkamera-Observer nicht vollständig verfügbar. '
+                . 'Beide Observer benötigen PersonDetected, HumanEventCounter und StreamOK.'
+            );
+            $this->appendProtocol('P03 PREFLIGHT FEHLER: Mastkamera-Observer/Counter/Streamvariablen fehlen.');
             return;
         }
 
         $auxAudit = $this->auditP03AuxCameras();
         if (!($auxAudit['ok'] ?? false)) {
-            $this->setResult('FEHLER – P03 Zusatzkamera-Audit: ' . (string) ($auxAudit['error'] ?? 'unbekannt'));
+            $this->setResult('FEHLER – P03 Mastkamera-Audit: ' . (string) ($auxAudit['error'] ?? 'unbekannt'));
             return;
         }
 
@@ -588,220 +607,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         $simOK = (bool) ($simulation['ok'] ?? false);
         $this->WriteAttributeBoolean('P03SimulationPassed', $simOK);
         $this->appendProtocol(
-            'P03 SIMULATION VOR LAUFTEST: ' . ($simOK ? 'PASS' : 'FAIL')
+            'P03 2-KAMERA-SIMULATION: ' . ($simOK ? 'PASS' : 'FAIL')
                 . ' – ' . implode(' | ', $simulation['details'] ?? [])
         );
         if (!$simOK) {
-            $this->setResult('FEHLER – interne P03-Simulation fehlgeschlagen. Kein Lauftest.');
-            return;
-        }
-
-        if ($this->ReadAttributeBoolean('Rpc2ModuleChangedByModule')) {
-            $this->appendProtocol('Vorherige P03-Sensitivity-Teständerung wird zuerst auf den Ausgangswert zurückgesetzt.');
-            $restoreModule = $this->restoreOriginalVideoAnalyseModuleViaRpc2();
-            if (!($restoreModule['ok'] ?? false)) {
-                $this->setResult('FEHLER – vorherige P03-Sensitivity konnte nicht sicher zurückgesetzt werden: ' . (string) ($restoreModule['error'] ?? 'unbekannt'));
-                return;
-            }
-        }
-
-        // Altstände bis v0.2.4 können VideoAnalyseGlobal per RPC2 verändert haben.
-        // Diese Änderung zuerst exakt zurücksetzen.
-        if ($this->ReadAttributeBoolean('Rpc2GlobalChangedByModule')) {
-            $this->appendProtocol('Vorherige RPC2-IVS-Smart-Plan-Konfiguration wird zuerst vollständig zurückgesetzt.');
-            $restoreGlobal = $this->restoreOriginalVideoAnalyseGlobalViaRpc2();
-            if (!($restoreGlobal['ok'] ?? false)) {
-                $this->setResult('FEHLER – alter RPC2-IVS-Smart-Plan konnte nicht sicher zurückgesetzt werden: ' . (string) ($restoreGlobal['error'] ?? 'unbekannt') . '. Test abgebrochen.');
-                return;
-            }
-            $this->appendProtocol('Originale VideoAnalyseGlobal-Tabelle (RPC2-Altstand) wiederhergestellt.');
-        }
-
-        // Ab v0.2.6 wird die aktive Dahua-IVS-Szene ausschließlich über den
-        // dokumentierten HTTP-API-Pfad Scene.Type gesteuert.
-        if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
-            $this->appendProtocol('Vorherige Scene.Type-Teständerung wird zuerst auf den Ausgangswert zurückgesetzt.');
-            $this->restoreGlobalSceneType();
-            if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
-                $this->setResult('FEHLER – vorherige Scene.Type-Teständerung konnte nicht sicher zurückgesetzt werden.');
-                return;
-            }
-        }
-
-        if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
-            $this->appendProtocol('Vorhandene, vom Testmodul erzeugte P03-Regel wird vor dem neuen Lauf auf den gesicherten Originalzustand zurückgesetzt.');
-            $restore = $this->restoreOriginalVideoAnalyseRuleViaRpc2();
-            if (!($restore['ok'] ?? false)) {
-                $this->setResult('FEHLER – alte Testregel konnte nicht sicher zurückgesetzt werden: ' . (string) ($restore['error'] ?? 'unbekannt') . '. Test abgebrochen.');
-                return;
-            }
-            $this->appendProtocol('Originale VideoAnalyseRule-Tabelle wiederhergestellt.');
-        }
-
-        $rulesRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
-        if (!$rulesRaw['ok']) {
-            $this->setResult('FEHLER – IVS-Konfiguration konnte nicht gelesen werden: ' . $rulesRaw['error']);
-            return;
-        }
-
-        $smartRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
-        $smartBefore = $smartRaw['ok']
-            ? GateTestLogic::configValue($smartRaw['body'], 'SmartMotionDetect[0].Enable')
-            : null;
-        $this->WriteAttributeString('OriginalSmartMotionEnable', $smartBefore ?? '');
-        if ($smartBefore !== null) {
-            $this->appendProtocol('SmartMotionDetect vorher: ' . $smartBefore);
-        }
-
-        $sceneState = $this->readVideoAnalyseSceneState();
-        if (!($sceneState['ok'] ?? false)) {
-            $this->setResult('FEHLER – VideoAnalyseGlobal konnte nicht eindeutig gelesen werden: ' . (string) ($sceneState['error'] ?? ''));
-            $this->appendProtocol('SICHERHEITSABBRUCH: ' . (string) ($sceneState['error'] ?? 'Scene.Type unbekannt'));
-            return;
-        }
-
-        $globalType = $sceneState['type'] ?? null;
-        $cgiTypeBefore = $sceneState['cgiType'] ?? null;
-        $this->appendProtocol(
-            'VideoAnalyseGlobal Scene.Type vorher: RPC2=' . ($globalType === null ? '<null>' : (string) $globalType) .
-            ', CGI=' . ($cgiTypeBefore === null ? '<nicht ausgegeben>' : ((string) $cgiTypeBefore === '' ? '<leer>' : (string) $cgiTypeBefore))
-        );
-
-        $normalized = strtolower(trim((string) ($globalType ?? '')));
-        if ($normalized === '' || $normalized === '0') {
-            // Exakte Originaltabelle sichern. Auf dieser Taurus/Web5-Firmware
-            // repräsentiert RPC2 den inaktiven Smart-Plan als Scene.Type=null,
-            // während CGI die Zeile häufig komplett weglässt.
-            $originalGlobalTable = $sceneState['table'] ?? null;
-            if (!is_array($originalGlobalTable)) {
-                $this->setResult('FEHLER – vollständiges VideoAnalyseGlobal-Backup fehlt. Keine IVS-Änderung vorgenommen.');
-                return;
-            }
-            $backupJson = json_encode($originalGlobalTable, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            if (!is_string($backupJson) || $backupJson === '') {
-                $this->setResult('FEHLER – VideoAnalyseGlobal-Backup konnte nicht erzeugt werden.');
-                return;
-            }
-            $this->WriteAttributeString('OriginalVideoAnalyseGlobalRpc2', $backupJson);
-            $this->WriteAttributeString('OriginalGlobalSceneType', (string) ($globalType ?? ''));
-
-            // Diese Taurus/Web5-Firmware hängt beim CGI-setConfig-Aufruf für
-            // Scene.Type teilweise fest. Der bereits erfolgreich verifizierte
-            // RPC2-configManager.setConfig-Weg wird deshalb für den Write benutzt.
-            // CGI bleibt als unabhängiger Readback bestehen.
-            $candidateGlobalTable = $originalGlobalTable;
-            $candidateGlobalTable[0]['Scene']['Type'] = 'Normal';
-            $setGlobal = $this->setVideoAnalyseGlobalTableViaRpc2($candidateGlobalTable);
-            if (!($setGlobal['ok'] ?? false)) {
-                $this->setResult('FEHLER – RPC2 konnte Scene.Type=Normal nicht setzen: ' . (string) ($setGlobal['error'] ?? 'unbekannt'));
-                return;
-            }
-            $this->appendProtocol('RPC2 WRITE: VideoAnalyseGlobal Scene.Type=Normal -> akzeptiert.');
-
-            // Primär muss RPC2 den geschriebenen Wert exakt bestätigen.
-            // CGI dient zusätzlich als Gegenprüfung, darf bei dieser Firmware
-            // aber nicht mehr den Ablauf blockieren.
-            $verifyState = $this->readVideoAnalyseSceneState();
-            $verifyRpcType = $verifyState['type'] ?? null;
-            $verifyCgiType = $verifyState['cgiType'] ?? null;
-            if (!($verifyState['ok'] ?? false) || $verifyRpcType !== 'Normal') {
-                $restore = $this->restoreVideoAnalyseGlobalTable($originalGlobalTable);
-                $this->setResult('FEHLER – Scene.Type=Normal wurde per RPC2 nicht bestätigt.');
-                $this->appendProtocol(
-                    'SICHERHEITSABBRUCH: Readback RPC2=' . json_encode($verifyRpcType) .
-                    ', CGI=' . json_encode($verifyCgiType) .
-                    ', Rollback=' . (($restore['ok'] ?? false) ? 'OK' : 'FEHLER')
-                );
-                return;
-            }
-
-            $this->WriteAttributeBoolean('GlobalChangedByModule', true);
-            $this->appendProtocol(
-                'DAHUA VERIFY: Scene.Type=Normal per RPC2 bestätigt; CGI=' .
-                ($verifyCgiType === null ? '<nicht ausgegeben>' : (string) $verifyCgiType) . '.'
-            );
-        } elseif ($normalized === 'normal') {
-            $this->appendProtocol('DAHUA VERIFY: Scene.Type=Normal war bereits aktiv.');
-        } else {
-            $this->setResult('STOP – Kamera nutzt bereits einen anderen AI-Smart-Plan (' . (string) $globalType . '). Es wurde nichts umgestellt.');
-            $this->appendProtocol('Abbruch zum Schutz vorhandener AI-Konfiguration.');
-            return;
-        }
-
-        $sens = $this->setNormalVideoAnalyseSensitivityViaRpc2(10);
-        if (!($sens['ok'] ?? false)) {
-            $error = 'FEHLER – P03 Sensitivity=10 konnte nicht sicher gesetzt/verifiziert werden: ' . (string) ($sens['error'] ?? 'unbekannt');
-            $this->rollbackPreparedP03Config($error);
-            $this->setResult($error);
-            return;
-        }
-        $this->appendProtocol('P03 Sensitivity=10 gesetzt und per RPC2 rückgelesen.');
-
-        $rules = GateTestLogic::parseRules($rulesRaw['body']);
-        $this->appendProtocol('IVS-Regeln vor Test: ' . $this->summarizeRules($rules));
-
-        // Diese Taurus/Web5-Firmware (u.a. 3.140.0000000.21.R auf
-        // IPC-PDW3849-A180-AS-PV) lässt neue IVS-Regeln über den alten
-        // configManager-Schreibweg nicht zuverlässig anlegen. Vorhandene
-        // CrossLineDetection-Regeln können jedoch sauber gelesen und ihre
-        // Events über eventManager.cgi empfangen werden.
-        //
-        // Deshalb: vorhandene Tripwire automatisch wiederverwenden. Ist noch
-        // keine vorhanden, keinerlei weitere Schreibversuche an der Kamera.
-        $createdNow = false;
-        $createdRpc = [];
-        // Ausschließlich die eigene P03-Regel wiederverwenden.
-        // Fremde CrossLine-Regeln dürfen weder übernommen noch verändert werden.
-        $idx = GateTestLogic::findRuleIndex($rules, self::RULE_NAME);
-
-        if ($idx === null) {
-            $this->appendProtocol('Keine CrossLineDetection vorhanden. Lege P03 über den bestätigten Web5/RPC2-Konfigurationsweg an.');
-            $createdRpc = $this->createP03TripwireViaRpc2();
-            if (!($createdRpc['ok'] ?? false)) {
-                $error = 'FEHLER – automatische RPC2-Tripwire konnte nicht sicher angelegt werden: ' . (string) ($createdRpc['error'] ?? 'unbekannt');
-                $this->rollbackPreparedP03Config($error);
-                $this->setResult($error . '. Kamera wurde auf den Ausgangszustand zurückgesetzt.');
-                return;
-            }
-            $createdNow = true;
-            $idx = (int) ($createdRpc['index'] ?? -1);
-            if ($idx < 0) {
-                $error = 'FEHLER – RPC2-Tripwire wurde bestätigt, aber der Regelindex konnte nicht bestimmt werden.';
-                $this->rollbackPreparedP03Config($error);
-                $this->setResult($error);
-                return;
-            }
-            $rulesRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
-            $rules = $rulesRaw['ok'] ? GateTestLogic::parseRules($rulesRaw['body']) : [];
-            $this->appendProtocol('P03 wurde automatisch über RPC2 angelegt und per CGI rückgelesen.');
-        }
-
-        $rule = $rules[$idx] ?? [];
-        if (strtolower((string) ($rule['Enable'] ?? 'false')) !== 'true') {
-            $error = 'IVS-TRIPWIRE GEFUNDEN, ABER DEAKTIVIERT – P03 wird nicht getestet.';
-            $this->appendProtocol('CrossLineDetection gefunden auf Index ' . $idx . ', aber Enable=' . (string) ($rule['Enable'] ?? '<fehlt>'));
-            $this->rollbackPreparedP03Config($error);
-            $this->setResult($error);
-            return;
-        }
-
-        $ruleId = (isset($rule['Id']) && is_numeric($rule['Id']))
-            ? (int) $rule['Id']
-            : (int) (($createdRpc['id'] ?? -1));
-        $this->WriteAttributeInteger('RuleIndex', $idx);
-        $this->WriteAttributeInteger('RuleID', $ruleId);
-        $this->WriteAttributeBoolean('RuleCreatedByModule', $createdNow || $this->ReadAttributeBoolean('Rpc2RuleCreatedByModule'));
-        $this->appendProtocol(($createdNow ? 'Neu erzeugte' : 'Vorhandene') . ' Tripwire wird verwendet: Index ' . $idx . ', Id=' . $ruleId . ', Name=' . (string) ($rule['Name'] ?? '<ohne Name>'));
-
-        // Scene.Type wurde oben bereits über den von Dahua dokumentierten
-        // HTTP-API-Pfad gesetzt und rückgelesen. Jetzt erfolgt eine unabhängige
-        // Vollprüfung über CGI + RPC2 + Web5-Capabilities.
-        $smartPlanChangedNow = $this->ReadAttributeBoolean('GlobalChangedByModule');
-        $audit = $this->auditP03CameraConfiguration($idx);
-        if (!($audit['ok'] ?? false)) {
-            $error = 'KAMERA-KONFIGURATION NICHT FREIGEGEBEN – ' . (string) ($audit['error'] ?? 'Audit fehlgeschlagen') . '. Nicht laufen.';
-            $this->rollbackPreparedP03Config($error);
-            $this->setResult($error);
+            $this->setResult('FEHLER – interne P03-2-Kamera-Simulation fehlgeschlagen. Kein Lauftest.');
             return;
         }
 
@@ -809,49 +619,83 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->WriteAttributeBoolean('TestActive', false);
             $this->SetValue('TestActive', false);
             $this->setReady(false);
-            $this->setResult('KAMERA-KONFIGURATION OK – P03, Scene.Type=Normal, ObjectTypes=Unknown, Sensitivity=10 und Geometrie wurden mehrfach rückgelesen. Noch nicht laufen; erst Test starten.');
-            $this->appendProtocol('AUDIT-ONLY: Konfiguration ist vorbereitet und geprüft; Zähler bleibt absichtlich 0.');
+            $this->setResult(
+                'P03 MASTKAMERA-AUDIT OK – beide Human-IVS-Regeln + Observer + 2-Kamera-Simulation geprüft. '
+                . 'Terrasse wurde nicht als Voraussetzung verwendet.'
+            );
+            $this->appendProtocol(
+                'AUDIT-ONLY: Mastkameras strukturell OK. HumanEventCounter muss im kurzen Einzeltest real hochzählen; '
+                . 'Terrasse/CrossLine bleibt Diagnose.'
+            );
             return;
         }
-        // Prüfen, ob das Aktivieren von IVS die bestehende SmartMotion-Personenerkennung ausgeschaltet hat.
-        if ($smartBefore !== null && strtolower($smartBefore) === 'true') {
-            $smartAfterRaw = $this->cameraGet('/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect');
-            $smartAfter = $smartAfterRaw['ok']
-                ? GateTestLogic::configValue($smartAfterRaw['body'], 'SmartMotionDetect[0].Enable')
-                : null;
-            if ($smartAfter !== null && strtolower($smartAfter) !== 'true') {
-                $error = 'STOP – IVS und bestehende SMD-Personenerkennung kollidieren auf dieser Firmware.';
-                $this->appendProtocol('SICHERHEITSABBRUCH: SmartMotionDetect wurde durch IVS deaktiviert.');
-                $this->rollbackPreparedP03Config($error);
-                $this->setResult($error . ' Ausgangszustand wiederhergestellt.');
-                return;
-            }
-        }
 
+        $this->WriteAttributeString('P03HumanEvents', '[]');
+        $this->WriteAttributeString('P03PendingCrossings', '[]');
+        $this->SetTimerInterval('P03ProofTimer', 0);
         $this->WriteAttributeBoolean('TestActive', true);
         $this->SetValue('TestActive', true);
-        $this->setResult('REGEL BEREIT – Eventstream verbindet noch …');
-        $this->appendProtocol('P03-Test nutzt CrossLineDetection auf Index ' . $idx . '.');
-        $this->appendProtocol($createdNow
-            ? 'Die P03-Linie wurde durch das Testmodul über RPC2 angelegt und vollständig rückgelesen.'
-            : 'Die vorhandene Liniengeometrie der Kamera wird unverändert verwendet.');
-        $this->appendProtocol('TESTVARIANTE P03: generische CrossLine mit ObjectTypes=Unknown, MinSize=0, Type=ByLength, Sensitivity=10. Die Linie liegt exakt auf der markierten HOME↔Lagerplatz-Grenze. SmartMotionHuman dient nur als zeitlich versetzte Personenbestätigung.');
-        $this->appendProtocol('TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. Entscheidend ist ausschließlich die Reihenfolge der beiden Mastkameras: JV_LEFT→WORK_LEFT=OUT, WORK_LEFT→JV_LEFT=IN.');
-        $this->appendProtocol('Eventzuordnung: Dahua event.index ist Kanalindex 0 und wird nicht mit dem IVS-Regelindex verwechselt.');
 
-        // Wenn die Tripwire gerade neu angelegt wurde, MUSS der Dahua-
-        // Eventstream neu verbunden werden. Bei dieser Firmware wurde der Stream
-        // bisher bereits vor dem RPC2-ADD aufgebaut; ein laufendes codes=[All]
-        // Abonnement übernimmt neu hinzugekommene IVS-Regeln nicht zuverlässig.
-        if ($createdNow || $smartPlanChangedNow || !$this->ReadAttributeBoolean('Streaming')) {
-            if ($createdNow || $smartPlanChangedNow) {
-                $this->appendProtocol('Eventstream wird nach P03-/Smart-Plan-Änderung zwingend neu aufgebaut.');
-            }
-            $this->Reconnect();
-            $this->WriteAttributeBoolean('TestActive', true);
-            $this->SetValue('TestActive', true);
-        }
+        $this->appendProtocol(
+            'TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. '
+            . 'Nur die Reihenfolge der zwei Mastkamera-Human-Ereignisse zählt.'
+        );
+        $this->setResult('P03 MASTTEST vorbereitet – warte auf beide P03-Mastkamera-Eventstreams …');
         $this->refreshReadyState();
+    }
+
+    /** @return array{ok:bool,error:string} */
+    private function restoreLegacyTerraceP03Config(): array
+    {
+        $errors = [];
+        $changed = false;
+
+        if ($this->ReadAttributeBoolean('Rpc2ModuleChangedByModule')) {
+            $changed = true;
+            $r = $this->restoreOriginalVideoAnalyseModuleViaRpc2();
+            if (!($r['ok'] ?? false)) {
+                $errors[] = 'VideoAnalyseModule: ' . (string) ($r['error'] ?? 'Restore fehlgeschlagen');
+            }
+        }
+
+        if ($this->ReadAttributeBoolean('Rpc2GlobalChangedByModule')) {
+            $changed = true;
+            $r = $this->restoreOriginalVideoAnalyseGlobalViaRpc2();
+            if (!($r['ok'] ?? false)) {
+                $errors[] = 'VideoAnalyseGlobal RPC2: ' . (string) ($r['error'] ?? 'Restore fehlgeschlagen');
+            }
+        }
+
+        if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
+            $changed = true;
+            $this->restoreGlobalSceneType();
+            if ($this->ReadAttributeBoolean('GlobalChangedByModule')) {
+                $errors[] = 'Scene.Type: Restore nicht bestätigt';
+            }
+        }
+
+        if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
+            $changed = true;
+            $r = $this->restoreOriginalVideoAnalyseRuleViaRpc2();
+            if (!($r['ok'] ?? false)) {
+                $errors[] = 'VideoAnalyseRule: ' . (string) ($r['error'] ?? 'Restore fehlgeschlagen');
+            }
+        }
+
+        if ($errors !== []) {
+            $this->appendProtocol('LEGACY TERRASSE RESTORE FEHLER: ' . implode(' | ', $errors));
+            return ['ok' => false, 'error' => implode(' | ', $errors)];
+        }
+
+        if ($changed) {
+            $this->appendProtocol(
+                'LEGACY TERRASSE: frühere P03-Teständerungen vollständig auf gesicherten Ausgangszustand zurückgesetzt.'
+            );
+        } else {
+            $this->appendProtocol('LEGACY TERRASSE: keine von P03 zu restaurierenden Altänderungen vorhanden.');
+        }
+
+        return ['ok' => true, 'error' => ''];
     }
 
     private function rollbackPreparedP03Config(string $reason): void
