@@ -1748,7 +1748,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $port,
             $username,
             $password,
-            '/cgi-bin/devVideoAnalyse.cgi?action=getTemplateRule&Class=Normal&Channel=1'
+            '/cgi-bin/VideoInAnalyse.cgi?action=getTemplateRule&Channel=1&Class=Normal'
         );
         if ($cgi['ok'] ?? false) {
             $template = P03DahuaTemplate::crossRegionFromFlat((string) ($cgi['body'] ?? ''));
@@ -1810,6 +1810,20 @@ class JVPresenceP03MultiCamera extends IPSModule
                 }
             }
         }
+
+        $cgiStatus = 'HTTP=' . (int) ($cgi['http'] ?? 0)
+            . ', ok=' . (($cgi['ok'] ?? false) ? 'true' : 'false')
+            . ', body=' . $this->singleLine(substr((string) ($cgi['body'] ?? ''), 0, 1200));
+        $defaultStatus = 'ok=' . (($default['ok'] ?? false) ? 'true' : 'false')
+            . ', error=' . $this->singleLine((string) ($default['error'] ?? ''));
+        $factoryStatus = 'ok=' . (($factory['ok'] ?? false) ? 'true' : 'false')
+            . ', object=' . (($object !== null && $object !== false && $object !== '') ? 'vorhanden' : 'fehlt');
+
+        $this->appendProtocol(
+            $role . ': Template-Probe FEHLER – HTTP VideoInAnalyse [' . $cgiStatus
+                . '] | RPC2 getDefault [' . $defaultStatus
+                . '] | Web5 factory [' . $factoryStatus . ']'
+        );
 
         return [
             'ok' => false,
