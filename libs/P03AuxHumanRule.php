@@ -31,30 +31,14 @@ final class P03AuxHumanRule
         return [
             'Class' => 'Normal',
             'Config' => [
-                // Dahua CrossRegionDetection is not functional without an
-                // explicit Action. "Cross"+"Appear" with Enter mirrors real
-                // Dahua IVS rules and detects a person whether tracking starts
-                // inside the region or the target crosses into it.
-                'Action' => ['Cross', 'Appear'],
-                'Direction' => 'Enter',
+                // P03 only needs "person appears in this camera view".
+                // Dahua documents Direction as valid only for Action=Cross.
+                // Therefore use Appear alone for a nearly full-frame intrusion
+                // region; camera order, not region-cross direction, determines
+                // HOME<->LAGER direction.
+                'Action' => ['Appear'],
                 'DetectRegion' => self::REGION,
-                'AccuracySnap' => [
-                    'HumanBody' => true,
-                    'Normal' => true,
-                ],
-                'MaxTargets' => 100,
-                'MinDuration' => 1,
-                'MinTargets' => 1,
-                'ReportInterval' => 1,
-                'Sensitivity' => 10,
-                'TrackDuration' => 30,
                 'SizeFilter' => [
-                    'CalibrateBoxs' => [
-                        [
-                            'CenterPoint' => [4096, 4096],
-                            'Ratio' => 1,
-                        ],
-                    ],
                     'MaxSize' => [8191, 8191],
                     'MinSize' => [0, 0],
                     'Type' => 'ByLength',
@@ -74,45 +58,77 @@ final class P03AuxHumanRule
     /** @param array<string,mixed> $rule */
     public static function matches(array $rule, string $name): bool
     {
-        $objects = $rule['ObjectTypes'] ?? [];
-        $region = $rule['Config']['DetectRegion'] ?? null;
-        $actions = $rule['Config']['Action'] ?? [];
-        $direction = $rule['Config']['Direction'] ?? null;
         $config = is_array($rule['Config'] ?? null) ? $rule['Config'] : [];
-        $calibrate = $config['SizeFilter']['CalibrateBoxs'][0] ?? null;
+        $objects = self::normalizedObjectTypes($rule['ObjectTypes'] ?? []);
+        $actions = self::normalizedActions($config['Action'] ?? []);
+        $region = $config['DetectRegion'] ?? null;
         $min = $config['SizeFilter']['MinSize'] ?? null;
         $max = $config['SizeFilter']['MaxSize'] ?? null;
-        $accuracySnap = is_array($config['AccuracySnap'] ?? null) ? $config['AccuracySnap'] : [];
         $eventHandler = is_array($rule['EventHandler'] ?? null) ? $rule['EventHandler'] : [];
 
         return strcasecmp((string) ($rule['Name'] ?? ''), $name) === 0
             && strcasecmp((string) ($rule['Type'] ?? ''), 'CrossRegionDetection') === 0
             && (($rule['Enable'] ?? false) === true)
             && strcasecmp((string) ($rule['Class'] ?? ''), 'Normal') === 0
-            && is_array($objects)
-            && in_array('Human', $objects, true)
+            && in_array('human', $objects, true)
             && is_array($region)
             && $region === self::REGION
-            && is_array($actions)
-            && in_array('Appear', $actions, true)
-            && in_array('Cross', $actions, true)
-            && strcasecmp((string) $direction, 'Enter') === 0
-            && (($accuracySnap['HumanBody'] ?? false) === true)
-            && (($accuracySnap['Normal'] ?? false) === true)
-            && (int) ($config['MinDuration'] ?? -1) === 1
-            && (int) ($config['MinTargets'] ?? -1) === 1
-            && (int) ($config['MaxTargets'] ?? -1) === 100
-            && (int) ($config['ReportInterval'] ?? -1) === 1
-            && (int) ($config['Sensitivity'] ?? -1) === 10
-            && (int) ($config['TrackDuration'] ?? -1) === 30
-            && is_array($calibrate)
-            && ($calibrate['CenterPoint'] ?? null) === [4096, 4096]
-            && (int) ($calibrate['Ratio'] ?? 0) === 1
+            && $actions === ['appear']
             && $min === [0, 0]
             && $max === [8191, 8191]
-            && (($rule['TrackEnable'] ?? true) === false)
-            && (int) ($rule['PtzPresetId'] ?? -1) === 0
+            && strcasecmp((string) ($config['SizeFilter']['Type'] ?? ''), 'ByLength') === 0
+            && (($rule['TrackEnable'] ?? false) === false)
+            && (int) ($rule['PtzPresetId'] ?? 0) === 0
             && self::has24x7Schedule($eventHandler);
+    }
+
+    /** @return string[] */
+    private static function normalizedActions(mixed $value): array
+    {
+        if (is_string($value)) {
+            $value = [$value];
+        }
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            if (!is_string($item)) {
+                continue;
+            }
+            $item = strtolower(trim($item));
+            if ($item !== '') {
+                $out[] = $item;
+            }
+        }
+        sort($out);
+        return array_values(array_unique($out));
+    }
+
+    /** @return string[] */
+    private static function normalizedObjectTypes(mixed $value): array
+    {
+        $out = [];
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                if (is_string($item)) {
+                    $normalized = strtolower(trim($item));
+                    if ($normalized !== '') {
+                        $out[] = $normalized;
+                    }
+                    continue;
+                }
+                if (is_string($key) && (bool) $item) {
+                    $normalized = strtolower(trim($key));
+                    if ($normalized !== '') {
+                        $out[] = $normalized;
+                    }
+                }
+            }
+        }
+        sort($out);
+        return array_values(array_unique($out));
     }
 
     /** @param array<string,mixed> $eventHandler */
