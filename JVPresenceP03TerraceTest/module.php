@@ -855,6 +855,11 @@ class JVPresenceP03MultiCamera extends IPSModule
             'auxWorkInstanceID' => $this->ReadAttributeInteger('AuxWorkInstanceID'),
             'auxJVPersonVarID' => $this->ReadAttributeInteger('AuxJVPersonVarID'),
             'auxWorkPersonVarID' => $this->ReadAttributeInteger('AuxWorkPersonVarID'),
+            'auxJVEventCounterVarID' => $this->ReadAttributeInteger('AuxJVEventCounterVarID'),
+            'auxWorkEventCounterVarID' => $this->ReadAttributeInteger('AuxWorkEventCounterVarID'),
+            'auxJVStreamVarID' => $this->ReadAttributeInteger('AuxJVStreamVarID'),
+            'auxWorkStreamVarID' => $this->ReadAttributeInteger('AuxWorkStreamVarID'),
+            'terraceDiagnosticsEnabled' => $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled'),
             'p03HumanEvents' => $this->getP03HumanEvents(),
             'p03PendingCrossings' => $this->getP03PendingCrossings(),
             'p03DirectionMap' => json_decode($this->ReadAttributeString('P03DirectionMap'), true),
@@ -2382,17 +2387,35 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         $jv = $this->ReadAttributeInteger('AuxJVInstanceID');
         $work = $this->ReadAttributeInteger('AuxWorkInstanceID');
-        $jvVar = $this->ReadAttributeInteger('AuxJVPersonVarID');
-        $workVar = $this->ReadAttributeInteger('AuxWorkPersonVarID');
-        $terraceHost = trim($this->ReadPropertyString('TerraceHost'));
+        $jvCounter = $this->ReadAttributeInteger('AuxJVEventCounterVarID');
+        $workCounter = $this->ReadAttributeInteger('AuxWorkEventCounterVarID');
+        $jvStream = $this->ReadAttributeInteger('AuxJVStreamVarID');
+        $workStream = $this->ReadAttributeInteger('AuxWorkStreamVarID');
+
+        $streamState = static function (int $id): string {
+            if ($id <= 0 || !IPS_VariableExists($id)) {
+                return 'STREAM FEHLT';
+            }
+            try {
+                return (bool) GetValue($id) ? 'STREAM OK' : 'STREAM AUS';
+            } catch (Throwable $e) {
+                return 'STREAM ?';
+            }
+        };
+
+        $terrace = $this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            ? 'Diagnose EIN'
+            : 'Diagnose AUS';
 
         $this->SetValue(
             'P03CameraStatus',
-            'Terrasse=' . ($terraceHost !== '' ? 'DIREKT ' . $terraceHost : 'FEHLT')
-                . ' | JV-links=' . ($jvVar > 0 ? 'P03#' . $jv : 'FEHLT')
+            'JV-links=' . ($jvCounter > 0 ? 'P03#' . $jv . ' Counter#' . $jvCounter : 'FEHLT')
+                . ' ' . $streamState($jvStream)
                 . ($this->ReadAttributeString('AuxJVModel') !== '' ? ' ' . $this->ReadAttributeString('AuxJVModel') : '')
-                . ' | Werkstatt-links=' . ($workVar > 0 ? 'P03#' . $work : 'FEHLT')
+                . ' | Werkstatt-links=' . ($workCounter > 0 ? 'P03#' . $work . ' Counter#' . $workCounter : 'FEHLT')
+                . ' ' . $streamState($workStream)
                 . ($this->ReadAttributeString('AuxWorkModel') !== '' ? ' ' . $this->ReadAttributeString('AuxWorkModel') : '')
+                . ' | Terrasse=' . $terrace
         );
     }
 
