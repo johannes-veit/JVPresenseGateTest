@@ -280,7 +280,7 @@ final class DahuaEventParser
             'human' => $human,
             'classification' => $classification,
             'eventId' => self::findIdentifier($data, ['EventID', 'EventId', 'EventIdEx']),
-            'ruleId' => self::findIdentifier($data, ['RuleID', 'RuleId']),
+            'ruleId' => self::findIdentifier($data, ['RuleID', 'RuleId', 'CfgRuleId', 'CfgRuleID']),
             'groupId' => self::findIdentifier($data, ['GroupID', 'GroupId']),
             'objectId' => self::findIdentifier($data, ['ObjectID', 'ObjectId', 'TrackID', 'TrackId']),
             'raw' => $raw,
