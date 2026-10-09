@@ -341,6 +341,12 @@ class JVPresenceP03MultiCamera extends IPSModule
             $workStreamVar = $this->ReadAttributeInteger('AuxWorkStreamVarID');
 
             if ($sender === $jvStreamVar || $sender === $workStreamVar) {
+                if (!$this->p03AuxStreamsReady()) {
+                    $this->setP03HumanEvents([]);
+                    $this->SetTimerInterval('P03ProofTimer', 0);
+                    $this->SetValue('P03ProofState', 'DEGRADED – Mastkamera-Eventstream fehlt; offener Proof verworfen');
+                    $this->appendProtocol('P03 STREAM LOSS – offenes Mastkamera-Beweismaterial verworfen.');
+                }
                 $this->refreshProductionState();
                 $this->refreshReadyState();
                 return;
@@ -1182,6 +1188,12 @@ class JVPresenceP03MultiCamera extends IPSModule
         if (!$this->ReadAttributeBoolean('TestActive') && !$this->ReadAttributeBoolean('ProductionEnabled')) {
             return;
         }
+        if (!$this->p03AuxStreamsReady()) {
+            $this->setP03HumanEvents([]);
+            $this->SetTimerInterval('P03ProofTimer', 0);
+            $this->SetValue('P03ProofState', 'DEGRADED – beide Mastkamera-Streams erforderlich');
+            return;
+        }
 
         $events = $this->getP03HumanEvents();
         $receiveTs = isset($meta['receiveTs']) && is_numeric($meta['receiveTs'])
@@ -1311,6 +1323,12 @@ class JVPresenceP03MultiCamera extends IPSModule
     private function evaluateP03MastSequence(): void
     {
         if (!$this->ReadAttributeBoolean('TestActive') && !$this->ReadAttributeBoolean('ProductionEnabled')) {
+            return;
+        }
+        if (!$this->p03AuxStreamsReady()) {
+            $this->setP03HumanEvents([]);
+            $this->SetTimerInterval('P03ProofTimer', 0);
+            $this->SetValue('P03ProofState', 'DEGRADED – beide Mastkamera-Streams erforderlich');
             return;
         }
 
