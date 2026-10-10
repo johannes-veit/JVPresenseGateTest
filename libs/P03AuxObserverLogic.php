@@ -5,11 +5,13 @@ declare(strict_types=1);
 final class P03AuxObserverLogic
 {
     /**
-     * Match a Dahua CrossRegion event to the P03-owned rule.
+     * A dedicated P03 Human CrossRegion rule is the only source of a mast proof.
+     * The camera rule Name is authoritative. Different Dahua firmwares may send
+     * CfgRuleId, RuleID and RuleId with unrelated values, and event "index" is
+     * the video channel, NOT the VideoAnalyseRule table index.
      *
-     * Rule name is authoritative because Dahua firmwares can expose three
-     * different numeric fields in the same event (CfgRuleId, RuleID, RuleId).
-     * Numeric ids are only a fallback for firmwares that omit Name.
+     * Without Name, accept numeric identity only if ALL supplied rule IDs are
+     * consistent with the configured rule Id. Ambiguous events fail closed.
      *
      * @param array<string,mixed> $event
      */
@@ -22,35 +24,34 @@ final class P03AuxObserverLogic
         if (strcasecmp(trim((string) ($event['code'] ?? '')), 'CrossRegionDetection') !== 0) {
             return false;
         }
-
-        $eventName = trim((string) ($event['ruleName'] ?? ''));
-        if ($eventName !== '') {
-            return strcasecmp($eventName, $wantedName) === 0;
+        $name = trim((string) ($event['ruleName'] ?? ''));
+        if ($name !== '') {
+            return $wantedName !== '' && strcasecmp($name, $wantedName) === 0;
         }
 
-        $accepted = [];
-        foreach ([$wantedId] as $candidate) {
-            if ($candidate >= 0) {
-                $accepted[(string) $candidate] = true;
-            }
-        }
-        if ($accepted === []) {
+        if ($wantedId < 0) {
             return false;
         }
-
+        $found = false;
         foreach (['cfgRuleId', 'ruleIdUpper', 'ruleIdLower', 'ruleId'] as $field) {
             $value = $event[$field] ?? null;
-            if ($value !== null && $value !== '' && isset($accepted[(string) $value])) {
-                return true;
+            if ($value === null || $value === '') {
+                continue;
+            }
+            if (!is_numeric($value)) {
+                return false;
+            }
+            $found = true;
+            if ((int) $value !== $wantedId) {
+                return false;
             }
         }
-
-        return false;
+        return $found;
     }
 
     /**
-     * A matching event from the dedicated P03 rule is already Human-filtered
-     * by ObjectTypes=Human. The payload does not have to repeat ObjectType.
+     * The rule itself enforces Human, but an explicitly nonhuman object in the
+     * payload must never create evidence even when the rule name matches.
      *
      * @param array<string,mixed> $event
      */
@@ -61,7 +62,16 @@ final class P03AuxObserverLogic
         int $wantedId
     ): bool {
         $action = strtolower(trim((string) ($event['action'] ?? '')));
-        return in_array($action, ['start', 'on', 'pulse'], true)
-            && self::isMatchingRuleEvent($event, $wantedName, $wantedIndex, $wantedId);
+        if (!in_array($action, ['start', 'on', 'pulse'], true)
+            || !self::isMatchingRuleEvent($event, $wantedName, $wantedIndex, $wantedId)) {
+            return false;
+        }
+
+        $classification = strtolower(trim((string) ($event['classification'] ?? '')));
+        if ($classification !== ''
+            && !in_array($classification, ['human', 'person', 'pedestrian'], true)) {
+            return false;
+        }
+        return true;
     }
 }
