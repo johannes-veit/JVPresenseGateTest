@@ -59,6 +59,13 @@ class JVPresenceP03AuxObserver extends IPSModule
     {
         parent::ApplyChanges();
 
+        // A migrated or manually disconnected observer may have no Parent.
+        // Symcon documents RequireParent as creating a NEW dedicated socket,
+        // rather than reusing an existing ALA2 or other compatible socket.
+        if ($this->getParentID() <= 0 || !IPS_InstanceExists($this->getParentID())) {
+            $this->RequireParent(self::CLIENT_SOCKET_GUID);
+        }
+
         // Existing observer instances from v0.6.5-v0.6.8 must receive variables
         // added by later versions as well; Create() is not relied upon for migration.
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
