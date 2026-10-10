@@ -85,7 +85,7 @@
   "actions": [
     {
       "type": "Button",
-      "caption": "P03 Mastkamera-Audit – 2 Kameras (kein Lauftest)",
+      "caption": "P03 Mastkamera-LIVE-Audit – Kamera nur lesen (kein Lauftest)",
       "onClick": "JVP03MC_AuditCameraConfiguration($id);"
     },
     {
@@ -95,7 +95,7 @@
     },
     {
       "type": "Button",
-      "caption": "P03 Mastkamera-Observer neu suchen / prüfen",
+      "caption": "P03-Observer neu verbinden (nur P03, keine Kameraänderung)",
       "onClick": "JVP03MC_P03AuxRescan($id);"
     },
     {
