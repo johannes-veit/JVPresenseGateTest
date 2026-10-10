@@ -96,6 +96,8 @@ class IPSModule
         if ($var) $GLOBALS['variables'][$var]=$value;
     }
     protected function ReloadForm():void {$this->reload=true;}
+    protected function SendDebug(string $topic,string $message,int $format):void {}
+
 }
 
 require_once dirname(__DIR__).'/JVPresenceP03TerraceTest/module.php';
