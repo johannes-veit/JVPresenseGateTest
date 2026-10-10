@@ -2327,8 +2327,17 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
 
-        $this->WriteAttributeInteger('AuxJVInstanceID', $jv);
-        $this->WriteAttributeInteger('AuxWorkInstanceID', $work);
+        // CRITICAL: prior versions replaced formerly good observer IDs with
+        // 0 every time IPS_GetInstanceListByModuleID returned an empty result,
+        // even when the old Symcon instance still existed. Never destroy our
+        // only forensic reference on a failed discovery. No new observers are
+        // created by ApplyChanges (allowCreate=false).
+        if ($jv > 0) {
+            $this->WriteAttributeInteger('AuxJVInstanceID', $jv);
+        }
+        if ($work > 0) {
+            $this->WriteAttributeInteger('AuxWorkInstanceID', $work);
+        }
 
         $jvVar = $jv > 0 ? $this->findPersonDetectedVariable($jv) : 0;
         $workVar = $work > 0 ? $this->findPersonDetectedVariable($work) : 0;
@@ -2336,12 +2345,16 @@ class JVPresenceP03MultiCamera extends IPSModule
         $workCounter = $work > 0 ? $this->findAuxVariable($work, 'HumanEventCounter') : 0;
         $jvStream = $jv > 0 ? $this->findAuxVariable($jv, 'StreamOK') : 0;
         $workStream = $work > 0 ? $this->findAuxVariable($work, 'StreamOK') : 0;
-        $this->updateP03AuxSubscription('AuxJVPersonVarID', $jvVar);
-        $this->updateP03AuxSubscription('AuxWorkPersonVarID', $workVar);
-        $this->updateP03AuxSubscription('AuxJVEventCounterVarID', $jvCounter);
-        $this->updateP03AuxSubscription('AuxWorkEventCounterVarID', $workCounter);
-        $this->updateP03AuxSubscription('AuxJVStreamVarID', $jvStream);
-        $this->updateP03AuxSubscription('AuxWorkStreamVarID', $workStream);
+        if ($jv > 0) {
+            $this->updateP03AuxSubscription('AuxJVPersonVarID', $jvVar);
+            $this->updateP03AuxSubscription('AuxJVEventCounterVarID', $jvCounter);
+            $this->updateP03AuxSubscription('AuxJVStreamVarID', $jvStream);
+        }
+        if ($work > 0) {
+            $this->updateP03AuxSubscription('AuxWorkPersonVarID', $workVar);
+            $this->updateP03AuxSubscription('AuxWorkEventCounterVarID', $workCounter);
+            $this->updateP03AuxSubscription('AuxWorkStreamVarID', $workStream);
+        }
 
         return [
             'ok' => $jvVar > 0 && $workVar > 0
@@ -2354,20 +2367,58 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function findP03AuxObserver(string $host, string $role): int
     {
-        foreach (IPS_GetInstanceListByModuleID(self::AUX_OBSERVER_MODULE_GUID) as $id) {
-            $id = (int) $id;
-            if ($id <= 0 || !IPS_InstanceExists($id)) {
-                continue;
-            }
-            try {
-                if (trim((string) IPS_GetProperty($id, 'CameraHost')) === $host
-                    && (string) IPS_GetProperty($id, 'Role') === $role) {
-                    return $id;
-                }
-            } catch (Throwable $e) {
+        if ($host === '' || $role === '') {
+            return 0;
+        }
+        // 1. Trust stored identities only after independently verifying actual
+        // ModuleID + Host + Role; do not take over any similarly named module.
+        $savedAttr = $role === self::AUX_JV_ROLE ? 'AuxJVInstanceID' : 'AuxWorkInstanceID';
+        $savedID = $this->ReadAttributeInteger($savedAttr);
+        if ($this->matchesTrustedP03Observer($savedID,$host,$role)) {
+            return $savedID;
+        }
+
+        // 2. Use the efficient module lookup when available.
+        $candidates = [];
+        try {
+            $candidates = array_map('intval',
+                IPS_GetInstanceListByModuleID(self::AUX_OBSERVER_MODULE_GUID));
+        } catch (Throwable $e) {
+            // Do not turn a lookup failure into a destructive reset.
+        }
+
+        // 3. Crucial fallback: the module-index list may be temporarily empty
+        // after a Symcon module update while instance metadata remains intact.
+        try {
+            $candidates = array_unique(array_merge($candidates,
+                array_map('intval', IPS_GetInstanceList())));
+        } catch (Throwable $e) {
+        }
+        foreach ($candidates as $id) {
+            if ($this->matchesTrustedP03Observer((int)$id,$host,$role)) {
+                return (int)$id;
             }
         }
         return 0;
+    }
+
+    /**
+     * No fuzzy name matching, no foreign module ownership, no side effects.
+     */
+    private function matchesTrustedP03Observer(int $id, string $host, string $role): bool
+    {
+        if ($id <= 0 || $host === '' || $role === '' || !IPS_InstanceExists($id)) {
+            return false;
+        }
+        try {
+            $instance = IPS_GetInstance($id);
+            return strcasecmp((string) ($instance['ModuleInfo']['ModuleID'] ?? ''),
+                       self::AUX_OBSERVER_MODULE_GUID) === 0
+                && trim((string) IPS_GetProperty($id,'CameraHost')) === $host
+                && (string) IPS_GetProperty($id,'Role') === $role;
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 
     private function createP03AuxObserver(string $host, string $role, string $name): int
