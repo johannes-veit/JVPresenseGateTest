@@ -1,3 +1,9 @@
+# v0.6.18 Build 49 – Nachprüfung der Heartbeat-Diagnose
+
+- Die 15-s P03-Hauptinstanz-Heartbeat-Überwachung wird nun auch im `ApplyChanges()` bereits installierter P03-Instanzen explizit registriert, nicht ausschließlich im `Create()` einer Neuinstallation.
+- Jeder observerseitige HealthTick veröffentlicht jetzt Zeit und Ergebnis auch bei gesunden Verbindungen, bei laufender HTTP-Anmeldung, in einer Cooldown-Phase sowie bei Neuverbindung im JSON-Diagnosewert. So lässt sich im SymBox-Bericht zuverlässig erkennen, ob der Wachhund tatsächlich gelaufen ist.
+- CI enthält eine zusätzliche Prüfung, dass die HealthTick-Daten in der kopierbaren Observer-Diagnose ankommen.
+
 # v0.6.18 – Fail-closed Dahua Heartbeat-Überwachung und unabhängiger P03 Watchdog
 
 - Live-Diagnose 2026-10-10 17:06:50: Beide P03-Mastkameras/Client Sockets zwar formal AN, aber seit 156 Sekunden kein Byte der Kamera empfangen; der letzte HTTP-200-Zustand wurde fälschlich als aktuelle Stream-Verfügbarkeit behandelt.
