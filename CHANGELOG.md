@@ -1,3 +1,15 @@
+# v0.6.19 Build 50 – Ereignisfilter reparieren und IVS-Ursachen sichtbar machen
+
+- Nach einem realen WORK_LEFT-Test zählt P03 zunächst drei Human-Ereignisse, anschließend offenbar nicht mehr, obwohl der Eventstream LIVE meldet. Die Hauptursache ist noch nicht durch einen neuen Rohdatentest verifiziert.
+- **Bestätigter Codefehler:** `SeenEventKeys` hatte keine Zeitbegrenzung. Gleiche Dahua EventID wurde unbegrenzt gesperrt (bis 200 andere eindeutige Keys verdrängen). Bei wiederverwendeter EventID bleiben neue echte Erkennungen aus.
+- Ereignis-Deduplizierung gilt jetzt nur für dieselbe identische Zustellung innerhalb von 3 Sekunden. EventID, Aktion, Regel, Gruppe und Objekt werden getrennt. Veraltete Einträge werden in jeder Prüfung entfernt, maximal 200 Einträge. STOP erzeugt niemals einen Human-Beweis.
+- **Bestätigter Diagnosefehler:** `LastEvent` (Letztes Human-IVS-Ereignis) konnte bisher von STOP/nicht zählenden Ereignissen überschrieben werden. Ab jetzt ausschließlich nach tatsächlich gezähltem Human START.
+- Neue Stringvariable je P03-Observer: **P03 IVS-Ereignisdiagnose** (`EventAudit`). Dokumentiert nur Code, Action, RuleName/ID, EventID, ObjectID, Klassifikation, prüfbare Entscheidung (gezählt/falsche Regel/Duplikat/kein Human START) und Zählstatistik. Keine Zugangsdaten oder vollständigen Kamerapayloads.
+- Der bereits vorhandene Button **P03 Verbindungen diagnostizieren (nur lesen)** gibt automatisch auch die neue Ereignisdiagnose für beide Kameras aus. So lässt sich Kamera-eigenes Ausbleiben von IVS-Daten von fehlerhafter Regelzuordnung oder Deduplizierung unterscheiden.
+- `PersonDetected` bleibt absichtlich ein **kurzer 5-Sekunden-Impuls**, niemals dauerhafte Anwesenheitsanzeige. Der Zähler belegt die tatsächlich erkannten neuen Human-Starts.
+- Regelzuordnung, 2-Kamera-Beweiskette und Schutz vor falschem Zonentransfer bleiben bestehen. Keine Änderungen an Kameras, Außenlichtautomatik, Alarmanlage oder anderen Modulen.
+- Regression mit echter Observerklasse: zweites reales Human START nach EventID-Recycling, getrennte ObjectIDs, wiederholte Netzpakete, STOP, Nicht-Human, Fremdregel; zusätzlicher statischer Vertrag.
+
 # v0.6.18 Build 49 – Nachprüfung der Heartbeat-Diagnose
 
 - Die 15-s P03-Hauptinstanz-Heartbeat-Überwachung wird nun auch im `ApplyChanges()` bereits installierter P03-Instanzen explizit registriert, nicht ausschließlich im `Create()` einer Neuinstallation.
