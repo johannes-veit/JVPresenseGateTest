@@ -121,10 +121,25 @@ class JVPresenceP03AuxObserver extends IPSModule
         // 401 -> fresh-socket -> authenticated Digest reconnect.
         $this->updateParentSubscription($this->getParentID());
 
-        if ($this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
+        $ready = $this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady();
+        $parentID = $this->getParentID();
+        $dedicatedParent = $parentID > 0 && IPS_InstanceExists($parentID)
+            && strcasecmp((string) (IPS_GetInstance($parentID)['ModuleInfo']['ModuleID'] ?? ''),
+                self::CLIENT_SOCKET_GUID) === 0
+            && $this->hasExclusiveParentSocket($parentID);
+        if ($ready && $dedicatedParent) {
             $this->scheduleSocketRestart(500);
         }
-        $this->refreshObserverStatus('ApplyChanges / Neustart angefordert');
+
+        // Complete the IP-Symcon module lifecycle explicitly. Without
+        // SetStatus(), both real P03 observers remained IS_CREATING (101)
+        // for hours despite separate Client Socket/StreamOK already LIVE.
+        // IS_ACTIVE describes a correctly configured P03 observer, not the
+        // momentary camera TCP/AI status (which is independently monitored).
+        $this->SetStatus($ready && $dedicatedParent ? 102 : 104);
+        $this->refreshObserverStatus($ready && $dedicatedParent
+            ? 'ApplyChanges abgeschlossen – Observer bereit, Verbindungsstart angefordert'
+            : 'ApplyChanges: Observer nicht bereit oder eigener Client Socket fehlt');
     }
 
     public function GetConfigurationForParent(): string
