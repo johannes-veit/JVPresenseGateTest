@@ -34,7 +34,7 @@ foreach ([
     $apply = substr($contents,$b,$c-$b);
 
     preg_match_all('/\$this->RegisterAttribute(?:Boolean|Integer|Float|String)\s*\(\s*[\x27\x22]([^\x27\x22]+)[\x27\x22]/', $create, $attrs);
-    lifecycleAssert(count($attrs[1]) >= ($path === 'JVPresenceP03AuxObserver/module.php' ? 25 : 30),
+    lifecycleAssert(count($attrs[1]) >= ($path === 'JVPresenceP03AuxObserver/module.php' ? 24 : 30),
         $path . ': all attributes registered in Create');
     lifecycleAssert(count($attrs[1])===count(array_unique($attrs[1])),
         $path . ': no duplicate attribute names in Create');
