@@ -71,6 +71,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
         $this->SetTimerInterval('PersonPulseTimer', 0);
+        $this->SetTimerInterval('Watchdog', 15000);
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
         $this->WriteAttributeBoolean('Streaming', false);
@@ -251,6 +252,13 @@ class JVPresenceP03AuxObserver extends IPSModule
         $parentID = $this->getParentID();
         if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
             $this->WriteAttributeInteger('SocketRestartStage', 0);
+            $this->refreshObserverStatus('Kein P03 Client Socket – SocketRestart abgebrochen');
+            return;
+        }
+        if (!$this->hasExclusiveParentSocket($parentID)) {
+            $this->WriteAttributeInteger('SocketRestartStage', 0);
+            $this->SetValue('StreamOK', false);
+            $this->refreshObserverStatus('SICHERHEIT: Client Socket mit Fremdmodul geteilt – kein Eingriff');
             return;
         }
 
@@ -261,6 +269,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                 IPS_ApplyChanges($parentID);
             } catch (Throwable $e) {
                 $this->WriteAttributeInteger('SocketRestartStage', 0);
+                $this->refreshObserverStatus('Socket schließen FEHLER: ' . $e->getMessage());
                 return;
             }
             $this->WriteAttributeInteger('SocketRestartStage', 2);
@@ -281,6 +290,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                 IPS_SetProperty($parentID, 'Open', true);
                 IPS_ApplyChanges($parentID);
             } catch (Throwable $e) {
+                $this->refreshObserverStatus('Socket öffnen FEHLER: ' . $e->getMessage());
                 return;
             }
 
@@ -298,6 +308,12 @@ class JVPresenceP03AuxObserver extends IPSModule
 
         $parentID = $this->getParentID();
         if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
+            $this->refreshObserverStatus('WATCHDOG: P03 Client Socket fehlt');
+            return;
+        }
+        if (!$this->hasExclusiveParentSocket($parentID)) {
+            $this->SetValue('StreamOK', false);
+            $this->refreshObserverStatus('WATCHDOG: geteilter Client Socket – keine Änderung');
             return;
         }
 
@@ -313,6 +329,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                 && ($now - $this->ReadAttributeInteger('LastSocketRestart')) >= 20) {
                 $this->scheduleSocketRestart(100);
             }
+            $this->refreshObserverStatus('WATCHDOG: Client Socket nicht aktiv');
             return;
         }
 
@@ -329,6 +346,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->WriteAttributeInteger('DigestNC', 0);
             $this->WriteAttributeString('DigestChallenge', '{}');
             $this->scheduleSocketRestart(100);
+            $this->refreshObserverStatus('WATCHDOG: Dahua-Heartbeat >25 s ausgeblieben');
             return;
         }
 
@@ -339,6 +357,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         if (!$streaming && ($lastReq === 0 || ($now - $lastReq) > 12)
             && $this->ReadAttributeInteger('SocketRestartStage') === 0) {
             $this->scheduleSocketRestart(100);
+            $this->refreshObserverStatus('WATCHDOG: HTTP/Digest-Handshake ausstehend');
         }
     }
 
@@ -595,6 +614,8 @@ class JVPresenceP03AuxObserver extends IPSModule
             'parentID' => $parentID,
             'parentStatus' => $parentStatus,
             'parentOpen' => $parentOpen,
+            'parentExclusive' => $parentID > 0 && IPS_InstanceExists($parentID)
+                ? $this->hasExclusiveParentSocket($parentID) : false,
             'streaming' => $this->ReadAttributeBoolean('Streaming'),
             'restartStage' => $this->ReadAttributeInteger('SocketRestartStage'),
             'authPending' => $this->ReadAttributeBoolean('AuthPending'),
@@ -606,6 +627,33 @@ class JVPresenceP03AuxObserver extends IPSModule
         ];
         $json = json_encode($status, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $this->SetValue('ObserverStatus', $json === false ? '' : $json);
+    }
+
+    /**
+     * A connection created by RequireParent is normally exclusive. If the
+     * observer was manually connected to an existing ALA2/foreign socket,
+     * refuse to close or reconfigure it. Only P03's own socket may be touched.
+     */
+    private function hasExclusiveParentSocket(int $parentID): bool
+    {
+        if (!function_exists('IPS_GetInstanceList')) {
+            return false;
+        }
+        try {
+            foreach (IPS_GetInstanceList() as $otherID) {
+                $otherID = (int) $otherID;
+                if ($otherID <= 0 || $otherID === $this->InstanceID) {
+                    continue;
+                }
+                $other = IPS_GetInstance($otherID);
+                if ((int) ($other['ConnectionID'] ?? 0) === $parentID) {
+                    return false;
+                }
+            }
+        } catch (Throwable $e) {
+            return false;
+        }
+        return true;
     }
 
     private function getParentID(): int
