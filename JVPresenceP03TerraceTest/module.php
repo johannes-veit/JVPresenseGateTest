@@ -140,6 +140,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeString('P03ActionCounts', '{"HOME_TO_LAGER":0,"LAGER_TO_HOME":0}');
         $this->RegisterAttributeBoolean('P03SimulationPassed', false);
         $this->RegisterAttributeBoolean('P03MultiAuditPassed', false);
+        $this->RegisterAttributeInteger('AuxJVManagedSocketID', 0);
+        $this->RegisterAttributeInteger('AuxWorkManagedSocketID', 0);
 
         $this->RegisterVariableString('PresenceSystemState', 'Presence Systemstatus', '', 1);
         $this->RegisterVariableString('HouseStatus', 'Hausstatus', '', 2);
@@ -170,6 +172,11 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function ApplyChanges(): void
     {
         parent::ApplyChanges();
+
+        // Migration for existing P03 instances: keep newly created private sockets
+        // recorded even if the connection takes longer to become visible.
+        $this->RegisterAttributeInteger('AuxJVManagedSocketID', 0);
+        $this->RegisterAttributeInteger('AuxWorkManagedSocketID', 0);
 
         // Add the diagnosis variable to P03 instances installed before 0.6.15.
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
@@ -1230,6 +1237,149 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ' EventID=' . (string) ($event['eventId'] ?? '<fehlt>')
                 . ' – kein Einfluss auf 2-Kamera-Beweis'
         );
+    }
+
+    /**
+     * Repair only the two P03-owned mast observers that have ConnectionID=0.
+     * IP-Symcon 9 programmatically created device instances may have NO
+     * automatically linked I/O even when RequireParent() is present.
+     * This method explicitly creates an exclusive Client Socket, configures
+     * only that new socket, and attaches only its P03 observer.
+     *
+     * Safe retries: retain each newly allocated socket ID in a P03 attribute.
+     * Never reconnect an observer with an existing parent; never touch a
+     * shared/foreign socket, camera AI settings or any other module.
+     */
+    public function RepairP03ClientSockets(): void
+    {
+        $lines = ['=== P03 CLIENT-SOCKET-REPARATUR ==='];
+        foreach ([
+            ['role' => self::AUX_JV_ROLE, 'host' => trim($this->ReadPropertyString('AuxJVHost')),
+                'attr' => 'AuxJVInstanceID', 'managed' => 'AuxJVManagedSocketID'],
+            ['role' => self::AUX_WORK_ROLE, 'host' => trim($this->ReadPropertyString('AuxWorkHost')),
+                'attr' => 'AuxWorkInstanceID', 'managed' => 'AuxWorkManagedSocketID']
+        ] as $entry) {
+            $role = (string) $entry['role'];
+            $host = (string) $entry['host'];
+            $observerID = $this->ReadAttributeInteger((string) $entry['attr']);
+            $lines[] = '-- ' . $role . ' --';
+
+            try {
+                // Read-only discovery fallback; do not create any new observer.
+                if ($observerID <= 0 || !IPS_InstanceExists($observerID)) {
+                    $observerID = $this->findP03AuxObserver($host, $role);
+                }
+                if ($observerID <= 0 || !IPS_InstanceExists($observerID)) {
+                    $lines[] = 'FEHLER: P03-Observer nicht vorhanden. Kein Socket angelegt.';
+                    continue;
+                }
+                $observer = IPS_GetInstance($observerID);
+                if (strcasecmp((string) ($observer['ModuleInfo']['ModuleID'] ?? ''),
+                    self::AUX_OBSERVER_MODULE_GUID) !== 0
+                    || trim((string) IPS_GetProperty($observerID, 'CameraHost')) !== $host
+                    || (string) IPS_GetProperty($observerID, 'Role') !== $role) {
+                    $lines[] = 'FEHLER: Observer #' . $observerID
+                        . ' stimmt nicht mit P03-Rolle/IP überein – nicht verändert.';
+                    continue;
+                }
+                $existing = (int) ($observer['ConnectionID'] ?? 0);
+                if ($existing > 0) {
+                    $lines[] = 'Observer #' . $observerID . ' bereits mit Socket #'
+                        . $existing . ' verbunden – keine Änderung.';
+                    continue;
+                }
+                if ($host === '' || $this->ReadPropertyInteger('CameraPort') < 1
+                    || !(bool) IPS_GetProperty($observerID, 'Enabled')) {
+                    $lines[] = 'FEHLER: Host, Port oder Observer-Freigabe ungültig.';
+                    continue;
+                }
+
+                $managedAttr = (string) $entry['managed'];
+                $socketID = $this->ReadAttributeInteger($managedAttr);
+                $newlyCreated = false;
+                if ($socketID > 0 && IPS_InstanceExists($socketID)) {
+                    $existingSocket = IPS_GetInstance($socketID);
+                    if (strcasecmp((string) ($existingSocket['ModuleInfo']['ModuleID'] ?? ''),
+                        self::CLIENT_SOCKET_GUID) !== 0) {
+                        $lines[] = 'FEHLER: Gespeicherte Socket-ID #' . $socketID
+                            . ' ist kein Client Socket. Kein Eingriff.';
+                        continue;
+                    }
+                    // A previously created socket may only be reused when it
+                    // is connected to NO other module whatsoever.
+                    $users = [];
+                    foreach (IPS_GetInstanceList() as $otherID) {
+                        $otherID = (int) $otherID;
+                        if ($otherID > 0 && IPS_InstanceExists($otherID)
+                            && (int) (IPS_GetInstance($otherID)['ConnectionID'] ?? 0) === $socketID) {
+                            $users[] = $otherID;
+                        }
+                    }
+                    if ($users !== []) {
+                        $lines[] = 'FEHLER: Gespeicherter Socket #' . $socketID
+                            . ' wird von Instanzen #' . implode(', #', $users) . ' benutzt.';
+                        continue;
+                    }
+                    if ((string) IPS_GetProperty($socketID, 'Host') !== $host
+                        || (int) IPS_GetProperty($socketID, 'Port')
+                            !== $this->ReadPropertyInteger('CameraPort')) {
+                        $lines[] = 'FEHLER: Gespeicherter Socket #' . $socketID
+                            . ' hat abweichenden Host/Port – nicht verändert.';
+                        continue;
+                    }
+                    $lines[] = 'P03-Socket #' . $socketID
+                        . ' aus vorherigem Verbindungsversuch wiederverwendet.';
+                } else {
+                    // Forget a deleted socket id, but never delete any socket.
+                    $socketID = IPS_CreateInstance(self::CLIENT_SOCKET_GUID);
+                    if ($socketID <= 0) {
+                        $lines[] = 'FEHLER: IPS_CreateInstance(Client Socket) lieferte keine ID.';
+                        continue;
+                    }
+                    $this->WriteAttributeInteger($managedAttr, $socketID);
+                    $newlyCreated = true;
+                    IPS_SetName($socketID, 'P03 ' . $role . ' Client Socket');
+                    IPS_SetProperty($socketID, 'Host', $host);
+                    IPS_SetProperty($socketID, 'Port', $this->ReadPropertyInteger('CameraPort'));
+                    // Keep it closed until its dedicated observer restarts
+                    // the staged 401->Digest handshake itself.
+                    IPS_SetProperty($socketID, 'Open', false);
+                    IPS_ApplyChanges($socketID);
+                }
+
+                // IPS_ConnectInstance is the explicit link missing on both
+                // real IP-Symcon 9 observer instances (ConnectionID=0).
+                if (IPS_ConnectInstance($observerID, $socketID) === false) {
+                    $lines[] = 'FEHLER: IPS_ConnectInstance für Observer #'
+                        . $observerID . ' und Socket #' . $socketID . ' fehlgeschlagen.';
+                    continue;
+                }
+
+                // Reinitialize only this P03 observer to bind parent status
+                // subscription and to schedule controlled Socket restart.
+                IPS_ApplyChanges($observerID);
+                $connected = (int) (IPS_GetInstance($observerID)['ConnectionID'] ?? 0);
+                if ($connected === $socketID) {
+                    $lines[] = 'OK: Observer #' . $observerID . ' → eigener Socket #'
+                        . $socketID . ($newlyCreated ? ' (neu erstellt)' : ' (wiederhergestellt)')
+                        . '. HTTP/Digest startet automatisch.';
+                } else {
+                    $lines[] = 'WARNUNG: Verbindung angefordert, aber ConnectionID='
+                        . $connected . '. Socket #' . $socketID
+                        . ' gespeichert; bitte Diagnose erneut ausführen.';
+                }
+            } catch (Throwable $e) {
+                $lines[] = 'FEHLER: ' . get_class($e)
+                    . ' (Details in P03-Debug; keine Zugangsdaten im Bericht).';
+            }
+        }
+
+        foreach ($lines as $line) {
+            $this->appendProtocol($line);
+        }
+        // Calls the existing read-only, copyable diagnostic. Nothing is
+        // altered by the follow-up inspection.
+        $this->DiagnoseP03Connections();
     }
 
     /**
