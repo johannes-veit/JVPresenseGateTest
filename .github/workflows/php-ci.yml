@@ -54,6 +54,8 @@ jobs:
         run: php tests/P03AuxHumanRuleTest.php
       - name: P03 observer HTTP/Digest/Eventstream integration simulation
         run: php tests/P03AuxObserverStreamTest.php
+      - name: P03 one-click read-only socket diagnosis
+        run: php tests/P03ConnectionDiagnosisTest.php
       - name: P03 hardened module contract
         run: |
           python3 - <<'PY'

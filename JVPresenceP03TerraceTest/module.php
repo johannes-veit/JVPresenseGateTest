@@ -158,6 +158,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('Result', 'Ergebnis / Nächster Schritt', '', 50);
         $this->RegisterVariableString('LastEvent', 'Letztes IVS-Ereignis', '', 60);
         $this->RegisterVariableString('Protocol', 'Testprotokoll', '', 70);
+        $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03MC_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03MC_SocketRestartTimer($_IPS["TARGET"]);');
@@ -169,6 +170,9 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function ApplyChanges(): void
     {
         parent::ApplyChanges();
+
+        // Add the diagnosis variable to P03 instances installed before 0.6.15.
+        $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
@@ -229,6 +233,18 @@ class JVPresenceP03MultiCamera extends IPSModule
             ['type' => 'Label', 'caption' => $sourceCaption],
             ['type' => 'Label', 'caption' => 'Aktueller Teststatus: ' . $result]
         ];
+        $diagID = $this->GetIDForIdent('P03ConnectionDiagnosis');
+        if ($diagID > 0 && IPS_VariableExists($diagID)) {
+            $report = trim((string) GetValue($diagID));
+            if ($report !== '') {
+                $live[] = [
+                    'type' => 'ExpansionPanel',
+                    'caption' => 'P03 Socket-Diagnose – Bericht (auch als Variable kopierbar)',
+                    'expanded' => true,
+                    'items' => [['type' => 'Label', 'caption' => $report]]
+                ];
+            }
+        }
         array_splice($form['elements'], 1, 0, $live);
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
@@ -1214,6 +1230,205 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ' EventID=' . (string) ($event['eventId'] ?? '<fehlt>')
                 . ' – kein Einfluss auf 2-Kamera-Beweis'
         );
+    }
+
+    /**
+     * One-click, strictly read-only diagnosis. Never runs ApplyChanges,
+     * reconnect, RPC2, setConfig or updates an unrelated module or camera.
+     * The report contains no username, password, HTTP authorization or nonce.
+     */
+    public function DiagnoseP03Connections(): void
+    {
+        $lines = [
+            '=== P03 SOCKET-DIAGNOSE (NUR LESEN) ===',
+            'Zeit: ' . date('Y-m-d H:i:s'),
+            'Hauptinstanz: #' . $this->InstanceID,
+            'Hinweis: Es werden keine Kameraeinstellungen oder Fremdmodule geändert.'
+        ];
+
+        $roles = [
+            [
+                'name' => 'JV_LEFT',
+                'id' => $this->ReadAttributeInteger('AuxJVInstanceID'),
+                'host' => trim($this->ReadPropertyString('AuxJVHost'))
+            ],
+            [
+                'name' => 'WORK_LEFT',
+                'id' => $this->ReadAttributeInteger('AuxWorkInstanceID'),
+                'host' => trim($this->ReadPropertyString('AuxWorkHost'))
+            ]
+        ];
+
+        // Discovery is read-only: do not call discoverP03AuxSources(),
+        // because that updates subscriptions and may create observers.
+        $known = [];
+        try {
+            $known = IPS_GetInstanceListByModuleID(self::AUX_OBSERVER_MODULE_GUID);
+        } catch (Throwable $e) {
+            $lines[] = 'WARNUNG: Observer-Instanzliste nicht lesbar (' . get_class($e) . ').';
+        }
+
+        $allInstances = [];
+        try {
+            $allInstances = IPS_GetInstanceList();
+        } catch (Throwable $e) {
+            $lines[] = 'WARNUNG: Socket-Fremdnutzung nicht prüfbar (' . get_class($e) . ').';
+        }
+
+        foreach ($roles as $role) {
+            $name = (string) $role['name'];
+            $expectedHost = (string) $role['host'];
+            $id = (int) $role['id'];
+            $lines[] = '';
+            $lines[] = '--- ' . $name . ' | Soll-IP: ' . $expectedHost . ' ---';
+
+            try {
+                if ($id <= 0 || !IPS_InstanceExists($id)) {
+                    $id = 0;
+                    foreach ($known as $candidate) {
+                        $candidate = (int) $candidate;
+                        if ($candidate <= 0 || !IPS_InstanceExists($candidate)) {
+                            continue;
+                        }
+                        if ((string) IPS_GetProperty($candidate, 'Role') === $name
+                            && trim((string) IPS_GetProperty($candidate, 'CameraHost')) === $expectedHost) {
+                            $id = $candidate;
+                            break;
+                        }
+                    }
+                }
+
+                if ($id <= 0 || !IPS_InstanceExists($id)) {
+                    $lines[] = 'FEHLER: P03-Observer nicht vorhanden oder nicht auffindbar.';
+                    continue;
+                }
+
+                $obs = IPS_GetInstance($id);
+                $moduleID = (string) ($obs['ModuleInfo']['ModuleID'] ?? '');
+                if (strcasecmp($moduleID, self::AUX_OBSERVER_MODULE_GUID) !== 0) {
+                    $lines[] = 'FEHLER: Instanz #' . $id . ' ist kein P03-Observer – Abfrage gestoppt.';
+                    continue;
+                }
+                $obsHost = trim((string) IPS_GetProperty($id, 'CameraHost'));
+                $obsPort = (int) IPS_GetProperty($id, 'CameraPort');
+                $obsRole = (string) IPS_GetProperty($id, 'Role');
+                $enabled = (bool) IPS_GetProperty($id, 'Enabled');
+                $userSet = trim((string) IPS_GetProperty($id, 'Username')) !== '';
+                $passwordSet = (string) IPS_GetProperty($id, 'Password') !== '';
+
+                $lines[] = 'Observer-ID: ' . $id . ' | Status: ' . (int) ($obs['InstanceStatus'] ?? -1);
+                $lines[] = 'Observer: ' . ($enabled ? 'aktiv' : 'DEAKTIVIERT')
+                    . ' | Rolle: ' . $obsRole . ' | Host: ' . $obsHost . ':' . $obsPort;
+                $lines[] = 'Anmeldung konfiguriert: Benutzer=' . ($userSet ? 'JA' : 'NEIN')
+                    . ', Passwort=' . ($passwordSet ? 'JA' : 'NEIN') . ' (keine Zugangsdaten angezeigt)';
+                if ($obsHost !== $expectedHost || $obsRole !== $name) {
+                    $lines[] = 'FEHLER: Rolle oder Kamera-IP weicht von P03-Hauptinstanz ab.';
+                }
+
+                foreach ([
+                    'StreamOK' => 'Eventstream',
+                    'PersonDetected' => 'Person erkannt',
+                    'HumanEventCounter' => 'Human-Zähler'
+                ] as $ident => $label) {
+                    $variable = $this->findAuxVariable($id, $ident);
+                    if ($variable <= 0) {
+                        $lines[] = $label . ': FEHLT';
+                    } else {
+                        $value = GetValue($variable);
+                        $printed = $ident === 'HumanEventCounter'
+                            ? (string) (int) $value
+                            : ((bool) $value ? 'AN' : 'AUS');
+                        $lines[] = $label . ': ' . $printed . ' (Variable #' . $variable . ')';
+                    }
+                }
+
+                $diagnosticVar = $this->findAuxVariable($id, 'ObserverStatus');
+                if ($diagnosticVar > 0) {
+                    $state = json_decode((string) GetValue($diagnosticVar), true);
+                    if (is_array($state)) {
+                        $reason = (string) ($state['reason'] ?? 'unbekannt');
+                        // The observer reason should contain no secrets; still
+                        // strip CR/LF and limit to prevent log/content injection.
+                        $reason = preg_replace('/[\\r\\n\\t]+/', ' ', $reason) ?? '';
+                        $lines[] = 'Letzter Observer-Schritt: ' . substr($reason, 0, 220);
+                        $lines[] = 'Diagnoseflags: configReady=' . self::p03DiagBool($state['configReady'] ?? null)
+                            . ', streaming=' . self::p03DiagBool($state['streaming'] ?? null)
+                            . ', parentOpen=' . self::p03DiagBool($state['parentOpen'] ?? null)
+                            . ', authPending=' . self::p03DiagBool($state['authPending'] ?? null)
+                            . ', authBlocked=' . self::p03DiagBool($state['authBlocked'] ?? null)
+                            . ', restartStage=' . (int) ($state['restartStage'] ?? -1);
+                        foreach (['lastHttpRequest' => 'Letzte HTTP-Anfrage',
+                                  'lastCameraRx' => 'Letzte Kameraantwort'] as $field => $label) {
+                            $stamp = (int) ($state[$field] ?? 0);
+                            $lines[] = $label . ': ' . ($stamp > 0
+                                ? date('H:i:s', $stamp) . ' (vor ' . max(0, time() - $stamp) . ' s)'
+                                : 'NIEMALS');
+                        }
+                    } else {
+                        $lines[] = 'WARNUNG: Observer-Diagnose leer oder kein gültiges JSON.';
+                    }
+                } else {
+                    $lines[] = 'WARNUNG: Observer-Diagnosevariable fehlt.';
+                }
+
+                $socketID = (int) ($obs['ConnectionID'] ?? 0);
+                $lines[] = 'Client Socket ID: ' . $socketID;
+                if ($socketID <= 0 || !IPS_InstanceExists($socketID)) {
+                    $lines[] = 'FEHLER: Kein gültiger Client Socket zugeordnet!';
+                    continue;
+                }
+
+                $socket = IPS_GetInstance($socketID);
+                $socketModule = (string) ($socket['ModuleInfo']['ModuleID'] ?? '');
+                $lines[] = 'Socket Modul: ' . $socketModule;
+                $lines[] = 'Socket Status: ' . (int) ($socket['InstanceStatus'] ?? -1)
+                    . ' (102=aktiv)';
+                if (strcasecmp($socketModule, self::CLIENT_SOCKET_GUID) !== 0) {
+                    $lines[] = 'FEHLER: Falscher Parent-Typ, erwartet IP-Symcon Client Socket.';
+                    continue;
+                }
+                $socketHost = (string) IPS_GetProperty($socketID, 'Host');
+                $socketPort = (int) IPS_GetProperty($socketID, 'Port');
+                $socketOpen = (bool) IPS_GetProperty($socketID, 'Open');
+                $lines[] = 'Socket: ' . $socketHost . ':' . $socketPort
+                    . ' | Open=' . ($socketOpen ? 'JA' : 'NEIN');
+                if ($socketHost !== $obsHost || $socketPort !== $obsPort) {
+                    $lines[] = 'FEHLER: Socket Host/Port weicht von Observer-Konfiguration ab.';
+                }
+
+                if ($allInstances === []) {
+                    $lines[] = 'WARNUNG: Fremdbelegung des Sockets nicht prüfbar.';
+                } else {
+                    $otherUsers = [];
+                    foreach ($allInstances as $otherID) {
+                        $otherID = (int) $otherID;
+                        if ($otherID <= 0 || $otherID === $id || !IPS_InstanceExists($otherID)) {
+                            continue;
+                        }
+                        if ((int) (IPS_GetInstance($otherID)['ConnectionID'] ?? 0) === $socketID) {
+                            $otherUsers[] = $otherID;
+                        }
+                    }
+                    $lines[] = $otherUsers === []
+                        ? 'Socket exklusiv: JA'
+                        : 'FEHLER: Socket geteilt mit Instanz(en) #' . implode(', #', $otherUsers);
+                }
+            } catch (Throwable $e) {
+                $lines[] = 'DIAGNOSE-FEHLER: ' . get_class($e)
+                    . ' (keine Zugangsdaten ausgegeben).';
+            }
+        }
+
+        $lines[] = '';
+        $lines[] = 'ERGEBNIS: Nur Istzustand erfasst – keine Verbindung neu gestartet.';
+        $report = implode("\n", $lines);
+        $this->SetValue('P03ConnectionDiagnosis', $report);
+        $this->setResult('P03 Socket-Diagnose erstellt. Bericht im Konfigurationsfenster und in Variable "P03 Socket-Diagnose (kopierbar)".');
+    }
+
+    private static function p03DiagBool($value): string
+    {
+        return $value === null ? '?' : ((bool) $value ? 'JA' : 'NEIN');
     }
 
     public function P03AuxRescan(): void
