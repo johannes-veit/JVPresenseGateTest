@@ -85,6 +85,15 @@
   "actions": [
     {
       "type": "Button",
+      "caption": "P03 HEARTBEAT JETZT PRÜFEN / VERALTETEN STREAM REPARIEREN",
+      "onClick": "JVP03MC_CheckP03MastHealthNow($id);"
+    },
+    {
+      "type": "Label",
+      "caption": "Prüft den letzten echten Datenempfang der beiden Mastkameras. Ein alter HTTP-200-Status reicht nicht mehr. Veraltete Streams werden auf AUS gesetzt und nur die eigenen P03-Sockets mit frischem TCP neu verbunden. Ergebnis im anschließenden Diagnosebericht. Kameras und Fremdmodule werden nicht umkonfiguriert."
+    },
+    {
+      "type": "Button",
       "caption": "P03 EIGENE EVENTSTREAMS JETZT STARTEN (ohne Timer-Wartezeit)",
       "onClick": "JVP03MC_StartP03EventstreamsNow($id);"
     },
