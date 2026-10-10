@@ -1720,6 +1720,28 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
+        // Do not ApplyChanges() an observer whose socket is shared with ALA2
+        // or any unrelated module: the inherited GetConfigurationForParent
+        // could otherwise influence the foreign IO instance.
+        $socketID = (int) (IPS_GetInstance($instanceID)['ConnectionID'] ?? 0);
+        if ($socketID > 0) {
+            if (!function_exists('IPS_GetInstanceList')) {
+                $this->appendProtocol($role . ': P03-Observer-Abbruch: Socket-Zuordnung nicht sicher prüfbar.');
+                return;
+            }
+            foreach (IPS_GetInstanceList() as $otherID) {
+                $otherID = (int) $otherID;
+                if ($otherID === $instanceID || $otherID <= 0) {
+                    continue;
+                }
+                if ((int) (IPS_GetInstance($otherID)['ConnectionID'] ?? 0) === $socketID) {
+                    $this->appendProtocol($role . ': P03-Observer-Abbruch: Client Socket #' . $socketID
+                        . ' ist mit weiterer Instanz #' . $otherID . ' geteilt; Fremdmodul bleibt unverändert.');
+                    return;
+                }
+            }
+        }
+
         $meta = $this->p03AuxHumanRuleMeta($role);
         $ruleIndex = $this->ReadAttributeInteger($meta['ruleIndex']);
         $ruleId = $this->ReadAttributeInteger($meta['ruleId']);
