@@ -384,6 +384,93 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->clearPersonPulse();
     }
 
+    /**
+     * Immediate, explicit commissioning of one P03-owned Client Socket.
+     * Useful after a new socket is linked but its timer stays at stage 1.
+     * Does NOT rely on a scheduled SocketRestartTimer to open the socket or
+     * to issue the initial HTTP request. Digest retries remain asynchronous.
+     *
+     * Never change shared I/O or any Dahua camera configuration.
+     */
+    public function StartSocketNow(): bool
+    {
+        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()) {
+            $this->refreshObserverStatus('Sofortstart verweigert: P03 Observer deaktiviert/unkonfiguriert');
+            return false;
+        }
+        $parentID = $this->getParentID();
+        if ($parentID <= 0 || !IPS_InstanceExists($parentID)
+            || !$this->hasExclusiveParentSocket($parentID)) {
+            $this->refreshObserverStatus('Sofortstart verweigert: kein exklusiver P03 Client Socket');
+            return false;
+        }
+        $parent = IPS_GetInstance($parentID);
+        if (strcasecmp((string) ($parent['ModuleInfo']['ModuleID'] ?? ''),
+            self::CLIENT_SOCKET_GUID) !== 0) {
+            $this->refreshObserverStatus('Sofortstart verweigert: falscher Parent-Modultyp');
+            return false;
+        }
+
+        $host = trim($this->ReadPropertyString('CameraHost'));
+        $port = max(1, $this->ReadPropertyInteger('CameraPort'));
+        if (trim((string) IPS_GetProperty($parentID, 'Host')) !== $host
+            || (int) IPS_GetProperty($parentID, 'Port') !== $port) {
+            $this->refreshObserverStatus('Sofortstart verweigert: Client Socket Host/Port abweichend');
+            return false;
+        }
+
+        if ($this->ReadAttributeBoolean('Streaming') && (bool) $this->GetValue('StreamOK')) {
+            $this->refreshObserverStatus('Sofortstart: HTTP-Eventstream bereits aktiv, keine Änderung');
+            return true;
+        }
+
+        // Cancel previously scheduled stage 1/2, which could otherwise
+        // race with the direct startup and close the freshly opened socket.
+        $this->SetTimerInterval('SocketRestartTimer', 0);
+        $this->SetTimerInterval('HandshakeTimer', 0);
+        $this->WriteAttributeInteger('SocketRestartStage', 0);
+        $this->WriteAttributeBoolean('Streaming', false);
+        $this->SetValue('StreamOK', false);
+        $this->clearPersonPulse();
+        $this->WriteAttributeBoolean('AuthBlocked', false);
+        $this->WriteAttributeBoolean('AuthPending', false);
+        $this->WriteAttributeBoolean('LastRequestAuthenticated', false);
+        $this->WriteAttributeInteger('AuthFailureCount', 0);
+        $this->WriteAttributeInteger('DigestNC', 0);
+        $this->WriteAttributeString('DigestChallenge', '{}');
+        $this->WriteAttributeInteger('LastHttpRequest', 0);
+        $this->WriteAttributeInteger('LastCameraRx', 0);
+        $this->SetBuffer('HttpBuffer', '');
+        $this->SetBuffer('EventCarry', '');
+
+        try {
+            if (!(bool) IPS_GetProperty($parentID, 'Open')
+                || (int) ($parent['InstanceStatus'] ?? 0) !== 102) {
+                IPS_SetProperty($parentID, 'Open', true);
+                IPS_ApplyChanges($parentID);
+            }
+        } catch (Throwable $e) {
+            $this->refreshObserverStatus('Sofortstart: Client Socket konnte nicht geöffnet werden ('
+                . get_class($e) . ')');
+            return false;
+        }
+
+        $this->WriteAttributeInteger('LastSocketRestart', time());
+        if ((int) (IPS_GetInstance($parentID)['InstanceStatus'] ?? 0) !== 102) {
+            $this->refreshObserverStatus('Sofortstart: Client Socket geöffnet, TCP noch nicht aktiv');
+            return false;
+        }
+
+        // Synchronously issue the initial Dahua eventManager GET. This
+        // distinguishes a broken timer from the real Digest/TCP problem.
+        $this->HandshakeTimer();
+        $sent = $this->ReadAttributeInteger('LastHttpRequest') > 0;
+        $this->refreshObserverStatus($sent
+            ? 'Sofortstart: HTTP GET gesendet, warte auf Dahua 401/200'
+            : 'Sofortstart: Socket aktiv, aber HTTP GET nicht gesendet');
+        return $sent;
+    }
+
     public function Reconnect(): void
     {
         $this->SetTimerInterval('HandshakeTimer', 0);
