@@ -161,4 +161,25 @@ expect5442(str_contains(implode("\n",
     P03IPC5442Audit::summarizeModuleResources("ERROR: unsupported\r\n")),
     'KEIN NACHWEIS'),
     'unsupported CGI table reported as absent, not as successful AI');
+// Firmware 2.840 Smart H.264+/H.265+ codec is a separate switch
+// from ordinary video compression, which must not be falsely flagged.
+$codecOn="table.SmartEncode[0].Enable=true\r\n"
+    . "table.SmartEncode[0].Extra[0]=false\r\n";
+$codecOnText=implode("\n",P03IPC5442Audit::summarizeSmartEncode($codecOn));
+expect5442(str_contains($codecOnText,'SMART-CODEC STATUS: AN'),
+    'potential IVS conflict is correctly flagged only on actual main-stream SmartEncode=true');
+expect5442(str_contains($codecOnText,'SmartEncode[0].Extra[0]=false'),
+    'extra-stream SmartCodec state shown separately');
+expect5442(str_contains(implode("\n",P03IPC5442Audit::summarizeSmartEncode(
+    "table.SmartEncode[0].Enable=false\r\n")),'SMART-CODEC STATUS: AUS'),
+    'SmartEncode=false rules out main stream SmartCodec enabled status');
+expect5442(str_contains(implode("\n",P03IPC5442Audit::summarizeSmartEncode(
+    "table.SmartEncode[0].Enbale=1\r\n")),'SMART-CODEC STATUS: AN'),
+    'firmware variant Enbale typo field supported');
+expect5442(str_contains(implode("\n",P03IPC5442Audit::summarizeSmartEncode(
+    "ERROR: SmartEncode unsupported\r\n")),'STATUS: UNBEKANNT'),
+    'unsupported CGI response must not be treated as SmartCodec off');
+expect5442(!str_contains(implode("\n",P03IPC5442Audit::summarizeSmartEncode(
+    "table.SmartEncode[0].Password=never-expose\r\n")),
+    'never-expose'), 'sensitive fields not emitted from SmartCodec probe');
 echo "P03 IPC5442 READ-ONLY MODEL AUDIT UNIT TEST PASSED\n";
