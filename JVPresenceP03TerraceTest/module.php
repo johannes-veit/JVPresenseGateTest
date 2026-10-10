@@ -561,17 +561,10 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->appendProtocol('JV Terrasse/CrossLine ist optional und wird für Audit/Test/Produktion nicht benötigt.');
         $this->appendProtocol('Keine Zugangsdaten werden im Protokoll ausgegeben.');
 
-        // v0.6.8 and earlier could have created/changed terrace IVS test config.
-        // Restore only those changes that P03 itself recorded as owned. Never
-        // create or modify terrace IVS as part of the new mast-camera workflow.
-        $legacyCleanup = $this->restoreLegacyTerraceP03Config();
-        if (!($legacyCleanup['ok'] ?? false)) {
-            $this->setResult(
-                'FEHLER – alte P03-Terrassen-Testkonfiguration konnte nicht sicher zurückgesetzt werden: '
-                . (string) ($legacyCleanup['error'] ?? 'unbekannt')
-            );
-            return;
-        }
+        // Do not modify JV Terrasse or any other camera during P03 mast
+        // audit/test. Earlier P03-created terrace settings are left untouched
+        // unless the user explicitly runs the separate cleanup operation.
+        $this->appendProtocol('TERRASSE: keine automatische Konfigurationsänderung oder Restore.');
 
         $auxDiscovery = $this->discoverP03AuxSources(true);
         $this->subscribeP03AuxVariables();
@@ -585,7 +578,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
-        $auxAudit = $this->auditP03AuxCameras();
+        $auxAudit = $this->auditP03AuxCameras($auditOnly);
         if (!($auxAudit['ok'] ?? false)) {
             $this->setResult('FEHLER – P03 Mastkamera-Audit: ' . (string) ($auxAudit['error'] ?? 'unbekannt'));
             return;
@@ -608,7 +601,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->SetValue('TestActive', false);
             $this->setReady(false);
             $this->setResult(
-                'P03 MASTKAMERA-AUDIT OK – beide Human-IVS-Regeln + Observer + 2-Kamera-Simulation geprüft. '
+                'P03 MASTKAMERA-AUDIT LIVE OK – beide Human-IVS-Regeln + BEIDE aktiven Eventstreams + Simulation geprüft. '
                 . 'Terrasse wurde nicht als Voraussetzung verwendet.'
             );
             $this->appendProtocol(
@@ -1225,13 +1218,26 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     public function P03AuxRescan(): void
     {
+        // This button touches ONLY P03-owned observer instances and their
+        // sockets. Camera/terrace/ALA2 configuration is READ ONLY.
         $result = $this->discoverP03AuxSources(true);
         $this->subscribeP03AuxVariables();
-        $audit = $this->auditP03AuxCameras();
+
+        $jv = $this->ReadAttributeInteger('AuxJVInstanceID');
+        $work = $this->ReadAttributeInteger('AuxWorkInstanceID');
+        if ($jv > 0) {
+            $this->reconnectP03AuxObserver($jv, self::AUX_JV_ROLE);
+        }
+        if ($work > 0) {
+            $this->reconnectP03AuxObserver($work, self::AUX_WORK_ROLE);
+        }
+
+        // A reconnect is asynchronous. Never claim the stream is live in the
+        // same turn; its HTTP 200 must be observed by the observer.
         $this->refreshP03CameraStatus();
-        $this->setResult(($result['ok'] ?? false) && ($audit['ok'] ?? false)
-            ? 'P03 Zusatzkameras gefunden und geprüft.'
-            : 'P03 Zusatzkameras noch nicht vollständig bereit – Protokoll prüfen.');
+        $this->setResult(($result['ok'] ?? false)
+            ? 'P03-Observer neu gestartet. Keine Kamera-/Fremdmoduländerung. Nach 15 Sekunden beide StreamOK und Observer Diagnose prüfen.'
+            : 'P03-Observer unvollständig – Instanzen/Variablen im Protokoll prüfen.');
     }
 
     private function evaluateP03Pending(): void
@@ -2206,158 +2212,107 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /**
-     * Explicitly enables the Dahua Human-AI prerequisites used on the two
-     * IPC-HFW5442E-ZE mast cameras and verifies every changed value.
+     * Read-only Dahua SMD/MotionDetect status. An IVS Human rule has its own
+     * classifier; forcing MotionDetect/SMD on can conflict with IVS Smart Plan.
+     * Never change unrelated camera AI settings as a side effect of P03 audit.
      *
      * @return array{ok:bool,error:string,smd:string,human:string,sensitivity:string,motion:string}
      */
-    private function ensureP03AuxHumanAiEnabled(
+    private function readP03AuxHumanAiStatus(
         string $host,
         int $port,
         string $username,
         string $password,
         string $role
     ): array {
-        $smart = $this->genericCameraGet(
+        $smd = $this->genericCameraGet(
             $host, $port, $username, $password,
             '/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect'
         );
-        if (!($smart['ok'] ?? false)) {
-            return [
-                'ok' => false,
-                'error' => $role . ': SmartMotionDetect nicht lesbar',
-                'smd' => '', 'human' => '', 'sensitivity' => '', 'motion' => ''
-            ];
-        }
-
-        $parseSmd = static function (string $raw): array {
-            $enable = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Enable');
-            $human = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes.Human');
-            if ($human === null) {
-                $object0 = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes[0]');
-                $human = (strcasecmp((string) $object0, 'Human') === 0) ? 'true' : null;
-            }
-            $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
-            return [$enable, $human, $sensitivity];
-        };
-
-        [$enable, $human, $sensitivity] = $parseSmd((string) $smart['body']);
-        $needsSmd = strtolower((string) $enable) !== 'true'
-            || strtolower((string) $human) !== 'true'
-            || ($sensitivity !== '' && strcasecmp($sensitivity, 'High') !== 0);
-
-        if ($needsSmd) {
-            $setSmd = $this->genericCameraGet(
-                $host,
-                $port,
-                $username,
-                $password,
-                '/cgi-bin/configManager.cgi?action=setConfig'
-                    . '&SmartMotionDetect[0].Enable=true'
-                    . '&SmartMotionDetect[0].ObjectTypes.Human=true'
-                    . '&SmartMotionDetect[0].Sensitivity=High'
-            );
-            if (!($setSmd['ok'] ?? false) || trim((string) ($setSmd['body'] ?? '')) !== 'OK') {
-                return [
-                    'ok' => false,
-                    'error' => $role . ': SMD Human/High konnte nicht aktiviert werden',
-                    'smd' => (string) $enable,
-                    'human' => (string) $human,
-                    'sensitivity' => $sensitivity,
-                    'motion' => ''
-                ];
-            }
-
-            $smart = $this->genericCameraGet(
-                $host, $port, $username, $password,
-                '/cgi-bin/configManager.cgi?action=getConfig&name=SmartMotionDetect'
-            );
-            if (!($smart['ok'] ?? false)) {
-                return [
-                    'ok' => false,
-                    'error' => $role . ': SMD-Readback nach Aktivierung fehlgeschlagen',
-                    'smd' => '', 'human' => '', 'sensitivity' => '', 'motion' => ''
-                ];
-            }
-            [$enable, $human, $sensitivity] = $parseSmd((string) $smart['body']);
-            $this->appendProtocol($role . ': KI-Personenerkennung SMD Human + High aktiv gesetzt und rückgelesen.');
-        }
-
         $motion = $this->genericCameraGet(
             $host, $port, $username, $password,
             '/cgi-bin/configManager.cgi?action=getConfig&name=MotionDetect'
         );
-        $motionEnable = null;
+
+        $enable = $human = $sensitivity = $motionEnable = '';
+        if ($smd['ok'] ?? false) {
+            $raw = (string) ($smd['body'] ?? '');
+            $enable = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Enable') ?? '');
+            $human = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes.Human') ?? '');
+            if ($human === '') {
+                $object0 = GateTestLogic::configValue($raw, 'SmartMotionDetect[0].ObjectTypes[0]');
+                $human = strcasecmp((string) $object0, 'Human') === 0 ? 'true' : '';
+            }
+            $sensitivity = (string) (GateTestLogic::configValue($raw, 'SmartMotionDetect[0].Sensitivity') ?? '');
+        }
         if ($motion['ok'] ?? false) {
-            $motionEnable = GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable');
+            $motionEnable = (string) (GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable') ?? '');
         }
 
-        // Dahua documents SMD as an object filter on Motion Detection. Only an
-        // explicit false is changed; a firmware that does not expose this key is
-        // not guessed.
-        if ($motionEnable !== null && strtolower((string) $motionEnable) !== 'true') {
-            $setMotion = $this->genericCameraGet(
-                $host, $port, $username, $password,
-                '/cgi-bin/configManager.cgi?action=setConfig&MotionDetect[0].Enable=true'
-            );
-            if (!($setMotion['ok'] ?? false) || trim((string) ($setMotion['body'] ?? '')) !== 'OK') {
-                return [
-                    'ok' => false,
-                    'error' => $role . ': MotionDetect als SMD-Voraussetzung konnte nicht aktiviert werden',
-                    'smd' => (string) $enable,
-                    'human' => (string) $human,
-                    'sensitivity' => $sensitivity,
-                    'motion' => (string) $motionEnable
-                ];
-            }
-            $motion = $this->genericCameraGet(
-                $host, $port, $username, $password,
-                '/cgi-bin/configManager.cgi?action=getConfig&name=MotionDetect'
-            );
-            $motionEnable = ($motion['ok'] ?? false)
-                ? GateTestLogic::configValue((string) $motion['body'], 'MotionDetect[0].Enable')
-                : null;
-            if ($motionEnable === null || strtolower((string) $motionEnable) !== 'true') {
-                return [
-                    'ok' => false,
-                    'error' => $role . ': MotionDetect-Readback nach Aktivierung nicht eindeutig TRUE',
-                    'smd' => (string) $enable,
-                    'human' => (string) $human,
-                    'sensitivity' => $sensitivity,
-                    'motion' => (string) $motionEnable
-                ];
-            }
-            $this->appendProtocol($role . ': MotionDetect als SMD-Basis aktiv gesetzt und rückgelesen.');
-        }
-
-        $smdOk = strtolower((string) $enable) === 'true'
-            && strtolower((string) $human) === 'true'
-            && ($sensitivity === '' || strcasecmp($sensitivity, 'High') === 0);
-        $motionOk = $motionEnable === null || strtolower((string) $motionEnable) === 'true';
-
-        if (!$smdOk || !$motionOk) {
-            return [
-                'ok' => false,
-                'error' => $role . ': KI-Personenerkennung nach Readback nicht vollständig aktiv',
-                'smd' => (string) $enable,
-                'human' => (string) $human,
-                'sensitivity' => $sensitivity,
-                'motion' => $motionEnable === null ? '<nicht gemeldet>' : (string) $motionEnable
-            ];
-        }
-
+        // SMD is optional diagnosis. Missing/disabled SMD must not block the
+        // independently verified, Human-filtered P03 IVS rule.
         return [
-            'ok' => true,
-            'error' => '',
-            'smd' => (string) $enable,
-            'human' => (string) $human,
-            'sensitivity' => $sensitivity,
-            'motion' => $motionEnable === null ? '<nicht gemeldet>' : (string) $motionEnable
+            'ok' => true, 'error' => '', 'smd' => $enable,
+            'human' => $human, 'sensitivity' => $sensitivity, 'motion' => $motionEnable
         ];
     }
 
+    /**
+     * Camera read-only IVS audit: no setConfig, no template write, no restore.
+     * Do not trust a saved P03 RuleIndex/RuleID without camera-side readback.
+     *
+     * @return array{ok:bool,error:string,index?:int,id?:int,actions?:array,direction?:string}
+     */
+    private function inspectP03AuxHumanRuleReadOnly(int $instanceID, string $role): array
+    {
+        $cfg = $this->p03AuxCameraConfiguration($instanceID);
+        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
+            return ['ok' => false, 'error' => $role . ': Zugang unvollständig'];
+        }
+        $login = $this->rpc2Login(
+            (string) $cfg['host'], (int) $cfg['port'],
+            (string) $cfg['username'], (string) $cfg['password']
+        );
+        if (!($login['ok'] ?? false)) {
+            return ['ok' => false, 'error' => $role . ': Read-only RPC2-Login fehlgeschlagen'];
+        }
+
+        $host = (string) $cfg['host'];
+        $port = (int) $cfg['port'];
+        $session = (string) ($login['session'] ?? '');
+        $global = $this->rpc2Call($host, $port, $session, 740, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
+        $rules = $this->rpc2Call($host, $port, $session, 741, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
+        $this->rpc2Call($host, $port, $session, 749, 'global.logout', null);
+
+        $scene = $global['json']['params']['table'][0]['Scene']['Type'] ?? null;
+        if (!($global['ok'] ?? false) || strcasecmp((string) $scene, 'Normal') !== 0) {
+            return ['ok' => false, 'error' => $role . ': IVS Smart-Plan Scene.Type ist nicht Normal'];
+        }
+        $list = $rules['json']['params']['table'][0] ?? null;
+        if (!($rules['ok'] ?? false) || !is_array($list)) {
+            return ['ok' => false, 'error' => $role . ': IVS-Regeltabelle nicht lesbar'];
+        }
+        $name = (string) $this->p03AuxHumanRuleMeta($role)['name'];
+        foreach ($list as $index => $rule) {
+            if (!is_array($rule) || strcasecmp((string) ($rule['Name'] ?? ''), $name) !== 0) {
+                continue;
+            }
+            if (!P03AuxHumanRule::matches($rule, $name) || !isset($rule['Id']) || !is_numeric($rule['Id'])) {
+                return ['ok' => false, 'error' => $role . ': eigene Human-IVS-Regel nicht vollständig gültig'];
+            }
+            return [
+                'ok' => true, 'error' => '',
+                'index' => (int) $index, 'id' => (int) $rule['Id'],
+                'actions' => is_array($rule['Config']['Action'] ?? null)
+                    ? $rule['Config']['Action'] : [(string) ($rule['Config']['Action'] ?? '')],
+                'direction' => (string) ($rule['Config']['Direction'] ?? '')
+            ];
+        }
+        return ['ok' => false, 'error' => $role . ': P03 Human-IVS-Regel fehlt auf der Kamera'];
+    }
+
     /** @return array{ok:bool,error:string,model:string,firmware:string,sensitivity:string} */
-    private function auditP03AuxCamera(int $instanceID, string $role): array
+    private function auditP03AuxCamera(int $instanceID, string $role, bool $readOnly = false): array
     {
         if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
             return ['ok' => false, 'error' => $role . ': Instanz fehlt', 'model' => '', 'firmware' => '', 'sensitivity' => ''];
@@ -2389,11 +2344,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
 
-        // Explicitly activate and verify Human AI before provisioning IVS.
-        // SMD itself is not used as the P03 transfer proof, but this guarantees
-        // that the camera-side Human classifier is enabled instead of merely
-        // assuming it from a stale configuration.
-        $ai = $this->ensureP03AuxHumanAiEnabled($host, $port, $username, $password, $role);
+        // SMD and MotionDetect are DIAGNOSTIC ONLY, never auto-activated.
+        $ai = $this->readP03AuxHumanAiStatus($host, $port, $username, $password, $role);
         $enable = (string) ($ai['smd'] ?? '');
         $human = (string) ($ai['human'] ?? '');
         $sensitivity = (string) ($ai['sensitivity'] ?? '');
@@ -2408,11 +2360,15 @@ class JVPresenceP03MultiCamera extends IPSModule
             ];
         }
 
-        $ivs = $this->ensureP03AuxHumanRule($instanceID, $role);
+        $ivs = $readOnly
+            ? $this->inspectP03AuxHumanRuleReadOnly($instanceID, $role)
+            : $this->ensureP03AuxHumanRule($instanceID, $role);
         $personVar = $this->findPersonDetectedVariable($instanceID);
         $counterVar = $this->findAuxVariable($instanceID, 'HumanEventCounter');
         $streamVar = $this->findAuxVariable($instanceID, 'StreamOK');
-        $ok = ($ivs['ok'] ?? false) && $personVar > 0 && $counterVar > 0 && $streamVar > 0;
+        $streamLive = $streamVar > 0 && IPS_VariableExists($streamVar) && (bool) GetValue($streamVar);
+        $ok = ($ivs['ok'] ?? false) && $personVar > 0 && $counterVar > 0
+            && $streamVar > 0 && (!$readOnly || $streamLive);
 
         $this->appendProtocol(
             'P03 AUX AUDIT ' . $role
@@ -2423,7 +2379,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', SMD-Human=' . ($human === null ? '<nur Diagnose/nicht gemeldet>' : (string) $human)
                 . ', Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
                 . ', MotionDetect=' . ($motionEnable !== '' ? $motionEnable : '<nicht gemeldet>')
-                . ', AI-IVS-Plan=Normal'
+                . ', AI-IVS-Plan=' . (($ivs['ok'] ?? false) ? 'Normal readback' : 'NICHT VERIFIZIERT')
                 . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'OK' : 'FEHLER')
                 . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
                 . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
@@ -2432,6 +2388,8 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', PersonVar=' . $personVar
                 . ', CounterVar=' . $counterVar
                 . ', StreamVar=' . $streamVar
+                . ', StreamLive=' . ($streamLive ? 'TRUE' : 'FALSE')
+                . ', ReadOnly=' . ($readOnly ? 'TRUE' : 'FALSE')
                 . ' -> ' . ($ok ? 'OK' : 'FEHLER')
         );
 
@@ -2439,7 +2397,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             'ok' => $ok,
             'error' => $ok
                 ? ''
-                : ($role . ': ' . (string) ($ivs['error'] ?? 'Human-IVS/Observervariablen nicht vollständig bereit')),
+                : ($role . ': ' . (!$streamLive && $readOnly
+                    ? 'Eventstream AUS – HTTP 200 noch nicht bestätigt'
+                    : (string) ($ivs['error'] ?? 'Human-IVS/Observervariablen nicht vollständig bereit'))),
             'model' => $model,
             'firmware' => $firmware,
             'sensitivity' => $sensitivity
@@ -2447,12 +2407,12 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /** @return array{ok:bool,error:string} */
-    private function auditP03AuxCameras(): array
+    private function auditP03AuxCameras(bool $readOnly = false): array
     {
         $jv = $this->ReadAttributeInteger('AuxJVInstanceID');
         $work = $this->ReadAttributeInteger('AuxWorkInstanceID');
-        $jvAudit = $this->auditP03AuxCamera($jv, self::AUX_JV_ROLE);
-        $workAudit = $this->auditP03AuxCamera($work, self::AUX_WORK_ROLE);
+        $jvAudit = $this->auditP03AuxCamera($jv, self::AUX_JV_ROLE, $readOnly);
+        $workAudit = $this->auditP03AuxCamera($work, self::AUX_WORK_ROLE, $readOnly);
 
         $this->WriteAttributeString('AuxJVModel', (string) ($jvAudit['model'] ?? ''));
         $this->WriteAttributeString('AuxWorkModel', (string) ($workAudit['model'] ?? ''));
