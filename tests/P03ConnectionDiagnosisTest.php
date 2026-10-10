@@ -155,7 +155,7 @@ verifyDiag(count(array_filter($ipc->uris,static fn($uri)=>
     'only GET diagnostic commands, no camera modifications');
 verifyDiag($GLOBALS['writes']===[],'no foreign module or camera writes');
 $ipcUI=json_decode($ipc->GetConfigurationForm(),true);
-verifyDiag(str_contains((string)json_encode($ipcUI),'SMD/IVS-SPEZIALDIAGNOSE'),
+verifyDiag(str_contains((string)json_encode($ipcUI,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE),'SMD/IVS-SPEZIALDIAGNOSE'),
     'one-click model report appears directly in Symcon form');
 $buttons=array_column($ipcUI['actions']??[],'onClick');
 verifyDiag(in_array('JVP03MC_DiagnoseIPC5442Configuration($id);',$buttons,true),
