@@ -85,6 +85,15 @@
   "actions": [
     {
       "type": "Button",
+      "caption": "P03 Verbindungen diagnostizieren (nur lesen – beide Observer/Sockets)",
+      "onClick": "JVP03MC_DiagnoseP03Connections($id);"
+    },
+    {
+      "type": "Label",
+      "caption": "Zeigt Client-Socket-IDs, Status, Host/Port, Eventstream, Human-Zähler, Auth-/Watchdog-Zustand und Fremdnutzung. Kein Neustart, keine Kamera-/Fremdmoduländerung. Ergebnis im Konfigurationsfenster und als kopierbare Variable."
+    },
+    {
+      "type": "Button",
       "caption": "P03 Mastkamera-LIVE-Audit – Kamera nur lesen (kein Lauftest)",
       "onClick": "JVP03MC_AuditCameraConfiguration($id);"
     },
