@@ -209,6 +209,8 @@ $x->Reconnect();
 $x->SocketRestartTimer();
 checkP03(($GLOBALS['mockSocket'][99001]['properties']['Open'] ?? false) === true,
     'Foreign ALA2 socket is not closed by P03 restart');
+checkP03($x->GetConfigurationForParent() === '{}',
+    'P03 does not override a shared foreign socket configuration');
 checkP03(($x->attributes['SocketRestartStage'] ?? -1) === 0,
     'Shared parent aborts reconnect fail-closed');
 checkP03(str_contains((string) ($x->values['ObserverStatus'] ?? ''), 'geteilt'),
