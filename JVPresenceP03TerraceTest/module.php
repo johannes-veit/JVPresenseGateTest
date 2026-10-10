@@ -161,11 +161,13 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('LastEvent', 'Letztes IVS-Ereignis', '', 60);
         $this->RegisterVariableString('Protocol', 'Testprotokoll', '', 70);
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
+        $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03MC_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03MC_SocketRestartTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('Watchdog', 15000, 'JVP03MC_Watchdog($_IPS["TARGET"]);');
         $this->RegisterTimer('P03ProofTimer', 0, 'JVP03MC_P03ProofTimer($_IPS["TARGET"]);');
+        $this->RegisterTimer('P03MastHealthTimer', 15000, 'JVP03MC_P03MastHealthTimer($_IPS["TARGET"]);');
 
     }
 
@@ -180,6 +182,8 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         // Add the diagnosis variable to P03 instances installed before 0.6.15.
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
+        $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
+        $this->SetTimerInterval('P03MastHealthTimer', 15000);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
@@ -1430,6 +1434,71 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /**
+     * Independent mast watchdog in the P03 *main instance*. This is separate
+     * from both observer-local timers; a missed callback in an observer no
+     * longer leaves StreamOK=true indefinitely after the Dahua stream dies.
+     * Never operates on sockets not explicitly owned by this P03 instance.
+     */
+    public function P03MastHealthTimer(): void
+    {
+        $this->checkP03MastHealth(false);
+    }
+
+    public function CheckP03MastHealthNow(): void
+    {
+        $this->checkP03MastHealth(true);
+        $this->DiagnoseP03Connections();
+    }
+
+    private function checkP03MastHealth(bool $manual): void
+    {
+        $results = [];
+        foreach ([
+            ['role' => self::AUX_JV_ROLE, 'observer' => 'AuxJVInstanceID',
+                'socket' => 'AuxJVManagedSocketID', 'host' => 'AuxJVHost'],
+            ['role' => self::AUX_WORK_ROLE, 'observer' => 'AuxWorkInstanceID',
+                'socket' => 'AuxWorkManagedSocketID', 'host' => 'AuxWorkHost']
+        ] as $entry) {
+            $role = (string) $entry['role'];
+            $observerID = $this->ReadAttributeInteger((string) $entry['observer']);
+            $socketID = $this->ReadAttributeInteger((string) $entry['socket']);
+            $host = trim($this->ReadPropertyString((string) $entry['host']));
+            try {
+                if ($observerID <= 0 || $socketID <= 0
+                    || !IPS_InstanceExists($observerID) || !IPS_InstanceExists($socketID)) {
+                    $results[] = $role . '=KEIN_P03_SOCKET';
+                    continue;
+                }
+                $observer = IPS_GetInstance($observerID);
+                $socket = IPS_GetInstance($socketID);
+                if (strcasecmp((string) ($observer['ModuleInfo']['ModuleID'] ?? ''),
+                        self::AUX_OBSERVER_MODULE_GUID) !== 0
+                    || strcasecmp((string) ($socket['ModuleInfo']['ModuleID'] ?? ''),
+                        self::CLIENT_SOCKET_GUID) !== 0
+                    || (int) ($observer['ConnectionID'] ?? 0) !== $socketID
+                    || (string) IPS_GetProperty($observerID, 'Role') !== $role
+                    || trim((string) IPS_GetProperty($observerID, 'CameraHost')) !== $host
+                    || trim((string) IPS_GetProperty($socketID, 'Host')) !== $host) {
+                    $results[] = $role . '=SICHERHEIT_BLOCKIERT';
+                    continue;
+                }
+                // HealthTick verifies exclusivity a SECOND time on the actual
+                // observer module before it may touch the parent socket.
+                $result = JVP03AUX_HealthTick($observerID);
+                $result = is_string($result) ? $result : 'UNGUELTIGE_RUECKGABE';
+                $results[] = $role . '=' . preg_replace('/[^A-Z0-9_]/', '', substr($result, 0, 50));
+            } catch (Throwable $e) {
+                $results[] = $role . '=HEALTH_AUFRUF_FEHLER_' . get_class($e);
+            }
+        }
+        $newState = date('H:i:s') . ' ' . implode(' | ', $results);
+        $this->SetValue('P03MastHealth', $newState);
+        if ($manual) {
+            $this->appendProtocol('P03 MANUELLER HEARTBEAT-CHECK: ' . $newState);
+        }
+    }
+
+    /**
      * One-click, strictly read-only diagnosis. Never runs ApplyChanges,
      * reconnect, RPC2, setConfig or updates an unrelated module or camera.
      * The report contains no username, password, HTTP authorization or nonce.
@@ -1442,6 +1511,10 @@ class JVPresenceP03MultiCamera extends IPSModule
             'Hauptinstanz: #' . $this->InstanceID,
             'Hinweis: Es werden keine Kameraeinstellungen oder Fremdmodule geändert.'
         ];
+        $healthVar = $this->GetIDForIdent('P03MastHealth');
+        if ($healthVar > 0 && IPS_VariableExists($healthVar)) {
+            $lines[] = 'Unabhängiger P03-Mast-Watchdog: ' . (string) GetValue($healthVar);
+        }
 
         $roles = [
             [
@@ -1573,6 +1646,23 @@ class JVPresenceP03MultiCamera extends IPSModule
                         // strip CR/LF and limit to prevent log/content injection.
                         $reason = preg_replace('/[\\r\\n\\t]+/', ' ', $reason) ?? '';
                         $lines[] = 'Letzter Observer-Schritt: ' . substr($reason, 0, 220);
+                        $healthTick = (int) ($state['lastHealthTick'] ?? 0);
+                        $lines[] = 'Letzter HEALTH-Tick: ' . ($healthTick > 0
+                            ? date('H:i:s', $healthTick) . ' (vor '
+                                . max(0, time() - $healthTick) . ' s)'
+                            : 'NIE');
+                        $lines[] = 'Letzte Health-Aktion: '
+                            . substr((string) ($state['lastHealthAction'] ?? 'UNBEKANNT'), 0, 80);
+                        $rxTimestamp = (int) ($state['lastCameraRx'] ?? 0);
+                        if ($rxTimestamp > 0 && time() - $rxTimestamp > 25) {
+                            $lines[] = 'WARNUNG: Eventstream ist VERALTET (Daten >25 Sekunden alt)'
+                                . ' – Anzeige StreamOK kann irreführend sein.';
+                        }
+                        $lastStaleRx = (int) ($state['lastStaleRx'] ?? 0);
+                        if ($lastStaleRx > 0) {
+                            $lines[] = 'Zuletzt erkannter veralteter Empfang: '
+                                . date('H:i:s', $lastStaleRx);
+                        }
                         $lines[] = 'Diagnoseflags: configReady=' . self::p03DiagBool($state['configReady'] ?? null)
                             . ', streaming=' . self::p03DiagBool($state['streaming'] ?? null)
                             . ', parentOpen=' . self::p03DiagBool($state['parentOpen'] ?? null)
