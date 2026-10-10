@@ -56,6 +56,8 @@ jobs:
         run: php tests/P03AuxObserverStreamTest.php
       - name: P03 one-click read-only socket diagnosis
         run: php tests/P03ConnectionDiagnosisTest.php
+      - name: P03 Symcon Create and ApplyChanges registration safety
+        run: php tests/P03RegistrationLifecycleTest.php
       - name: Dahua IPC-HFW5442E-ZE 2.840 model config and wire security unit
         run: php tests/P03IPC5442AuditTest.php
       - name: P03 dedicated Client Socket creation/connection simulation
@@ -177,10 +179,12 @@ jobs:
           ]:
               if token not in main:
                   raise SystemExit('P03 v0.6.22 restoration safety contract missing: '+token)
-          if observer.count("RegisterAttributeInteger('WireCodeCount', 0)") != 2:
-              raise SystemExit('P03 v0.6.22 duplicate WireCodeCount registrations or missing migration')
-          if observer.count("RegisterAttributeInteger('WireHeartbeatCount', 0)") != 2:
-              raise SystemExit('P03 v0.6.22 duplicate WireHeartbeatCount registrations or missing migration')
+          if observer.count("RegisterAttributeInteger('WireCodeCount', 0)") != 1:
+              raise SystemExit('Observer WireCodeCount must be registered ONCE, in Create only')
+          if observer.count("RegisterAttributeInteger('WireHeartbeatCount', 0)") != 1:
+              raise SystemExit('Observer WireHeartbeatCount must be registered ONCE, in Create only')
+          if main.count("RegisterTimer('P03MastHealthTimer'") != 1:
+              raise SystemExit('Main P03 health timer must be registered ONCE, in Create only')
           # A failed module-index search must never zero out the last
           # stored P03 observer identity, and stored StreamOK must not
           # make an orphaned observer count as healthy.
