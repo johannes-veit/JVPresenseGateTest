@@ -1,3 +1,15 @@
+# v0.6.20 (Build 51) – IP-Symcon Instanz-Lebenszyklus / Status 101
+
+- Live-Befund 10.10.2026 18:41: Beide P03-Observer (#57215 und #27938) haben den Status **101 (IS_CREATING)** über Minuten trotz exklusiver TCP-Sockets mit Status 102 und frischer Dahua-Eventstream-Überwachung `LIVE`.
+- Bestätigter Codefehler: Observer- und Hauptinstanz-`ApplyChanges()` setzten keinen expliziten gültigen Instanzstatus.
+- Observer schließt nach Konfigurations-/Parentprüfung seinen Lebenszyklus mit `SetStatus(102)` ab, **nur** bei aktivierter Konfiguration und exklusiv korrekt zugeordnetem P03-Client-Socket; andernfalls `SetStatus(104)`.
+- Die P03-Hauptinstanz wird bei vorhandenen Zugangsdaten als Instanz 102 (aktiv), sonst 104 (inaktiv) markiert. Das ist **keine** Freigabe der HOME↔LAGER-Produktionslogik.
+- `StreamOK`, Alter des letzten echten Kameraempfangs, 25s Fail-Closed-Heartbeat, EventAudit/Human-Zähler und die zwei Kamera-Beweisregeln bleiben **vollständig unabhängig** vom Modulstatus.
+- Der vorhandene lesende Diagnosebutton zeigt nun Hauptinstanz-Status und den verständlich eingeordneten Observer-Status 101/102/104/200+.
+- Simulation der echten Observer-Klasse deckt Status 101→102 nach ApplyChanges sowie 104 bei deaktivierter bzw. geteilter Verbindung ab; CI prüft beide Module auf Statusübergänge.
+- Weiterhin unbewiesen: JV_LEFT erzeugt Live-Human-IVS-Events nach dem Update und WORK_LEFT zählt weitere tatsächliche neue Personen. Ein laufender `LIVE`-Heartbeat allein beweist das nicht.
+- Nur P03-Repository geändert; **keine Schreibzugriffe auf Kameras, AussenlichtAutomatik2, Alarmanlage, andere Module oder Fremdsockets**.
+
 # v0.6.19 Build 50 – Ereignisfilter reparieren und IVS-Ursachen sichtbar machen
 
 - Nach einem realen WORK_LEFT-Test zählt P03 zunächst drei Human-Ereignisse, anschließend offenbar nicht mehr, obwohl der Eventstream LIVE meldet. Die Hauptursache ist noch nicht durch einen neuen Rohdatentest verifiziert.
