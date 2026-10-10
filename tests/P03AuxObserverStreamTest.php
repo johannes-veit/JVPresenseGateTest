@@ -15,6 +15,7 @@ $GLOBALS['mockSocket'] = [
 $GLOBALS['mockValueById'] = [];
 $GLOBALS['mockChildParent'] = 99001;
 $GLOBALS['mockForeignChild'] = false;
+$GLOBALS['socketWrites'] = [];
 $GLOBALS['mockCount'] = 0;
 
 function IPS_InstanceExists(int $id): bool
@@ -41,6 +42,7 @@ function IPS_GetProperty(int $id, string $key): mixed
 }
 function IPS_SetProperty(int $id, string $key, mixed $value): void
 {
+    $GLOBALS['socketWrites'][] = [$id, $key, $value];
     $GLOBALS['mockSocket'][$id]['properties'][$key] = $value;
 }
 function IPS_ApplyChanges(int $id): void
@@ -278,4 +280,53 @@ checkP03($direct->StartSocketNow() === false,
 checkP03(count($direct->sent) === $foreignReq,
     'Foreign socket guard sends no HTTP request');
 $GLOBALS['mockForeignChild'] = false;
+// Heartbeat-age checks: the actual Symcon report showed StreamOK=true while
+// LastCameraRx was 156 seconds stale. HTTP 200 must not remain proof of life.
+rxP03($direct, "HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace\r\n\r\n");
+$direct->attributes['LastCameraRx'] = time() - 156;
+$direct->attributes['LastSocketRestart'] = time() - 60;
+$initialSent = count($direct->sent);
+$beforeWrites = count($GLOBALS['socketWrites']);
+$outcome = $direct->HealthTick();
+checkP03($outcome === 'RECONNECT_GET_SENT',
+    'Stale HTTP-200 stream cannot remain healthy; direct reconnect attempted');
+checkP03($direct->values['StreamOK'] === false,
+    'HealthTick fails closed on 156s stale camera response');
+checkP03($direct->attributes['LastHealthTick'] > 0 &&
+    $direct->attributes['LastHealthAction'] === 'RECONNECT_GET_SENT',
+    'HealthTick records successful invocation and outcome');
+checkP03(count($direct->sent) === $initialSent+1,
+    'Stale socket generates a fresh initial GET');
+$writes=array_slice($GLOBALS['socketWrites'],$beforeWrites);
+$openWrites=array_values(array_filter($writes,static fn($w)=>$w[1]==='Open'));
+checkP03(count($openWrites)>=2 && $openWrites[0][2]===false
+    && end($openWrites)[2]===true,
+    'Stale TCP socket explicitly closes then reopens before new HTTP GET');
+
+rxP03($direct, "HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace\r\n\r\n");
+$before=count($direct->sent);
+checkP03($direct->HealthTick()==='LIVE' && count($direct->sent)===$before,
+    'Current response with HTTP-200 is healthy, no unnecessary reconnect');
+
+$direct->attributes['LastCameraRx'] = time() - 45;
+$direct->attributes['LastSocketRestart'] = time();
+$before=count($direct->sent);
+checkP03($direct->HealthTick()==='COOLDOWN',
+    'Stale stream with recent restart respects retry cooldown');
+checkP03($direct->values['StreamOK']===false &&
+    count($direct->sent)===$before,
+    'Cooldown keeps stale stream OFF and sends no extra HTTP request');
+
+$GLOBALS['mockForeignChild']=true;
+checkP03($direct->HealthTick()==='UNSAFE_PARENT',
+    'Heartbeat repair refuses shared socket without side effects');
+$GLOBALS['mockForeignChild']=false;
+
+// Observer watchdog timer and main watchdog both use same verified checker.
+$direct->attributes['LastCameraRx']=time()-90;
+$direct->attributes['LastSocketRestart']=time()-60;
+$direct->Watchdog();
+checkP03($direct->attributes['LastHealthAction']==='RECONNECT_GET_SENT',
+    'Old observer Watchdog method delegates to guarded HealthTick');
+
 echo "P03 OBSERVER INTEGRATION SIMULATION PASSED ({$tests} assertions)\n";
