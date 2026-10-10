@@ -71,7 +71,14 @@ class IPSModule
 
     public function Create(): void {}
     public function ApplyChanges(): void {}
-    protected function RequireParent(string $guid): bool { return true; }
+    protected function RequireParent(string $guid): bool
+    {
+        // Models Symcon creating a dedicated parent if the device has none.
+        if ($GLOBALS['mockChildParent'] === 0) {
+            $GLOBALS['mockChildParent'] = 99001;
+        }
+        return true;
+    }
 
     protected function RegisterPropertyBoolean(string $k, bool $v): void { $this->properties[$k] ??= $v; }
     protected function RegisterPropertyInteger(string $k, int $v): void { $this->properties[$k] ??= $v; }
@@ -225,5 +232,11 @@ checkP03(str_contains((string) ($x->values['ObserverStatus'] ?? ''), 'Client Soc
     'Missing parent has explicit diagnostic');
 checkP03(($x->values['StreamOK'] ?? true) === false,
     'Missing parent never emits StreamOK=true');
+
+$x->ApplyChanges();
+checkP03($GLOBALS['mockChildParent'] === 99001,
+    'ApplyChanges recreates dedicated parent when orphaned');
+checkP03(($x->attributes['SocketRestartStage'] ?? null) === 1,
+    'Recreated parent is scheduled for fresh Digest handshake');
 
 echo "P03 OBSERVER INTEGRATION SIMULATION PASSED ({$tests} assertions)\n";
