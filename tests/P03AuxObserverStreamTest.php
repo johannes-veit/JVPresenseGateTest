@@ -324,6 +324,8 @@ $GLOBALS['mockForeignChild']=false;
 
 // Observer watchdog timer and main watchdog both use same verified checker.
 $direct->attributes['LastCameraRx']=time()-90;
+$direct->attributes['Streaming']=true;
+$direct->values['StreamOK']=true;
 $direct->attributes['LastSocketRestart']=time()-60;
 $direct->Watchdog();
 checkP03($direct->attributes['LastHealthAction']==='RECONNECT_GET_SENT',
