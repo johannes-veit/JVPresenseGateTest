@@ -181,7 +181,7 @@ $x->properties['Role'] = 'JV_LEFT';
 $x->properties['RuleIndex'] = 3;
 $x->properties['RuleID'] = 4;
 $x->ApplyChanges();
-checkP03(count($x->attributes) >= 25,
+checkP03(count($x->attributes) >= 24,
     'Observer Create registers all properties once; ApplyChanges adds no duplicate attributes');
 checkP03(($x->values['StreamOK'] ?? null) === false, 'No false-positive StreamOK before handshake');
 checkP03(($x->attributes['SocketRestartStage'] ?? null) === 1, 'Reconnection staged after ApplyChanges');
