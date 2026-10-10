@@ -45,6 +45,54 @@ function IPS_ApplyChanges(int $id): void { throw new RuntimeException('Forbidden
 function IPS_SetProperty(int $id,string $key,mixed $value): void { throw new RuntimeException('Forbidden mutation: IPS_SetProperty'); }
 function IPS_CreateInstance(string $guid): int { throw new RuntimeException('Forbidden mutation: IPS_CreateInstance'); }
 
+// P03-only documents, never foreign module/camera changes. Document APIs
+// mimic real Symcon document media type 5 and immutable parent ownership.
+$GLOBALS['media']=[]; $GLOBALS['mediaByIdent']=[]; $GLOBALS['nextMediaID']=91000;
+function IPS_CreateMedia(int $type): int {
+    if ($type!==5) throw new RuntimeException('Only document media allowed');
+    $id=++$GLOBALS['nextMediaID'];
+    $GLOBALS['media'][$id]=['MediaType'=>$type,'MediaFile'=>'','content'=>'','ParentID'=>0];
+    return $id;
+}
+function IPS_SetParent(int $id,int $parent): bool {
+    if ($parent!==53879 || !isset($GLOBALS['media'][$id]))
+        throw new RuntimeException('Foreign parent mutation');
+    $GLOBALS['media'][$id]['ParentID']=$parent;
+    return true;
+}
+function IPS_SetIdent(int $id,string $ident): bool {
+    if (!isset($GLOBALS['media'][$id])) throw new RuntimeException('Foreign media ident');
+    $GLOBALS['mediaByIdent'][$ident]=$id;
+    $GLOBALS['byIdent'][53879][$ident]=$id;
+    return true;
+}
+function IPS_SetName(int $id,string $title): bool {
+    if (!isset($GLOBALS['media'][$id])) throw new RuntimeException('Foreign media rename');
+    $GLOBALS['media'][$id]['name']=$title;
+    return true;
+}
+function IPS_MediaExists(int $id): bool { return isset($GLOBALS['media'][$id]); }
+function IPS_GetMedia(int $id): array { return $GLOBALS['media'][$id]; }
+function IPS_GetObject(int $id): array {
+    if (!isset($GLOBALS['media'][$id])) throw new RuntimeException('Foreign IPS_GetObject');
+    return ['ParentID'=>$GLOBALS['media'][$id]['ParentID']];
+}
+function IPS_SetMediaFile(int $id,string $filename,bool $mustExist): bool {
+    if (!isset($GLOBALS['media'][$id]) || !str_starts_with($filename,'media/P03_IPC5442_'))
+        throw new RuntimeException('Foreign media path');
+    $GLOBALS['media'][$id]['MediaFile']=$filename;
+    return true;
+}
+function IPS_SetMediaContent(int $id,string $base64): bool {
+    if (!isset($GLOBALS['media'][$id])) throw new RuntimeException('Foreign media content');
+    $text=base64_decode($base64,true);
+    if ($text===false) throw new RuntimeException('Invalid base64');
+    $GLOBALS['media'][$id]['content']=$text;
+    return true;
+}
+
+
+
 class IPSModule
 {
     public int $InstanceID=53879;
@@ -206,6 +254,77 @@ verifyDiag(str_contains((string)json_encode($ipcUI,JSON_UNESCAPED_SLASHES|JSON_U
 $buttons=array_column($ipcUI['actions']??[],'onClick');
 verifyDiag(in_array('JVP03MC_DiagnoseIPC5442Configuration($id);',$buttons,true),
     'one-click model-specific read-only button correctly wired');
+
+// Explicit user demand: ALL original camera config values, no relevance
+// whitelist and no first-48/80-line truncation. Store FULL redacted texts in
+// two Symcon DOCUMENT objects under P03 #53879; known #35115 gives IDs.
+class SimulatedFullIPC5442Main extends SimulatedIPC5442Main
+{
+    public array $fullRequests=[];
+    protected function readIPC5442CompleteConfiguration(
+        string $host,int $port,string $username,string $password,string $uri
+    ): array {
+        if ($username==='' || $password==='') throw new RuntimeException('No credentials');
+        $this->fullRequests[]=$host.' '.$uri;
+        if ($host==='192.168.107.99' && str_contains($uri,'getConfig&name=All')) {
+            return ['ok'=>false,'http'=>404,'error'=>'unsupported','body'=>'ERROR: unsupported'];
+        }
+        if (str_contains($uri,'Config.backup?action=All')) {
+            $json=['General'=>['Language'=>'de','Password'=>'VERY_PRIVATE'],
+                'VideoAnalyseRule'=>[[['Enable'=>true,
+                    'Config'=>['UnknownNewField'=>['Alpha','Beta']]]]],
+                'UnrelatedSettings'=>['NeverCurated'=>'backup-surprise']];
+            return ['ok'=>true,'http'=>200,'error'=>'',
+                'body'=>json_encode($json,JSON_UNESCAPED_UNICODE)];
+        }
+        $lines=[
+            'table.SmartMotionDetect[0].Enable=true',
+            'table.VideoAnalyseRule[0][3].Enable=true',
+            'table.UnrelatedSettings.DeviceFoo=unlisted-by-all-our-other-filters',
+            'table.General.Password=PASSWORD_SHOULD_NOT_LEAK',
+            'table.Network.Ethernet.PhysicalAddress=AA:BB:CC:DD:EE:FF',
+            'table.UnusualString.EqualSign=x=y=z'
+        ];
+        for ($i=0;$i<750;$i++) {
+            $lines[]='table.ArbitraryValue['.$i.'].Anything='.$i;
+        }
+        return ['ok'=>true,'http'=>200,'error'=>'','body'=>implode("\r\n",$lines)."\r\n"];
+    }
+}
+$full=new SimulatedFullIPC5442Main();
+$full->DiagnoseIPC5442AllValues();
+$summary=(string)$full->values['P03ConnectionDiagnosis'];
+verifyDiag(str_contains($summary,'IP-Symcon DOKUMENT-ID: 91001')
+    && str_contains($summary,'IP-Symcon DOKUMENT-ID: 91002'),
+    'known report #35115 lists EXACT generated TXT document IDs');
+verifyDiag(count($GLOBALS['media'])===2
+    && count($full->fullRequests)===3,
+    'read-only two-camera all-config: one primary GET each and one backup fallback');
+verifyDiag(str_contains($GLOBALS['media'][91001]['content'],'ArbitraryValue[749].Anything=749')
+    && str_contains($GLOBALS['media'][91001]['content'],'UnrelatedSettings.DeviceFoo=unlisted-by-all-our-other-filters'),
+    'all 756 camera values kept WITHOUT thematic whitelist or first-48/80 truncation');
+verifyDiag(str_contains($GLOBALS['media'][91001]['content'],'UnusualString.EqualSign=x=y=z'),
+    'camera field values containing equals signs preserved exactly');
+verifyDiag(str_contains($GLOBALS['media'][91001]['content'],'General.Password=[GESCHWAERZT')
+    && !str_contains($GLOBALS['media'][91001]['content'],'PASSWORD_SHOULD_NOT_LEAK')
+    && !str_contains($GLOBALS['media'][91001]['content'],'AA:BB:CC:DD:EE:FF'),
+    'passwords and physical IDs REDACTED while retaining field names');
+verifyDiag(str_contains($GLOBALS['media'][91002]['content'],'NeverCurated=backup-surprise')
+    && str_contains($GLOBALS['media'][91002]['content'],'UnknownNewField[1]=Beta')
+    && !str_contains($GLOBALS['media'][91002]['content'],'VERY_PRIVATE'),
+    'full Config.backup fallback flattens ALL JSON fields, masks secrets');
+verifyDiag(str_contains($GLOBALS['media'][91001]['content'],'NICHT ABGESCHNITTEN: JA')
+    && str_contains($GLOBALS['media'][91002]['content'],'NICHT ABGESCHNITTEN: JA'),
+    'both full TXT documents explicitly confirm no silent truncation');
+verifyDiag($GLOBALS['writes']===[],'no socket/foreign instance/camera config modifications');
+$mediaIds=array_keys($GLOBALS['media']);
+$full->DiagnoseIPC5442AllValues();
+verifyDiag(array_keys($GLOBALS['media'])===$mediaIds
+    && count($GLOBALS['media'])===2,
+    'repeat export UPDATES existing two owned documents without duplicating media');
+verifyDiag(in_array('JVP03MC_DiagnoseIPC5442AllValues($id);',
+    array_column(json_decode($full->GetConfigurationForm(),true)['actions']??[],'onClick'),true),
+    'one-click full export is available in P03 main instance form');
 
 // Forensics must work even when the main P03 instance lost the stored IDs
 // and IPS_GetInstanceListByModuleID returns EMPTY after module update.
