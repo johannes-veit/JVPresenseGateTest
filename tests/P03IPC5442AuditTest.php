@@ -161,4 +161,57 @@ expect5442(str_contains(implode("\n",
     P03IPC5442Audit::summarizeModuleResources("ERROR: unsupported\r\n")),
     'KEIN NACHWEIS'),
     'unsupported CGI table reported as absent, not as successful AI');
+// Firmware 2.840 Smart H.264+/H.265+ codec is a separate switch
+// from ordinary video compression, which must not be falsely flagged.
+$codecOn="table.SmartEncode[0].Enable=true\r\n"
+    . "table.SmartEncode[0].Extra[0]=false\r\n";
+$codecOnText=implode("\n",P03IPC5442Audit::summarizeSmartEncode($codecOn));
+expect5442(str_contains($codecOnText,'SMART-CODEC STATUS: AN'),
+    'potential IVS conflict is correctly flagged only on actual main-stream SmartEncode=true');
+expect5442(str_contains($codecOnText,'SmartEncode[0].Extra[0]=false'),
+    'extra-stream SmartCodec state shown separately');
+expect5442(str_contains(implode("\n",P03IPC5442Audit::summarizeSmartEncode(
+    "table.SmartEncode[0].Enable=false\r\n")),'SMART-CODEC STATUS: AUS'),
+    'SmartEncode=false rules out main stream SmartCodec enabled status');
+expect5442(str_contains(implode("\n",P03IPC5442Audit::summarizeSmartEncode(
+    "table.SmartEncode[0].Enbale=1\r\n")),'SMART-CODEC STATUS: AN'),
+    'firmware variant Enbale typo field supported');
+expect5442(str_contains(implode("\n",P03IPC5442Audit::summarizeSmartEncode(
+    "ERROR: SmartEncode unsupported\r\n")),'STATUS: UNBEKANNT'),
+    'unsupported CGI response must not be treated as SmartCodec off');
+expect5442(!str_contains(implode("\n",P03IPC5442Audit::summarizeSmartEncode(
+    "table.SmartEncode[0].Password=never-expose\r\n")),
+    'never-expose'), 'sensitive fields not emitted from SmartCodec probe');
+// Full-export security/nontruncation contract.
+$allLines=['table.VideoAnalyseRule[0][3].Enable=true',
+    'table.General.Password=TopSecret',
+    'table.Media.Url=rtsp://operator:secret@camera/private',
+    'table.Unusual.DebugField=debug-payload=with-more-equals'];
+for($i=0;$i<1200;$i++) $allLines[]='table.Unrelated.Array['.$i.'].Value='.$i;
+$whole=P03IPC5442Audit::exportAllValues(implode("\r\n",$allLines),'getConfig&name=All');
+expect5442($whole['ok'] && $whole['fields']===1204,
+    'all 1204 camera config values retained, no relevance-dependent field filter');
+expect5442(str_contains($whole['text'],'Unrelated.Array[1199].Value=1199')
+    && str_contains($whole['text'],'DebugField=debug-payload=with-more-equals'),
+    'tail of arbitrary fields and exact scalar values kept');
+expect5442(str_contains($whole['text'],'General.Password=[GESCHWAERZT')
+    && !str_contains($whole['text'],'TopSecret')
+    && !str_contains($whole['text'],'operator:secret@'),
+    'secret keys and URL-embedded credentials masked');
+$backup=P03IPC5442Audit::exportAllValues(json_encode([
+    'VideoAnalyseRule'=>[['Enable'=>true,'Region'=>[55,99]]],
+    'OtherSection'=>['NewFirmwareKey'=>'exact-value','Password'=>'KeepSecret']
+]),'Config.backup?action=All');
+expect5442($backup['ok'] && $backup['fields']===5
+    && str_contains($backup['text'],'VideoAnalyseRule[0].Region[1]=99')
+    && str_contains($backup['text'],'OtherSection.NewFirmwareKey=exact-value'),
+    'backup JSON fully flattened with nested arrays and unexpected firmware sections');
+expect5442(!str_contains($backup['text'],'KeepSecret'),
+    'fallback JSON export masks credential values');
+$unsupported=P03IPC5442Audit::exportAllValues("ERROR: unsupported",'getConfig&name=All');
+expect5442(!$unsupported['ok'] && $unsupported['text']==='',
+    'unsupported All endpoint yields ERROR, never silently partial export');
+$oversize=P03IPC5442Audit::exportAllValues(str_repeat('A',16*1024*1024+1),'getConfig&name=All');
+expect5442(!$oversize['ok'] && str_contains($oversize['error'],'NICHT abgeschnitten'),
+    'excessive camera payload explicitly rejected, NEVER silently truncated');
 echo "P03 IPC5442 READ-ONLY MODEL AUDIT UNIT TEST PASSED\n";

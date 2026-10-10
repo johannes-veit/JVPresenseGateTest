@@ -103,6 +103,15 @@
     },
     {
       "type": "Button",
+      "caption": "P03 BEIDE IPC – ALLE KONFIGURATIONSWERTE VOLLSTÄNDIG ALS TXT (nur lesen)",
+      "onClick": "JVP03MC_DiagnoseIPC5442AllValues($id);"
+    },
+    {
+      "type": "Label",
+      "caption": "Liest über SymBox die GESAMTE Dahua-Konfiguration (getConfig&name=All; ggf. Config.backup?action=All), ohne Filter auf vermeintlich relevante KI-Werte und ohne 48/80-Felderbegrenzung. Je IPC entsteht ein vollständiges TXT-Dokument direkt unter Hauptinstanz #53879; nur sensible Werte geschwärzt. Die jeweiligen DOKUMENT-IDs und Felderzahlen stehen in der bekannten Variable #35115. Keine Kamera- oder Fremdmoduländerung."
+    },
+    {
+      "type": "Button",
       "caption": "P03 IPC-HFW5442E-ZE KONFIGURATION PRÜFEN (nur lesen, beide Kameras)",
       "onClick": "JVP03MC_DiagnoseIPC5442Configuration($id);"
     },

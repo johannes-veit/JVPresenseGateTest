@@ -280,6 +280,159 @@ final class P03IPC5442Audit
     }
 
     /**
+     * Read Dahua's real Smart Codec status without writing to the IPC.
+     * "SmartEncode" is separate from the ordinary Encode (H.264/H.265)
+     * configuration; normal compression itself is NOT an IVS conflict.
+     *
+     * @return string[]
+     */
+    public static function summarizeSmartEncode(string $body): array
+    {
+        $out = ['=== SMART-CODEC / IVS-KOMPATIBILITÄT (nur lesen) ==='];
+        $fields = [];
+        foreach (preg_split('/\r\n|\n|\r/', $body) ?: [] as $line) {
+            if (!preg_match('/^\s*(?:table\.)?SmartEncode\[(\d+)\]\.(Enable|Enbale|Extra\[\d+\])\s*=\s*(true|false|0|1)\s*$/i', $line, $m)) {
+                continue;
+            }
+            if ((int) $m[1] !== 0) {
+                continue;
+            }
+            $fields[$m[2]] = strtolower((string) $m[3]);
+            $out[] = 'SmartEncode[0].' . $m[2] . '=' . strtolower((string) $m[3]);
+        }
+        $main = $fields['Enable'] ?? $fields['Enbale'] ?? null;
+        if ($main === null) {
+            $out[] = 'SMART-CODEC STATUS: UNBEKANNT – CGI lieferte keinen gültigen Hauptstream-Schalter.';
+        } elseif (in_array($main, ['true','1'], true)) {
+            $out[] = 'SMART-CODEC STATUS: AN – möglicher IVS-Ressourcenkonflikt.';
+            $out[] = 'Nicht automatisch deaktivieren: Codec-/NVR-Auswirkungen prüfen, nur gezielter Test mit Sicherung/Rollback.';
+        } else {
+            $out[] = 'SMART-CODEC STATUS: AUS – SmartCodec-Konflikt für Hauptstream nicht bestätigt.';
+        }
+        $out[] = 'Die normale H.264/H.265-Videokompression ist NICHT mit dem Smart-Codec-Schalter gleichzusetzen.';
+        return $out;
+    }
+
+    /**
+     * Full device configuration export. NO whitelist, NO 48-field truncation:
+     * all returned key/value entries are retained, in camera order. Only
+     * credential/authentication/private identity values are redacted.
+     *
+     * Return unsuccessful for malformed/oversize replies, instead of silently
+     * emitting a partial dump and labelling it complete.
+     *
+     * @return array{ok:bool,text:string,fields:int,redacted:int,error:string}
+     */
+    public static function exportAllValues(string $body, string $source): array
+    {
+        $empty = ['ok'=>false,'text'=>'','fields'=>0,'redacted'=>0,'error'=>''];
+        $bytes = strlen($body);
+        if ($bytes === 0 || $bytes > 16 * 1024 * 1024) {
+            return array_merge($empty,['error'=>$bytes===0
+                ? 'Leere Kameraantwort' : 'Antwort über 16 MiB Sicherheitsgrenze – NICHT abgeschnitten']);
+        }
+
+        $pairs=[];
+        if ($source === 'Config.backup?action=All') {
+            $json=json_decode($body,true,48);
+            if (!is_array($json) || json_last_error() !== JSON_ERROR_NONE) {
+                return array_merge($empty,['error'=>'Konfigurationsbackup ist kein gültiges JSON']);
+            }
+            self::flattenValues($json,'',$pairs,0);
+        } else {
+            // Dahua configManager.cgi?action=getConfig&name=All returns a
+            // large plaintext list of table.X=value pairs, possibly with
+            // arbitrary dots/brackets and '='/spaces within values.
+            foreach (preg_split('/\r\n|\n|\r/',$body) ?: [] as $line) {
+                if (trim($line)==='') continue;
+                if (!preg_match('/^\s*([^=\r\n]+?)\s*=(.*)$/', $line,$m)) {
+                    return array_merge($empty,['error'=>'Nicht interpretierbare CGI-Zeile – Export NICHT als vollständig ausgegeben']);
+                }
+                $key=trim((string)$m[1]);
+                if (!str_starts_with($key,'table.')) {
+                    return array_merge($empty,['error'=>'CGI name=All antwortet ohne table.-Felder – wahrscheinlich nicht unterstützt']);
+                }
+                $pairs[]=[$key,(string)$m[2]];
+            }
+        }
+
+        if ($pairs===[]) {
+            return array_merge($empty,['error'=>'Keine Konfigurationsfelder in Antwort']);
+        }
+        $redacted=0;
+        $out=[
+            '=== P03 DAHUA IPC VOLLSTÄNDIGE KONFIGURATION (NUR LESEN) ===',
+            'Quelle: '.$source,
+            'Zeit: '.date('Y-m-d H:i:s'),
+            'Alle '.$source.'-Felder; keine Auswahl nach KI/IVS-Relevanz.',
+            'Kennwörter, Schlüsselmaterial, Zugangstokens und private IDs sind maskiert.',
+            'Bei Fehlermeldungen NICHT als vollständigen Export bewerten.',
+            ''
+        ];
+        foreach ($pairs as [$key,$value]) {
+            $masked=self::mustMaskFullValue($key,$value);
+            if ($masked) {
+                $value='[GESCHWAERZT: SENSIBLER WERT]';
+                $redacted++;
+            } else {
+                // Preserve complete printable camera value (no byte or field
+                // count truncation), but escape embedded binary/control data.
+                $value=preg_replace_callback('/[\x00-\x08\x0B\x0C\x0E-\x1F]/',static function($m):string {
+                    return sprintf('\\x%02X',ord($m[0]));
+                },$value) ?? '';
+            }
+            $out[]=$key.'='.$value;
+        }
+        $out[]='';
+        $out[]='ANZAHL FELDER: '.count($pairs);
+        $out[]='SENSIBLE WERTE GESCHWAERZT: '.$redacted;
+        $out[]='NICHT ABGESCHNITTEN: JA';
+        return [
+            'ok'=>true,'text'=>implode("\n",$out)."\n",'fields'=>count($pairs),
+            'redacted'=>$redacted,'error'=>''
+        ];
+    }
+
+    /**
+     * Flat fully qualified JSON config backup keys, including every array
+     * index; preserve values without filtering by expected key patterns.
+     *
+     * @param array<mixed> $root
+     * @param array<int,array{0:string,1:string}> $pairs
+     */
+    private static function flattenValues(array $root,string $prefix,array &$pairs,int $depth): void
+    {
+        if ($depth>48) throw new \RuntimeException('Kamera-Backup mit übermäßig tiefen JSON-Schachteln');
+        if ($root===[]) {
+            $pairs[]=[$prefix,'[]'];
+            return;
+        }
+        foreach ($root as $k=>$v) {
+            $next=$prefix.(is_int($k) ? '['.$k.']' : ($prefix!==''?'.':'').(string)$k);
+            if (is_array($v)) {
+                self::flattenValues($v,$next,$pairs,$depth+1);
+                continue;
+            }
+            $pairs[]=[$next,is_bool($v)?($v?'true':'false')
+                :($v===null?'null':(string)$v)];
+        }
+    }
+
+    private static function mustMaskFullValue(string $key,string $value): bool
+    {
+        // A comprehensive export inevitably includes network/user/mail/
+        // cloud secrets. Keep the field name, redact only the value.
+        if (preg_match('/(?:pass(?:word|wd)?|pwd|secret|token|auth(?:entication|orization|code|key)?|credential|api[_-]?key|private[_-]?key|security[_-]?key|encrypt(?:ion)?[_-]?key|access[_-]?key|account(?:key)?|salt|hash|session|nonce|cert(?:ificate)?|serial(?:no|number)?|macaddress|physicaladdress|wifi[_-]?key|wpa[_-]?key)/i',$key)) {
+            return true;
+        }
+        // Also redact e.g. rtsp://user:password@host in non-credential keys.
+        if (preg_match('~(?:https?|rtsp|ftp)://[^/\s@]+:[^/\s@]+@~i',$value)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Reports only the event header; even unexpected binary/private JSON
      * payload is never copied into diagnostic state.
      */

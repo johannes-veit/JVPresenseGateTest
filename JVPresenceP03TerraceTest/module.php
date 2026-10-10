@@ -1819,6 +1819,140 @@ class JVPresenceP03MultiCamera extends IPSModule
      * or touches ALA2/other cameras. Uses the P03-observer credentials already
      * stored in the P03 instance. No credentials or raw camera JSON persisted.
      */
+    /**
+     * FULL two-camera IPC config export via the existing authenticated SymBox
+     * route. This is NOT a curated AI summary: try Dahua getConfig&name=All,
+     * fall back only if needed to the documented Config.backup?action=All.
+     * Every returned field is retained (except masked secret VALUES), and
+     * there is no 48/80/400 field or report-length cutoff. TXT documents
+     * avoid flooding or truncating the familiar String variable #35115.
+     */
+    public function DiagnoseIPC5442AllValues(): void
+    {
+        $lines=[
+            '=== P03 VOLLSTÄNDIGE IPC-HFW5442E-ZE KONFIGURATION (NUR LESEN) ===',
+            'Zeit: '.date('Y-m-d H:i:s'),
+            'Ausgabe: Zwei Symcon-Dokumente (TXT) direkt unter Hauptinstanz #'.$this->InstanceID,
+            'Zuerst getConfig&name=All, bei fehlender Unterstützung Config.backup?action=All.',
+            'ALLE gelieferten Felder, keine thematische Auswahl, keine Zeilenbegrenzung.',
+            'Sensible Werte sind geschwärzt. Die Gesamtanzahl der Felder wird genannt.',
+            'Es werden weder Kameras noch fremde Symcon-Module umkonfiguriert.'
+        ];
+        $targets=[
+            ['role'=>self::AUX_JV_ROLE,'hostProp'=>'AuxJVHost','idAttr'=>'AuxJVInstanceID'],
+            ['role'=>self::AUX_WORK_ROLE,'hostProp'=>'AuxWorkHost','idAttr'=>'AuxWorkInstanceID']
+        ];
+        foreach ($targets as $target) {
+            $role=(string)$target['role'];
+            $host=trim($this->ReadPropertyString((string)$target['hostProp']));
+            $observerID=$this->ReadAttributeInteger((string)$target['idAttr']);
+            $lines[]='';
+            $lines[]='--- '.$role.' / '.$host.' ---';
+            if (!$this->matchesTrustedP03Observer($observerID,$host,$role)) {
+                $lines[]='FEHLER: eigene P03-Observer/Host/Rolle nicht eindeutig verifiziert; keine Abfrage.';
+                continue;
+            }
+            $cfg=$this->p03AuxCameraConfiguration($observerID);
+            if (($cfg['host']??'')!==$host || ($cfg['username']??'')==='' || ($cfg['password']??'')==='') {
+                $lines[]='FEHLER: Kamerazugang in eigenem P03-Observer unvollständig.';
+                continue;
+            }
+            try {
+                $transport=['getConfig&name=All',
+                    '/cgi-bin/configManager.cgi?action=getConfig&name=All'];
+                $reply=$this->readIPC5442CompleteConfiguration(
+                    $host,(int)$cfg['port'],(string)$cfg['username'],(string)$cfg['password'],
+                    $transport[1]);
+                $result=P03IPC5442Audit::exportAllValues(
+                    (string)($reply['body']??''),$transport[0]);
+                if (!($reply['ok']??false) || !($result['ok']??false)) {
+                    $lines[]='Primärabfrage: '.(int)($reply['http']??0)
+                        .' / '.(string)($result['error']??($reply['error']??'nicht unterstützt'));
+                    $transport=['Config.backup?action=All','/cgi-bin/Config.backup?action=All'];
+                    $reply=$this->readIPC5442CompleteConfiguration(
+                        $host,(int)$cfg['port'],(string)$cfg['username'],(string)$cfg['password'],
+                        $transport[1]);
+                    $result=P03IPC5442Audit::exportAllValues(
+                        (string)($reply['body']??''),$transport[0]);
+                }
+                if (!($reply['ok']??false) || !($result['ok']??false)) {
+                    $lines[]='KEIN VOLLSTÄNDIGER EXPORT für '.$role.': HTTP '
+                        .(int)($reply['http']??0).', '
+                        .(string)($result['error']??($reply['error']??'Kamera lehnt Gesamtabfrage ab'));
+                    continue;
+                }
+                $filename='P03_IPC5442_'.$this->InstanceID.'_'.$role.'_ALLE_WERTE.txt';
+                $mediaID=$this->writeP03PrivateDocument(
+                    'P03_IPC5442_'. $role .'_ALL',
+                    'P03 IPC5442 '.$role.' – vollständige Konfiguration (TXT)',
+                    $filename,(string)$result['text']);
+                $lines[]='EXPORT VOLLSTÄNDIG: JA (Antwortquelle '.$transport[0].')';
+                $lines[]='Felder: '.(int)$result['fields']
+                    .' | sensible Werte geschwärzt: '.(int)$result['redacted']
+                    .' | Textgröße: '.strlen((string)$result['text']).' Bytes';
+                $lines[]='IP-Symcon DOKUMENT-ID: '.$mediaID;
+                $lines[]='Dokumentname: P03 IPC5442 '.$role.' – vollständige Konfiguration (TXT)';
+                $lines[]='TXT-Datei: '.$filename;
+                $lines[]='Zum Öffnen/Speichern: Dokument-ID '.$mediaID
+                    .' direkt unter Hauptinstanz #'.$this->InstanceID.' doppelklicken.';
+            } catch (Throwable $e) {
+                $lines[]='FEHLER beim lesenden Export/Speichern: '.get_class($e)
+                    .' – '.$e->getMessage();
+                $lines[]='Kein unvollständiger Bericht als vollständiges Kameradokument bestätigt.';
+            }
+        }
+        $lines[]='';
+        $lines[]='GESAMTSTATUS: Bitte die zwei Dokument-IDs und alle tatsächlichen Werte vergleichen.';
+        $lines[]='Die vorhandene Variable #35115 enthält nur die Übersicht und Dokument-IDs.';
+        $this->SetValue('P03ConnectionDiagnosis',implode("\n",$lines));
+        $this->ReloadForm();
+    }
+
+    /**
+     * Read-only transport using existing Dahua Digest, with a longer timeout
+     * for 0.5–few MiB all-device configuration. No setConfig/reboot, no
+     * foreign module or socket touches.
+     */
+    protected function readIPC5442CompleteConfiguration(
+        string $host,int $port,string $username,string $password,string $uri
+    ): array {
+        return $this->genericCameraGet($host,$port,$username,$password,$uri,30);
+    }
+
+    /**
+     * Use exactly one document child per role, update it on the next export.
+     * Never overwrite unrelated documents. IP-Symcon MEDIA TYPE 5 = Document.
+     */
+    protected function writeP03PrivateDocument(
+        string $ident,string $title,string $filename,string $content
+    ): int {
+        $id=0;
+        try {
+            $id=IPS_GetObjectIDByIdent($ident,$this->InstanceID);
+        } catch (Throwable $e) {
+            $id=0;
+        }
+        if ($id>0) {
+            if (!IPS_MediaExists($id)
+                || (int)(IPS_GetMedia($id)['MediaType']??-1)!==5
+                || (int)(IPS_GetObject($id)['ParentID']??0)!==$this->InstanceID) {
+                throw new RuntimeException('Vorhandenes Objekt mit derselben Kennung ist kein eigenes P03-Dokument');
+            }
+        } else {
+            $id=IPS_CreateMedia(5);
+            IPS_SetParent($id,$this->InstanceID);
+            IPS_SetIdent($id,$ident);
+            IPS_SetName($id,$title);
+        }
+        if (!IPS_SetMediaFile($id,'media/'.$filename,false)) {
+            throw new RuntimeException('Konnte P03 Dokument-Dateipfad nicht registrieren');
+        }
+        if (!IPS_SetMediaContent($id,base64_encode($content))) {
+            throw new RuntimeException('Konnte vollständige Konfiguration nicht in TXT-Dokument speichern');
+        }
+        return $id;
+    }
+
     public function DiagnoseIPC5442Configuration(): void
     {
         $lines = [
@@ -1877,7 +2011,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 // VideoAnalyseModule is the actual 5442 KI resource/module
                 // configuration. Read it through the existing SymBox -> IPC
                 // authenticated CGI channel. No camera CGI setConfig.
-                foreach (['MotionDetect','SmartMotionDetect','VideoAnalyseGlobal','VideoAnalyseModule','VideoAnalyseRule'] as $table) {
+                foreach (['MotionDetect','SmartMotionDetect','SmartEncode','VideoAnalyseGlobal','VideoAnalyseModule','VideoAnalyseRule'] as $table) {
                     $result = $this->readIPC5442Camera($host,$port,$user,$pass,
                         '/cgi-bin/configManager.cgi?action=getConfig&name=' . $table);
                     $lines[] = '';
@@ -1894,6 +2028,12 @@ class JVPresenceP03MultiCamera extends IPSModule
                     // Display ALL rule summaries and the complete targeted
                     // geometry, Human filter, action and active schedules.
                     $body = (string) ($result['body'] ?? '');
+                    if ($table === 'SmartEncode') {
+                        foreach (P03IPC5442Audit::summarizeSmartEncode($body) as $field) {
+                            $lines[] = $field;
+                        }
+                        continue;
+                    }
                     if ($table === 'VideoAnalyseModule') {
                         foreach (P03IPC5442Audit::summarizeModuleResources($body) as $field) {
                             $lines[] = $field;
@@ -2722,7 +2862,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /** @return array{ok:bool,error:string,http:int,body:string} */
-    private function genericCameraGet(string $host, int $port, string $username, string $password, string $uri): array
+    private function genericCameraGet(string $host, int $port, string $username, string $password, string $uri, int $timeoutSeconds = 6): array
     {
         if ($host === '' || $username === '' || $password === '') {
             return ['ok' => false, 'error' => 'Konfiguration unvollständig', 'http' => 0, 'body' => ''];
@@ -2738,7 +2878,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             CURLOPT_HTTPAUTH => CURLAUTH_DIGEST,
             CURLOPT_USERPWD => $username . ':' . $password,
             CURLOPT_CONNECTTIMEOUT => 3,
-            CURLOPT_TIMEOUT => 6,
+            CURLOPT_TIMEOUT => max(3, min(40, $timeoutSeconds)),
             CURLOPT_NOSIGNAL => true,
             CURLOPT_FOLLOWLOCATION => false
         ]);

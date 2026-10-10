@@ -188,6 +188,28 @@ jobs:
               raise SystemExit('Observer WireHeartbeatCount must be registered ONCE, in Create only')
           if main.count("RegisterTimer('P03MastHealthTimer'") != 1:
               raise SystemExit('Main P03 health timer must be registered ONCE, in Create only')
+          # Full IPC5442 dump must be genuinely complete, in P03-owned
+          # document media, and must advertise media IDs via known #35115.
+          for token in [
+              "public function DiagnoseIPC5442AllValues(): void",
+              "public function DiagnoseIPC5442Configuration(): void",
+              "protected function writeP03PrivateDocument(",
+              "IPS_CreateMedia(5)",
+              "IPS_SetMediaContent($id,base64_encode($content))",
+              "getConfig&name=All",
+              "Config.backup?action=All",
+              "P03ConnectionDiagnosis"
+          ]:
+              if token not in main:
+                  raise SystemExit('P03 full device config export contract missing: '+token)
+          model_audit=Path('libs/P03IPC5442Audit.php').read_text()
+          for token in [
+              "public static function exportAllValues(",
+              "private static function mustMaskFullValue(",
+              "NICHT ABGESCHNITTEN: JA"
+          ]:
+              if token not in model_audit:
+                  raise SystemExit('Full device config audit security/completeness contract missing: '+token)
           # A failed module-index search must never zero out the last
           # stored P03 observer identity, and stored StreamOK must not
           # make an orphaned observer count as healthy.
