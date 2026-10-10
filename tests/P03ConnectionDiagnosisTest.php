@@ -142,6 +142,10 @@ class SimulatedIPC5442Main extends JVPresenceP03MultiCamera
 $ipc=new SimulatedIPC5442Main();
 $ipc->DiagnoseIPC5442Configuration();
 $modelReport=(string)$ipc->values['P03IPC5442Audit'];
+verifyDiag($modelReport !== '' && (string)$ipc->values['P03ConnectionDiagnosis'] === $modelReport,
+    'model CGI audit also writes complete report into existing copyable socket diagnosis slot (#35115 on SymBox)');
+verifyDiag(($GLOBALS['variables'][20001] ?? null) === $modelReport,
+    'model audit writes known, mapped report variable ID directly, not an unknown ID');
 verifyDiag(substr_count($modelReport, 'IPC-HFW5442E-ZE')>=2,
     'actual model readback for both P03 cameras');
 verifyDiag(str_contains($modelReport,'SmartMotionDetect[0].ObjectTypes.Human=true'),

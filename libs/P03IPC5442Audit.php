@@ -21,7 +21,12 @@ final class P03IPC5442Audit
         $detectorValues = ['region' => 0, 'schedule' => 0, 'class' => 0];
 
         foreach ($lines as $line) {
-            if (!preg_match('/^\s*(' . $prefix . '\[\d+\](?:\[\d+\])?(?:[.\[].+?)?)\s*=\s*(.*?)\s*$/i', $line, $m)) {
+            // CGI getConfig commonly returns "table.MotionDetect[0].Enable"
+            // rather than "MotionDetect[0].Enable". Normalize both forms,
+            // including module-wide keys with no channel index.
+            if (!preg_match('/^\s*(?:table\.)?(' . $prefix
+                . '(?:\[\d+\])*(?:\.[A-Za-z0-9_\[\].-]+)?)\s*=\s*(.*?)\s*$/i',
+                $line, $m)) {
                 continue;
             }
             $key = trim((string) $m[1]);

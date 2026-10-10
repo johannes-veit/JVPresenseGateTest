@@ -37,4 +37,31 @@ expect5442(P03IPC5442Audit::wireHeader('SmartMotionHuman','Start','0',7)
     'model 5442 raw SmartMotionHuman header is redacted/minimal');
 expect5442(P03IPC5442Audit::wireHeader('<script>','Start','0',8)==='',
     'unsafe raw stream header rejected');
+// 2.840 CGI configManager returns the "table." prefix on many builds.
+// Any parser that requires bare "MotionDetect[0]" incorrectly reports that
+// all camera AI/IVS settings are absent.
+$realCgi = "table.MotionDetect[0].Enable=true\r\n"
+    . "table.MotionDetect[0].EventHandler.TimeSection[0][1]=1 17:00:00-23:59:59\r\n"
+    . "table.MotionDetect[0].Region[0].Threshold=30\r\n";
+$actual=P03IPC5442Audit::summarizeConfig('MotionDetect',$realCgi);
+$actualText=implode("\n",$actual);
+expect5442(str_contains($actualText,'MotionDetect[0].Enable=true'),
+    '2.840 table.-prefixed Dahua CGI output accepted');
+expect5442(str_contains($actualText,'TimeSection[0][1]'),
+    'prefixed AI motion arming schedule remains visible');
+expect5442(str_contains($actualText,'Region[0].Threshold=30'),
+    'prefixed ROI field remains visible');
+$bare="table.SmartMotionDetect.Enable=true\r\n"
+    . "table.SmartMotionDetect.ObjectType.Human=true\r\n";
+$bareFields=implode("\n",P03IPC5442Audit::summarizeConfig('SmartMotionDetect',$bare));
+expect5442(str_contains($bareFields,'SmartMotionDetect.Enable=true')
+    && str_contains($bareFields,'SmartMotionDetect.ObjectType.Human=true'),
+    'module-wide Dahua SMD config without [0] index supported');
+$ivsPrefixed="table.VideoAnalyseRule[0][3].Enable=true\r\n"
+    . "table.VideoAnalyseRule[0][3].Config.DetectRegion[0].Points[0]=[130,230]\r\n";
+$ivsFields=implode("\n",P03IPC5442Audit::summarizeConfig('VideoAnalyseRule',$ivsPrefixed));
+expect5442(str_contains($ivsFields,'VideoAnalyseRule[0][3].Enable=true')
+    && str_contains($ivsFields,'DetectRegion[0].Points[0]'),
+    '2.840 prefixed IVS rule enabled flag and region polygon displayed');
+
 echo "P03 IPC5442 READ-ONLY MODEL AUDIT UNIT TEST PASSED\n";

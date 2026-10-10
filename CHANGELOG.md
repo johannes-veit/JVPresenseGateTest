@@ -1,3 +1,12 @@
+# v0.6.24 (Build 55) – exakter KI-Konfigurationsbericht mit bekannter Variablen-ID
+
+- SymBox Live-Befund 2026-10-10 19:42:30: Beide P03-Observer sind nach v0.6.23 wieder Status 102, die Sockets exklusiv/aktiv und Heartbeat LIVE. In der aktuellen Laufzeit enthalten ihre Eventstreams 1301 bzw. 76 geparste Ereignisse, aber CrossRegion=0 und keine neu gezählte Human-Start-Erkennung. Die beobachteten Codes sind `VideoMotionInfo;State` (JV_LEFT) und `VideoMotion;Stop` (WORK_LEFT). Sie sind keine Human-Proofs. Die drei WORK_LEFT-Human-Zähler stammen aus früherem Test.
+- **Nächster Schritt ist die reale, bereits vorhandene, read-only IPC-HFW5442E-ZE/2.840 CGI-Konfigurationsdiagnose**, nicht neue IVS-Konfiguration, Socket-/Instanzreparatur oder Parser-Workarounds.
+- Korrigiert das CGI-Feldformat: Auf dieser Dahua-API kommen Konfigurationszeilen typischerweise als `table.MotionDetect[0].Enable=true`, `table.VideoAnalyseRule[0][3].Enable=true` usw. Der Auswerter akzeptiert jetzt ausdrücklich sowohl `table.`-Präfix als auch nackte Tabellenfelder, mit/ohne Kanalindex. Er gibt nur unkritische Feldnamen (Erfassungsgeometrie, Zeitplan, Human, Schwellwert, IVS Enable/Rule) aus.
+- Beim Klick auf **„P03 IPC-HFW5442E-ZE KONFIGURATION PRÜFEN (nur lesen, beide Kameras)”** wird der vollständige Bericht weiterhin in `P03IPC5442Audit` gespeichert und **zusätzlich** in die bereits bekannte **SymBox Variable #35115, `P03ConnectionDiagnosis` / „P03 Socket-Diagnose (kopierbar)”**. Dadurch muss keine weitere, bisher unbekannte Variablen-ID ermittelt werden. Erst ein erneuter Klick auf den getrennten Socket-Diagnosebutton überschreibt diese variable wieder mit Socket-Daten.
+- Kein Eingriff in Kamerakonfiguration, SMD/IVS-Geometrie, Außenlichtautomatik2, Alarmanlage, P03-Observer/Sockets oder HOME/LAGER-Produktion.
+- Regressionen decken `table.`-CGI-Formate von MotionDetect, SmartMotionDetect, VideoAnalyseRule, TimeSection, DetectRegion und die Ausgabe auf genau die gemappte Berichtvariable ab.
+
 # v0.6.23 (Build 54) – IP-Symcon SDK: Registrierungen nur in Create()
 
 - **Auf der echten SymBox nach v0.6.22 ausgelöste PHP-Warnungen**: Alle zehn `RegisterAttribute*`-Aufrufe des Aux-Observers in `ApplyChanges()` sind unzulässig, weil diese Attribute bereits in `Create()` registriert wurden (IP-Symcon SDK: Attribute ausschließlich in Create). Die Wiederherstellung von Beobachtern schlug deshalb mit Warnungen aus der P03-Hauptinstanz fehl.
