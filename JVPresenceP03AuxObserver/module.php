@@ -39,6 +39,9 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('RegisteredParentID', 0);
         $this->RegisterAttributeInteger('HumanPulseUntil', 0);
         $this->RegisterAttributeString('SeenEventKeys', '{}');
+        $this->RegisterAttributeInteger('LastHealthTick', 0);
+        $this->RegisterAttributeString('LastHealthAction', 'UNTESTED');
+        $this->RegisterAttributeInteger('LastStaleRx', 0);
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
@@ -315,6 +318,102 @@ class JVPresenceP03AuxObserver extends IPSModule
 
     public function Watchdog(): void
     {
+        // The observer's timer and the independent P03-main health timer
+        // use the same guard. No other module or IO is ever touched.
+        $this->HealthTick();
+    }
+
+    /**
+     * Real health check based on the age of the LAST RECEIVED TCP DATA,
+     * not a remembered HTTP-200 flag. Safe for duplicate timer invocations.
+     * Reports every invocation, so a scheduler failure can be distinguished
+     * from an idle Dahua eventstream.
+     */
+    public function HealthTick(): string
+    {
+        $now = time();
+        $this->WriteAttributeInteger('LastHealthTick', $now);
+
+        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()) {
+            $this->WriteAttributeString('LastHealthAction', 'DISABLED_OR_UNCONFIGURED');
+            return 'DISABLED_OR_UNCONFIGURED';
+        }
+        if ($this->ReadAttributeBoolean('AuthBlocked')) {
+            $this->SetValue('StreamOK', false);
+            $this->WriteAttributeString('LastHealthAction', 'AUTH_BLOCKED');
+            return 'AUTH_BLOCKED';
+        }
+
+        $parentID = $this->getParentID();
+        if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
+            $this->SetValue('StreamOK', false);
+            $this->WriteAttributeString('LastHealthAction', 'NO_PARENT');
+            $this->refreshObserverStatus('HEALTH: P03 Client Socket fehlt');
+            return 'NO_PARENT';
+        }
+        $parent = IPS_GetInstance($parentID);
+        if (!$this->hasExclusiveParentSocket($parentID)
+            || strcasecmp((string) ($parent['ModuleInfo']['ModuleID'] ?? ''),
+                self::CLIENT_SOCKET_GUID) !== 0) {
+            $this->SetValue('StreamOK', false);
+            $this->WriteAttributeString('LastHealthAction', 'UNSAFE_PARENT');
+            $this->refreshObserverStatus('HEALTH: Socket geteilt oder falscher Modultyp');
+            return 'UNSAFE_PARENT';
+        }
+
+        $streaming = $this->ReadAttributeBoolean('Streaming');
+        $lastRx = $this->ReadAttributeInteger('LastCameraRx');
+        $lastRequest = $this->ReadAttributeInteger('LastHttpRequest');
+        $age = $lastRx > 0 ? $now - $lastRx : -1;
+        $tcpActive = (int) ($parent['InstanceStatus'] ?? 0) === 102
+            && (bool) IPS_GetProperty($parentID, 'Open');
+        if ($tcpActive && $streaming && $age >= 0 && $age <= 25) {
+            $this->WriteAttributeString('LastHealthAction', 'LIVE');
+            return 'LIVE';
+        }
+
+        $stale = $streaming && ($lastRx <= 0 || $age > 25);
+        if ($stale) {
+            $this->WriteAttributeInteger('LastStaleRx', $lastRx);
+            $this->WriteAttributeBoolean('Streaming', false);
+            $this->SetValue('StreamOK', false);
+            $this->clearPersonPulse();
+            $this->WriteAttributeString('LastHealthAction', 'STALE');
+            $this->refreshObserverStatus('HEALTH: kein Kameraempfang seit '
+                . ($age >= 0 ? $age . ' s' : 'unbekannter Zeit')
+                . '; HTTP-200-Flag verworfen');
+        } elseif (!$tcpActive) {
+            $this->WriteAttributeBoolean('Streaming', false);
+            $this->SetValue('StreamOK', false);
+            $this->clearPersonPulse();
+        }
+
+        // Do not disturb an ongoing request or authenticated Digest retry.
+        // A stale stream or timed-out challenge is explicitly rebuilt with a
+        // FRESH TCP socket, unlike the previous "already active" shortcut.
+        $needRetry = $stale || !$tcpActive ||
+            (!$streaming && ($lastRequest === 0 || $now - $lastRequest > 15));
+        if (!$needRetry) {
+            $this->WriteAttributeString('LastHealthAction', 'AWAITING_HTTP');
+            return 'AWAITING_HTTP';
+        }
+        $lastRestart = $this->ReadAttributeInteger('LastSocketRestart');
+        if ($lastRestart > 0 && $now - $lastRestart < 20) {
+            $this->WriteAttributeString('LastHealthAction', 'COOLDOWN');
+            return 'COOLDOWN';
+        }
+        $this->WriteAttributeString('LastHealthAction', 'RECONNECT_ATTEMPT');
+        $success = $this->StartSocketNow();
+        $result = $success ? 'RECONNECT_GET_SENT' : 'RECONNECT_PENDING';
+        $this->WriteAttributeString('LastHealthAction', $result);
+        return $result;
+    }
+
+    /**
+     * Old Watchdog kept below only for reference, deliberately not executed.
+     */
+    private function legacyWatchdogDisabled(): void
+    {
         if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady() || $this->ReadAttributeBoolean('AuthBlocked')) {
             return;
         }
@@ -419,10 +518,20 @@ class JVPresenceP03AuxObserver extends IPSModule
             return false;
         }
 
-        if ($this->ReadAttributeBoolean('Streaming') && (bool) $this->GetValue('StreamOK')) {
-            $this->refreshObserverStatus('Sofortstart: HTTP-Eventstream bereits aktiv, keine Änderung');
+        $now = time();
+        $lastRx = $this->ReadAttributeInteger('LastCameraRx');
+        $lastRequest = $this->ReadAttributeInteger('LastHttpRequest');
+        $streaming = $this->ReadAttributeBoolean('Streaming');
+        $fresh = $streaming && (bool) $this->GetValue('StreamOK')
+            && $lastRx > 0 && $now - $lastRx <= 25;
+        if ($fresh) {
+            $this->refreshObserverStatus('Sofortstart: Kameraempfang aktuell, kein Neustart nötig');
             return true;
         }
+        // On any old/half-dead eventstream, a second GET on the same TCP
+        // connection is unsafe. Close the P03-owned socket first.
+        $needsFreshTcp = (bool) IPS_GetProperty($parentID, 'Open')
+            && ($streaming || $lastRequest > 0 || $lastRx > 0);
 
         // Cancel previously scheduled stage 1/2, which could otherwise
         // race with the direct startup and close the freshly opened socket.
@@ -444,8 +553,12 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetBuffer('EventCarry', '');
 
         try {
+            if ($needsFreshTcp) {
+                IPS_SetProperty($parentID, 'Open', false);
+                IPS_ApplyChanges($parentID);
+            }
             if (!(bool) IPS_GetProperty($parentID, 'Open')
-                || (int) ($parent['InstanceStatus'] ?? 0) !== 102) {
+                || (int) (IPS_GetInstance($parentID)['InstanceStatus'] ?? 0) !== 102) {
                 IPS_SetProperty($parentID, 'Open', true);
                 IPS_ApplyChanges($parentID);
             }
@@ -725,6 +838,11 @@ class JVPresenceP03AuxObserver extends IPSModule
             'authBlocked' => $this->ReadAttributeBoolean('AuthBlocked'),
             'lastHttpRequest' => $this->ReadAttributeInteger('LastHttpRequest'),
             'lastCameraRx' => $this->ReadAttributeInteger('LastCameraRx'),
+            'lastHealthTick' => $this->ReadAttributeInteger('LastHealthTick'),
+            'lastHealthAction' => $this->ReadAttributeString('LastHealthAction'),
+            'lastStaleRx' => $this->ReadAttributeInteger('LastStaleRx'),
+            'rxAge' => $this->ReadAttributeInteger('LastCameraRx') > 0
+                ? max(0, time() - $this->ReadAttributeInteger('LastCameraRx')) : -1,
             'streamOK' => (bool) $this->GetValue('StreamOK'),
             'counter' => (int) $this->GetValue('HumanEventCounter')
         ];
