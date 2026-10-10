@@ -239,4 +239,43 @@ checkP03($GLOBALS['mockChildParent'] === 99001,
 checkP03(($x->attributes['SocketRestartStage'] ?? null) === 1,
     'Recreated parent is scheduled for fresh Digest handshake');
 
+
+// Test actual new direct-start path, bypassing a stuck scheduled stage 1.
+// This is the live snapshot from Symcon 9: dedicated socket is assigned,
+// but status=104, Open=false and restartStage=1.
+$GLOBALS['mockChildParent'] = 99001;
+$GLOBALS['mockForeignChild'] = false;
+$GLOBALS['mockSocket'][99001]['InstanceStatus'] = 104;
+$GLOBALS['mockSocket'][99001]['properties']['Open'] = false;
+$direct = new JVPresenceP03AuxObserver();
+$direct->Create();
+$direct->properties['CameraHost'] = '192.0.2.5';
+$direct->properties['Username'] = 'sim-user';
+$direct->properties['Password'] = 'sim-password';
+$direct->properties['Role'] = 'JV_LEFT';
+$direct->properties['RuleID'] = 4;
+$direct->ApplyChanges();
+checkP03(($direct->attributes['SocketRestartStage'] ?? null) === 1,
+    'Direct start: first stage pending as in actual Symcon diagnostic');
+$ok = $direct->StartSocketNow();
+checkP03($ok, 'Direct start completes without timer scheduler');
+checkP03(($GLOBALS['mockSocket'][99001]['properties']['Open'] ?? false) === true,
+    'Direct start switches dedicated socket Open=true');
+checkP03(($GLOBALS['mockSocket'][99001]['InstanceStatus'] ?? 0) === 102,
+    'Direct start activates socket');
+checkP03(($direct->attributes['SocketRestartStage'] ?? -1) === 0,
+    'Direct start cancels stale stage 1');
+checkP03(($direct->timers['SocketRestartTimer'] ?? -1) === 0,
+    'Direct start cancels pending socket restart callback');
+checkP03(count($direct->sent) === 1 &&
+    str_contains((string) $direct->sent[0]['Buffer'], '/cgi-bin/eventManager.cgi'),
+    'Direct start transmits initial Dahua HTTP GET');
+
+$GLOBALS['mockForeignChild'] = true;
+$foreignReq = count($direct->sent);
+checkP03($direct->StartSocketNow() === false,
+    'Direct start refuses socket connected to foreign instance');
+checkP03(count($direct->sent) === $foreignReq,
+    'Foreign socket guard sends no HTTP request');
+$GLOBALS['mockForeignChild'] = false;
 echo "P03 OBSERVER INTEGRATION SIMULATION PASSED ({$tests} assertions)\n";
