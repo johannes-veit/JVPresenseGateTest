@@ -31,9 +31,14 @@ $GLOBALS['byIdent'] = [
 ];
 $GLOBALS['writes'] = [];
 $GLOBALS['startCalls'] = [];
+$GLOBALS['healthCalls'] = [];
 function JVP03AUX_StartSocketNow(int $id):bool {
     $GLOBALS['startCalls'][] = $id;
     return true;
+}
+function JVP03AUX_HealthTick(int $id):string {
+    $GLOBALS['healthCalls'][] = $id;
+    return $id === 57215 ? 'LIVE' : 'RECONNECT_GET_SENT';
 }
 
 
@@ -171,5 +176,29 @@ $instance->attributes['AuxWorkManagedSocketID'] = 9002;
 $instance->StartP03EventstreamsNow();
 verifyDiag($GLOBALS['startCalls']===[],
     'main start button never invokes observer linked to foreign socket');
+
+// Recover consistent main attributes before exercising the independent
+// main watchdog. It may operate on own P03 IO only.
+$GLOBALS['instances'][57215]['ConnectionID']=$jv;
+$instance->attributes['AuxWorkManagedSocketID']=$work;
+$GLOBALS['healthCalls']=[];
+$instance->CheckP03MastHealthNow();
+verifyDiag($GLOBALS['healthCalls']===[57215,27938],
+    'manual heartbeat button checks both P03 observers');
+verifyDiag(str_contains((string)$instance->values['P03MastHealth'],'JV_LEFT=LIVE')
+    && str_contains((string)$instance->values['P03MastHealth'],'WORK_LEFT=RECONNECT_GET_SENT'),
+    'manual heartbeat report includes actual outcome of each observer');
+verifyDiag(str_contains((string)$instance->values['P03ConnectionDiagnosis'],'P03 SOCKET-DIAGNOSE'),
+    'manual heartbeat button refreshes copyable connection report');
+
+$GLOBALS['healthCalls']=[];
+$instance->P03MastHealthTimer();
+verifyDiag($GLOBALS['healthCalls']===[57215,27938],
+    'independent main P03 timer checks both observers');
+$GLOBALS['healthCalls']=[];
+$GLOBALS['instances'][57215]['ConnectionID']=9001;
+$instance->P03MastHealthTimer();
+verifyDiag($GLOBALS['healthCalls']===[27938],
+    'main watchdog never calls observer on foreign socket');
 
 echo "P03 CLIENT SOCKET REPAIR SIMULATION PASSED\n";
