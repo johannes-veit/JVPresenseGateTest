@@ -1383,6 +1383,53 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /**
+     * One-click direct START for only our two already allocated P03 sockets.
+     * No camera settings are changed; no foreign sockets may be modified.
+     */
+    public function StartP03EventstreamsNow(): void
+    {
+        $this->appendProtocol('=== P03 SOFORTSTART: nur eigene Mastkamera-Sockets ===');
+        foreach ([
+            ['role' => self::AUX_JV_ROLE, 'instance' => 'AuxJVInstanceID',
+                'managed' => 'AuxJVManagedSocketID', 'host' => 'AuxJVHost'],
+            ['role' => self::AUX_WORK_ROLE, 'instance' => 'AuxWorkInstanceID',
+                'managed' => 'AuxWorkManagedSocketID', 'host' => 'AuxWorkHost']
+        ] as $entry) {
+            $role = (string) $entry['role'];
+            $observerID = $this->ReadAttributeInteger((string) $entry['instance']);
+            $socketID = $this->ReadAttributeInteger((string) $entry['managed']);
+            $expectedHost = trim($this->ReadPropertyString((string) $entry['host']));
+            try {
+                if ($observerID <= 0 || $socketID <= 0
+                    || !IPS_InstanceExists($observerID) || !IPS_InstanceExists($socketID)) {
+                    $this->appendProtocol($role . ': FEHLER – P03-Observer/eigener Socket fehlt. Erst Socket-Reparatur ausführen.');
+                    continue;
+                }
+                $observer = IPS_GetInstance($observerID);
+                if (strcasecmp((string) ($observer['ModuleInfo']['ModuleID'] ?? ''),
+                    self::AUX_OBSERVER_MODULE_GUID) !== 0
+                    || (int) ($observer['ConnectionID'] ?? 0) !== $socketID
+                    || (string) IPS_GetProperty($observerID, 'Role') !== $role
+                    || trim((string) IPS_GetProperty($observerID, 'CameraHost')) !== $expectedHost
+                    || trim((string) IPS_GetProperty($socketID, 'Host')) !== $expectedHost) {
+                    $this->appendProtocol($role . ': SICHERHEIT – Socket/Observer-Zuordnung falsch; nichts geändert.');
+                    continue;
+                }
+                // The observer independently checks module type, peer host,
+                // exclusivity, enabled state and valid credentials.
+                $sent = JVP03AUX_StartSocketNow($observerID);
+                $this->appendProtocol($role . ': Socket #' . $socketID . ' – '
+                    . ($sent ? 'initiales HTTP-GET gesendet; Authentifizierung läuft.'
+                             : 'Start noch nicht bestätigt – Diagnose beachten.'));
+            } catch (Throwable $e) {
+                $this->appendProtocol($role . ': Sofortstart fehlgeschlagen ('
+                    . get_class($e) . '). Andere Instanzen bleiben unverändert.');
+            }
+        }
+        $this->DiagnoseP03Connections();
+    }
+
+    /**
      * One-click, strictly read-only diagnosis. Never runs ApplyChanges,
      * reconnect, RPC2, setConfig or updates an unrelated module or camera.
      * The report contains no username, password, HTTP authorization or nonce.
@@ -1489,6 +1536,31 @@ class JVPresenceP03MultiCamera extends IPSModule
                             ? (string) (int) $value
                             : ((bool) $value ? 'AN' : 'AUS');
                         $lines[] = $label . ': ' . $printed . ' (Variable #' . $variable . ')';
+                    }
+                }
+
+                // Symcon 9 exposes module timers (Interval/LastRun/NextRun).
+                // Inspect only timers belonging to this P03 observer instance.
+                if (function_exists('IPS_GetTimerList') && function_exists('IPS_GetTimer')) {
+                    try {
+                        foreach (IPS_GetTimerList() as $timerID) {
+                            $timer = IPS_GetTimer((int) $timerID);
+                            if (!is_array($timer)
+                                || (int) ($timer['InstanceID'] ?? -1) !== $id
+                                || !in_array((string) ($timer['Name'] ?? ''),
+                                    ['SocketRestartTimer', 'HandshakeTimer', 'Watchdog'], true)) {
+                                continue;
+                            }
+                            $lastRun = (int) ($timer['LastRun'] ?? 0);
+                            $nextRun = (int) ($timer['NextRun'] ?? 0);
+                            $lines[] = 'Timer ' . $timer['Name']
+                                . ': Intervall=' . (int) ($timer['Interval'] ?? 0) . ' ms'
+                                . ', zuletzt=' . ($lastRun > 0 ? date('H:i:s', $lastRun) : 'NIE')
+                                . ', nächster=' . ($nextRun > 0 ? date('H:i:s', $nextRun) : 'KEINER')
+                                . ', läuft=' . self::p03DiagBool($timer['Running'] ?? false);
+                        }
+                    } catch (Throwable $e) {
+                        $lines[] = 'Timer-Diagnose: nicht lesbar (' . get_class($e) . ')';
                     }
                 }
 
