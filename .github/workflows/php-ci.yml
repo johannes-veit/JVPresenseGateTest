@@ -202,7 +202,7 @@ jobs:
           ]:
               if token not in main:
                   raise SystemExit('P03 full device config export contract missing: '+token)
-          model_audit=(root/'libs/P03IPC5442Audit.php').read_text()
+          model_audit=Path('libs/P03IPC5442Audit.php').read_text()
           for token in [
               "public static function exportAllValues(",
               "private static function mustMaskFullValue(",
