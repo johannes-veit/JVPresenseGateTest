@@ -132,6 +132,12 @@ class SimulatedIPC5442Main extends JVPresenceP03MultiCamera
                 "SmartMotionDetect[0].Enable=true\r\nSmartMotionDetect[0].ObjectTypes.Human=true\r\nSmartMotionDetect[0].Sensitivity=High\r\nSmartMotionDetect[0].AdminPassword=never-log-this\r\n",
             str_contains($uri, 'name=VideoAnalyseGlobal') =>
                 "VideoAnalyseGlobal[0].Scene.Type=Normal\r\n",
+            str_contains($uri, 'name=VideoAnalyseModule') =>
+                "table.VideoAnalyseModule[0][0].Type=Normal\r\n"
+                . "table.VideoAnalyseModule[0][0].Sensitivity=10\r\n"
+                . "table.VideoAnalyseModule[0][1].Type=NumberStat\r\n"
+                . "table.VideoAnalyseModule[0][1].Enable=false\r\n"
+                . "table.VideoAnalyseModule[0][0].Password=NOT_FOR_LOGGING\r\n",
             str_contains($uri, 'name=VideoAnalyseRule') =>
                 "table.VideoAnalyseRule[0][0].Class=HeatMap\r\n"
                 . "table.VideoAnalyseRule[0][0].Enable=false\r\n"
@@ -172,9 +178,16 @@ verifyDiag(substr_count($modelReport,'Regel [0][3]: Enable=true')===2
     'both P03 IVS rules are visible and matched, despite prior HeatMap-first truncation');
 verifyDiag(str_contains($modelReport, 'Config.DetectRegion[0][0]=256'),
     'P03 IVS region detail is shown, rather than only HeatMap TimeSections');
+verifyDiag(substr_count($modelReport, 'KI-RESSOURCEN (VideoAnalyseModule')===2,
+    'both 5442 cameras report Smart Plan resource table in model audit');
+verifyDiag(str_contains($modelReport, 'VideoAnalyseModule[0][0].Type=Normal')
+    && str_contains($modelReport, 'VideoAnalyseModule[0][1].Type=NumberStat'),
+    'live model resource candidates reported without falsely selecting one');
+verifyDiag(!str_contains($modelReport, 'NOT_FOR_LOGGING'),
+    'camera secret in additional module resource table is redacted');
 verifyDiag(!str_contains($modelReport,'never-log-this'),
     'camera security fields redacted');
-verifyDiag(count($ipc->uris)===12,'only six GET requests for each camera');
+verifyDiag(count($ipc->uris)===14,'only seven GET requests for each camera (read only)');
 verifyDiag(count(array_filter($ipc->uris,static fn($uri)=>
     str_contains($uri,'setConfig') || str_contains($uri,'setProperty') || str_contains($uri,'reboot')))===0,
     'only GET diagnostic commands, no camera modifications');

@@ -234,6 +234,52 @@ final class P03IPC5442Audit
     }
 
     /**
+     * VideoAnalyseModule is a Dahua 2.840 resource configuration table that
+     * can be read via configManager.cgi and (on this firmware family) RPC2.
+     * This reports exact values; the presence of a module entry DOES NOT prove
+     * the Smart Plan is selected or event detection is operational.
+     *
+     * @return string[]
+     */
+    public static function summarizeModuleResources(string $body): array
+    {
+        $out = ['=== KI-RESSOURCEN (VideoAnalyseModule, ausschließlich lesend) ==='];
+        $lines = preg_split('/\r\n|\n|\r/', $body) ?: [];
+        $fields = [];
+        foreach ($lines as $line) {
+            if (!preg_match('/^\s*(?:table\.)?VideoAnalyseModule((?:\[\d+\])*(?:\.[A-Za-z0-9_\[\].-]+)?)\s*=\s*(.*?)\s*$/i',
+                $line,$m)) {
+                continue;
+            }
+            $path = (string)$m[1];
+            if (preg_match('/password|user(name)?|secret|token|nonce|auth|private|serial|macaddress/i',$path)) {
+                continue;
+            }
+            if (!preg_match('/(Type|Enable|Mode|Class|Normal|Plan|Sensitivity|Alg|Resource|Scene|Rule|Switch|Use|State)/i', $path)) {
+                continue;
+            }
+            $val = substr(preg_replace('/[^\x20-\x7E\x{00A0}-\x{024F}]/u','?',
+                trim((string)$m[2])) ?? '',0,100);
+            $fields[] = 'VideoAnalyseModule'.$path.'='.$val;
+        }
+        $out[]='Ausgelesene relevante Modulfelder: '.count($fields);
+        foreach(array_slice($fields,0,80) as $field) {
+            $out[]='  '.$field;
+        }
+        if(count($fields)>80) {
+            $out[]='  ... '.(count($fields)-80).' weitere Modulfelder nicht ausgegeben';
+        }
+        if($fields===[]) {
+            $out[]='KEIN NACHWEIS: Keine auswertbaren Modul-Ressourcenfelder vorhanden.';
+        }
+        $out[]='WICHTIG: VideoAnalyseGlobal[0].Scene.Type ist ein Hinweis auf den ausgewählten Analysemodus.';
+        $out[]='Eine aktivierte NumberStat-Regel und eine aktivierte CrossRegion-Regel beweisen';
+        $out[]='nicht, dass BEIDE Algorithmen gleichzeitig laufen. Ohne tatsächliches Event ist';
+        $out[]='die KI-Erkennung weiterhin NICHT als funktionierend bestätigt.';
+        return $out;
+    }
+
+    /**
      * Reports only the event header; even unexpected binary/private JSON
      * payload is never copied into diagnostic state.
      */
