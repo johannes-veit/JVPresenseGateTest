@@ -1218,6 +1218,12 @@ class JVPresenceP03MultiCamera extends IPSModule
         if (!$this->ReadAttributeBoolean('TestActive') && !$this->ReadAttributeBoolean('ProductionEnabled')) {
             return;
         }
+        // No counting/proof when a now-orphaned observer or socket cannot be
+        // independently verified, irrespective of cached Boolean state.
+        if (!$this->p03AuxStreamsReady()) {
+            $this->SetValue('P03ProofState', 'BLOCKIERT – Mastkameras/Observer nicht sicher zugeordnet');
+            return;
+        }
 
         $events = $this->getP03HumanEvents();
         $now = microtime(true);
@@ -2475,13 +2481,36 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function p03AuxStreamsReady(): bool
     {
-        foreach (['AuxJVStreamVarID', 'AuxWorkStreamVarID'] as $attr) {
-            $id = $this->ReadAttributeInteger($attr);
-            if ($id <= 0 || !IPS_VariableExists($id)) {
+        // Fail closed: a leftover StreamOK Boolean from a now-missing camera
+        // must never be accepted as a valid direction/zone proof.
+        foreach ([
+            ['role' => self::AUX_JV_ROLE, 'host' => 'AuxJVHost',
+                'observer' => 'AuxJVInstanceID', 'managed' => 'AuxJVManagedSocketID',
+                'stream' => 'AuxJVStreamVarID'],
+            ['role' => self::AUX_WORK_ROLE, 'host' => 'AuxWorkHost',
+                'observer' => 'AuxWorkInstanceID', 'managed' => 'AuxWorkManagedSocketID',
+                'stream' => 'AuxWorkStreamVarID']
+        ] as $entry) {
+            $host = trim($this->ReadPropertyString((string)$entry['host']));
+            $role = (string)$entry['role'];
+            $observerID = $this->ReadAttributeInteger((string)$entry['observer']);
+            $socketID = $this->ReadAttributeInteger((string)$entry['managed']);
+            $streamVar = $this->ReadAttributeInteger((string)$entry['stream']);
+            if (!$this->matchesTrustedP03Observer($observerID, $host, $role)
+                || $socketID <= 0 || !IPS_InstanceExists($socketID)
+                || $streamVar <= 0 || !IPS_VariableExists($streamVar)) {
                 return false;
             }
             try {
-                if (!(bool) GetValue($id)) {
+                $socket = IPS_GetInstance($socketID);
+                $observer = IPS_GetInstance($observerID);
+                if ((int)($observer['ConnectionID'] ?? 0) !== $socketID
+                    || strcasecmp((string)($socket['ModuleInfo']['ModuleID'] ?? ''),
+                        self::CLIENT_SOCKET_GUID) !== 0
+                    || trim((string) IPS_GetProperty($socketID,'Host')) !== $host
+                    || (int)($socket['InstanceStatus'] ?? 0) !== 102
+                    || !(bool) IPS_GetProperty($socketID,'Open')
+                    || !(bool) GetValue($streamVar)) {
                     return false;
                 }
             } catch (Throwable $e) {
