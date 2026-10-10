@@ -1877,7 +1877,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 // VideoAnalyseModule is the actual 5442 KI resource/module
                 // configuration. Read it through the existing SymBox -> IPC
                 // authenticated CGI channel. No camera CGI setConfig.
-                foreach (['MotionDetect','SmartMotionDetect','VideoAnalyseGlobal','VideoAnalyseModule','VideoAnalyseRule'] as $table) {
+                foreach (['MotionDetect','SmartMotionDetect','SmartEncode','VideoAnalyseGlobal','VideoAnalyseModule','VideoAnalyseRule'] as $table) {
                     $result = $this->readIPC5442Camera($host,$port,$user,$pass,
                         '/cgi-bin/configManager.cgi?action=getConfig&name=' . $table);
                     $lines[] = '';
@@ -1894,6 +1894,12 @@ class JVPresenceP03MultiCamera extends IPSModule
                     // Display ALL rule summaries and the complete targeted
                     // geometry, Human filter, action and active schedules.
                     $body = (string) ($result['body'] ?? '');
+                    if ($table === 'SmartEncode') {
+                        foreach (P03IPC5442Audit::summarizeSmartEncode($body) as $field) {
+                            $lines[] = $field;
+                        }
+                        continue;
+                    }
                     if ($table === 'VideoAnalyseModule') {
                         foreach (P03IPC5442Audit::summarizeModuleResources($body) as $field) {
                             $lines[] = $field;
