@@ -213,10 +213,17 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->refreshP03CameraStatus();
 
         if (!$this->credentialsReady()) {
+            // The main module must not remain at IS_CREATING (101).
+            // Missing credentials are configuration INACTIVE (104), not an
+            // operationally healthy instance or an assumed Dahua failure.
+            $this->SetStatus(104);
             $this->setResult('NICHT BEREIT – P03 Dahua-Benutzername/Passwort direkt im P03-Modul eintragen.');
             return;
         }
 
+        // Module instance initialized; actual mast stream/event quality is
+        // tracked separately, and is never inferred from status 102.
+        $this->SetStatus(102);
         $this->setResult('Installiert. P03 nutzt nur die zwei eigenen Mastkamera-Observer; keine übergeordnete Schnittstelle erforderlich.');
     }
 
@@ -1511,7 +1518,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $lines = [
             '=== P03 SOCKET-DIAGNOSE (NUR LESEN) ===',
             'Zeit: ' . date('Y-m-d H:i:s'),
-            'Hauptinstanz: #' . $this->InstanceID,
+            'Hauptinstanz: #' . $this->InstanceID
+                . ' | Status=' . (int) (IPS_GetInstance($this->InstanceID)['InstanceStatus'] ?? -1),
             'Hinweis: Es werden keine Kameraeinstellungen oder Fremdmodule geändert.'
         ];
         $healthVar = $this->GetIDForIdent('P03MastHealth');
@@ -1589,7 +1597,12 @@ class JVPresenceP03MultiCamera extends IPSModule
                 $userSet = trim((string) IPS_GetProperty($id, 'Username')) !== '';
                 $passwordSet = (string) IPS_GetProperty($id, 'Password') !== '';
 
-                $lines[] = 'Observer-ID: ' . $id . ' | Status: ' . (int) ($obs['InstanceStatus'] ?? -1);
+                $observerStatus = (int) ($obs['InstanceStatus'] ?? -1);
+                $lines[] = 'Observer-ID: ' . $id . ' | Status: ' . $observerStatus
+                    . ($observerStatus === 101 ? ' – INSTANZ WIRD ERSTELLT'
+                        : ($observerStatus === 102 ? ' – AKTIV'
+                            : ($observerStatus === 104 ? ' – INAKTIV'
+                                : ($observerStatus >= 200 ? ' – FEHLER' : ''))));
                 $lines[] = 'Observer: ' . ($enabled ? 'aktiv' : 'DEAKTIVIERT')
                     . ' | Rolle: ' . $obsRole . ' | Host: ' . $obsHost . ':' . $obsPort;
                 $lines[] = 'Anmeldung konfiguriert: Benutzer=' . ($userSet ? 'JA' : 'NEIN')
