@@ -140,4 +140,25 @@ expect5442(str_contains($recovered,'DETAIL P03-REGEL [0][5]')
     && str_contains($recovered,'Index abweichend'),
     'migrated rule found by exact name if index differs');
 
+// IPC-HFW5442E-ZE read-only resource/config check, including 2.840
+// table-prefix CGI, alternative modes and secret field suppression.
+$resources="table.VideoAnalyseModule[0][0].Type=Normal\r\n"
+    . "table.VideoAnalyseModule[0][0].Sensitivity=10\r\n"
+    . "table.VideoAnalyseModule[0][1].Type=NumberStat\r\n"
+    . "table.VideoAnalyseModule[0][1].Enable=false\r\n"
+    . "table.VideoAnalyseModule[0][1].CredentialSecret=hidden-secret\r\n";
+$resourceSummary=implode("\n",P03IPC5442Audit::summarizeModuleResources($resources));
+expect5442(str_contains($resourceSummary,'VideoAnalyseModule[0][0].Type=Normal')
+    && str_contains($resourceSummary,'VideoAnalyseModule[0][1].Type=NumberStat'),
+    'both configured Dahua 5442 intelligence modules visible via SymBox');
+expect5442(str_contains($resourceSummary,'VideoAnalyseModule[0][1].Enable=false'),
+    'module-specific activation state exposed without inferring smart plan selection');
+expect5442(!str_contains($resourceSummary,'hidden-secret'),
+    'read-only module probe does not expose camera credentials');
+expect5442(str_contains($resourceSummary,'nicht, dass BEIDE Algorithmen gleichzeitig laufen'),
+    'diagnostic avoids false inference from merely saved rules');
+expect5442(str_contains(implode("\n",
+    P03IPC5442Audit::summarizeModuleResources("ERROR: unsupported\r\n")),
+    'KEIN NACHWEIS'),
+    'unsupported CGI table reported as absent, not as successful AI');
 echo "P03 IPC5442 READ-ONLY MODEL AUDIT UNIT TEST PASSED\n";
