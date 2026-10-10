@@ -62,6 +62,7 @@ function GetValue(int $id): mixed
 class IPSModule
 {
     public int $InstanceID = 57215;
+    public int $status = 101;
     public array $properties = [];
     public array $attributes = [];
     public array $buffers = [];
@@ -73,6 +74,11 @@ class IPSModule
 
     public function Create(): void {}
     public function ApplyChanges(): void {}
+    protected function SetStatus(int $status): bool
+    {
+        $this->status = $status;
+        return true;
+    }
     protected function RequireParent(string $guid): bool
     {
         // Models Symcon creating a dedicated parent if the device has none.
@@ -159,7 +165,10 @@ $x->properties['Role'] = 'JV_LEFT';
 $x->properties['RuleIndex'] = 3;
 $x->properties['RuleID'] = 4;
 $x->ApplyChanges();
-checkP03(($x->values['StreamOK'] ?? null) === false, 'No false-positive StreamOK before handshake');
+checkP03($x->status === 102,
+    'P03 observer transitions from IS_CREATING to IS_ACTIVE after successful ApplyChanges');
+checkP03(($x->values['StreamOK'] ?? null) === false,
+    'IS_ACTIVE is not a false positive for StreamOK before HTTP handshake');
 checkP03(($x->attributes['SocketRestartStage'] ?? null) === 1, 'Reconnection staged after ApplyChanges');
 $x->SocketRestartTimer(); // close
 checkP03(($GLOBALS['mockSocket'][99001]['properties']['Open'] ?? true) === false, 'Socket explicitly closed before Digest retry');
@@ -374,5 +383,25 @@ $direct->attributes['LastSocketRestart']=time()-60;
 $direct->Watchdog();
 checkP03($direct->attributes['LastHealthAction']==='RECONNECT_GET_SENT',
     'Old observer Watchdog method delegates to guarded HealthTick');
+
+// A P03 observer with missing camera configuration must never be ACTIVE.
+$disabled = new JVPresenceP03AuxObserver();
+$disabled->Create();
+$disabled->properties['Enabled'] = false;
+$disabled->ApplyChanges();
+checkP03($disabled->status === 104,
+    'Explicitly disabled P03 observer transitions to IS_INACTIVE');
+
+// A shared parent can still be connected, but must not be marked ACTIVE.
+$GLOBALS['mockForeignChild'] = true;
+$unsafe = new JVPresenceP03AuxObserver();
+$unsafe->Create();
+$unsafe->properties['CameraHost'] = '192.0.2.5';
+$unsafe->properties['Username'] = 'sim-user';
+$unsafe->properties['Password'] = 'sim-password';
+$unsafe->ApplyChanges();
+checkP03($unsafe->status === 104,
+    'Observer on foreign/shared socket is not marked IS_ACTIVE');
+$GLOBALS['mockForeignChild'] = false;
 
 echo "P03 OBSERVER INTEGRATION SIMULATION PASSED ({$tests} assertions)\n";
