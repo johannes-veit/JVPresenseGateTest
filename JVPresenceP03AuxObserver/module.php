@@ -50,8 +50,6 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('LastHealthTick', 0);
         $this->RegisterAttributeString('LastHealthAction', 'UNTESTED');
         $this->RegisterAttributeInteger('LastStaleRx', 0);
-        $this->RegisterAttributeInteger('WireCodeCount', 0);
-        $this->RegisterAttributeInteger('WireHeartbeatCount', 0);
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
@@ -88,6 +86,11 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('RuleMatchEventCount', 0);
         $this->RegisterAttributeInteger('DedupeRejectCount', 0);
         $this->RegisterAttributeInteger('RuleRejectCount', 0);
+        $this->RegisterAttributeInteger('WireCodeCount', 0);
+        $this->RegisterAttributeInteger('WireHeartbeatCount', 0);
+        $this->RegisterAttributeInteger('LastHealthTick', 0);
+        $this->RegisterAttributeString('LastHealthAction', 'UNTESTED');
+        $this->RegisterAttributeInteger('LastStaleRx', 0);
 
         // Existing observer instances from v0.6.5-v0.6.8 must receive variables
         // added by later versions as well; Create() is not relied upon for migration.
