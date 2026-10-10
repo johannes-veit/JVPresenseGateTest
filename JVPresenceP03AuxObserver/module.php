@@ -645,9 +645,11 @@ class JVPresenceP03AuxObserver extends IPSModule
                 'eventId' => $event['eventId'] ?? null,
                 'objectId' => $event['objectId'] ?? null
             ];
-            $this->SetValue('LastEvent', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-
             if ($isHumanStart) {
+                // "Letztes Human-IVS-Ereignis" must never be overwritten by
+                // a STOP, a vehicle, or an event that did not count.
+                $this->SetValue('LastEvent', json_encode($summary,
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 $counterID = $this->GetIDForIdent('HumanEventCounter');
                 if ($counterID > 0 && IPS_VariableExists($counterID)) {
                     $this->SetValue('HumanEventCounter', ((int) GetValue($counterID)) + 1);
