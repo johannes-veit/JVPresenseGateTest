@@ -144,6 +144,16 @@ jobs:
               "JVP03DahuaDigest::buildAuthorization",
               "P03AuxObserverLogic::isHumanProofStart"
           ]
+          # Regression for Symcon P03 Observer status 101 (IS_CREATING)
+          # even while both dedicated Client Sockets and streams were LIVE.
+          apply_obs_status=observer[observer.index("public function ApplyChanges"):observer.index("public function GetConfigurationForParent")]
+          apply_main_status=main[main.index("public function ApplyChanges"):main.index("public function GetConfigurationForm")]
+          for token in ["SetStatus($ready && $dedicatedParent ? 102 : 104)", "hasExclusiveParentSocket($parentID)"]:
+              if token not in apply_obs_status:
+                  raise SystemExit('P03 observer lifecycle status transition missing: '+token)
+          for token in ["SetStatus(102)", "SetStatus(104)"]:
+              if token not in apply_main_status:
+                  raise SystemExit('P03 main module lifecycle status transition missing: '+token)
           observer_missing=[x for x in observer_required if x not in observer]
           if observer_missing:
               raise SystemExit('Missing independent aux observer contracts: '+repr(observer_missing))
