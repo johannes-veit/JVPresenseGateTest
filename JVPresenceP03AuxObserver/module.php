@@ -46,7 +46,6 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableString('LastEvent', 'Letztes Human-IVS-Ereignis', '', 30);
         $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
-        $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03AUX_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03AUX_SocketRestartTimer($_IPS["TARGET"]);');
@@ -67,6 +66,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
         $this->RegisterVariableString('LastEvent', 'Letztes Human-IVS-Ereignis', '', 30);
         $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
+        $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
@@ -89,13 +89,16 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetValue('PersonDetected', false);
         $this->SetValue('StreamOK', false);
 
+        // Proven Dahua lifecycle from AussenlichtAutomatik2/v0.6.12:
+        // RequireParent()+GetConfigurationForParent() owns the parent config.
+        // Do NOT ApplyChanges() the parent here; that races the staged
+        // 401 -> fresh-socket -> authenticated Digest reconnect.
         $this->updateParentSubscription($this->getParentID());
-        $this->ensureParentSocketConfigured();
 
         if ($this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady()) {
-            $this->scheduleSocketRestart(300);
+            $this->scheduleSocketRestart(500);
         }
-        $this->refreshObserverStatus('ApplyChanges');
+        $this->refreshObserverStatus('ApplyChanges / Neustart angefordert');
     }
 
     public function GetConfigurationForParent(): string
@@ -143,6 +146,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetBuffer('HttpBuffer', '');
 
         if (!preg_match('#^HTTP/\d\.\d\s+(\d{3})#i', $header, $m)) {
+            $this->refreshObserverStatus('HTTP-Antwortkopf ungültig');
             return '';
         }
 
@@ -150,6 +154,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         if ($status === 401) {
             $challenge = $this->extractDigestChallenge($header);
             if ($challenge === []) {
+                $this->refreshObserverStatus('HTTP 401 ohne Digest-Challenge');
                 return '';
             }
 
@@ -173,6 +178,7 @@ class JVPresenceP03AuxObserver extends IPSModule
 
             $this->WriteAttributeBoolean('AuthBlocked', true);
             $this->SetValue('StreamOK', false);
+            $this->refreshObserverStatus('Digest-Anmeldung abgewiesen');
             return '';
         }
 
@@ -189,6 +195,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             return '';
         }
 
+        $this->refreshObserverStatus('HTTP Status ' . $status . ' unerwartet');
         return '';
     }
 
@@ -506,7 +513,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $headers = [
             'GET ' . $uri . ' HTTP/1.1',
             'Host: ' . $hostHeader,
-            'User-Agent: IP-Symcon-JVPresenceP03Aux/0.6.13',
+            'User-Agent: IP-Symcon-JVPresenceP03Aux/0.6.14',
             'Accept: multipart/x-mixed-replace, */*',
             'Connection: keep-alive'
         ];
@@ -544,7 +551,9 @@ class JVPresenceP03AuxObserver extends IPSModule
 
         try {
             $this->SendDataToParent($payload);
+            $this->refreshObserverStatus($authenticated ? 'Digest-GET gesendet' : 'Initial-GET gesendet');
         } catch (Throwable $e) {
+            $this->refreshObserverStatus('Eventstream-GET FEHLER: ' . $e->getMessage());
         }
     }
 
@@ -561,36 +570,6 @@ class JVPresenceP03AuxObserver extends IPSModule
         return trim($this->ReadPropertyString('CameraHost')) !== ''
             && trim($this->ReadPropertyString('Username')) !== ''
             && $this->ReadPropertyString('Password') !== '';
-    }
-
-    private function ensureParentSocketConfigured(): void
-    {
-        $parentID = $this->getParentID();
-        if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
-            $this->refreshObserverStatus('Kein Parent');
-            return;
-        }
-
-        $host = trim($this->ReadPropertyString('CameraHost'));
-        $port = max(1, $this->ReadPropertyInteger('CameraPort'));
-        $open = $this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady();
-
-        try {
-            if ((string) IPS_GetProperty($parentID, 'Host') !== $host) {
-                IPS_SetProperty($parentID, 'Host', $host);
-            }
-            if ((int) IPS_GetProperty($parentID, 'Port') !== $port) {
-                IPS_SetProperty($parentID, 'Port', $port);
-            }
-            if ((bool) IPS_GetProperty($parentID, 'Open') !== $open) {
-                IPS_SetProperty($parentID, 'Open', $open);
-            }
-            if (function_exists('IPS_HasChanges') && IPS_HasChanges($parentID)) {
-                IPS_ApplyChanges($parentID);
-            }
-        } catch (Throwable $e) {
-            $this->SetValue('ObserverStatus', 'Parent-Konfiguration FEHLER: ' . $e->getMessage());
-        }
     }
 
     private function refreshObserverStatus(string $reason = ''): void
@@ -621,7 +600,9 @@ class JVPresenceP03AuxObserver extends IPSModule
             'authPending' => $this->ReadAttributeBoolean('AuthPending'),
             'authBlocked' => $this->ReadAttributeBoolean('AuthBlocked'),
             'lastHttpRequest' => $this->ReadAttributeInteger('LastHttpRequest'),
-            'lastCameraRx' => $this->ReadAttributeInteger('LastCameraRx')
+            'lastCameraRx' => $this->ReadAttributeInteger('LastCameraRx'),
+            'streamOK' => (bool) $this->GetValue('StreamOK'),
+            'counter' => (int) $this->GetValue('HumanEventCounter')
         ];
         $json = json_encode($status, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $this->SetValue('ObserverStatus', $json === false ? '' : $json);
