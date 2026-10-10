@@ -1242,7 +1242,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     /**
      * Repair only the two P03-owned mast observers that have ConnectionID=0.
      * IP-Symcon 9 programmatically created device instances may have NO
-     * automatically linked I/O even when RequireParent() is present.
+     * automatically linked I/O despite legacy parent-creation declarations.
      * This method explicitly creates an exclusive Client Socket, configures
      * only that new socket, and attaches only its P03 observer.
      *
