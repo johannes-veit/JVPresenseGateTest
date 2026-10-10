@@ -392,7 +392,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         // A stale stream or timed-out challenge is explicitly rebuilt with a
         // FRESH TCP socket, unlike the previous "already active" shortcut.
         $needRetry = $stale || !$tcpActive ||
-            (!$streaming && ($lastRequest === 0 || $now - $lastRequest > 15));
+            (!$streaming && ($lastRequest === 0 || $now - $lastRequest > 12));
         if (!$needRetry) {
             $this->WriteAttributeString('LastHealthAction', 'AWAITING_HTTP');
             return 'AWAITING_HTTP';
