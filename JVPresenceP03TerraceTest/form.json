@@ -85,6 +85,15 @@
   "actions": [
     {
       "type": "Button",
+      "caption": "P03 IPC-HFW5442E-ZE KONFIGURATION PRÜFEN (nur lesen, beide Kameras)",
+      "onClick": "JVP03MC_DiagnoseIPC5442Configuration($id);"
+    },
+    {
+      "type": "Label",
+      "caption": "Liest direkt aus beiden IPC-HFW5442E-ZE die Firmware, MotionDetect-Erfassungsflächen/Zeitpläne, SMD 3.0 Human-Filter sowie IVS Smart Plan/Regeln. Keine Kameraeinstellungen ändern. Ergänzend zeigt der bestehende Verbindungsdiagnose-Button die Dahua-Code-Rohmeldungen VOR dem Parser."
+    },
+    {
+      "type": "Button",
       "caption": "P03 HEARTBEAT JETZT PRÜFEN / VERALTETEN STREAM REPARIEREN",
       "onClick": "JVP03MC_CheckP03MastHealthNow($id);"
     },
