@@ -179,20 +179,17 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         parent::ApplyChanges();
 
-        // Migration for existing P03 instances: keep newly created private sockets
-        // recorded even if the connection takes longer to become visible.
-        $this->RegisterAttributeInteger('AuxJVManagedSocketID', 0);
-        $this->RegisterAttributeInteger('AuxWorkManagedSocketID', 0);
-        $this->RegisterAttributeString('P03RestoreSummary', 'Noch keine Wiederherstellung ausgeführt.');
+        // Persistent P03 attributes are registered in Create() only.
+        // IP-Symcon runs Create() on instantiation/module reload; repeating
+        // RegisterAttribute* in ApplyChanges is forbidden and caused warnings.
 
         // Add the diagnosis variable to P03 instances installed before 0.6.15.
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
         $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
         $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
         $this->RegisterVariableString('P03OwnershipAudit', 'P03 Instanz-/Observer-Bestandsprüfung (nur lesen)', '', 78);
-        // Register again during migration: Create() is not guaranteed to run
-        // on an existing Symcon P03 instance when a module update is installed.
-        $this->RegisterTimer('P03MastHealthTimer', 15000, 'JVP03MC_P03MastHealthTimer($_IPS["TARGET"]);');
+        // Timer is registered exclusively in Create(), as required by
+        // IP-Symcon; only its active interval changes in ApplyChanges.
         $this->SetTimerInterval('P03MastHealthTimer', 15000);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
