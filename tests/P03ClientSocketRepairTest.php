@@ -85,13 +85,17 @@ class IPSModule
     public array $properties=[
         'AuxJVHost'=>'192.168.107.96',
         'AuxWorkHost'=>'192.168.107.99',
-        'CameraPort'=>80
+        'CameraPort'=>80,
+        'Username'=>'p03-restoration-user',
+        'Password'=>'p03-restoration-password'
     ];
     public array $values=['P03ConnectionDiagnosis'=>'','Result'=>''];
     public bool $reload=false;
     public function Create():void {}
     public function ApplyChanges():void {}
     protected function ReadAttributeInteger(string $name):int { return (int) ($this->attributes[$name]??0); }
+    protected function ReadAttributeString(string $name):string { return (string) ($this->attributes[$name]??''); }
+    protected function WriteAttributeString(string $name,string $value):void { $this->attributes[$name]=$value; }
     protected function WriteAttributeInteger(string $name,int $value):void {
         $this->attributes[$name]=$value;
     }
@@ -201,4 +205,83 @@ $instance->P03MastHealthTimer();
 verifyDiag($GLOBALS['healthCalls']===[27938],
     'main watchdog never calls observer on foreign socket');
 
+// Real 19:17 Symcon state: both module instances 101, both dedicated
+// sockets exist, but CameraHost and Role blank after module update.
+// Reuse known immutable observer/socket IDs; NEVER create duplicates.
+$GLOBALS['instances'][17785]=$GLOBALS['instances'][$jv];
+$GLOBALS['instances'][55478]=$GLOBALS['instances'][$work];
+$GLOBALS['props'][17785]=$GLOBALS['props'][$jv];
+$GLOBALS['props'][55478]=$GLOBALS['props'][$work];
+unset($GLOBALS['instances'][$jv],$GLOBALS['instances'][$work]);
+$GLOBALS['instances'][57215]['ConnectionID']=17785;
+$GLOBALS['instances'][27938]['ConnectionID']=55478;
+$GLOBALS['instances'][57215]['InstanceStatus']=101;
+$GLOBALS['instances'][27938]['InstanceStatus']=101;
+$GLOBALS['props'][57215]['CameraHost']='';
+$GLOBALS['props'][57215]['Role']='';
+$GLOBALS['props'][57215]['Username']='';
+$GLOBALS['props'][57215]['Password']='';
+$GLOBALS['props'][27938]['CameraHost']='';
+$GLOBALS['props'][27938]['Role']='';
+$GLOBALS['props'][27938]['Username']='';
+$GLOBALS['props'][27938]['Password']='';
+$instance->attributes['AuxJVInstanceID']=0;
+$instance->attributes['AuxWorkInstanceID']=0;
+$instance->attributes['AuxJVManagedSocketID']=17785;
+$instance->attributes['AuxWorkManagedSocketID']=55478;
+$GLOBALS['writes']=[];
+$oldCreated=count($GLOBALS['created']);
+$oldJvCounter=(int)$GLOBALS['variables'][42076];
+$instance->RestoreP03Observers();
+verifyDiag(count($GLOBALS['created'])===$oldCreated,
+    'restoration never creates another observer or socket');
+verifyDiag($GLOBALS['props'][57215]['CameraHost']==='192.168.107.96'
+    && $GLOBALS['props'][57215]['Role']==='JV_LEFT',
+    'JV_LEFT existing Observer host/role restored');
+verifyDiag($GLOBALS['props'][27938]['CameraHost']==='192.168.107.99'
+    && $GLOBALS['props'][27938]['Role']==='WORK_LEFT',
+    'WORK_LEFT existing Observer host/role restored');
+verifyDiag($GLOBALS['props'][57215]['Username']==='p03-restoration-user'
+    && $GLOBALS['props'][27938]['Password']==='p03-restoration-password',
+    'only P03 observer credentials restored from existing main');
+verifyDiag($instance->attributes['AuxJVInstanceID']===57215
+    && $instance->attributes['AuxWorkInstanceID']===27938,
+    'P03 main recovers existing observer bindings');
+verifyDiag($GLOBALS['variables'][42076]===$oldJvCounter,
+    'existing HumanEventCounter preserved');
+verifyDiag(str_contains((string)$instance->values['P03ConnectionDiagnosis'],'JV_LEFT')
+    && str_contains((string)$instance->values['P03ConnectionDiagnosis'],'Wiederherstellung'),
+    'known copyable socket diagnosis carries restoration outcome');
+verifyDiag(!str_contains((string)$instance->values['P03ConnectionDiagnosis'],'p03-restoration-password'),
+    'credentials never appear in copyable report');
+verifyDiag(count(array_filter($GLOBALS['writes'],
+    static fn($w)=>$w[0]==='apply'))===2,
+    'exactly two pre-existing observer instances applied, no sockets');
+foreach($GLOBALS['writes'] as $w){
+    verifyDiag(in_array($w[1],[57215,27938],true),
+        'restoration touches only two existing P03 observer instances');
+}
+$restoredWrites=count($GLOBALS['writes']);
+$instance->RestoreP03Observers();
+verifyDiag(count($GLOBALS['created'])===$oldCreated,
+    'repeating restore does not create duplicates');
+verifyDiag($GLOBALS['props'][57215]['CameraHost']==='192.168.107.96',
+    'repeated restore remains consistent');
+
+// Safety case: a FOREIGN observer now shares WORK socket -> entire repair
+// is rejected before writing to EITHER P03 observer.
+$GLOBALS['instances'][77777]['ConnectionID']=55478;
+$GLOBALS['writes']=[];
+$instance->RestoreP03Observers();
+verifyDiag($GLOBALS['writes']===[],
+    'shared Client Socket blocks both P03 writes in two-phase preflight');
+$GLOBALS['instances'][77777]['ConnectionID']=9002;
+
+// Safety case: observer Role differs from assigned P03 camera.
+$GLOBALS['props'][57215]['Role']='FOREIGN';
+$GLOBALS['writes']=[];
+$instance->RestoreP03Observers();
+verifyDiag($GLOBALS['writes']===[],
+    'unexpected Role prohibits overwriting a potentially foreign ownership');
+$GLOBALS['props'][57215]['Role']='JV_LEFT';
 echo "P03 CLIENT SOCKET REPAIR SIMULATION PASSED\n";
