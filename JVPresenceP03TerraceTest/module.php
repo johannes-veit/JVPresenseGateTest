@@ -1897,7 +1897,13 @@ class JVPresenceP03MultiCamera extends IPSModule
         $lines[] = '';
         $lines[] = 'BEWERTUNG: Ohne Ereignis-Rohdaten während eines Testgangs'
             . ' keine Aussage, ob Kamera-AI, Erfassungsfläche, Zeitplan oder P03-Parser schuld ist.';
-        $this->SetValue('P03IPC5442Audit', implode("\n", $lines));
+        $report = implode("\n", $lines);
+        $this->SetValue('P03IPC5442Audit', $report);
+        // Known SymBox variable #35115: use this SAME copyable slot for the
+        // full model audit so the user does not have to discover a new ID.
+        // The standard socket-diagnosis button will overwrite it again with
+        // live socket data when pressed; no camera or socket action occurs.
+        $this->SetValue('P03ConnectionDiagnosis', $report);
         $this->ReloadForm();
     }
 
