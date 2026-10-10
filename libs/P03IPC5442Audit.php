@@ -280,6 +280,40 @@ final class P03IPC5442Audit
     }
 
     /**
+     * Read Dahua's real Smart Codec status without writing to the IPC.
+     * "SmartEncode" is separate from the ordinary Encode (H.264/H.265)
+     * configuration; normal compression itself is NOT an IVS conflict.
+     *
+     * @return string[]
+     */
+    public static function summarizeSmartEncode(string $body): array
+    {
+        $out = ['=== SMART-CODEC / IVS-KOMPATIBILITÄT (nur lesen) ==='];
+        $fields = [];
+        foreach (preg_split('/\r\n|\n|\r/', $body) ?: [] as $line) {
+            if (!preg_match('/^\s*(?:table\.)?SmartEncode\[(\d+)\]\.(Enable|Enbale|Extra\[\d+\])\s*=\s*(true|false|0|1)\s*$/i', $line, $m)) {
+                continue;
+            }
+            if ((int) $m[1] !== 0) {
+                continue;
+            }
+            $fields[$m[2]] = strtolower((string) $m[3]);
+            $out[] = 'SmartEncode[0].' . $m[2] . '=' . strtolower((string) $m[3]);
+        }
+        $main = $fields['Enable'] ?? $fields['Enbale'] ?? null;
+        if ($main === null) {
+            $out[] = 'SMART-CODEC STATUS: UNBEKANNT – CGI lieferte keinen gültigen Hauptstream-Schalter.';
+        } elseif (in_array($main, ['true','1'], true)) {
+            $out[] = 'SMART-CODEC STATUS: AN – möglicher IVS-Ressourcenkonflikt.';
+            $out[] = 'Nicht automatisch deaktivieren: Codec-/NVR-Auswirkungen prüfen, nur gezielter Test mit Sicherung/Rollback.';
+        } else {
+            $out[] = 'SMART-CODEC STATUS: AUS – SmartCodec-Konflikt für Hauptstream nicht bestätigt.';
+        }
+        $out[] = 'Die normale H.264/H.265-Videokompression ist NICHT mit dem Smart-Codec-Schalter gleichzusetzen.';
+        return $out;
+    }
+
+    /**
      * Reports only the event header; even unexpected binary/private JSON
      * payload is never copied into diagnostic state.
      */
