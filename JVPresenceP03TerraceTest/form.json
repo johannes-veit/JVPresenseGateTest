@@ -85,6 +85,15 @@
   "actions": [
     {
       "type": "Button",
+      "caption": "P03 FEHLENDE CLIENT-SOCKETS REPARIEREN (nur P03)",
+      "onClick": "JVP03MC_RepairP03ClientSockets($id);"
+    },
+    {
+      "type": "Label",
+      "caption": "Legt für P03-Observer ohne Client-Socket je eine eigene TCP-Verbindung an und verbindet sie. Bereits verbundene Observer, Außenlichtautomatik, Alarmanlage und Kameraeinstellungen werden nicht verändert. Anschließend wird automatisch die Diagnose angezeigt."
+    },
+    {
+      "type": "Button",
       "caption": "P03 Verbindungen diagnostizieren (nur lesen – beide Observer/Sockets)",
       "onClick": "JVP03MC_DiagnoseP03Connections($id);"
     },
