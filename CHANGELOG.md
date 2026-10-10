@@ -1,3 +1,14 @@
+# v0.6.17 – P03-Socket-Sofortstart und Symcon-Timerdiagnose
+
+- Die Symcon-Live-Diagnose von 16:54 Uhr zeigte: beide P03-Mastobserver mit eigenem Client Socket, aber Open=NEIN, Socket-Status=104 (inaktiv, NICHT „nicht erstellt“), restartStage=1, keine HTTP-Anfrage.
+- Neuer Button im P03-Konfigurationsfenster: **„P03 EIGENE EVENTSTREAMS JETZT STARTEN (ohne Timer-Wartezeit)”**.
+- Startet beide bereits eindeutig P03-zugeordneten Client-Sockets direkt und führt den initialen Dahua HTTP-GET aus, statt auf den zeitgesteuerten Neustart der ersten Phase zu warten.
+- Zusätzliche Sicherheitskontrollen im Observer: exakt richtiger Client-Socket-Modultyp, passender Host/Port, exklusive Verbindung (nicht mit Außenlichtautomatik oder anderen Modulen geteilt), aktivierte Kameraanbindung; sonst kein Start.
+- Vor dem Sofortstart werden wartende Phase-1/2-Timer zurückgesetzt, damit sie den neu gestarteten Socket nicht gleich wieder schließen. Ein bereits laufender Stream bleibt unverändert.
+- Die lesende Socket-Diagnose zeigt jetzt die tatsächlichen von Symcon gemeldeten Timerdaten (Intervall, letzte und nächste Ausführung), soweit über IPS_GetTimerList/IPS_GetTimer verfügbar.
+- Der Sofortstart verändert keine Dahua-Kamera-Konfiguration und keine anderen Module. Der anschließende HTTP 401/Digest-Reconnect bleibt zunächst wie zuvor timergetrieben; sein tatsächliches Verhalten muss nach dem Live-Start überprüft werden.
+- Ergänzte Regression mit der echten P03-Aux-Observerklasse für verzögerte Phase 1, direkten GET, Fremdverbindungsschutz und Dispatch durch die P03-Hauptinstanz.
+
 # v0.6.16 – P03 Mastobserver: fehlende Client-Sockets reparieren
 
 - Echte Ursache aus Live-Diagnose: Beide P03 Observer #57215 und #27938 hatten **ConnectionID=0**, obwohl ihr Symcon-Instanzstatus 102 betrug. Keine TCP-/HTTP-Anfrage konnte gesendet werden; dieser Fehler liegt VOR Dahua-KI/IVS.
