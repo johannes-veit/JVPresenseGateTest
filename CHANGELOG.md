@@ -1,3 +1,14 @@
+# v0.6.15 – P03 Ein-Klick-Socketdiagnose
+
+- Neuer Button im Konfigurationsfenster der P03-Hauptinstanz: **„P03 Verbindungen diagnostizieren (nur lesen – beide Observer/Sockets)”**.
+- Prüft die konfigurierten und tatsächlich verbundenen P03-Mastobserver, ihre Rollen/IPs, Verbindungseinstellungen, aktive und getrennte Client-Sockets, Host/Port/Open und den tatsächlichen Symcon-Status.
+- Liest für beide Mastkameras die Zustandsvariablen Person erkannt, StreamOK, HumanEventCounter und den letzten Observer-Diagnosestatus (Digest/Watchdog, HTTP- und Kamerazeitpunkte).
+- Erkennt fehlende/falsche Parent-Sockets, Abweichungen der Observer-Host-Konfiguration und eine gemeinsam genutzte Client-Socket-Verbindung mit beliebigen anderen Modulen. Es wird **nichts** verändert oder neu verbunden.
+- Der vollständige Diagnosebericht erscheint als aufklappbarer Bereich im Konfigurationsfenster und als kopierbare String-Variable „P03 Socket-Diagnose (kopierbar)“.
+- Es werden keine Dahua-Zugangsdaten oder HTTP-Authorization-Header ausgegeben.
+- CI-Regression mit simulierter Symcon-Objektstruktur und der tatsächlichen P03-Hauptklasse. Die vorherigen Tests der Version 0.6.14 bleiben bestehen.
+- Außerhalb des P03-Repositories wurden keine Änderungen vorgenommen; insbesondere bleiben AussenlichtAutomatik2, Kameras und Alarmanlage unverändert.
+
 # v0.6.14 – Diagnose-/Testversion (reale Kameras noch nicht verifiziert)
 
 - Behebt die v0.6.13-Rückentwicklung im P03-Mastobserver: Client-Socket-Konfiguration erfolgt wieder ausschließlich über RequireParent/GetConfigurationForParent und nicht zusätzlich im Observer-ApplyChanges.
