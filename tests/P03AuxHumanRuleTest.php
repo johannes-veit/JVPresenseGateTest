@@ -147,20 +147,37 @@ expectAux(
     'wrong explicit rule name rejected even if numeric id matches'
 );
 
-// Firmware without Name may fall back to either actual rule id or table index.
+// Without Name, all Dahua rule identifiers must agree with actual rule Id.
 $noName = $event;
 $noName['ruleName'] = null;
+$noName['cfgRuleId'] = 2;
+$noName['ruleIdUpper'] = 2;
+$noName['ruleIdLower'] = 2;
+$noName['ruleId'] = 2;
 expectAux(
     P03AuxObserverLogic::isHumanProofStart($noName, 'P03_JV_LEFT_HUMAN', 3, 2),
-    'missing name falls back to numeric identity'
+    'missing Name with unanimous true rule Id accepted'
 );
-$noName['cfgRuleId'] = 99;
-$noName['ruleIdUpper'] = 99;
 $noName['ruleIdLower'] = 3;
-$noName['ruleId'] = 99;
 expectAux(
-    P03AuxObserverLogic::isHumanProofStart($noName, 'P03_JV_LEFT_HUMAN', 3, 2),
-    'table-index fallback accepted only when name is absent'
+    !P03AuxObserverLogic::isHumanProofStart($noName, 'P03_JV_LEFT_HUMAN', 3, 2),
+    'ambiguous/conflicting numeric rule IDs rejected'
+);
+$noName['ruleIdLower'] = null;
+$noName['cfgRuleId'] = null;
+$noName['ruleIdUpper'] = null;
+$noName['ruleId'] = 3;
+expectAux(
+    !P03AuxObserverLogic::isHumanProofStart($noName, 'P03_JV_LEFT_HUMAN', 3, 2),
+    'table index is never accepted as rule Id'
+);
+
+$vehicle = $event;
+$vehicle['classification'] = 'Vehicle';
+$vehicle['human'] = false;
+expectAux(
+    !P03AuxObserverLogic::isHumanProofStart($vehicle, 'P03_JV_LEFT_HUMAN', 3, 0),
+    'explicit Vehicle classification may never become a Human proof'
 );
 
 $stop = $event;
