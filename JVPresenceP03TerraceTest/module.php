@@ -1826,6 +1826,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             'Zeit: ' . date('Y-m-d H:i:s'),
             'Prüfmodell: IPC-HFW5442E-ZE, bekannter Firmwarezweig 2.840',
             'Wichtig: SMD/IVS-Konfiguration beweist allein KEINE echte Personenerkennung.',
+            'KI-Smart-Plan wird über die vorhandene SymBox-Kameraverbindung geprüft (kein PC-VLAN-Zugriff nötig).',
             'Keine Kamera-Konfigänderung, keine anderen Module/Clients verändert.'
         ];
         $roles = [
@@ -1873,7 +1874,10 @@ class JVPresenceP03MultiCamera extends IPSModule
                         . ' | HTTP ' . (int) ($item[1]['http'] ?? 0);
                 }
 
-                foreach (['MotionDetect','SmartMotionDetect','VideoAnalyseGlobal','VideoAnalyseRule'] as $table) {
+                // VideoAnalyseModule is the actual 5442 KI resource/module
+                // configuration. Read it through the existing SymBox -> IPC
+                // authenticated CGI channel. No camera CGI setConfig.
+                foreach (['MotionDetect','SmartMotionDetect','VideoAnalyseGlobal','VideoAnalyseModule','VideoAnalyseRule'] as $table) {
                     $result = $this->readIPC5442Camera($host,$port,$user,$pass,
                         '/cgi-bin/configManager.cgi?action=getConfig&name=' . $table);
                     $lines[] = '';
@@ -1890,6 +1894,12 @@ class JVPresenceP03MultiCamera extends IPSModule
                     // Display ALL rule summaries and the complete targeted
                     // geometry, Human filter, action and active schedules.
                     $body = (string) ($result['body'] ?? '');
+                    if ($table === 'VideoAnalyseModule') {
+                        foreach (P03IPC5442Audit::summarizeModuleResources($body) as $field) {
+                            $lines[] = $field;
+                        }
+                        continue;
+                    }
                     if ($table === 'VideoAnalyseRule') {
                         $meta = $this->p03AuxHumanRuleMeta($role);
                         $expectedIdx = $this->ReadAttributeInteger($meta['ruleIndex']);
