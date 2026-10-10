@@ -79,18 +79,10 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->RequireParent(self::CLIENT_SOCKET_GUID);
         }
 
-        // Attributes added in v0.6.19 must be available on EXISTING
-        // Symcon observer instances, not only on newly created ones.
-        $this->RegisterAttributeInteger('ParsedEventCount', 0);
-        $this->RegisterAttributeInteger('CrossRegionEventCount', 0);
-        $this->RegisterAttributeInteger('RuleMatchEventCount', 0);
-        $this->RegisterAttributeInteger('DedupeRejectCount', 0);
-        $this->RegisterAttributeInteger('RuleRejectCount', 0);
-        $this->RegisterAttributeInteger('WireCodeCount', 0);
-        $this->RegisterAttributeInteger('WireHeartbeatCount', 0);
-        $this->RegisterAttributeInteger('LastHealthTick', 0);
-        $this->RegisterAttributeString('LastHealthAction', 'UNTESTED');
-        $this->RegisterAttributeInteger('LastStaleRx', 0);
+        // RegisterAttribute* is permitted ONLY in Create() on IP-Symcon.
+        // All observer attributes are declared there and remain persistent
+        // across ApplyChanges. Re-registration here caused live warnings and
+        // prevented the existing P03 observer from initializing cleanly.
 
         // Existing observer instances from v0.6.5-v0.6.8 must receive variables
         // added by later versions as well; Create() is not relied upon for migration.
