@@ -1,3 +1,14 @@
+# v0.6.21 (Build 52) – Verlust der Observer-Zuordnung nach Modulupdate analysieren
+
+- Live-Befund 10.10.2026 19:02/19:07: Beide P03-Observer sind aus der Hauptinstanz nicht mehr auffindbar. Die bisherige Spezialdiagnose startet keine CGI-Abfrage, denn sie prüft zunächst die P03-Observer-Identität.
+- **Bestätigter Programmierfehler:** `ApplyChanges()` ruft `discoverP03AuxSources(false)` auf. Liefert die Suche einmal 0, werden `AuxJVInstanceID` und `AuxWorkInstanceID` selbst dann unwiderruflich auf 0 gesetzt, wenn die alten Symcon-Observer zuvor korrekt verbunden waren. Das gilt auch für deren Quellvariablen-IDs. Der Code unterschied „temporär nicht gefunden“ nicht von „endgültig gelöscht“.
+- **Reparatur (nur P03-Metadaten):** Vorhandene, anhand exakter GUID, Host und Rolle verifizierte Observer haben Vorrang. Die Suche fällt bei leerem `IPS_GetInstanceListByModuleID` auf eine sichere Durchsicht von `IPS_GetInstanceList` zurück. Wenn keine vertrauenswürdige P03-Instanz nachweisbar ist, werden bestehende gespeicherte IDs **nicht** mehr auf 0 überschrieben. Es wird KEINE neue Instanz erzeugt.
+- Neue Schaltfläche in Hauptinstanz #53879: **„P03 OBSERVER/SOCKETS BESTAND PRÜFEN (nur lesen, keine Reparatur)”**. Sie kontrolliert unabhängig von gespeicherten Attributen die historischen Observer #57215/#27938, Sockets #17785/#55478, aktuellen Einträge und tatsächlichen Modul-GUIDs/Host/Rollen/Parent-Zuordnungen sowie den gesamten Symcon-Instanzbaum. Der Bericht ist in der neuen Stringvariable `P03OwnershipAudit` auch kopierbar.
+- **Fail-Closed:** `p03AuxStreamsReady()` setzt zwei wirklich vorhandene/korrekt zugeordnete P03-Observer, richtige eigene Sockets, aktive TCP-Sockets und wahre Streamvariablen voraus. Ein nur noch gespeicherter StreamOK-Boolean darf keine neue HOME↔LAGER-Beweiskette freigeben. P03 erstellt keine neuen Zonentransfers, solange dieser Nachweis fehlt.
+- Die bestehende Kamera-/AI-Spezialdiagnose, AussenlichtAutomatik2, Alarmanlage, sonstige Module und tatsächliche IPC-Konfigurationen bleiben unverändert.
+- Tests mit der echten P03-Hauptklasse simulieren leere Modulindexliste bei weiterhin vorhandenen Observern, Wiederfindung über GUID/Host/Rolle, fehlende Observer trotz alter IDs, Unterdrückung jeglicher Fremd-/Kamera-Änderung sowie fail-closed Readiness.
+- Nächster fachlicher Schritt ist die **echte** SymBox-Bestandsaufnahme. Erst danach kann entschieden werden, ob Observers weiter existieren, der Modulindex ausgefallen ist oder Instanzen tatsächlich entfernt wurden. Nicht vorzeitig neue Sockets/Observer erzeugen.
+
 # v0.6.20 Build 51 – IPC-HFW5442E-ZE Modell-/Firmware-Audit vor weiterer Änderung
 
 - Erkenntnis aus der Praxis: Auch das bereits installierte **AussenlichtAutomatik2 v0.3.2** ist an den Lagerplatzkameras #37888/#57223 zwischen 17:00 und 18:30 Uhr nicht zuverlässig. Daher ist es KEIN funktionierender Beweis für die IPC-HFW5442E-ZE. Dieses Repository wird nur lesend verglichen, nicht verändert.
