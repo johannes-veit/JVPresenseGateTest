@@ -205,9 +205,13 @@ rxP03($x, $vehicle);
 checkP03(($x->values['HumanEventCounter'] ?? null) === 1, 'Explicit nonhuman payload fails closed');
 
 $x->attributes['LastCameraRx'] = time() - 40;
+$x->attributes['LastSocketRestart'] = time() - 60;
+$beforeWatchdogRequests = count($x->sent);
 $x->Watchdog();
 checkP03(($x->values['StreamOK'] ?? null) === false, 'Heartbeat loss marks stream down');
-checkP03(($x->attributes['SocketRestartStage'] ?? null) === 1, 'Heartbeat loss schedules reconnection');
+checkP03(($x->attributes['SocketRestartStage'] ?? null) === 0
+    && count($x->sent) === $beforeWatchdogRequests + 1,
+    'Heartbeat loss directly reconnects instead of leaving phase 1 pending');
 $x->MessageSink(time(), 99001, 10505, [104]);
 checkP03(($x->values['PersonDetected'] ?? null) === false, 'Closed parent clears PersonDetected');
 
