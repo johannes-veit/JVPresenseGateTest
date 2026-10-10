@@ -1,3 +1,15 @@
+# v0.6.18 – Fail-closed Dahua Heartbeat-Überwachung und unabhängiger P03 Watchdog
+
+- Live-Diagnose 2026-10-10 17:06:50: Beide P03-Mastkameras/Client Sockets zwar formal AN, aber seit 156 Sekunden kein Byte der Kamera empfangen; der letzte HTTP-200-Zustand wurde fälschlich als aktuelle Stream-Verfügbarkeit behandelt.
+- Observer-Versionswechsel auf **echte HealthTick-Logik**: jeder Aufruf dokumentiert `LastHealthTick`, `LastHealthAction` und letzten als stale erkannten Kameraempfang. HTTP 200 alleine genügt nicht, sondern nur tatsächliche Rx-Aktualität (max. 25 s).
+- Ein erkannter stale Stream wird auf AUS gesetzt, laufende Human-Pulsbeweise werden gelöscht. Ein eigener P03-Socket wird unter 20-s-Cooldown auf neuer TCP-Verbindung (explizites Close/Open) wieder verbunden. Keine zweite Anfrage auf einen hängenden TCP-Eventstream.
+- Die bekannte P03-Observer-Watchdog-Timerfunktion delegiert an denselben HealthTick-Kern.
+- **Zusätzlicher unabhängiger 15-s P03-Mastkamera-Überwachungstimer in der Hauptinstanz**: ruft ausschließlich die beiden nach Host/Rolle/Socket verifizierten P03-Observer auf. Damit ist die Erkennung auch bei versagendem Observer-Callback abgesichert.
+- Neuer Konfigurationsbutton **„P03 HEARTBEAT JETZT PRÜFEN / VERALTETEN STREAM REPARIEREN”**: erzwingt denselben Health-Check, anschließend erscheint die Kopierdiagnose. Die bestehende Diagnose liefert HealthTick-Zeit und letzte Health-Aktion.
+- Fremde und geteilte Socket-Verbindungen werden verweigert; die Außenlichtautomatik, Alarmanlage, JV Terrasse, Kamerakonfiguration und andere Modul-Repositories werden weder geändert noch neu gestartet.
+- Erweiterte Regressionen mit echter P03-Observer-/Hauptklasse: eingefrorener HTTP-200-Stream (156s), frische TCP-Verbindung, Fail-Closed, Cooldown, doppelte Timeraufrufe, verlorener Parent sowie Schutz gegen Fremdsockets.
+- Bis zu erfolgreicher SymBox-Liveprüfung weiterhin **keine Produktionsfreigabe für P03-Zonentransfers**.
+
 # v0.6.17 – P03-Socket-Sofortstart und Symcon-Timerdiagnose
 
 - Die Symcon-Live-Diagnose von 16:54 Uhr zeigte: beide P03-Mastobserver mit eigenem Client Socket, aber Open=NEIN, Socket-Status=104 (inaktiv, NICHT „nicht erstellt“), restartStage=1, keine HTTP-Anfrage.
