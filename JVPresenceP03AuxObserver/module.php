@@ -75,6 +75,14 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->RequireParent(self::CLIENT_SOCKET_GUID);
         }
 
+        // Attributes added in v0.6.19 must be available on EXISTING
+        // Symcon observer instances, not only on newly created ones.
+        $this->RegisterAttributeInteger('ParsedEventCount', 0);
+        $this->RegisterAttributeInteger('CrossRegionEventCount', 0);
+        $this->RegisterAttributeInteger('RuleMatchEventCount', 0);
+        $this->RegisterAttributeInteger('DedupeRejectCount', 0);
+        $this->RegisterAttributeInteger('RuleRejectCount', 0);
+
         // Existing observer instances from v0.6.5-v0.6.8 must receive variables
         // added by later versions as well; Create() is not relied upon for migration.
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
