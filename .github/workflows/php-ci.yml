@@ -166,6 +166,21 @@ jobs:
           for token in ["RegisterVariableString('EventAudit'", "isFreshDelivery(", "recordEventAudit("]:
               if token not in observer:
                   raise SystemExit('P03 v0.6.19 event diagnosis/dedupe missing: '+token)
+          for token in [
+              "public function RestoreP03Observers(): void",
+              "'id' => 57215, 'socket' => 17785",
+              "'id' => 27938, 'socket' => 55478",
+              "IPS_SetProperty($id, 'CameraHost'",
+              "IPS_ApplyChanges($id)",
+              "count($targets) !== 2",
+              "P03RestoreSummary"
+          ]:
+              if token not in main:
+                  raise SystemExit('P03 v0.6.22 restoration safety contract missing: '+token)
+          if observer.count("RegisterAttributeInteger('WireCodeCount', 0)") != 2:
+              raise SystemExit('P03 v0.6.22 duplicate WireCodeCount registrations or missing migration')
+          if observer.count("RegisterAttributeInteger('WireHeartbeatCount', 0)") != 2:
+              raise SystemExit('P03 v0.6.22 duplicate WireHeartbeatCount registrations or missing migration')
           # A failed module-index search must never zero out the last
           # stored P03 observer identity, and stored StreamOK must not
           # make an orphaned observer count as healthy.

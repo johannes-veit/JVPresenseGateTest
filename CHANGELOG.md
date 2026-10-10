@@ -1,3 +1,13 @@
+# v0.6.22 (Build 53) – vorhandene P03-Observer mit Status 101 gezielt wiederherstellen
+
+- 10.10.2026 19:17 echte SymBox-Bestandsaufnahme: Observer **#57215 und #27938 existieren** mit korrekten exklusiven Client Sockets **#17785 / #55478** (aktiv 102). Auf den Observern sind jedoch die Properties `CameraHost` und `Role` leer, Instanzstatus jeweils 101. P03 konnte deshalb beide nicht mehr validieren und fand sie nicht.
+- In Observer `Create()` befanden sich nach v0.6.20 **doppelte Registrierungen** von `WireCodeCount` und `WireHeartbeatCount`. Doppelte Registrierung korrigiert, Health-/Wire-Attribute sauber auch für existierende Instanzen in `ApplyChanges()` registriert. Ob diese Dopplung die echte 101-Situation ausgelöst hat, ist noch nicht bewiesen.
+- Neuer Hauptinstanz-Button **„P03 VORHANDENE OBSERVER 57215 + 27938 WIEDERHERSTELLEN (nur P03)”**. Prüft zunächst beide P03-Observer anhand **exakter Modul-GUID**, Verbindungen, eigener Sockets (Typ/Host/Port) und Exklusivität. Wenn eine Prüfung fehlschlägt, werden **beide unverändert** gelassen.
+- Nur wenn alles eindeutig P03 zugeordnet ist, werden die Eigenschaften **Enabled, CameraHost, CameraPort, Username, Password, Role** der beiden **bereits existierenden** P03 Observer anhand der Hauptinstanz neu eingetragen und ausschließlich ihre Instanzen per `IPS_ApplyChanges` aktualisiert. Keine neuen Observer oder Sockets, keine Schreibzugriffe auf Kamera-CGI/RPC2, keine Änderungen an AussenlichtAutomatik2, Alarmanlage oder Fremdsockets. Bestehende Human-Zähler bleiben erhalten.
+- Nach der Wiederherstellung wird die interne GUID/Host/Role-gesicherte Zuordnung erneut aufgebaut. Das Ergebnis erscheint im vorhandenen **`P03ConnectionDiagnosis` (Bekannte IP-Symcon-Variablen-ID #35115)** und im **Testprotokoll #53524**. Zugangsdaten werden nicht ausgegeben.
+- Simulation prüft die reale Meldung „beide 101, Host/Rolle leer“ mit bestehenden Socket-IDs, beide repariert, Zähler erhalten, keine neue Instanz, identische Wiederholung, vollständige Sperre bei fremdgeteiltem Socket oder abweichender Rolle.
+- HOME↔LAGER bleibt weiterhin gesperrt, bis echte KI-Ereignisse an beiden konkreten IPC-HFW5442E-ZE verifiziert sind. Der Modell-Audit-Button aus v0.6.20 bleibt erhalten.
+
 # v0.6.21 (Build 52) – Verlust der Observer-Zuordnung nach Modulupdate analysieren
 
 - Live-Befund 10.10.2026 19:02/19:07: Beide P03-Observer sind aus der Hauptinstanz nicht mehr auffindbar. Die bisherige Spezialdiagnose startet keine CGI-Abfrage, denn sie prüft zunächst die P03-Observer-Identität.

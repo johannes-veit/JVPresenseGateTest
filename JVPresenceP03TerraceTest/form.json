@@ -85,6 +85,15 @@
   "actions": [
     {
       "type": "Button",
+      "caption": "P03 VORHANDENE OBSERVER 57215 + 27938 WIEDERHERSTELLEN (nur P03)",
+      "onClick": "JVP03MC_RestoreP03Observers($id);"
+    },
+    {
+      "type": "Label",
+      "caption": "Zweistufige Sicherheitsprüfung: beide P03-Observer und eigene Client-Sockets 17785/55478 müssen vorhanden, exklusiv und mit richtiger Modul-GUID/IP verbunden sein. Erst danach werden ausschließlich die beiden bestehenden Observer mit Host, Rolle und P03-Zugangsdaten neu konfiguriert. Keine neuen Instanzen/Sockets, keine Kamera- oder Fremdmoduländerung. Ergebnis in P03 Socket-Diagnose Variable #35115 und Testprotokoll #53524."
+    },
+    {
+      "type": "Button",
       "caption": "P03 OBSERVER/SOCKETS BESTAND PRÜFEN (nur lesen, keine Reparatur)",
       "onClick": "JVP03MC_DiagnoseP03Ownership($id);"
     },

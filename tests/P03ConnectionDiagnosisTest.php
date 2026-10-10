@@ -61,6 +61,8 @@ class IPSModule
     public function Create():void {}
     public function ApplyChanges():void {}
     protected function ReadAttributeInteger(string $name):int { return (int) ($this->attributes[$name]??0); }
+    protected function ReadAttributeString(string $name):string { return (string) ($this->attributes[$name]??''); }
+    protected function WriteAttributeString(string $name,string $value):void { $this->attributes[$name]=$value; }
     protected function WriteAttributeInteger(string $name,int $value):void { $this->attributes[$name]=$value; }
     protected function ReadPropertyString(string $name):string { return (string)($this->properties[$name]??''); }
     protected function GetIDForIdent(string $ident):int {return ['P03ConnectionDiagnosis'=>20001,'Result'=>20002,'P03IPC5442Audit'=>20003,'P03OwnershipAudit'=>20004][$ident]??0;}
