@@ -36,10 +36,10 @@ $GLOBALS['writes'] = [];
 function IPS_InstanceExists(int $id): bool { return isset($GLOBALS['instances'][$id]); }
 function IPS_GetInstance(int $id): array { return $GLOBALS['instances'][$id]; }
 function IPS_GetInstanceList(): array { return array_keys($GLOBALS['instances']); }
-function IPS_GetInstanceListByModuleID(string $id): array { return [57215,27938]; }
+function IPS_GetInstanceListByModuleID(string $id): array { return ($GLOBALS['emptyModuleLookup'] ?? false) ? [] : [57215,27938]; }
 function IPS_GetProperty(int $id,string $name): mixed { return $GLOBALS['props'][$id][$name] ?? null; }
 function IPS_GetObjectIDByIdent(string $ident,int $id): int { return $GLOBALS['byIdent'][$id][$ident] ?? 0; }
-function IPS_VariableExists(int $id): bool { return array_key_exists($id,$GLOBALS['variables']) || in_array($id,[20001,20002,20003],true); }
+function IPS_VariableExists(int $id): bool { return array_key_exists($id,$GLOBALS['variables']) || in_array($id,[20001,20002,20003,20004],true); }
 function GetValue(int $id): mixed { return $GLOBALS['variables'][$id] ?? ''; }
 function IPS_ApplyChanges(int $id): void { throw new RuntimeException('Forbidden mutation: IPS_ApplyChanges'); }
 function IPS_SetProperty(int $id,string $key,mixed $value): void { throw new RuntimeException('Forbidden mutation: IPS_SetProperty'); }
@@ -56,13 +56,14 @@ class IPSModule
         'AuxJVHost'=>'192.168.107.96',
         'AuxWorkHost'=>'192.168.107.99'
     ];
-    public array $values=['P03ConnectionDiagnosis'=>'','Result'=>'','P03IPC5442Audit'=>''];
+    public array $values=['P03ConnectionDiagnosis'=>'','Result'=>'','P03IPC5442Audit'=>'','P03OwnershipAudit'=>''];
     public bool $reload=false;
     public function Create():void {}
     public function ApplyChanges():void {}
     protected function ReadAttributeInteger(string $name):int { return (int) ($this->attributes[$name]??0); }
+    protected function WriteAttributeInteger(string $name,int $value):void { $this->attributes[$name]=$value; }
     protected function ReadPropertyString(string $name):string { return (string)($this->properties[$name]??''); }
-    protected function GetIDForIdent(string $ident):int {return ['P03ConnectionDiagnosis'=>20001,'Result'=>20002,'P03IPC5442Audit'=>20003][$ident]??0;}
+    protected function GetIDForIdent(string $ident):int {return ['P03ConnectionDiagnosis'=>20001,'Result'=>20002,'P03IPC5442Audit'=>20003,'P03OwnershipAudit'=>20004][$ident]??0;}
     protected function GetValue(string $ident):mixed { return $this->values[$ident]??null; }
     protected function SetValue(string $ident,mixed $value):void {
         $this->values[$ident]=$value;
@@ -160,5 +161,59 @@ verifyDiag(str_contains((string)json_encode($ipcUI,JSON_UNESCAPED_SLASHES|JSON_U
 $buttons=array_column($ipcUI['actions']??[],'onClick');
 verifyDiag(in_array('JVP03MC_DiagnoseIPC5442Configuration($id);',$buttons,true),
     'one-click model-specific read-only button correctly wired');
+
+// Forensics must work even when the main P03 instance lost the stored IDs
+// and IPS_GetInstanceListByModuleID returns EMPTY after module update.
+$instance->DiagnoseP03Ownership();
+$ownership=(string)$instance->values['P03OwnershipAudit'];
+verifyDiag(str_contains($ownership,'Observer #57215: EXISTIERT')
+    && str_contains($ownership,'Observer #27938: EXISTIERT'),
+    'forensic read-only scan identifies both historical Observer IDs');
+verifyDiag(str_contains($ownership,'Gespeicherte Observer-ID: 57215')
+    && str_contains($ownership,'letzte bekannte ID: 27938'),
+    'reports stored identity alongside historical identity');
+verifyDiag(str_contains($ownership,'Keine Instanz-, Kamera-, Modul- oder Socketänderung'),
+    'forensic tool advertises no-modification contract');
+$GLOBALS['emptyModuleLookup']=true;
+$instance->attributes['AuxJVInstanceID']=0;
+$instance->attributes['AuxWorkInstanceID']=0;
+$finder=new ReflectionMethod(JVPresenceP03MultiCamera::class,'findP03AuxObserver');
+verifyDiag($finder->invoke($instance,'192.168.107.96','JV_LEFT')===57215
+    && $finder->invoke($instance,'192.168.107.99','WORK_LEFT')===27938,
+    'whole-instance fallback locates valid P03 Observer when module index is empty');
+$discover=new ReflectionMethod(JVPresenceP03MultiCamera::class,'discoverP03AuxSources');
+$found=$discover->invoke($instance,false);
+verifyDiag($found['jv']===57215 && $found['work']===27938,
+    'read-only discovery recovers known instances without creating new ones');
+verifyDiag($instance->attributes['AuxJVInstanceID']===57215
+    && $instance->attributes['AuxWorkInstanceID']===27938,
+    'valid recovered Observer IDs stored after accurate GUID/host/role validation');
+
+// After a module unload/deletion, never turn an old known Observer ID into
+// 0, never create a new observer or trust leftover StreamOK Boolean.
+unset($GLOBALS['instances'][57215],$GLOBALS['instances'][27938]);
+$GLOBALS['variables'][54893]=true; $GLOBALS['variables'][51090]=true;
+$beforeJV=$instance->attributes['AuxJVInstanceID'];
+$beforeWork=$instance->attributes['AuxWorkInstanceID'];
+$failed=$discover->invoke($instance,false);
+verifyDiag($failed['jv']===0 && $failed['work']===0,
+    'an absent P03 observer is not falsely discovered');
+verifyDiag($instance->attributes['AuxJVInstanceID']===$beforeJV
+    && $instance->attributes['AuxWorkInstanceID']===$beforeWork,
+    'failed lookup NEVER destroys last saved Observer IDs');
+$streamReady=new ReflectionMethod(JVPresenceP03MultiCamera::class,'p03AuxStreamsReady');
+verifyDiag($streamReady->invoke($instance)===false,
+    'orphaned camera fails closed even if StreamOK remains true');
+$instance->DiagnoseP03Ownership();
+$ownership=(string)$instance->values['P03OwnershipAudit'];
+verifyDiag(str_contains($ownership,'Observer #57215: IPS_InstanceExists=NEIN')
+    && str_contains($ownership,'Observer #27938: IPS_InstanceExists=NEIN'),
+    'forensic report distinguishes confirmed missing instances from lookup mismatch');
+verifyDiag($GLOBALS['writes']===[],
+    'forensic and noncreating discovery issue NO camera, socket or foreign module writes');
+$ui2=json_decode($instance->GetConfigurationForm(),true);
+verifyDiag(in_array('JVP03MC_DiagnoseP03Ownership($id);',
+    array_column($ui2['actions']??[],'onClick'),true),
+    'ownership diagnostic one-click button wired on the real main module');
 
 echo "P03 READ-ONLY CONNECTION DIAGNOSIS TEST PASSED\n";

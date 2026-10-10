@@ -85,6 +85,15 @@
   "actions": [
     {
       "type": "Button",
+      "caption": "P03 OBSERVER/SOCKETS BESTAND PRÜFEN (nur lesen, keine Reparatur)",
+      "onClick": "JVP03MC_DiagnoseP03Ownership($id);"
+    },
+    {
+      "type": "Label",
+      "caption": "Untersucht nach dem Update unabhängig von der P03-Instanzsuche die alten IDs 57215/27938 und Client-Sockets 17785/55478, die gespeicherten IDs, die tatsächlichen Modul-GUIDs, die Host-/Rollenwerte und den gesamten Symcon-Instanzbaum. Es wird NICHT neu verbunden, erstellt oder gelöscht. Bitte den Bericht vollständig senden."
+    },
+    {
+      "type": "Button",
       "caption": "P03 IPC-HFW5442E-ZE KONFIGURATION PRÜFEN (nur lesen, beide Kameras)",
       "onClick": "JVP03MC_DiagnoseIPC5442Configuration($id);"
     },

@@ -164,6 +164,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
         $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
         $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
+        $this->RegisterVariableString('P03OwnershipAudit', 'P03 Instanz-/Observer-Bestandsprüfung (nur lesen)', '', 78);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03MC_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03MC_SocketRestartTimer($_IPS["TARGET"]);');
@@ -186,6 +187,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
         $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
         $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
+        $this->RegisterVariableString('P03OwnershipAudit', 'P03 Instanz-/Observer-Bestandsprüfung (nur lesen)', '', 78);
         // Register again during migration: Create() is not guaranteed to run
         // on an existing Symcon P03 instance when a module update is installed.
         $this->RegisterTimer('P03MastHealthTimer', 15000, 'JVP03MC_P03MastHealthTimer($_IPS["TARGET"]);');
@@ -269,6 +271,18 @@ class JVPresenceP03MultiCamera extends IPSModule
                 $live[] = [
                     'type' => 'ExpansionPanel',
                     'caption' => 'IPC-HFW5442E-ZE – KI/IVS-Konfiguration (nur lesen, kopierbar)',
+                    'expanded' => true,
+                    'items' => [['type' => 'Label', 'caption' => $report]]
+                ];
+            }
+        }
+        $ownershipVar = $this->GetIDForIdent('P03OwnershipAudit');
+        if ($ownershipVar > 0 && IPS_VariableExists($ownershipVar)) {
+            $report = trim((string) GetValue($ownershipVar));
+            if ($report !== '') {
+                $live[] = [
+                    'type' => 'ExpansionPanel',
+                    'caption' => 'P03 Observer und Sockets – Bestandsprüfung (nur lesen)',
                     'expanded' => true,
                     'items' => [['type' => 'Label', 'caption' => $report]]
                 ];
@@ -1204,6 +1218,12 @@ class JVPresenceP03MultiCamera extends IPSModule
         if (!$this->ReadAttributeBoolean('TestActive') && !$this->ReadAttributeBoolean('ProductionEnabled')) {
             return;
         }
+        // No counting/proof when a now-orphaned observer or socket cannot be
+        // independently verified, irrespective of cached Boolean state.
+        if (!$this->p03AuxStreamsReady()) {
+            $this->SetValue('P03ProofState', 'BLOCKIERT – Mastkameras/Observer nicht sicher zugeordnet');
+            return;
+        }
 
         $events = $this->getP03HumanEvents();
         $now = microtime(true);
@@ -1521,6 +1541,148 @@ class JVPresenceP03MultiCamera extends IPSModule
      * reconnect, RPC2, setConfig or updates an unrelated module or camera.
      * The report contains no username, password, HTTP authorization or nonce.
      */
+    /**
+     * Identity forensics after v0.6.20 update. Checks independently:
+     * historical P03 instance IDs, currently stored IDs, whole-tree module GUID
+     * enumeration (NOT just IPS_GetInstanceListByModuleID), and socket parents.
+     *
+     * Does NOT call observer discovery, camera CGI, SetProperty, ApplyChanges,
+     * IPS_ConnectInstance, socket reconnect, or create/delete any instance.
+     */
+    public function DiagnoseP03Ownership(): void
+    {
+        $lines = [
+            '=== P03 INSTANZEN/OBSERVER/SOCKETS – NUR LESEN ===',
+            'Zeit: ' . date('Y-m-d H:i:s'),
+            'P03-Hauptinstanz #' . $this->InstanceID,
+            'Kontext: Observer waren um 18:41 nachweislich vorhanden; um 19:07 meldet P03 beide nicht auffindbar.',
+            'Keine Instanz-, Kamera-, Modul- oder Socketänderung.'
+        ];
+        $roles = [
+            [
+                'role' => self::AUX_JV_ROLE, 'host' => trim($this->ReadPropertyString('AuxJVHost')),
+                'savedObserver' => $this->ReadAttributeInteger('AuxJVInstanceID'),
+                'savedSocket' => $this->ReadAttributeInteger('AuxJVManagedSocketID'),
+                'historicalObserver' => 57215, 'historicalSocket' => 17785
+            ],
+            [
+                'role' => self::AUX_WORK_ROLE, 'host' => trim($this->ReadPropertyString('AuxWorkHost')),
+                'savedObserver' => $this->ReadAttributeInteger('AuxWorkInstanceID'),
+                'savedSocket' => $this->ReadAttributeInteger('AuxWorkManagedSocketID'),
+                'historicalObserver' => 27938, 'historicalSocket' => 55478
+            ]
+        ];
+        $globalIds = [];
+        $moduleIds = [];
+        try {
+            $globalIds = array_map('intval', IPS_GetInstanceList());
+            $lines[] = 'Symcon Instanzliste gesamt: ' . count($globalIds);
+        } catch (Throwable $e) {
+            $lines[] = 'Symcon Instanzliste: FEHLER (' . get_class($e) . ')';
+        }
+        try {
+            $moduleIds = array_map('intval', IPS_GetInstanceListByModuleID(self::AUX_OBSERVER_MODULE_GUID));
+            $lines[] = 'Modul-Suche P03-AUX-GUID: ' . count($moduleIds)
+                . ' ID(s)=' . implode(',', array_slice($moduleIds, 0, 15));
+        } catch (Throwable $e) {
+            $lines[] = 'Modul-Suche P03-AUX-GUID: FEHLER (' . get_class($e) . ')';
+        }
+        $exactMatches = [];
+        foreach ($globalIds as $instanceID) {
+            if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
+                continue;
+            }
+            try {
+                $meta = IPS_GetInstance($instanceID);
+                if (strcasecmp((string) ($meta['ModuleInfo']['ModuleID'] ?? ''),
+                    self::AUX_OBSERVER_MODULE_GUID) !== 0) {
+                    continue;
+                }
+                $host = trim((string) IPS_GetProperty($instanceID, 'CameraHost'));
+                $role = (string) IPS_GetProperty($instanceID, 'Role');
+                $exactMatches[] = 'P03-Modul #' . $instanceID
+                    . ' Rolle=' . $role . ' Host=' . $host
+                    . ' Status=' . (int) ($meta['InstanceStatus'] ?? -1)
+                    . ' Parent=' . (int) ($meta['ConnectionID'] ?? 0);
+            } catch (Throwable $e) {
+                $exactMatches[] = 'P03-Modul #' . $instanceID
+                    . ' nicht lesbar (' . get_class($e) . ')';
+            }
+        }
+        $lines[] = 'P03-Observer im gesamten IP-Symcon-Objektbaum: '
+            . count($exactMatches);
+        foreach (array_slice($exactMatches, 0, 25) as $hit) {
+            $lines[] = '  ' . $hit;
+        }
+        foreach ($roles as $entry) {
+            $role = (string) $entry['role'];
+            $host = (string) $entry['host'];
+            $lines[] = '';
+            $lines[] = '--- ' . $role . ' (Soll-Host ' . $host . ') ---';
+            $lines[] = 'Gespeicherte Observer-ID: ' . (int) $entry['savedObserver']
+                . ' | letzte bekannte ID: ' . (int) $entry['historicalObserver'];
+            $lines[] = 'Gespeicherte Socket-ID: ' . (int) $entry['savedSocket']
+                . ' | letzte bekannte ID: ' . (int) $entry['historicalSocket'];
+            $candidateIds = array_unique(array_filter([
+                (int) $entry['savedObserver'], (int) $entry['historicalObserver']
+            ], static fn($id) => $id > 0));
+            foreach ($candidateIds as $id) {
+                if (!IPS_InstanceExists($id)) {
+                    $lines[] = 'Observer #' . $id . ': IPS_InstanceExists=NEIN'
+                        . (function_exists('IPS_ObjectExists') && IPS_ObjectExists($id)
+                            ? ' (Objekt-ID existiert aber als andere Objektart!)' : '');
+                    continue;
+                }
+                try {
+                    $instance = IPS_GetInstance($id);
+                    $guid = (string) ($instance['ModuleInfo']['ModuleID'] ?? '');
+                    $actualHost = trim((string) IPS_GetProperty($id, 'CameraHost'));
+                    $actualRole = (string) IPS_GetProperty($id, 'Role');
+                    $parentID = (int) ($instance['ConnectionID'] ?? 0);
+                    $lines[] = 'Observer #' . $id . ': EXISTIERT'
+                        . ' | Modul=' . $guid . ' | Status=' . (int) ($instance['InstanceStatus'] ?? -1)
+                        . ' | Host=' . $actualHost . ' | Rolle=' . $actualRole
+                        . ' | Parent=' . $parentID
+                        . ' | in Modul-Suche=' . (in_array($id, $moduleIds, true) ? 'JA' : 'NEIN');
+                    $lines[] = 'Zuordnung korrekt: ' . (
+                        strcasecmp($guid, self::AUX_OBSERVER_MODULE_GUID) === 0
+                        && $actualHost === $host && $actualRole === $role ? 'JA' : 'NEIN');
+                } catch (Throwable $e) {
+                    $lines[] = 'Observer #' . $id . ': VORHANDEN, aber Eigenschaften nicht lesbar ('
+                        . get_class($e) . ')';
+                }
+            }
+            $socketIds = array_unique(array_filter([
+                (int) $entry['savedSocket'], (int) $entry['historicalSocket']
+            ], static fn($id) => $id > 0));
+            foreach ($socketIds as $id) {
+                if (!IPS_InstanceExists($id)) {
+                    $lines[] = 'Client Socket #' . $id . ': EXISTIERT NICHT';
+                    continue;
+                }
+                try {
+                    $instance = IPS_GetInstance($id);
+                    $guid = (string) ($instance['ModuleInfo']['ModuleID'] ?? '');
+                    $lines[] = 'Client Socket #' . $id
+                        . ': Status=' . (int) ($instance['InstanceStatus'] ?? -1)
+                        . ' | Modul=' . $guid
+                        . ' | Host=' . (string) IPS_GetProperty($id,'Host')
+                        . ' | Port=' . (int) IPS_GetProperty($id,'Port')
+                        . ' | Open=' . ((bool) IPS_GetProperty($id,'Open') ? 'JA' : 'NEIN')
+                        . ' | ClientSocket=' . (strcasecmp($guid,self::CLIENT_SOCKET_GUID)===0?'JA':'NEIN');
+                } catch (Throwable $e) {
+                    $lines[] = 'Client Socket #' . $id . ': Eigenschaftsfehler ('
+                        . get_class($e) . ')';
+                }
+            }
+        }
+        $lines[] = '';
+        $lines[] = 'ERGEBNIS: Nur Objektbestand und zugewiesene Eigenschaften ausgelesen.';
+        $lines[] = 'Nichts neu angelegt, verbunden, gelöscht, synchronisiert oder an Kameras geschrieben.';
+        $this->SetValue('P03OwnershipAudit', implode("\n",$lines));
+        $this->ReloadForm();
+    }
+
     /**
      * Read-only, model-specific IPC-HFW5442E-ZE (2.840) diagnostics.
      * Never calls configManager.setConfig, RPC2 setConfig, reboot, ApplyChanges,
@@ -2171,8 +2333,17 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
 
-        $this->WriteAttributeInteger('AuxJVInstanceID', $jv);
-        $this->WriteAttributeInteger('AuxWorkInstanceID', $work);
+        // CRITICAL: prior versions replaced formerly good observer IDs with
+        // 0 every time IPS_GetInstanceListByModuleID returned an empty result,
+        // even when the old Symcon instance still existed. Never destroy our
+        // only forensic reference on a failed discovery. No new observers are
+        // created by ApplyChanges (allowCreate=false).
+        if ($jv > 0) {
+            $this->WriteAttributeInteger('AuxJVInstanceID', $jv);
+        }
+        if ($work > 0) {
+            $this->WriteAttributeInteger('AuxWorkInstanceID', $work);
+        }
 
         $jvVar = $jv > 0 ? $this->findPersonDetectedVariable($jv) : 0;
         $workVar = $work > 0 ? $this->findPersonDetectedVariable($work) : 0;
@@ -2180,12 +2351,16 @@ class JVPresenceP03MultiCamera extends IPSModule
         $workCounter = $work > 0 ? $this->findAuxVariable($work, 'HumanEventCounter') : 0;
         $jvStream = $jv > 0 ? $this->findAuxVariable($jv, 'StreamOK') : 0;
         $workStream = $work > 0 ? $this->findAuxVariable($work, 'StreamOK') : 0;
-        $this->updateP03AuxSubscription('AuxJVPersonVarID', $jvVar);
-        $this->updateP03AuxSubscription('AuxWorkPersonVarID', $workVar);
-        $this->updateP03AuxSubscription('AuxJVEventCounterVarID', $jvCounter);
-        $this->updateP03AuxSubscription('AuxWorkEventCounterVarID', $workCounter);
-        $this->updateP03AuxSubscription('AuxJVStreamVarID', $jvStream);
-        $this->updateP03AuxSubscription('AuxWorkStreamVarID', $workStream);
+        if ($jv > 0) {
+            $this->updateP03AuxSubscription('AuxJVPersonVarID', $jvVar);
+            $this->updateP03AuxSubscription('AuxJVEventCounterVarID', $jvCounter);
+            $this->updateP03AuxSubscription('AuxJVStreamVarID', $jvStream);
+        }
+        if ($work > 0) {
+            $this->updateP03AuxSubscription('AuxWorkPersonVarID', $workVar);
+            $this->updateP03AuxSubscription('AuxWorkEventCounterVarID', $workCounter);
+            $this->updateP03AuxSubscription('AuxWorkStreamVarID', $workStream);
+        }
 
         return [
             'ok' => $jvVar > 0 && $workVar > 0
@@ -2198,20 +2373,58 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function findP03AuxObserver(string $host, string $role): int
     {
-        foreach (IPS_GetInstanceListByModuleID(self::AUX_OBSERVER_MODULE_GUID) as $id) {
-            $id = (int) $id;
-            if ($id <= 0 || !IPS_InstanceExists($id)) {
-                continue;
-            }
-            try {
-                if (trim((string) IPS_GetProperty($id, 'CameraHost')) === $host
-                    && (string) IPS_GetProperty($id, 'Role') === $role) {
-                    return $id;
-                }
-            } catch (Throwable $e) {
+        if ($host === '' || $role === '') {
+            return 0;
+        }
+        // 1. Trust stored identities only after independently verifying actual
+        // ModuleID + Host + Role; do not take over any similarly named module.
+        $savedAttr = $role === self::AUX_JV_ROLE ? 'AuxJVInstanceID' : 'AuxWorkInstanceID';
+        $savedID = $this->ReadAttributeInteger($savedAttr);
+        if ($this->matchesTrustedP03Observer($savedID,$host,$role)) {
+            return $savedID;
+        }
+
+        // 2. Use the efficient module lookup when available.
+        $candidates = [];
+        try {
+            $candidates = array_map('intval',
+                IPS_GetInstanceListByModuleID(self::AUX_OBSERVER_MODULE_GUID));
+        } catch (Throwable $e) {
+            // Do not turn a lookup failure into a destructive reset.
+        }
+
+        // 3. Crucial fallback: the module-index list may be temporarily empty
+        // after a Symcon module update while instance metadata remains intact.
+        try {
+            $candidates = array_unique(array_merge($candidates,
+                array_map('intval', IPS_GetInstanceList())));
+        } catch (Throwable $e) {
+        }
+        foreach ($candidates as $id) {
+            if ($this->matchesTrustedP03Observer((int)$id,$host,$role)) {
+                return (int)$id;
             }
         }
         return 0;
+    }
+
+    /**
+     * No fuzzy name matching, no foreign module ownership, no side effects.
+     */
+    private function matchesTrustedP03Observer(int $id, string $host, string $role): bool
+    {
+        if ($id <= 0 || $host === '' || $role === '' || !IPS_InstanceExists($id)) {
+            return false;
+        }
+        try {
+            $instance = IPS_GetInstance($id);
+            return strcasecmp((string) ($instance['ModuleInfo']['ModuleID'] ?? ''),
+                       self::AUX_OBSERVER_MODULE_GUID) === 0
+                && trim((string) IPS_GetProperty($id,'CameraHost')) === $host
+                && (string) IPS_GetProperty($id,'Role') === $role;
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 
     private function createP03AuxObserver(string $host, string $role, string $name): int
@@ -2268,13 +2481,36 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function p03AuxStreamsReady(): bool
     {
-        foreach (['AuxJVStreamVarID', 'AuxWorkStreamVarID'] as $attr) {
-            $id = $this->ReadAttributeInteger($attr);
-            if ($id <= 0 || !IPS_VariableExists($id)) {
+        // Fail closed: a leftover StreamOK Boolean from a now-missing camera
+        // must never be accepted as a valid direction/zone proof.
+        foreach ([
+            ['role' => self::AUX_JV_ROLE, 'host' => 'AuxJVHost',
+                'observer' => 'AuxJVInstanceID', 'managed' => 'AuxJVManagedSocketID',
+                'stream' => 'AuxJVStreamVarID'],
+            ['role' => self::AUX_WORK_ROLE, 'host' => 'AuxWorkHost',
+                'observer' => 'AuxWorkInstanceID', 'managed' => 'AuxWorkManagedSocketID',
+                'stream' => 'AuxWorkStreamVarID']
+        ] as $entry) {
+            $host = trim($this->ReadPropertyString((string)$entry['host']));
+            $role = (string)$entry['role'];
+            $observerID = $this->ReadAttributeInteger((string)$entry['observer']);
+            $socketID = $this->ReadAttributeInteger((string)$entry['managed']);
+            $streamVar = $this->ReadAttributeInteger((string)$entry['stream']);
+            if (!$this->matchesTrustedP03Observer($observerID, $host, $role)
+                || $socketID <= 0 || !IPS_InstanceExists($socketID)
+                || $streamVar <= 0 || !IPS_VariableExists($streamVar)) {
                 return false;
             }
             try {
-                if (!(bool) GetValue($id)) {
+                $socket = IPS_GetInstance($socketID);
+                $observer = IPS_GetInstance($observerID);
+                if ((int)($observer['ConnectionID'] ?? 0) !== $socketID
+                    || strcasecmp((string)($socket['ModuleInfo']['ModuleID'] ?? ''),
+                        self::CLIENT_SOCKET_GUID) !== 0
+                    || trim((string) IPS_GetProperty($socketID,'Host')) !== $host
+                    || (int)($socket['InstanceStatus'] ?? 0) !== 102
+                    || !(bool) IPS_GetProperty($socketID,'Open')
+                    || !(bool) GetValue($streamVar)) {
                     return false;
                 }
             } catch (Throwable $e) {
