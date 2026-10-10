@@ -162,9 +162,12 @@ jobs:
           ]:
               if token not in apply_obs:
                   raise SystemExit('Aux observer ApplyChanges does not reset restart state: '+token)
+          create_obs=observer[observer.index("public function Create"):observer.index("public function ApplyChanges")]
           for ident in ["ParsedEventCount","CrossRegionEventCount","RuleMatchEventCount","DedupeRejectCount","RuleRejectCount"]:
-              if ("RegisterAttributeInteger('"+ident+"', 0)") not in apply_obs:
-                  raise SystemExit('P03 v0.6.19 audit attribute missing on module upgrade: '+ident)
+              if ("RegisterAttributeInteger('"+ident+"', 0)") not in create_obs:
+                  raise SystemExit('P03 audit attribute missing in legal Create registration: '+ident)
+              if ("RegisterAttributeInteger('"+ident+"', 0)") in apply_obs:
+                  raise SystemExit('Illegal duplicate observer attribute registration in ApplyChanges: '+ident)
           for token in ["RegisterVariableString('EventAudit'", "isFreshDelivery(", "recordEventAudit("]:
               if token not in observer:
                   raise SystemExit('P03 v0.6.19 event diagnosis/dedupe missing: '+token)
