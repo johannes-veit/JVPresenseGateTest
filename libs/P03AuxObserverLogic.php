@@ -29,7 +29,7 @@ final class P03AuxObserverLogic
         }
 
         $accepted = [];
-        foreach ([$wantedId, $wantedIndex] as $candidate) {
+        foreach ([$wantedId] as $candidate) {
             if ($candidate >= 0) {
                 $accepted[(string) $candidate] = true;
             }
