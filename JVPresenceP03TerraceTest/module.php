@@ -1884,8 +1884,24 @@ class JVPresenceP03MultiCamera extends IPSModule
                             . ' Firmware kann RPC2 statt CGI voraussetzen.';
                         continue;
                     }
-                    foreach (P03IPC5442Audit::summarizeConfig($table,
-                        (string) ($result['body'] ?? ''), 48) as $field) {
+                    // 2.840 returns 400+ flat rule fields. A generic
+                    // first-48-fields output shows only HeatMap[0][0],
+                    // hiding the P03 CrossRegion[0][3] rule entirely.
+                    // Display ALL rule summaries and the complete targeted
+                    // geometry, Human filter, action and active schedules.
+                    $body = (string) ($result['body'] ?? '');
+                    if ($table === 'VideoAnalyseRule') {
+                        $meta = $this->p03AuxHumanRuleMeta($role);
+                        $expectedIdx = $this->ReadAttributeInteger($meta['ruleIndex']);
+                        $expectedID = $this->ReadAttributeInteger($meta['ruleId']);
+                        foreach (P03IPC5442Audit::summarizeRulePriorities(
+                            $body, $expectedIdx, (string) $meta['name'], $expectedID
+                        ) as $field) {
+                            $lines[] = $field;
+                        }
+                        continue;
+                    }
+                    foreach (P03IPC5442Audit::summarizeConfig($table, $body, 48) as $field) {
                         $lines[] = $field;
                     }
                 }
