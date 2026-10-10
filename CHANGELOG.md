@@ -1,3 +1,15 @@
+# v0.6.14 – Diagnose-/Testversion (reale Kameras noch nicht verifiziert)
+
+- Behebt die v0.6.13-Rückentwicklung im P03-Mastobserver: Client-Socket-Konfiguration erfolgt wieder ausschließlich über RequireParent/GetConfigurationForParent und nicht zusätzlich im Observer-ApplyChanges.
+- Entfernt die doppelte Registrierung der Observer-Diagnose innerhalb Create; die Registrierung in ApplyChanges dient weiterhin der Migration alter Instanzen.
+- Kamera-Audit ist ausschließlich lesend: kein automatisches Aktivieren von SMD, MotionDetect oder anderer Kamera-KI. SMD/MD werden nur zur Diagnose angezeigt; maßgeblich bleibt die P03-eigene Human-IVS-Regel.
+- Audit-only prüft per RPC2 GET die tatsächlich aktive IVS-Szene und die P03-Human-Regel; nicht nur gespeicherte interne Kennwerte. Ohne HTTP-200-Eventstream beider Mastkameras wird kein erfolgreicher LIVE-Audit gemeldet.
+- Entfernt das automatische Restaurieren/Ändern alter JV-Terrassenregeln beim normalen P03-Audit/Test. AussenlichtAutomatik2 und andere Modul-Repositories bleiben strikt unverändert.
+- Der P03-Observer-Rescan synchronisiert ausschließlich P03-eigene Instanzen und stößt ihre Neuverbindung an; er startet keinen Konfigurationsschreibzugriff auf Kameras.
+- Härtet die IVS-Zuordnung: Regelname maßgeblich; ohne Namen müssen alle gelieferten RuleID-Felder widerspruchsfrei mit der tatsächlichen ID übereinstimmen; Tabellenindex ist niemals eine alternative Regel-ID. Explizit nichtmenschliche Objekte zählen nicht als Human-Beweis.
+- Ergänzt eine simulierte Integration mit echtem Observer-Modul (Dahua HTTP 401/Digest/200, fragmentierte Human-Events, Deduplizierung, Fremdregeln, Heartbeat-Verlust und Reset).
+- **Testfreigabe:** CI und 29 Observer-Integrationsprüfungen bestanden. Die reale Kamera-/SymBox-Verbindung ist nicht verifiziert; produktiver P03-Zonentransfer bleibt bis zum Praxistest gesperrt.
+
 # v0.6.13
 
 - Behebt den nach v0.6.12 weiterhin real beobachteten Zustand `Dahua Eventstream OK = AUS` auf beiden P03-Mastkamera-Observern.
