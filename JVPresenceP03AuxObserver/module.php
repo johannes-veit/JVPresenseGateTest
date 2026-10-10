@@ -461,12 +461,15 @@ class JVPresenceP03AuxObserver extends IPSModule
             return false;
         }
 
+        // A parent status notification may also have scheduled a handshake.
+        // Cancel that callback before making the explicit request.
+        $this->SetTimerInterval('HandshakeTimer', 0);
         // Synchronously issue the initial Dahua eventManager GET. This
         // distinguishes a broken timer from the real Digest/TCP problem.
         $this->HandshakeTimer();
         $sent = $this->ReadAttributeInteger('LastHttpRequest') > 0;
         $this->refreshObserverStatus($sent
-            ? 'Sofortstart: HTTP GET gesendet, warte auf Dahua 401/200'
+            ? 'Sofortstart: HTTP GET angestoßen, warte auf Dahua 401/200'
             : 'Sofortstart: Socket aktiv, aber HTTP GET nicht gesendet');
         return $sent;
     }
