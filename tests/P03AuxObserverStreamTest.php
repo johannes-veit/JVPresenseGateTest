@@ -375,4 +375,42 @@ $direct->Watchdog();
 checkP03($direct->attributes['LastHealthAction']==='RECONNECT_GET_SENT',
     'Old observer Watchdog method delegates to guarded HealthTick');
 
+// IPC-HFW5442E-ZE may emit SMD Human events even when an IVS-only
+// gate correctly refuses to treat them as a direction proof. Wire monitor
+// MUST still capture them, independently of P03 event matching.
+$wire = new JVPresenceP03AuxObserver();
+$wire->Create();
+$wire->properties['Enabled'] = true;
+$wire->properties['Role'] = 'JV_LEFT';
+$wire->properties['CameraHost'] = '192.0.2.5';
+$wire->properties['Username'] = 'sim-user';
+$wire->properties['Password'] = 'sim-pass';
+$wire->properties['RuleID'] = 4;
+$wire->ApplyChanges();
+$wire->attributes['Streaming'] = true;
+$wire->values['StreamOK'] = true;
+$parts = [
+    "Heartbeat\r\n--boundary\r\nContent-Type: text/plain\r\n\r\nCo",
+    "de=SmartMotionHuman;action=St",
+    "art;index=0;data={\"RegionName\":[\"Region1\"],\"object\":[{\"HumamID\":18}]}\r\n"
+];
+foreach ($parts as $part) {
+    rxP03($wire,$part);
+}
+checkP03(($wire->attributes['WireCodeCount'] ?? -1)===1,
+    'Raw wire probe independently captures fragmented SmartMotionHuman event');
+checkP03(str_contains((string)($wire->values['WireProbe']??''),'Code=SmartMotionHuman'),
+    'Wire probe exposes exact SMD event code on 5442');
+checkP03(($wire->values['HumanEventCounter']??0)===0,
+    'SMD human raw evidence never silently creates unauthorized IVS direction proof');
+checkP03(($wire->attributes['WireHeartbeatCount']??0)>=1,
+    'Wire probe distinguishes repeated Dahua heartbeats from actual code events');
+
+rxP03($wire, "Code=CrossRegionDetection;action=Start;index=0;data="
+    . "{\"Name\":\"P03_JV_LEFT_HUMAN\",\"CfgRuleId\":4,\"EventID\":701,"
+    . "\"Object\":{\"ObjectType\":\"Human\",\"ObjectID\":77}}\r\n");
+checkP03(($wire->attributes['WireCodeCount'] ?? -1)===2,
+    'Raw wire independently records subsequent IVS CrossRegionDetection event');
+checkP03(($wire->values['HumanEventCounter']??-1)===1,
+    'Matching IVS human event still increments existing proof counter');
 echo "P03 OBSERVER INTEGRATION SIMULATION PASSED ({$tests} assertions)\n";

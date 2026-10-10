@@ -39,7 +39,7 @@ function IPS_GetInstanceList(): array { return array_keys($GLOBALS['instances'])
 function IPS_GetInstanceListByModuleID(string $id): array { return [57215,27938]; }
 function IPS_GetProperty(int $id,string $name): mixed { return $GLOBALS['props'][$id][$name] ?? null; }
 function IPS_GetObjectIDByIdent(string $ident,int $id): int { return $GLOBALS['byIdent'][$id][$ident] ?? 0; }
-function IPS_VariableExists(int $id): bool { return array_key_exists($id,$GLOBALS['variables']) || in_array($id,[20001,20002],true); }
+function IPS_VariableExists(int $id): bool { return array_key_exists($id,$GLOBALS['variables']) || in_array($id,[20001,20002,20003],true); }
 function GetValue(int $id): mixed { return $GLOBALS['variables'][$id] ?? ''; }
 function IPS_ApplyChanges(int $id): void { throw new RuntimeException('Forbidden mutation: IPS_ApplyChanges'); }
 function IPS_SetProperty(int $id,string $key,mixed $value): void { throw new RuntimeException('Forbidden mutation: IPS_SetProperty'); }
@@ -56,13 +56,13 @@ class IPSModule
         'AuxJVHost'=>'192.168.107.96',
         'AuxWorkHost'=>'192.168.107.99'
     ];
-    public array $values=['P03ConnectionDiagnosis'=>'','Result'=>''];
+    public array $values=['P03ConnectionDiagnosis'=>'','Result'=>'','P03IPC5442Audit'=>''];
     public bool $reload=false;
     public function Create():void {}
     public function ApplyChanges():void {}
     protected function ReadAttributeInteger(string $name):int { return (int) ($this->attributes[$name]??0); }
     protected function ReadPropertyString(string $name):string { return (string)($this->properties[$name]??''); }
-    protected function GetIDForIdent(string $ident):int {return ['P03ConnectionDiagnosis'=>20001,'Result'=>20002][$ident]??0;}
+    protected function GetIDForIdent(string $ident):int {return ['P03ConnectionDiagnosis'=>20001,'Result'=>20002,'P03IPC5442Audit'=>20003][$ident]??0;}
     protected function GetValue(string $ident):mixed { return $this->values[$ident]??null; }
     protected function SetValue(string $ident,mixed $value):void {
         $this->values[$ident]=$value;
@@ -108,4 +108,57 @@ verifyDiag(is_array($ui),'configuration form returns valid JSON');
 verifyDiag(str_contains(json_encode($ui),'P03 SOCKET-DIAGNOSE'),'generated report visible in configuration form');
 $onClicks=array_column($ui['actions']??[],'onClick');
 verifyDiag(in_array('JVP03MC_DiagnoseP03Connections($id);',$onClicks,true),'one-click button wired to diagnosis method');
+// Read-only IPC-HFW5442E-ZE model-config audit: replace transport with
+// camera-local simulated GETs. No camera / foreign module write is possible.
+class SimulatedIPC5442Main extends JVPresenceP03MultiCamera
+{
+    public array $uris=[];
+    protected function readIPC5442Camera(
+        string $host, int $port, string $username, string $password, string $uri
+    ): array {
+        if ($username === '' || $password === '') {
+            throw new RuntimeException('credentials must be read from P03 observer');
+        }
+        $this->uris[]=$host.' '.$uri;
+        $body = match(true) {
+            str_contains($uri, 'getDeviceType') => "type=IPC-HFW5442E-ZE\r\n",
+            str_contains($uri, 'getSoftwareVersion') => "version=2.840.0000000.28.R\r\n",
+            str_contains($uri, 'name=MotionDetect') =>
+                "MotionDetect[0].Enable=true\r\nMotionDetect[0].Region[0].Threshold=11\r\nMotionDetect[0].EventHandler.TimeSection[0][0]=1 00:00:00-23:59:59\r\n",
+            str_contains($uri, 'name=SmartMotionDetect') =>
+                "SmartMotionDetect[0].Enable=true\r\nSmartMotionDetect[0].ObjectTypes.Human=true\r\nSmartMotionDetect[0].Sensitivity=High\r\nSmartMotionDetect[0].AdminPassword=never-log-this\r\n",
+            str_contains($uri, 'name=VideoAnalyseGlobal') =>
+                "VideoAnalyseGlobal[0].Scene.Type=Normal\r\n",
+            str_contains($uri, 'name=VideoAnalyseRule') =>
+                "VideoAnalyseRule[0][3].Name=P03_WORK_LEFT_HUMAN\r\nVideoAnalyseRule[0][3].Enable=true\r\nVideoAnalyseRule[0][3].Config.DetectRegion[0]=[100,100]\r\n",
+            default => ''
+        };
+        return ['ok'=>true,'http'=>200,'body'=>$body,'error'=>''];
+    }
+}
+$ipc=new SimulatedIPC5442Main();
+$ipc->DiagnoseIPC5442Configuration();
+$modelReport=(string)$ipc->values['P03IPC5442Audit'];
+verifyDiag(substr_count($modelReport, 'IPC-HFW5442E-ZE')>=2,
+    'actual model readback for both P03 cameras');
+verifyDiag(str_contains($modelReport,'SmartMotionDetect[0].ObjectTypes.Human=true'),
+    'model SMD human detection exposed');
+verifyDiag(str_contains($modelReport,'MotionDetect[0].Region[0].Threshold=11'),
+    'model-specific MD detection region readback exposed');
+verifyDiag(str_contains($modelReport,'VideoAnalyseRule[0][3].Enable=true'),
+    'model-specific IVS rule enabled state exposed');
+verifyDiag(!str_contains($modelReport,'never-log-this'),
+    'camera security fields redacted');
+verifyDiag(count($ipc->uris)===12,'only six GET requests for each camera');
+verifyDiag(count(array_filter($ipc->uris,static fn($uri)=>
+    str_contains($uri,'setConfig') || str_contains($uri,'setProperty') || str_contains($uri,'reboot')))===0,
+    'only GET diagnostic commands, no camera modifications');
+verifyDiag($GLOBALS['writes']===[],'no foreign module or camera writes');
+$ipcUI=json_decode($ipc->GetConfigurationForm(),true);
+verifyDiag(str_contains((string)json_encode($ipcUI,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE),'SMD/IVS-SPEZIALDIAGNOSE'),
+    'one-click model report appears directly in Symcon form');
+$buttons=array_column($ipcUI['actions']??[],'onClick');
+verifyDiag(in_array('JVP03MC_DiagnoseIPC5442Configuration($id);',$buttons,true),
+    'one-click model-specific read-only button correctly wired');
+
 echo "P03 READ-ONLY CONNECTION DIAGNOSIS TEST PASSED\n";

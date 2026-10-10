@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/libs/DahuaDigest.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/P03AuxObserverLogic.php';
+require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03AuxObserver extends IPSModule
 {
@@ -44,9 +45,13 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('RuleMatchEventCount', 0);
         $this->RegisterAttributeInteger('DedupeRejectCount', 0);
         $this->RegisterAttributeInteger('RuleRejectCount', 0);
+        $this->RegisterAttributeInteger('WireCodeCount', 0);
+        $this->RegisterAttributeInteger('WireHeartbeatCount', 0);
         $this->RegisterAttributeInteger('LastHealthTick', 0);
         $this->RegisterAttributeString('LastHealthAction', 'UNTESTED');
         $this->RegisterAttributeInteger('LastStaleRx', 0);
+        $this->RegisterAttributeInteger('WireCodeCount', 0);
+        $this->RegisterAttributeInteger('WireHeartbeatCount', 0);
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
@@ -55,6 +60,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
+        $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03AUX_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03AUX_SocketRestartTimer($_IPS["TARGET"]);');
@@ -92,6 +98,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
+        $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
@@ -99,6 +106,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetTimerInterval('Watchdog', 15000);
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
+        $this->SetBuffer('WireProbeTail', '');
         $this->WriteAttributeBoolean('Streaming', false);
         $this->WriteAttributeBoolean('AuthPending', false);
         $this->WriteAttributeBoolean('LastRequestAuthenticated', false);
@@ -249,6 +257,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->SetValue('StreamOK', false);
             $this->SetBuffer('HttpBuffer', '');
             $this->SetBuffer('EventCarry', '');
+        $this->SetBuffer('WireProbeTail', '');
             if (!$this->ReadAttributeBoolean('AuthBlocked')) {
                 $this->SetTimerInterval('HandshakeTimer', 250);
             }
@@ -508,6 +517,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->WriteAttributeInteger('LastCameraRx', 0);
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
+        $this->SetBuffer('WireProbeTail', '');
 
         try {
             if ($needsFreshTcp) {
@@ -562,12 +572,16 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->WriteAttributeInteger('LastCameraRx', 0);
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
+        $this->SetBuffer('WireProbeTail', '');
         $this->scheduleSocketRestart(100);
         $this->refreshObserverStatus('Reconnect angefordert');
     }
 
     private function processEventData(string $chunk): void
     {
+        // Independent wire-level evidence BEFORE JSON/event parsing or the
+        // strict P03 IVS rule filter. Do not copy camera payload/credentials.
+        $this->trackWireEvidence($chunk);
         $carry = $this->GetBuffer('EventCarry');
         $events = JVP03DahuaEventParser::feed($chunk, $carry);
         $this->SetBuffer('EventCarry', $carry);
@@ -688,6 +702,48 @@ class JVPresenceP03AuxObserver extends IPSModule
      *
      * @param array<string,mixed> $event
      */
+    /**
+     * Records the camera's real eventManager.cgi event headers independently
+     * of any P03 parser/rule match. Handles headers split across TCP chunks.
+     * Important: a LIVE heartbeat alone says nothing about detection.
+     */
+    private function trackWireEvidence(string $chunk): void
+    {
+        $heartbeatCount = preg_match_all('/Heartbeat(?:\r?\n|$)/i', $chunk);
+        if ($heartbeatCount > 0) {
+            $this->WriteAttributeInteger('WireHeartbeatCount',
+                $this->ReadAttributeInteger('WireHeartbeatCount') + $heartbeatCount);
+        }
+        $data = $this->GetBuffer('WireProbeTail') . $chunk;
+        if (strlen($data) > 131072) {
+            $data = substr($data, -131072);
+        }
+        $pattern = '/Code\s*=\s*([A-Za-z0-9_+-]+)\s*;\s*action\s*=\s*([A-Za-z0-9_+-]+)\s*;\s*index\s*=\s*([0-9]+)/i';
+        $matches = [];
+        $found = preg_match_all($pattern, $data, $matches, PREG_OFFSET_CAPTURE);
+        $cut = 0;
+        if ($found > 0) {
+            foreach ($matches[0] as $i => $hit) {
+                $end = (int) $hit[1] + strlen((string) $hit[0]);
+                $cut = max($cut, $end);
+                $count = $this->ReadAttributeInteger('WireCodeCount') + 1;
+                $this->WriteAttributeInteger('WireCodeCount', $count);
+                $name = (string) $matches[1][$i][0];
+                $action = (string) $matches[2][$i][0];
+                $index = (string) $matches[3][$i][0];
+                $safeHeader = P03IPC5442Audit::wireHeader($name, $action, $index, $count);
+                if ($safeHeader !== '') {
+                    $this->SetValue('WireProbe', date('H:i:s') . ' ' . $safeHeader
+                        . ' | Heartbeats=' . $this->ReadAttributeInteger('WireHeartbeatCount'));
+                }
+            }
+        }
+        // Keep only incomplete header fragments for the next TCP chunk,
+        // not the JSON data of already recorded events.
+        $remainder = substr($data, $cut);
+        $this->SetBuffer('WireProbeTail', substr($remainder, -96));
+    }
+
     private function recordEventAudit(array $event, string $decision): void
     {
         $summary = [
@@ -738,6 +794,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetValue('StreamOK', false);
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
+        $this->SetBuffer('WireProbeTail', '');
         $this->sendEventRequest($this->ReadAttributeBoolean('AuthPending'));
     }
 
@@ -851,6 +908,8 @@ class JVPresenceP03AuxObserver extends IPSModule
                 ? max(0, time() - $this->ReadAttributeInteger('LastCameraRx')) : -1,
             'streamOK' => (bool) $this->GetValue('StreamOK'),
             'counter' => (int) $this->GetValue('HumanEventCounter'),
+            'wireCodeCount' => $this->ReadAttributeInteger('WireCodeCount'),
+            'wireHeartbeatCount' => $this->ReadAttributeInteger('WireHeartbeatCount'),
             'eventsTotal' => $this->ReadAttributeInteger('ParsedEventCount'),
             'crossRegionTotal' => $this->ReadAttributeInteger('CrossRegionEventCount'),
             'ruleMatches' => $this->ReadAttributeInteger('RuleMatchEventCount'),
