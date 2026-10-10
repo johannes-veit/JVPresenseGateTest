@@ -336,11 +336,13 @@ class JVPresenceP03AuxObserver extends IPSModule
 
         if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()) {
             $this->WriteAttributeString('LastHealthAction', 'DISABLED_OR_UNCONFIGURED');
+            $this->refreshObserverStatus('HEALTH: Observer deaktiviert oder unkonfiguriert');
             return 'DISABLED_OR_UNCONFIGURED';
         }
         if ($this->ReadAttributeBoolean('AuthBlocked')) {
             $this->SetValue('StreamOK', false);
             $this->WriteAttributeString('LastHealthAction', 'AUTH_BLOCKED');
+            $this->refreshObserverStatus('HEALTH: Digest-Anmeldung gesperrt');
             return 'AUTH_BLOCKED';
         }
 
@@ -369,6 +371,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             && (bool) IPS_GetProperty($parentID, 'Open');
         if ($tcpActive && $streaming && $age >= 0 && $age <= 25) {
             $this->WriteAttributeString('LastHealthAction', 'LIVE');
+            $this->refreshObserverStatus('HEALTH: LIVE – neuer Kameraempfang innerhalb von 25 s');
             return 'LIVE';
         }
 
@@ -395,17 +398,20 @@ class JVPresenceP03AuxObserver extends IPSModule
             (!$streaming && ($lastRequest === 0 || $now - $lastRequest > 12));
         if (!$needRetry) {
             $this->WriteAttributeString('LastHealthAction', 'AWAITING_HTTP');
+            $this->refreshObserverStatus('HEALTH: warte auf neue HTTP-Antwort');
             return 'AWAITING_HTTP';
         }
         $lastRestart = $this->ReadAttributeInteger('LastSocketRestart');
         if ($lastRestart > 0 && $now - $lastRestart < 20) {
             $this->WriteAttributeString('LastHealthAction', 'COOLDOWN');
+            $this->refreshObserverStatus('HEALTH: Neuverbindung in 20-s-Sperrfrist');
             return 'COOLDOWN';
         }
         $this->WriteAttributeString('LastHealthAction', 'RECONNECT_ATTEMPT');
         $success = $this->StartSocketNow();
         $result = $success ? 'RECONNECT_GET_SENT' : 'RECONNECT_PENDING';
         $this->WriteAttributeString('LastHealthAction', $result);
+        $this->refreshObserverStatus('HEALTH: ' . $result);
         return $result;
     }
 
