@@ -1,3 +1,14 @@
+# v0.6.16 – P03 Mastobserver: fehlende Client-Sockets reparieren
+
+- Echte Ursache aus Live-Diagnose: Beide P03 Observer #57215 und #27938 hatten **ConnectionID=0**, obwohl ihr Symcon-Instanzstatus 102 betrug. Keine TCP-/HTTP-Anfrage konnte gesendet werden; dieser Fehler liegt VOR Dahua-KI/IVS.
+- Neuer Button im P03-Hauptmodul **„P03 FEHLENDE CLIENT-SOCKETS REPARIEREN (nur P03)”**.
+- Erstellt für jeden getrennten P03-Observer ohne I/O eine eigene IP-Symcon-Client-Socket-Instanz, konfiguriert nur diesen neu erzeugten Socket auf die jeweilige Mastkamera und verbindet den Observer ausdrücklich mit **IPS_ConnectInstance(observer, socket)**. Observer ApplyChanges startet anschließend kontrolliert den vorhandenen Digest-/Socket-Watchdog.
+- Ist ein Observer bereits verbunden, bleibt seine bestehende Verbindung unverändert. Bestehende fremde Sockets und AussenlichtAutomatik2 werden niemals neu konfiguriert, geschlossen, getrennt oder übernommen.
+- Für Wiederholungsversuche werden neu erzeugte Socket-IDs als Attribute ausschließlich in der P03-Hauptinstanz gespeichert: bei unterbrochener Zuordnung kein doppeltes Neuanlegen, kein Löschen von Sockets.
+- Direkt nach Betätigung des Buttons wird automatisch der vorhandene lesende Verbindungsdiagnosebericht erzeugt. Da TCP/Digest asynchron startet, ggf. nach 20 Sekunden den Diagnosebutton erneut betätigen.
+- Tests enthalten eine Simulation mit der realen P03-Hauptklasse, beiden zunächst verbindungslosen Observern, zweimaliger Buttonbetätigung, Wiederaufnahme nach unterbrochener Zuordnung und Schutz fremder Sockets.
+- Keine Schreibzugriffe auf Dahua-Kameraeinstellungen, Terrasse, Außenlichtautomatik, Alarmanlage oder andere Module.
+
 # v0.6.15 – P03 Ein-Klick-Socketdiagnose
 
 - Neuer Button im Konfigurationsfenster der P03-Hauptinstanz: **„P03 Verbindungen diagnostizieren (nur lesen – beide Observer/Sockets)”**.
