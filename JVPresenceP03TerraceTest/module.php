@@ -143,6 +143,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeBoolean('P03MultiAuditPassed', false);
         $this->RegisterAttributeInteger('AuxJVManagedSocketID', 0);
         $this->RegisterAttributeInteger('AuxWorkManagedSocketID', 0);
+        $this->RegisterAttributeString('P03RestoreSummary', 'Noch keine Wiederherstellung ausgeführt.');
 
         $this->RegisterVariableString('PresenceSystemState', 'Presence Systemstatus', '', 1);
         $this->RegisterVariableString('HouseStatus', 'Hausstatus', '', 2);
@@ -182,6 +183,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         // recorded even if the connection takes longer to become visible.
         $this->RegisterAttributeInteger('AuxJVManagedSocketID', 0);
         $this->RegisterAttributeInteger('AuxWorkManagedSocketID', 0);
+        $this->RegisterAttributeString('P03RestoreSummary', 'Noch keine Wiederherstellung ausgeführt.');
 
         // Add the diagnosis variable to P03 instances installed before 0.6.15.
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
@@ -1542,6 +1544,137 @@ class JVPresenceP03MultiCamera extends IPSModule
      * The report contains no username, password, HTTP authorization or nonce.
      */
     /**
+     * Controlled recovery for the TWO EXISTING P03 mast observer instances.
+     * Only those exact historical module IDs + dedicated owned Client Sockets.
+     * Two-phase safety preflight: if either camera is ambiguous, change none.
+     * No new instances/sockets, no camera CGI/RPC2 setConfig, no foreign I/O.
+     */
+    public function RestoreP03Observers(): void
+    {
+        $lines = ['=== P03 OBSERVER-EIGENSCHAFTEN WIEDERHERSTELLEN ==='];
+        $configs = [
+            ['role' => self::AUX_JV_ROLE, 'hostProp' => 'AuxJVHost',
+                'id' => 57215, 'socket' => 17785, 'managed' => 'AuxJVManagedSocketID',
+                'index' => 'AuxJVInstanceID'],
+            ['role' => self::AUX_WORK_ROLE, 'hostProp' => 'AuxWorkHost',
+                'id' => 27938, 'socket' => 55478, 'managed' => 'AuxWorkManagedSocketID',
+                'index' => 'AuxWorkInstanceID']
+        ];
+        $username = $this->ReadPropertyString('Username');
+        $password = $this->ReadPropertyString('Password');
+        $port = $this->ReadPropertyInteger('CameraPort');
+        $targets = [];
+        if (trim($username) === '' || $password === '' || $port < 1 || $port > 65535) {
+            $lines[] = 'ABBRUCH: P03-Hauptinstanz enthält keine vollständigen Kamerazugangsdaten.';
+        } else {
+            try {
+                $instanceList = array_map('intval', IPS_GetInstanceList());
+                foreach ($configs as $cfg) {
+                    $id = (int) $cfg['id'];
+                    $socket = (int) $cfg['socket'];
+                    $host = trim($this->ReadPropertyString((string) $cfg['hostProp']));
+                    $role = (string) $cfg['role'];
+                    $managed = $this->ReadAttributeInteger((string) $cfg['managed']);
+                    if ($host === '' || !IPS_InstanceExists($id) || !IPS_InstanceExists($socket)
+                        || $managed !== $socket) {
+                        $lines[] = 'ABBRUCH ' . $role
+                            . ': Observer/Socket fehlt oder gespeicherter Socket weicht ab.';
+                        break;
+                    }
+                    $inst = IPS_GetInstance($id);
+                    $io = IPS_GetInstance($socket);
+                    if (strcasecmp((string) ($inst['ModuleInfo']['ModuleID'] ?? ''),
+                        self::AUX_OBSERVER_MODULE_GUID) !== 0
+                        || (int) ($inst['ConnectionID'] ?? 0) !== $socket
+                        || strcasecmp((string) ($io['ModuleInfo']['ModuleID'] ?? ''),
+                            self::CLIENT_SOCKET_GUID) !== 0
+                        || trim((string) IPS_GetProperty($socket, 'Host')) !== $host
+                        || (int) IPS_GetProperty($socket, 'Port') !== $port) {
+                        $lines[] = 'ABBRUCH ' . $role
+                            . ': Modul-GUID, Parent-Socket oder Host/Port stimmen nicht.';
+                        break;
+                    }
+                    $actualHost = trim((string) IPS_GetProperty($id,'CameraHost'));
+                    $actualRole = (string) IPS_GetProperty($id,'Role');
+                    if (($actualHost !== '' && $actualHost !== $host)
+                        || ($actualRole !== '' && $actualRole !== $role)) {
+                        $lines[] = 'ABBRUCH ' . $role
+                            . ': Observer-Eigenschaften gehören offenbar zu anderer Kamera/Rolle.';
+                        break;
+                    }
+                    $users = [];
+                    foreach ($instanceList as $otherID) {
+                        if ($otherID <= 0 || !IPS_InstanceExists($otherID)) {
+                            continue;
+                        }
+                        if ((int) (IPS_GetInstance($otherID)['ConnectionID'] ?? 0) === $socket) {
+                            $users[] = $otherID;
+                        }
+                    }
+                    if ($users !== [$id]) {
+                        $lines[] = 'ABBRUCH ' . $role
+                            . ': Client Socket ist nicht ausschließlich dem P03-Observer zugeordnet.';
+                        break;
+                    }
+                    $targets[] = [
+                        'id' => $id, 'role' => $role, 'host' => $host,
+                        'socket' => $socket
+                    ];
+                }
+            } catch (Throwable $e) {
+                $lines[] = 'ABBRUCH: Vorprüfung nicht vollständig möglich ('
+                    . get_class($e) . '). Keine Änderung.';
+            }
+        }
+
+        if (count($targets) !== 2) {
+            $lines[] = 'SICHERHEIT: Keine Observer verändert; Vorprüfung nicht vollständig erfolgreich.';
+        } else {
+            foreach ($targets as $target) {
+                $id = (int) $target['id'];
+                $role = (string) $target['role'];
+                try {
+                    // Only modify the properties of the two existing P03
+                    // observer objects. We DO NOT call IPS_ConnectInstance or
+                    // edit Socket.Open/Host/Port, Dahua SMD/IVS or other modules.
+                    IPS_SetProperty($id, 'Enabled', true);
+                    IPS_SetProperty($id, 'CameraHost', (string) $target['host']);
+                    IPS_SetProperty($id, 'CameraPort', $port);
+                    IPS_SetProperty($id, 'Username', $username);
+                    IPS_SetProperty($id, 'Password', $password);
+                    IPS_SetProperty($id, 'Role', $role);
+                    // No IVS rule config changes or camera setConfig.
+                    IPS_ApplyChanges($id);
+
+                    if (!$this->matchesTrustedP03Observer($id,
+                        (string) $target['host'], $role)) {
+                        $lines[] = $role . ': WARNUNG – Instanz-Eigenschaften nach ApplyChanges'
+                            . ' nicht korrekt lesbar. Keine weiteren Fremdeingriffe.';
+                        continue;
+                    }
+                    $lines[] = $role . ': OK – vorhandener Observer #' . $id
+                        . ' an bestehendem Socket #' . (int) $target['socket']
+                        . ' (Host/Rolle/Kamerazugang synchronisiert).';
+                } catch (Throwable $e) {
+                    $lines[] = $role . ': FEHLER (' . get_class($e)
+                        . ') beim Schreiben/Übernehmen. Keine Kamera-/Fremdmoduländerung.';
+                }
+            }
+            // Rebuild only P03-internal, GUID/role/host-validated references.
+            // No observer creation, and proof production remains disabled.
+            $result = $this->discoverP03AuxSources(false);
+            $lines[] = 'P03-Observer-Zuordnung: JV_LEFT=' . (int) ($result['jv'] ?? 0)
+                . ', WORK_LEFT=' . (int) ($result['work'] ?? 0);
+        }
+        $summary = implode(' | ', $lines);
+        $this->WriteAttributeString('P03RestoreSummary', $summary);
+        foreach ($lines as $line) {
+            $this->appendProtocol($line);
+        }
+        $this->DiagnoseP03Connections();
+    }
+
+    /**
      * Identity forensics after v0.6.20 update. Checks independently:
      * historical P03 instance IDs, currently stored IDs, whole-tree module GUID
      * enumeration (NOT just IPS_GetInstanceListByModuleID), and socket parents.
@@ -1790,6 +1923,10 @@ class JVPresenceP03MultiCamera extends IPSModule
             'Hauptinstanz: #' . $this->InstanceID,
             'Hinweis: Es werden keine Kameraeinstellungen oder Fremdmodule geändert.'
         ];
+        $restore = trim($this->ReadAttributeString('P03RestoreSummary'));
+        if ($restore !== '') {
+            $lines[] = 'Letzte P03-Observer-Wiederherstellung: ' . $restore;
+        }
         $healthVar = $this->GetIDForIdent('P03MastHealth');
         if ($healthVar > 0 && IPS_VariableExists($healthVar)) {
             $lines[] = 'Unabhängiger P03-Mast-Watchdog: ' . (string) GetValue($healthVar);
