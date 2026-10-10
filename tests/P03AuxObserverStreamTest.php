@@ -311,6 +311,11 @@ rxP03($direct, "HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace\r\n\r
 $before=count($direct->sent);
 checkP03($direct->HealthTick()==='LIVE' && count($direct->sent)===$before,
     'Current response with HTTP-200 is healthy, no unnecessary reconnect');
+$healthReported = json_decode((string)($direct->values['ObserverStatus']??''),true);
+checkP03(is_array($healthReported)
+    && ($healthReported['lastHealthAction']??'')==='LIVE'
+    && (int)($healthReported['lastHealthTick']??0)>0,
+    'Successful live HealthTick is visible in the copyable observer diagnostic');
 
 $direct->attributes['LastCameraRx'] = time() - 45;
 $direct->attributes['LastSocketRestart'] = time();

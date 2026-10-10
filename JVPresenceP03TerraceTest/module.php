@@ -183,6 +183,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         // Add the diagnosis variable to P03 instances installed before 0.6.15.
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
         $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
+        // Register again during migration: Create() is not guaranteed to run
+        // on an existing Symcon P03 instance when a module update is installed.
+        $this->RegisterTimer('P03MastHealthTimer', 15000, 'JVP03MC_P03MastHealthTimer($_IPS["TARGET"]);');
         $this->SetTimerInterval('P03MastHealthTimer', 15000);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
