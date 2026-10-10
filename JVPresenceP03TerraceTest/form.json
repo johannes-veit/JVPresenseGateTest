@@ -85,6 +85,15 @@
   "actions": [
     {
       "type": "Button",
+      "caption": "P03 EIGENE EVENTSTREAMS JETZT STARTEN (ohne Timer-Wartezeit)",
+      "onClick": "JVP03MC_StartP03EventstreamsNow($id);"
+    },
+    {
+      "type": "Label",
+      "caption": "Startet ausschließlich die zwei bereits verbundenen P03-Client-Sockets unmittelbar und sendet das erste Dahua-HTTP-GET. Keine Änderungen an Kameraeinstellungen, Außenlichtautomatik oder anderen Modulen. Der Diagnosebericht zeigt anschließend Socket, HTTP-Anfrage und Timerstatus."
+    },
+    {
+      "type": "Button",
       "caption": "P03 FEHLENDE CLIENT-SOCKETS REPARIEREN (nur P03)",
       "onClick": "JVP03MC_RepairP03ClientSockets($id);"
     },
