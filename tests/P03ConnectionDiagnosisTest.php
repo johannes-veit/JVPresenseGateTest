@@ -133,13 +133,28 @@ class SimulatedIPC5442Main extends JVPresenceP03MultiCamera
             str_contains($uri, 'name=VideoAnalyseGlobal') =>
                 "VideoAnalyseGlobal[0].Scene.Type=Normal\r\n",
             str_contains($uri, 'name=VideoAnalyseRule') =>
-                "VideoAnalyseRule[0][3].Name=P03_WORK_LEFT_HUMAN\r\nVideoAnalyseRule[0][3].Enable=true\r\nVideoAnalyseRule[0][3].Config.DetectRegion[0]=[100,100]\r\n",
+                "table.VideoAnalyseRule[0][0].Class=HeatMap\r\n"
+                . "table.VideoAnalyseRule[0][0].Enable=false\r\n"
+                . "table.VideoAnalyseRule[0][3].Class=Normal\r\n"
+                . "table.VideoAnalyseRule[0][3].Type=CrossRegionDetection\r\n"
+                . "table.VideoAnalyseRule[0][3].Id=4\r\n"
+                . "table.VideoAnalyseRule[0][3].Name="
+                    . ($host === '192.168.107.96' ? 'P03_JV_LEFT_HUMAN' : 'P03_WORK_LEFT_HUMAN')
+                    . "\r\n"
+                . "table.VideoAnalyseRule[0][3].Enable=true\r\n"
+                . "table.VideoAnalyseRule[0][3].ObjectTypes[0]=Human\r\n"
+                . "table.VideoAnalyseRule[0][3].Config.DetectRegion[0][0]=256\r\n"
+                . "table.VideoAnalyseRule[0][3].Config.DetectRegion[0][1]=7935\r\n",
             default => ''
         };
         return ['ok'=>true,'http'=>200,'body'=>$body,'error'=>''];
     }
 }
 $ipc=new SimulatedIPC5442Main();
+$ipc->attributes['AuxJVHumanRuleIndex']=3;
+$ipc->attributes['AuxWorkHumanRuleIndex']=3;
+$ipc->attributes['AuxJVHumanRuleID']=4;
+$ipc->attributes['AuxWorkHumanRuleID']=4;
 $ipc->DiagnoseIPC5442Configuration();
 $modelReport=(string)$ipc->values['P03IPC5442Audit'];
 verifyDiag($modelReport !== '' && (string)$ipc->values['P03ConnectionDiagnosis'] === $modelReport,
@@ -152,8 +167,11 @@ verifyDiag(str_contains($modelReport,'SmartMotionDetect[0].ObjectTypes.Human=tru
     'model SMD human detection exposed');
 verifyDiag(str_contains($modelReport,'MotionDetect[0].Region[0].Threshold=11'),
     'model-specific MD detection region readback exposed');
-verifyDiag(str_contains($modelReport,'VideoAnalyseRule[0][3].Enable=true'),
-    'model-specific IVS rule enabled state exposed');
+verifyDiag(substr_count($modelReport,'Regel [0][3]: Enable=true')===2
+    && substr_count($modelReport,'ABGLEICH: RuleName=PASST | Enable=JA | Type=PASST')===2,
+    'both P03 IVS rules are visible and matched, despite prior HeatMap-first truncation');
+verifyDiag(str_contains($modelReport, 'Config.DetectRegion[0][0]=256'),
+    'P03 IVS region detail is shown, rather than only HeatMap TimeSections');
 verifyDiag(!str_contains($modelReport,'never-log-this'),
     'camera security fields redacted');
 verifyDiag(count($ipc->uris)===12,'only six GET requests for each camera');
