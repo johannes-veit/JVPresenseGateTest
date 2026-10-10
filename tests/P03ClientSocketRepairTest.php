@@ -30,6 +30,12 @@ $GLOBALS['byIdent'] = [
     27938=>['StreamOK'=>51090,'PersonDetected'=>33071,'HumanEventCounter'=>34838,'ObserverStatus'=>56881]
 ];
 $GLOBALS['writes'] = [];
+$GLOBALS['startCalls'] = [];
+function JVP03AUX_StartSocketNow(int $id):bool {
+    $GLOBALS['startCalls'][] = $id;
+    return true;
+}
+
 
 function IPS_InstanceExists(int $id): bool { return isset($GLOBALS['instances'][$id]); }
 function IPS_GetInstance(int $id): array { return $GLOBALS['instances'][$id]; }
@@ -146,4 +152,24 @@ foreach ($GLOBALS['writes'] as $w) {
         verifyDiag(!in_array($w[1],[9001,9002,77777],true),'no modification of pre-existing/foreign sockets');
     }
 }
+// Direct start button may call only P03 observers with sockets owned by P03.
+$instance->StartP03EventstreamsNow();
+verifyDiag($GLOBALS['startCalls']===[57215,27938],'main start button calls both P03 observers once');
+verifyDiag(str_contains((string)$instance->values['P03ConnectionDiagnosis'],'Client Socket ID:'),
+    'main start button refreshes read-only diagnosis');
+
+// Corrupt the first socket's live relationship: must refuse this observer.
+$GLOBALS['startCalls'] = [];
+$GLOBALS['instances'][57215]['ConnectionID']=9001; // foreign socket
+$instance->StartP03EventstreamsNow();
+verifyDiag($GLOBALS['startCalls']===[27938],
+    'main start button skips observer with socket mismatch');
+
+// Corrupt P03 managed socket id: must refuse this role too.
+$GLOBALS['startCalls'] = [];
+$instance->attributes['AuxWorkManagedSocketID'] = 9002;
+$instance->StartP03EventstreamsNow();
+verifyDiag($GLOBALS['startCalls']===[],
+    'main start button never invokes observer linked to foreign socket');
+
 echo "P03 CLIENT SOCKET REPAIR SIMULATION PASSED\n";
