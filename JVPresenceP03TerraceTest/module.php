@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . '/libs/GateTestLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ProofEngine.php';
 require_once dirname(__DIR__) . '/libs/P03DahuaTemplate.php';
 require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
+require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03MultiCamera extends IPSModule
 {
@@ -162,6 +163,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('Protocol', 'Testprotokoll', '', 70);
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
         $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
+        $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03MC_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03MC_SocketRestartTimer($_IPS["TARGET"]);');
@@ -183,6 +185,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         // Add the diagnosis variable to P03 instances installed before 0.6.15.
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
         $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
+        $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
         // Register again during migration: Create() is not guaranteed to run
         // on an existing Symcon P03 instance when a module update is installed.
         $this->RegisterTimer('P03MastHealthTimer', 15000, 'JVP03MC_P03MastHealthTimer($_IPS["TARGET"]);');
@@ -254,6 +257,18 @@ class JVPresenceP03MultiCamera extends IPSModule
                 $live[] = [
                     'type' => 'ExpansionPanel',
                     'caption' => 'P03 Socket-Diagnose – Bericht (auch als Variable kopierbar)',
+                    'expanded' => true,
+                    'items' => [['type' => 'Label', 'caption' => $report]]
+                ];
+            }
+        }
+        $modelAuditID = $this->GetIDForIdent('P03IPC5442Audit');
+        if ($modelAuditID > 0 && IPS_VariableExists($modelAuditID)) {
+            $report = trim((string) GetValue($modelAuditID));
+            if ($report !== '') {
+                $live[] = [
+                    'type' => 'ExpansionPanel',
+                    'caption' => 'IPC-HFW5442E-ZE – KI/IVS-Konfiguration (nur lesen, kopierbar)',
                     'expanded' => true,
                     'items' => [['type' => 'Label', 'caption' => $report]]
                 ];
@@ -1506,6 +1521,94 @@ class JVPresenceP03MultiCamera extends IPSModule
      * reconnect, RPC2, setConfig or updates an unrelated module or camera.
      * The report contains no username, password, HTTP authorization or nonce.
      */
+    /**
+     * Read-only, model-specific IPC-HFW5442E-ZE (2.840) diagnostics.
+     * Never calls configManager.setConfig, RPC2 setConfig, reboot, ApplyChanges,
+     * or touches ALA2/other cameras. Uses the P03-observer credentials already
+     * stored in the P03 instance. No credentials or raw camera JSON persisted.
+     */
+    public function DiagnoseIPC5442Configuration(): void
+    {
+        $lines = [
+            '=== P03 IPC-HFW5442E-ZE: SMD/IVS-SPEZIALDIAGNOSE (NUR LESEN) ===',
+            'Zeit: ' . date('Y-m-d H:i:s'),
+            'Prüfmodell: IPC-HFW5442E-ZE, bekannter Firmwarezweig 2.840',
+            'Wichtig: SMD/IVS-Konfiguration beweist allein KEINE echte Personenerkennung.',
+            'Keine Kamera-Konfigänderung, keine anderen Module/Clients verändert.'
+        ];
+        $roles = [
+            ['role' => self::AUX_JV_ROLE, 'host' => 'AuxJVHost', 'attr' => 'AuxJVInstanceID'],
+            ['role' => self::AUX_WORK_ROLE, 'host' => 'AuxWorkHost', 'attr' => 'AuxWorkInstanceID']
+        ];
+        foreach ($roles as $entry) {
+            $role = (string) $entry['role'];
+            $host = trim($this->ReadPropertyString((string) $entry['host']));
+            $id = $this->ReadAttributeInteger((string) $entry['attr']);
+            $lines[] = '';
+            $lines[] = '--- ' . $role . ' / ' . $host . ' ---';
+            try {
+                if ($id <= 0 || !IPS_InstanceExists($id)
+                    || strcasecmp((string) (IPS_GetInstance($id)['ModuleInfo']['ModuleID'] ?? ''),
+                        self::AUX_OBSERVER_MODULE_GUID) !== 0
+                    || trim((string) IPS_GetProperty($id, 'CameraHost')) !== $host
+                    || (string) IPS_GetProperty($id, 'Role') !== $role) {
+                    $lines[] = 'FEHLER: P03-Observer/Host/Rolle nicht vertrauenswürdig.';
+                    continue;
+                }
+                $cfg = $this->p03AuxCameraConfiguration($id);
+                if (($cfg['host'] ?? '') !== $host
+                    || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
+                    $lines[] = 'FEHLER: P03-Kamerazugang unvollständig.';
+                    continue;
+                }
+                $port = (int) $cfg['port'];
+                $user = (string) $cfg['username'];
+                $pass = (string) $cfg['password'];
+                $type = $this->genericCameraGet($host,$port,$user,$pass,
+                    '/cgi-bin/magicBox.cgi?action=getDeviceType');
+                $firmware = $this->genericCameraGet($host,$port,$user,$pass,
+                    '/cgi-bin/magicBox.cgi?action=getSoftwareVersion');
+                foreach ([['Modell',$type],['Firmware',$firmware]] as $item) {
+                    $value = '<nicht lesbar>';
+                    if ($item[1]['ok'] ?? false) {
+                        $body = (string) ($item[1]['body'] ?? '');
+                        $key = $item[0] === 'Modell' ? 'type' : 'version';
+                        if (preg_match('/(?:^|\r?\n)' . $key . '=([^\r\n]+)/i',$body,$match)) {
+                            $value = substr(trim((string) $match[1]),0,130);
+                        }
+                    }
+                    $lines[] = $item[0] . ': ' . $value
+                        . ' | HTTP ' . (int) ($item[1]['http'] ?? 0);
+                }
+
+                foreach (['MotionDetect','SmartMotionDetect','VideoAnalyseGlobal','VideoAnalyseRule'] as $table) {
+                    $result = $this->genericCameraGet($host,$port,$user,$pass,
+                        '/cgi-bin/configManager.cgi?action=getConfig&name=' . $table);
+                    $lines[] = '';
+                    $lines[] = '[' . $table . '] HTTP ' . (int) ($result['http'] ?? 0)
+                        . (($result['ok'] ?? false) ? ' – LESBAR' : ' – NICHT LESBAR');
+                    if (!($result['ok'] ?? false)) {
+                        $lines[] = 'KEIN NACHWEIS: CGi-Tabelle nicht zugänglich;'
+                            . ' Firmware kann RPC2 statt CGI voraussetzen.';
+                        continue;
+                    }
+                    foreach (P03IPC5442Audit::summarizeConfig($table,
+                        (string) ($result['body'] ?? ''), 48) as $field) {
+                        $lines[] = $field;
+                    }
+                }
+            } catch (Throwable $e) {
+                $lines[] = 'READ-ONLY-DIAGNOSEFEHLER: ' . get_class($e)
+                    . ' (keine Zugangsdaten im Bericht).';
+            }
+        }
+        $lines[] = '';
+        $lines[] = 'BEWERTUNG: Ohne Ereignis-Rohdaten während eines Testgangs'
+            . ' keine Aussage, ob Kamera-AI, Erfassungsfläche, Zeitplan oder P03-Parser schuld ist.';
+        $this->SetValue('P03IPC5442Audit', implode("\n", $lines));
+        $this->ReloadForm();
+    }
+
     public function DiagnoseP03Connections(): void
     {
         $lines = [
@@ -1640,6 +1743,21 @@ class JVPresenceP03MultiCamera extends IPSModule
                     }
                 }
 
+                $wireVar = $this->findAuxVariable($id, 'WireProbe');
+                $wireStatus = $this->findAuxVariable($id, 'ObserverStatus');
+                if ($wireVar > 0) {
+                    $lastHeader = trim((string) GetValue($wireVar));
+                    $lines[] = 'IPC5442 ROHDATEN VOR PARSER: ' . ($lastHeader !== ''
+                        ? substr($lastHeader,0,300) : 'Bisher KEIN Dahua Code=...-Event erfasst');
+                }
+                if ($wireStatus > 0) {
+                    $wireState = json_decode((string) GetValue($wireStatus),true);
+                    if (is_array($wireState)) {
+                        $lines[] = 'IPC5442 Wire-Zähler: Code-Events='
+                            . (int) ($wireState['wireCodeCount'] ?? 0)
+                            . ', Heartbeats=' . (int) ($wireState['wireHeartbeatCount'] ?? 0);
+                    }
+                }
                 $auditVar = $this->findAuxVariable($id, 'EventAudit');
                 if ($auditVar > 0) {
                     $auditRaw = trim((string) GetValue($auditVar));
