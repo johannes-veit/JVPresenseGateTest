@@ -187,4 +187,38 @@ expectAux(
     'STOP never creates a new Human proof'
 );
 
+// Dedupe belongs to the short network redelivery window, NEVER the
+// lifetime of the observer. Dahua may recycle EventID/ObjectID.
+$keys = [];
+$delivery = [
+    'code'=>'CrossRegionDetection','action'=>'Start','eventId'=>71,
+    'ruleName'=>'P03_WORK_LEFT_HUMAN','cfgRuleId'=>4,
+    'groupId'=>2,'objectId'=>8,'raw'=>'EventID=71'
+];
+expectAux(P03AuxObserverLogic::isFreshDelivery($delivery,$keys,1000),
+    'initial Human event accepted');
+expectAux(!P03AuxObserverLogic::isFreshDelivery($delivery,$keys,1001),
+    'immediate retransmission suppressed');
+expectAux(P03AuxObserverLogic::isFreshDelivery($delivery,$keys,1003),
+    'same EventID accepted after dedupe window');
+$secondObject=$delivery; $secondObject['objectId']=9;
+expectAux(P03AuxObserverLogic::isFreshDelivery($secondObject,$keys,1003),
+    'same EventID with different object accepted');
+$secondRole=$delivery; $secondRole['ruleName']='P03_JV_LEFT_HUMAN';
+expectAux(P03AuxObserverLogic::isFreshDelivery($secondRole,$keys,1003),
+    'same EventID from different mast role accepted');
+$secondGroup=$delivery; $secondGroup['groupId']=99;
+expectAux(P03AuxObserverLogic::isFreshDelivery($secondGroup,$keys,1003),
+    'same EventID from another group accepted');
+$stop=$delivery; $stop['action']='Stop';
+expectAux(P03AuxObserverLogic::isFreshDelivery($stop,$keys,1003),
+    'Stop delivery distinct from Start');
+expectAux(!P03AuxObserverLogic::isFreshDelivery($stop,$keys,1004),
+    'repeated Stop packet deduplicated');
+expectAux(P03AuxObserverLogic::isFreshDelivery($stop,$keys,1010),
+    'recycled Stop event accepted after window');
+$futureKeys=['invalid-time'=>'broken','future-time'=>999999,'old'=>1];
+expectAux(P03AuxObserverLogic::isFreshDelivery($delivery,$futureKeys,1020)
+    && count($futureKeys)===1, 'corrupt/expired future dedupe keys pruned');
+
 echo "P03 AUX NATIVE TEMPLATE / EVENT IDENTITY TESTS PASSED\n";

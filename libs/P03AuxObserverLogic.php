@@ -74,4 +74,47 @@ final class P03AuxObserverLogic
         }
         return true;
     }
+
+    /**
+     * Dahua EventID is not a permanent globally unique transaction ID.
+     * Some 5442 firmware uses stable/recycled identifiers across detections.
+     *
+     * Only suppress repeated identical deliveries in a short window; a new
+     * genuine Start carrying the same EventID seconds later MUST be counted.
+     * Include rule/action/group/object to avoid collisions where available.
+     *
+     * @param array<string,mixed> $event
+     * @param array<string,int> $seen
+     */
+    public static function isFreshDelivery(array $event, array &$seen, int $now, int $windowSeconds = 3): bool
+    {
+        $windowSeconds = max(1, min(10, $windowSeconds));
+        foreach ($seen as $key => $timestamp) {
+            if (!is_numeric($timestamp) || (int) $timestamp > $now
+                || $now - (int) $timestamp >= $windowSeconds) {
+                unset($seen[$key]);
+            }
+        }
+
+        $eventId = trim((string) ($event['eventId'] ?? ''));
+        $key = $eventId !== ''
+            ? 'id:' . $eventId
+            : 'raw:' . sha1((string) ($event['raw'] ?? ''));
+        $key .= '|a:' . strtolower(trim((string) ($event['action'] ?? '')));
+        $key .= '|r:' . strtolower(trim((string) ($event['ruleName'] ?? '')))
+            . ':' . trim((string) ($event['cfgRuleId'] ?? $event['ruleId'] ?? ''));
+        $key .= '|g:' . trim((string) ($event['groupId'] ?? ''));
+        $key .= '|o:' . trim((string) ($event['objectId'] ?? ''));
+
+        if (isset($seen[$key]) && $now - (int) $seen[$key] < $windowSeconds) {
+            return false;
+        }
+
+        $seen[$key] = $now;
+        if (count($seen) > 200) {
+            asort($seen, SORT_NUMERIC);
+            $seen = array_slice($seen, -200, null, true);
+        }
+        return true;
+    }
 }

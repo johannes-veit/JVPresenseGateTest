@@ -203,6 +203,41 @@ checkP03(($x->values['HumanEventCounter'] ?? null) === 1, 'Foreign rule ignored'
 $vehicle = str_replace('"ObjectType":"Human"', '"ObjectType":"Vehicle"', str_replace('"EventID":801', '"EventID":803', $event));
 rxP03($x, $vehicle);
 checkP03(($x->values['HumanEventCounter'] ?? null) === 1, 'Explicit nonhuman payload fails closed');
+checkP03(($x->values['EventAudit'] ?? '') !== '' &&
+    str_contains((string) $x->values['EventAudit'], 'RULE_OR_EVENTCODE_REJECTED') === false,
+    'Matched Vehicle event has a visible noncounting reason');
+
+// Simulate the Dahua IPC reusing EventID=801 for a completely new crossing
+// after the short duplicate transport window. Before v0.6.19 this would
+// be PERMANENTLY discarded, explaining "counter stuck at 3".
+$seen = json_decode((string) ($x->attributes['SeenEventKeys'] ?? '{}'), true);
+foreach ($seen as $key => $value) $seen[$key] = time() - 20;
+$x->attributes['SeenEventKeys'] = json_encode($seen);
+rxP03($x, $event);
+checkP03(($x->values['HumanEventCounter'] ?? null) === 2,
+    'Recycled Dahua EventID counts new Human Start after expiry');
+$lastHuman = (string) ($x->values['LastEvent'] ?? '');
+checkP03(str_contains((string) ($x->values['EventAudit'] ?? ''), 'HUMAN_START_COUNTED'),
+    'Recycled EventID reports actual Human count');
+rxP03($x, $event);
+checkP03(($x->values['HumanEventCounter'] ?? null) === 2,
+    'Immediate same EventID delivery still deduplicated');
+checkP03(str_contains((string) ($x->values['EventAudit'] ?? ''), 'DUPLICATE_WITHIN_3_SECONDS'),
+    'Duplicate rejection is explicitly visible');
+rxP03($x, $stopped);
+checkP03((string) ($x->values['LastEvent'] ?? '') === $lastHuman,
+    'Stop cannot overwrite last valid Human proof');
+checkP03(($x->values['HumanEventCounter'] ?? null) === 2,
+    'Stop never increments Human counter');
+
+// Same EventID can refer to different tracked persons (ObjectIDs).
+$otherObject = str_replace('"ObjectID":3', '"ObjectID":4', $event);
+rxP03($x, $otherObject);
+checkP03(($x->values['HumanEventCounter'] ?? null) === 3,
+    'Same EventID with different ObjectID counts independent Human Start');
+rxP03($x, $otherObject);
+checkP03(($x->values['HumanEventCounter'] ?? null) === 3,
+    'Repeat packet for second person remains deduplicated');
 
 $x->attributes['LastCameraRx'] = time() - 40;
 $x->attributes['LastSocketRestart'] = time() - 60;

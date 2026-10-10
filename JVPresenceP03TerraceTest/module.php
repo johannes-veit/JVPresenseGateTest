@@ -1640,6 +1640,35 @@ class JVPresenceP03MultiCamera extends IPSModule
                     }
                 }
 
+                $auditVar = $this->findAuxVariable($id, 'EventAudit');
+                if ($auditVar > 0) {
+                    $auditRaw = trim((string) GetValue($auditVar));
+                    $audit = json_decode($auditRaw, true);
+                    if (is_array($audit)) {
+                        $lines[] = 'Letztes Kamera-Ereignis: '
+                            . (string) ($audit['time'] ?? '?')
+                            . ' | ' . (string) ($audit['code'] ?? '?')
+                            . ' | ' . (string) ($audit['action'] ?? '?')
+                            . ' | Entscheidung=' . (string) ($audit['decision'] ?? '?');
+                        $lines[] = 'IVS Statistik: Events=' . (int) ($audit['eventsTotal'] ?? 0)
+                            . ', CrossRegion=' . (int) ($audit['crossRegionTotal'] ?? 0)
+                            . ', RegelTreffer=' . (int) ($audit['ruleMatches'] ?? 0)
+                            . ', RegelAbgewiesen=' . (int) ($audit['ruleRejected'] ?? 0)
+                            . ', Duplikate=' . (int) ($audit['dedupeRejected'] ?? 0)
+                            . ', Human=' . (int) ($audit['humanCount'] ?? 0);
+                        $lines[] = 'IVS ID: Regel=' . (string) ($audit['ruleName'] ?? '?')
+                            . ', RuleID=' . (string) ($audit['ruleId'] ?? '?')
+                            . ', EventID=' . (string) ($audit['eventId'] ?? '?')
+                            . ', ObjectID=' . (string) ($audit['objectId'] ?? '?');
+                    } else {
+                        $lines[] = 'IVS Ereignisdiagnose: '
+                            . ($auditRaw === '' ? 'Bisher kein Ereignis empfangen'
+                                               : 'Noch nicht auswertbar');
+                    }
+                } else {
+                    $lines[] = 'IVS Ereignisdiagnose: Variable noch nicht registriert.';
+                }
+
                 $diagnosticVar = $this->findAuxVariable($id, 'ObserverStatus');
                 if ($diagnosticVar > 0) {
                     $state = json_decode((string) GetValue($diagnosticVar), true);
