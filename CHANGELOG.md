@@ -1,3 +1,12 @@
+# v0.6.23 (Build 54) – IP-Symcon SDK: Registrierungen nur in Create()
+
+- **Auf der echten SymBox nach v0.6.22 ausgelöste PHP-Warnungen**: Alle zehn `RegisterAttribute*`-Aufrufe des Aux-Observers in `ApplyChanges()` sind unzulässig, weil diese Attribute bereits in `Create()` registriert wurden (IP-Symcon SDK: Attribute ausschließlich in Create). Die Wiederherstellung von Beobachtern schlug deshalb mit Warnungen aus der P03-Hauptinstanz fehl.
+- **Root-Cause-Fix:** Entfernt sämtliche `RegisterAttribute*`-Registrierungen aus `ApplyChanges()` beider betroffenen P03-Module. Persistente Attribute bleiben in `Create()` exakt einmal registriert, alle IDs/Werte werden beibehalten. Keine manuelle Attribut-Migration oder Neuerstellung nötig.
+- **Zusätzlicher echter SDK-Fehler:** P03-Hauptmodul hatte `RegisterTimer('P03MastHealthTimer')` fälschlich in `ApplyChanges()` wiederholt. Registrieren in `Create()`, im `ApplyChanges()` ausschließlich `SetTimerInterval`.
+- **Neue CI-Schutzmechanismen:** Strenge Symcon-Mock-Klasse wirft bei wiederholter `RegisterAttribute*`-/`RegisterTimer`-Registrierung einen Fehler; Regression führt `Create()`, `ApplyChanges()` und wiederholtes `ApplyChanges()` aus. Ein separater statischer Test prüft für Observer und Hauptmodul, dass jede Attribut-/Timerregistrierung genau einmal in `Create()` vorkommt und niemals in `ApplyChanges()`. Der bestehende CI-Vertrag zur Migration wurde korrigiert (frühere Version verlangte fälschlich genau das jetzt verbotene Muster).
+- **Wiederherstellung unverändert:** Der Button aus v0.6.22 repariert weiterhin nur die bereits vorhandenen Observer **#57215/#27938** mit bestehenden exklusiven Client Sockets **#17785/#55478**, nach Sicherheitsvorprüfung. Keine neuen Observer/Sockets, keine geänderten Dahua-Konfigurationen oder Fremdmodule.
+- Live-SymBox-Bestätigung steht noch aus. Bei Fehlschlag vollständigen Bericht aus Variable **#35115 – P03 Socket-Diagnose (kopierbar)** und die letzten Einträge aus **#53524 – Testprotokoll** anfordern. P03-Produktion weiterhin nicht freigegeben.
+
 # v0.6.22 (Build 53) – vorhandene P03-Observer mit Status 101 gezielt wiederherstellen
 
 - 10.10.2026 19:17 echte SymBox-Bestandsaufnahme: Observer **#57215 und #27938 existieren** mit korrekten exklusiven Client Sockets **#17785 / #55478** (aktiv 102). Auf den Observern sind jedoch die Properties `CameraHost` und `Role` leer, Instanzstatus jeweils 101. P03 konnte deshalb beide nicht mehr validieren und fand sie nicht.

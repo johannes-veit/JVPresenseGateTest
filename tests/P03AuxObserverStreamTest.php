@@ -70,6 +70,16 @@ class IPSModule
     public array $sent = [];
     public array $debug = [];
     private array $variableIds = [];
+    private array $registeredAttributes = [];
+    private array $registeredTimers = [];
+
+    private function assertUniqueRegistration(array &$registry, string $key, string $kind): void
+    {
+        if (isset($registry[$key])) {
+            throw new RuntimeException('Symcon WARNING duplicate ' . $kind . ': ' . $key);
+        }
+        $registry[$key] = true;
+    }
 
     public function Create(): void {}
     public function ApplyChanges(): void {}
@@ -89,9 +99,18 @@ class IPSModule
     protected function ReadPropertyInteger(string $k): int { return (int) ($this->properties[$k] ?? 0); }
     protected function ReadPropertyString(string $k): string { return (string) ($this->properties[$k] ?? ''); }
 
-    protected function RegisterAttributeBoolean(string $k, bool $v): void { $this->attributes[$k] ??= $v; }
-    protected function RegisterAttributeInteger(string $k, int $v): void { $this->attributes[$k] ??= $v; }
-    protected function RegisterAttributeString(string $k, string $v): void { $this->attributes[$k] ??= $v; }
+    protected function RegisterAttributeBoolean(string $k, bool $v): void {
+        $this->assertUniqueRegistration($this->registeredAttributes, $k, 'Attribute');
+        $this->attributes[$k] ??= $v;
+    }
+    protected function RegisterAttributeInteger(string $k, int $v): void {
+        $this->assertUniqueRegistration($this->registeredAttributes, $k, 'Attribute');
+        $this->attributes[$k] ??= $v;
+    }
+    protected function RegisterAttributeString(string $k, string $v): void {
+        $this->assertUniqueRegistration($this->registeredAttributes, $k, 'Attribute');
+        $this->attributes[$k] ??= $v;
+    }
     protected function ReadAttributeBoolean(string $k): bool { return (bool) ($this->attributes[$k] ?? false); }
     protected function ReadAttributeInteger(string $k): int { return (int) ($this->attributes[$k] ?? 0); }
     protected function ReadAttributeString(string $k): string { return (string) ($this->attributes[$k] ?? ''); }
@@ -121,7 +140,10 @@ class IPSModule
     protected function GetValue(string $k): mixed { return $this->values[$k] ?? null; }
     protected function GetIDForIdent(string $k): int { return $this->variableIds[$k] ?? 0; }
 
-    protected function RegisterTimer(string $k, int $interval, string $script): void { $this->timers[$k] ??= $interval; }
+    protected function RegisterTimer(string $k, int $interval, string $script): void {
+        $this->assertUniqueRegistration($this->registeredTimers, $k, 'Timer');
+        $this->timers[$k] ??= $interval;
+    }
     protected function SetTimerInterval(string $k, int $interval): void { $this->timers[$k] = $interval; }
     protected function SetBuffer(string $k, string $v): void { $this->buffers[$k] = $v; }
     protected function GetBuffer(string $k): string { return $this->buffers[$k] ?? ''; }
@@ -159,6 +181,8 @@ $x->properties['Role'] = 'JV_LEFT';
 $x->properties['RuleIndex'] = 3;
 $x->properties['RuleID'] = 4;
 $x->ApplyChanges();
+checkP03(count($x->attributes) >= 24,
+    'Observer Create registers all properties once; ApplyChanges adds no duplicate attributes');
 checkP03(($x->values['StreamOK'] ?? null) === false, 'No false-positive StreamOK before handshake');
 checkP03(($x->attributes['SocketRestartStage'] ?? null) === 1, 'Reconnection staged after ApplyChanges');
 $x->SocketRestartTimer(); // close
