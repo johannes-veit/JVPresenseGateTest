@@ -166,6 +166,19 @@ jobs:
           for token in ["RegisterVariableString('EventAudit'", "isFreshDelivery(", "recordEventAudit("]:
               if token not in observer:
                   raise SystemExit('P03 v0.6.19 event diagnosis/dedupe missing: '+token)
+          # A failed module-index search must never zero out the last
+          # stored P03 observer identity, and stored StreamOK must not
+          # make an orphaned observer count as healthy.
+          for token in [
+              "public function DiagnoseP03Ownership(): void",
+              "private function matchesTrustedP03Observer(",
+              "array_map('intval', IPS_GetInstanceList())",
+              "if ($jv > 0)",
+              "if ($work > 0)",
+              "if (!$this->p03AuxStreamsReady())"
+          ]:
+              if token not in main:
+                  raise SystemExit('P03 v0.6.21 lost-observer fail-safe missing: '+token)
           reconnect_obs=observer[observer.index("public function Reconnect"):observer.index("private function processEventData")]
           if "WriteAttributeInteger('SocketRestartStage', 0)" not in reconnect_obs:
               raise SystemExit('Aux observer Reconnect cannot recover a stale restart stage')
