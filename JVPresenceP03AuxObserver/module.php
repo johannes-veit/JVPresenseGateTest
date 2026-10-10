@@ -104,6 +104,12 @@ class JVPresenceP03AuxObserver extends IPSModule
 
     public function GetConfigurationForParent(): string
     {
+        $parentID = $this->getParentID();
+        if ($parentID > 0 && IPS_InstanceExists($parentID)
+            && !$this->hasExclusiveParentSocket($parentID)) {
+            // Never impose P03 host/port/open settings onto a foreign socket.
+            return '{}';
+        }
         return json_encode([
             'Host' => trim($this->ReadPropertyString('CameraHost')),
             'Port' => max(1, $this->ReadPropertyInteger('CameraPort')),
