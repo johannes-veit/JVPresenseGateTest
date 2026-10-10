@@ -52,6 +52,8 @@ jobs:
         run: php tests/P03ProofEngineTest.php
       - name: P03 auxiliary Human IVS rule tests
         run: php tests/P03AuxHumanRuleTest.php
+      - name: P03 observer HTTP/Digest/Eventstream integration simulation
+        run: php tests/P03AuxObserverStreamTest.php
       - name: P03 hardened module contract
         run: |
           python3 - <<'PY'
@@ -159,13 +161,15 @@ jobs:
           for token in ["$lastReq", "> 12", "scheduleSocketRestart(100)"]:
               if token not in watchdog_obs:
                   raise SystemExit('Aux observer watchdog misses handshake recovery: '+token)
-          if "ensureParentSocketConfigured()" not in apply_obs:
-              raise SystemExit('Aux observer does not deterministically configure its parent socket')
+          # Explicitly DO NOT apply parent changes from ApplyChanges:
+          # the documented RequireParent+GetConfigurationForParent lifecycle
+          # must own the configuration until staged Digest socket reconnect.
+          if "ensureParentSocketConfigured()" in observer:
+              raise SystemExit('Aux observer still applies Client Socket during ApplyChanges')
           if "ObserverStatus" not in observer or "refreshObserverStatus" not in observer:
               raise SystemExit('Aux observer diagnostics missing')
-          for token in ["IPS_GetProperty($parentID, 'Host')", "IPS_GetProperty($parentID, 'Port')", "IPS_GetProperty($parentID, 'Open')", "IPS_HasChanges($parentID)"]:
-              if token not in observer:
-                  raise SystemExit('Aux observer parent synchronization contract missing: '+token)
+          if "GetConfigurationForParent" not in observer or "scheduleSocketRestart(500)" not in apply_obs:
+              raise SystemExit('P03 dedicated Client Socket startup/reconnect missing')
 
           for token in ["ruleName", "cfgRuleId", "ruleIdUpper", "ruleIdLower"]:
               if token not in parser:
@@ -195,19 +199,23 @@ jobs:
               if ("IPS_SetProperty($instanceID, '" + token + "'") not in reconnect:
                   raise SystemExit('P03 audit does not synchronize aux observer property: '+token)
 
-          # Mast IPC Human AI must be explicitly activated and read back. A
-          # stale SmartMotionDetect=true display is not sufficient.
-          for token in [
-              "ensureP03AuxHumanAiEnabled",
+          # Read-only mast audit: never force unrelated Dahua SMD/MotionDetect
+          # or touch legacy terrace / AussenlichtAutomatik2.
+          if "readP03AuxHumanAiStatus" not in main:
+              raise SystemExit('Read-only Dahua SMD status helper missing')
+          if "inspectP03AuxHumanRuleReadOnly" not in main:
+              raise SystemExit('Read-only Dahua IVS checker missing')
+          if "ensureP03AuxHumanAiEnabled(" in main:
+              raise SystemExit('Dangerous SMD/MD auto-enabling function present')
+          for forbidden_write in [
               "SmartMotionDetect[0].Enable=true",
               "SmartMotionDetect[0].ObjectTypes.Human=true",
-              "SmartMotionDetect[0].Sensitivity=High",
-              "MotionDetect[0].Enable=true",
-              "MotionDetect-Readback nach Aktivierung nicht eindeutig TRUE",
-              "AI-IVS-Plan=Normal"
+              "MotionDetect[0].Enable=true"
           ]:
-              if token not in main:
-                  raise SystemExit('Missing explicit mast Human-AI prerequisite: '+token)
+              if forbidden_write in main:
+                  raise SystemExit('P03 audit still forces unrelated camera AI: ' + forbidden_write)
+          if "$legacyCleanup = $this->restoreLegacyTerraceP03Config();" in main:
+              raise SystemExit('Mast audit still modifies legacy terrace camera')
 
           # Existing aux instances must gain new variables on module update.
           apply=observer[observer.index("public function ApplyChanges"):observer.index("public function GetConfigurationForParent")]
