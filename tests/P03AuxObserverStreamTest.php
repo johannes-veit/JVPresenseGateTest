@@ -13,6 +13,8 @@ $GLOBALS['mockSocket'] = [
               'properties' => ['Host' => '', 'Port' => 80, 'Open' => false]],
 ];
 $GLOBALS['mockValueById'] = [];
+$GLOBALS['mockChildParent'] = 99001;
+$GLOBALS['mockForeignChild'] = false;
 $GLOBALS['mockCount'] = 0;
 
 function IPS_InstanceExists(int $id): bool
@@ -22,9 +24,16 @@ function IPS_InstanceExists(int $id): bool
 function IPS_GetInstance(int $id): array
 {
     if ($id === 57215) {
+        return ['ConnectionID' => $GLOBALS['mockChildParent'], 'InstanceStatus' => 102];
+    }
+    if ($id === 80808 && $GLOBALS['mockForeignChild']) {
         return ['ConnectionID' => 99001, 'InstanceStatus' => 102];
     }
     return $GLOBALS['mockSocket'][$id] ?? [];
+}
+function IPS_GetInstanceList(): array
+{
+    return $GLOBALS['mockForeignChild'] ? [57215, 99001, 80808] : [57215, 99001];
 }
 function IPS_GetProperty(int $id, string $key): mixed
 {
@@ -192,5 +201,27 @@ checkP03(($x->values['StreamOK'] ?? null) === false, 'Heartbeat loss marks strea
 checkP03(($x->attributes['SocketRestartStage'] ?? null) === 1, 'Heartbeat loss schedules reconnection');
 $x->MessageSink(time(), 99001, 10505, [104]);
 checkP03(($x->values['PersonDetected'] ?? null) === false, 'Closed parent clears PersonDetected');
+
+// A manually shared parent socket must never be closed or rewritten by P03.
+$GLOBALS['mockForeignChild'] = true;
+$GLOBALS['mockSocket'][99001]['properties']['Open'] = true;
+$x->Reconnect();
+$x->SocketRestartTimer();
+checkP03(($GLOBALS['mockSocket'][99001]['properties']['Open'] ?? false) === true,
+    'Foreign ALA2 socket is not closed by P03 restart');
+checkP03(($x->attributes['SocketRestartStage'] ?? -1) === 0,
+    'Shared parent aborts reconnect fail-closed');
+checkP03(str_contains((string) ($x->values['ObserverStatus'] ?? ''), 'geteilt'),
+    'Shared parent reports actionable diagnosis');
+
+// Missing parent must produce visible status; cannot be mistaken for live TCP.
+$GLOBALS['mockForeignChild'] = false;
+$GLOBALS['mockChildParent'] = 0;
+$x->Reconnect();
+$x->SocketRestartTimer();
+checkP03(str_contains((string) ($x->values['ObserverStatus'] ?? ''), 'Client Socket'),
+    'Missing parent has explicit diagnostic');
+checkP03(($x->values['StreamOK'] ?? true) === false,
+    'Missing parent never emits StreamOK=true');
 
 echo "P03 OBSERVER INTEGRATION SIMULATION PASSED ({$tests} assertions)\n";
