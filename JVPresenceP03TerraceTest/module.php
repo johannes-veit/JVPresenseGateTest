@@ -1564,9 +1564,9 @@ class JVPresenceP03MultiCamera extends IPSModule
                 $port = (int) $cfg['port'];
                 $user = (string) $cfg['username'];
                 $pass = (string) $cfg['password'];
-                $type = $this->genericCameraGet($host,$port,$user,$pass,
+                $type = $this->readIPC5442Camera($host,$port,$user,$pass,
                     '/cgi-bin/magicBox.cgi?action=getDeviceType');
-                $firmware = $this->genericCameraGet($host,$port,$user,$pass,
+                $firmware = $this->readIPC5442Camera($host,$port,$user,$pass,
                     '/cgi-bin/magicBox.cgi?action=getSoftwareVersion');
                 foreach ([['Modell',$type],['Firmware',$firmware]] as $item) {
                     $value = '<nicht lesbar>';
@@ -1582,7 +1582,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 }
 
                 foreach (['MotionDetect','SmartMotionDetect','VideoAnalyseGlobal','VideoAnalyseRule'] as $table) {
-                    $result = $this->genericCameraGet($host,$port,$user,$pass,
+                    $result = $this->readIPC5442Camera($host,$port,$user,$pass,
                         '/cgi-bin/configManager.cgi?action=getConfig&name=' . $table);
                     $lines[] = '';
                     $lines[] = '[' . $table . '] HTTP ' . (int) ($result['http'] ?? 0)
@@ -1607,6 +1607,17 @@ class JVPresenceP03MultiCamera extends IPSModule
             . ' keine Aussage, ob Kamera-AI, Erfassungsfläche, Zeitplan oder P03-Parser schuld ist.';
         $this->SetValue('P03IPC5442Audit', implode("\n", $lines));
         $this->ReloadForm();
+    }
+
+    /**
+     * Dedicated read transport for 5442 diagnostic. Single GET, no writes.
+     * Kept protected for an isolated test using simulated camera responses.
+     * @return array{ok:bool,error:string,http:int,body:string}
+     */
+    protected function readIPC5442Camera(
+        string $host, int $port, string $username, string $password, string $uri
+    ): array {
+        return $this->genericCameraGet($host,$port,$username,$password,$uri);
     }
 
     public function DiagnoseP03Connections(): void
