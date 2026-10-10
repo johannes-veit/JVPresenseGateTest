@@ -130,6 +130,8 @@ class SimulatedIPC5442Main extends JVPresenceP03MultiCamera
                 "MotionDetect[0].Enable=true\r\nMotionDetect[0].Region[0].Threshold=11\r\nMotionDetect[0].EventHandler.TimeSection[0][0]=1 00:00:00-23:59:59\r\n",
             str_contains($uri, 'name=SmartMotionDetect') =>
                 "SmartMotionDetect[0].Enable=true\r\nSmartMotionDetect[0].ObjectTypes.Human=true\r\nSmartMotionDetect[0].Sensitivity=High\r\nSmartMotionDetect[0].AdminPassword=never-log-this\r\n",
+            str_contains($uri, 'name=SmartEncode') =>
+                "table.SmartEncode[0].Enable=false\r\ntable.SmartEncode[0].Extra[0]=false\r\n",
             str_contains($uri, 'name=VideoAnalyseGlobal') =>
                 "VideoAnalyseGlobal[0].Scene.Type=Normal\r\n",
             str_contains($uri, 'name=VideoAnalyseModule') =>
@@ -185,9 +187,15 @@ verifyDiag(str_contains($modelReport, 'VideoAnalyseModule[0][0].Type=Normal')
     'live model resource candidates reported without falsely selecting one');
 verifyDiag(!str_contains($modelReport, 'NOT_FOR_LOGGING'),
     'camera secret in additional module resource table is redacted');
+verifyDiag(substr_count($modelReport,'SMART-CODEC STATUS: AUS')===2
+    && substr_count($modelReport,'SmartEncode[0].Enable=false')===2,
+    'both 5442 IPCs independently report SmartCodec main stream state');
+verifyDiag(count(array_filter($ipc->uris,static fn($uri) =>
+    str_contains($uri, 'name=SmartEncode')))===2,
+    'two exact read-only SmartEncode getConfig requests via SymBox');
 verifyDiag(!str_contains($modelReport,'never-log-this'),
     'camera security fields redacted');
-verifyDiag(count($ipc->uris)===14,'only seven GET requests for each camera (read only)');
+verifyDiag(count($ipc->uris)===16,'only eight GET requests for each camera (read only)');
 verifyDiag(count(array_filter($ipc->uris,static fn($uri)=>
     str_contains($uri,'setConfig') || str_contains($uri,'setProperty') || str_contains($uri,'reboot')))===0,
     'only GET diagnostic commands, no camera modifications');
