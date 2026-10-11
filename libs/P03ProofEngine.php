@@ -34,8 +34,9 @@ final class P03ProofEngine
      * Strict diagnostic-only evaluation of an optional TERRACE IVS event.
      *
      * The user's proven near-field camera event at 19:35:50 carried
-     * LeftToRight, RuleID=5 and Human; physical OUT mapping is still pending
-     * a controlled live test. RightToLeft is explicitly NOT an IN proof.
+     * LeftToRight, RuleID=5 and Human identify the tested OUT orientation.
+     * RightToLeft is NOT an OUT event; it can support optional IN fusion
+     * through P03TerraceInBackup, but never through this OUT-only helper.
      *
      * No transfer may be booked by this function. All caller state remains
      * unchanged. Only named, independently verified IVS rule identities
@@ -91,7 +92,7 @@ final class P03ProofEngine
         }
         if ($direction!=='LeftToRight') {
             return $rejected($direction==='RightToLeft'
-                ? 'OPPOSITE_DIRECTION_NEVER_IN'
+                ? 'OPPOSITE_DIRECTION_NOT_OUT'
                 : 'UNKNOWN_DIRECTION_NEVER_PROOF');
         }
         return [

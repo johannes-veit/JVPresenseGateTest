@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
 require_once dirname(__DIR__) . '/libs/P03ExistingIvsLines.php';
 require_once dirname(__DIR__) . '/libs/P03WorkStreetLearning.php';
 require_once dirname(__DIR__) . '/libs/P03TerraceInBackup.php';
+require_once dirname(__DIR__) . '/libs/P03TerraceOutBackup.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03MultiCamera extends IPSModule
@@ -130,6 +131,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeString('P03TerraceInSignals', '[]');
         $this->RegisterAttributeString('P03TerraceInSeenIVS', '[]');
         $this->RegisterAttributeInteger('P03TerraceInBackupCount', 0);
+        $this->RegisterAttributeInteger('P03TerraceOutBackupCount', 0);
+        $this->RegisterAttributeString('P03TerraceOutBackupLast', 'NOCH KEIN OUT-BACKUP');
+        $this->RegisterAttributeString('P03ThreeCameraLastDecision', 'UNGEPRUEFT');
         $this->RegisterAttributeInteger('AuxJVPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxJVEventCounterVarID', 0);
@@ -800,8 +804,12 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeString('P03TerraceInSignals', '[]');
         $this->baselineP03TerraceIVSHistory();
         $this->WriteAttributeInteger('P03TerraceInBackupCount', 0);
+        $this->WriteAttributeInteger('P03TerraceOutBackupCount', 0);
+        $this->WriteAttributeString('P03TerraceOutBackupLast', 'NOCH KEIN OUT-BACKUP');
+        $this->WriteAttributeString('P03ThreeCameraLastDecision','TEST BEREIT – Zwei-Mast Vorrang');
         $this->SetValue('P03TerraceInBackupStatus',
-            'TEST BEREIT: WORK_LEFT→TERRASSE bis 50 s, JV_LEFT→TERRASSE bis 15 s; IVS optional');
+            'TEST BEREIT: IN WORK→TERRASSE <=50 s oder JV→TERRASSE <=15 s;'
+            .' OUT nur Terrasse-IVS LeftToRight→JV <=15 s / WORK <=50 s');
         $this->WriteAttributeBoolean('TestActive', true);
         $this->SetValue('TestActive', true);
         // Baseline belongs to the fresh test, not old persistent observer
@@ -952,7 +960,10 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeString('P03TerraceInSignals', '[]');
         $this->WriteAttributeString('P03TerraceInSeenIVS', '[]');
         $this->WriteAttributeInteger('P03TerraceInBackupCount', 0);
-        $this->SetValue('P03TerraceInBackupStatus','IN-BACKUP AUS – neuen Gehtest starten');
+        $this->WriteAttributeInteger('P03TerraceOutBackupCount', 0);
+        $this->WriteAttributeString('P03TerraceOutBackupLast','NOCH KEIN OUT-BACKUP');
+        $this->WriteAttributeString('P03ThreeCameraLastDecision','AUS');
+        $this->SetValue('P03TerraceInBackupStatus','3-KAMERA-BACKUP AUS – neuen Gehtest starten');
         $this->WriteAttributeString('P03DirectionMap', '{}');
         $this->WriteAttributeInteger('P03VerifiedCount', 0);
         $this->WriteAttributeString('P03ActionCounts', '{"HOME_TO_LAGER":0,"LAGER_TO_HOME":0}');
@@ -2904,6 +2915,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                                 . ' | RuleId=' . (string)($cross['ruleIdLower'] ?? '?')
                                 . ' | StreamIndex=' . (string)($cross['streamIndex'] ?? '?')
                                 . ' | Objektklasse=' . substr((string)($cross['classification'] ?? 'NICHT_GELIEFERT'),0,32)
+                                . ' | Richtung=' . (string)($cross['direction'] ?? 'KAMERA_LIEFERT_KEINE')
                                 . ' | Soll-Treppe-ID=' . (string)($cross['expectedRuleId'] ?? '?')
                                 . ' | Entscheidung=' . (string)($cross['decision'] ?? '?')
                                 . ' | Grund=' . (string)($cross['rejectionReason'] ?? '?');
@@ -3094,10 +3106,12 @@ class JVPresenceP03MultiCamera extends IPSModule
                 $lines[]='TERRACE Human-CrossLine-Zaehler: '
                     .($counterID>0 ? (int)GetValue($counterID) : 'FEHLT')
                     .' | NUR TERRASSEN-DIAGNOSE';
-                $lines[]='TERRACE RICHTUNGSPOLITIK: nur HOME→LAGER (OUT) als kuenftige Alternative;'
-                    .' LAGER→HOME (IN) ausschliesslich WORK_LEFT→JV_LEFT.'
-                    .' LeftToRight ist vorlaeufig OUT, noch kein zertifizierter Richtungsnachweis.'
-                    .' TEST/PRODUKTION: Terrasse ausschliesslich SHADOW/DIAGNOSE.';
+                $lines[]='TERRACE RICHTUNG: LeftToRight=OUT, RightToLeft=IN'
+                    .' (aus realen Gehtests, mit Gegenrichtungs-Sperre).'
+                    .' SMD Person allein hat KEINE Richtung.'
+                    .' Alternative 2-von-3 nur im kontrollierten TEST;'
+                    .' normale Zweimastfolge stets vorrangig.'
+                    .' PRODUKTION: TERRASSE ALS BACKUP GESPERRT.';
                 $ivId=$this->findAuxVariable($terraceID,'LastIVSEvent');
                 if ($ivId>0) {
                     $last=json_decode((string)GetValue($ivId),true);
@@ -3142,7 +3156,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
 
         $lines[] = '';
-        $lines[] = '--- TERRASSE IN-BACKUP (AKTUELL NUR TEST) ---';
+        $lines[] = '--- DREI-KAMERA-FUSION (AKTUELL NUR TEST) ---';
         $lines[] = 'IN-BACKUP Zeitfenster: WORK_LEFT Treppe→TERRASSE Person <=50 s;'
             .' JV_LEFT Treppe→TERRASSE Person <=15 s. Terrassen-IVS RightToLeft'
             .' optional, LeftToRight kein IN.';
@@ -3150,8 +3164,17 @@ class JVPresenceP03MultiCamera extends IPSModule
             .$this->ReadAttributeInteger('P03TerraceInBackupCount');
         $lines[] = 'IN-BACKUP LETZTES ERGEBNIS: '
             .(string)$this->GetValue('P03TerraceInBackupStatus');
-        $lines[] = 'IN-BACKUP ist von Produktionsbuchungen und'
-            .' normalem Zwei-Mast-Proof-Count getrennt.';
+        $lines[]='OUT-BACKUP: Terrasse-IVS LeftToRight→JV_LEFT Treppe <=15 s'
+            .' oder →WORK_LEFT Treppe <=50 s; SMD ohne IVS unzulaessig.';
+        $lines[]='OUT-BACKUP TESTBESTAETIGUNGEN: '
+            .$this->ReadAttributeInteger('P03TerraceOutBackupCount');
+        $lines[]='OUT-BACKUP LETZTES ERGEBNIS: '
+            .$this->ReadAttributeString('P03TerraceOutBackupLast');
+        $lines[]='3CAM LETZTE ENTSCHEIDUNG: '
+            .$this->ReadAttributeString('P03ThreeCameraLastDecision');
+        $lines[]='3CAM TEST faellt erst nach Ablauf des regulaeren'
+            .' Zweimastfensters zurueck; keine produktive Zonenbuchung.'
+            .' Straßenlinie RuleID5 ist eine separate Bereichsgrenze.';
         $lines[] = '';
         $lines[] = '--- WORK_LEFT STRASSENLINIE – ARBEIT ↔ AUSSERHALB ---';
         $streetID=$this->ReadAttributeInteger('AuxWorkStreetIVSVarID');
@@ -3534,31 +3557,52 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
-        // The existing two-mast proof always takes priority. When it is
-        // incomplete, a short delayed terrace PERSON/IVS may corroborate a
-        // single mast stair-IVS as IN, but ONLY in a controlled test. It
-        // cannot increase standard P03 transfers or enable production.
+        // Full directional three-camera review is TEST-ONLY. The mandatory
+        // two-mast primary gate remains unchanged and takes precedence.
+        // - IN: one trusted mast stair Human then terrace SMD or Human RTL IVS.
+        // - OUT: terrace accepted Human LTR IVS then one mast stair Human.
+        // Opposite directions, more than one plausible path and a second
+        // possible mast pairing do NOT produce any supplemental proof.
         if ($state===P03ProofEngine::STATE_UNKNOWN
             && $this->ReadAttributeBoolean('TestActive')
+            && !$this->ReadAttributeBoolean('ProductionEnabled')
             && $this->p03TerraceInBackupReady()) {
             $signals=json_decode($this->ReadAttributeString('P03TerraceInSignals'),true);
-            $candidate=P03TerraceInBackup::evaluate(
-                $events,is_array($signals)?$signals:[],microtime(true));
-            if ($candidate['status']==='PENDING') {
+            $signals=is_array($signals)?$signals:[];
+            $now=microtime(true);
+            $in=P03TerraceInBackup::evaluate($events,$signals,$now,(float)$maxGap);
+            $out=P03TerraceOutBackup::evaluate($events,$signals,$now,(float)$maxGap);
+            $activeIn=in_array($in['status'],['PENDING','VERIFIED'],true);
+            $activeOut=in_array($out['status'],['PENDING','VERIFIED'],true);
+            if ($activeIn && $activeOut) {
+                $this->WriteAttributeString('P03ThreeCameraLastDecision',
+                    'WIDERSPRUCH – gleichzeitiger IN- und OUT-Ersatz');
                 $this->SetValue('P03TerraceInBackupStatus',
-                    'PENDING IN-Backup: '.$candidate['path']
-                    .' | Abstand '.$candidate['gap'].' s | wartet 5 s auf Mast-Gegenbeweis');
-                $this->SetTimerInterval('P03ProofTimer',500);
-                return;
-            }
-            if ($candidate['status']==='VERIFIED') {
-                $this->recordP03TerraceInBackupTest($candidate,$events,$signals);
+                    'WIDERSPRUCH: beide Richtungen plausibel – kein Zonenwechsel');
                 $this->SetTimerInterval('P03ProofTimer',0);
                 return;
             }
-            if ($candidate['status']==='CONTRADICTION') {
+            $action=$activeIn?'IN':($activeOut?'OUT':'');
+            $candidate=$activeIn?$in:$out;
+            if ($action!=='' && $candidate['status']==='PENDING') {
+                $message='PENDING '.$action.' 3CAM: '.$candidate['path']
+                    .' | Abstand '.$candidate['gap'].' s;'
+                    .' wartet auf vollstaendiges Zwei-Mast-Fenster ('.$maxGap.' s)';
+                $this->WriteAttributeString('P03ThreeCameraLastDecision',$message);
+                $this->SetValue('P03TerraceInBackupStatus',$message);
+                $this->SetTimerInterval('P03ProofTimer',500);
+                return;
+            }
+            if ($action!=='' && $candidate['status']==='VERIFIED') {
+                $this->recordP03TerraceBackupTest($candidate,$events,$signals,$action);
+                $this->SetTimerInterval('P03ProofTimer',0);
+                return;
+            }
+            if ($in['status']==='CONTRADICTION' || $out['status']==='CONTRADICTION') {
+                $this->WriteAttributeString('P03ThreeCameraLastDecision',
+                    'WIDERSPRUCH – alternative 3CAM-Zuordnung unklar');
                 $this->SetValue('P03TerraceInBackupStatus',
-                    'WIDERSPRUCH: mehrere mögliche Mast-Zuordnungen – kein IN-Beweis');
+                    'WIDERSPRUCH: mehrere Mast-/Terrassenkombinationen; kein Backup');
             }
         }
 
@@ -3571,6 +3615,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $proofId = '2cam:' . sprintf('%.6f', microtime(true));
             $pseudoCross = ['id' => $proofId, 'direction' => null, 'ts' => microtime(true)];
             $events = $this->commitP03VerifiedResult($events, $pseudoCross, $result, $proofId);
+            $this->markP03TerraceSignalSupportingPrimary($events,$result);
             $this->setP03HumanEvents($events);
             $this->checkP03CommissioningComplete();
             return;
@@ -3910,14 +3955,14 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeBoolean('TestActive',true);
         $this->SetValue('TestActive',true);
         $this->SetValue('P03TerraceInBackupStatus',
-            'IN-EINZELTEST AKTIV: nur einen vollstaendigen IN-Weg gehen.'
-            .' WORK_LEFT→Terrasse <=50 s oder JV_LEFT→Terrasse <=15 s.'
+            '3CAM-EINZELTEST AKTIV: EINEN vollstaendigen IN- oder OUT-Weg gehen.'
+            .' IN WORK→Terrasse <=50 s / JV→Terrasse <=15 s; OUT nur Terrasse-IVS LeftToRight.'
             .' Kein Ruecksetzen frueherer Mastbeweise.');
-        $this->appendProtocol('P03 IN-BACKUP EINZELTEST BEREIT:'
+        $this->appendProtocol('P03 3CAM IN/OUT-BACKUP EINZELTEST BEREIT:'
             .' vorhandene P03VerifiedCount/P03ActionCounts nicht veraendert,'
             .' keine Kamera neu verbunden, Produktion bleibt AUS.');
-        $this->setResult('IN-BACKUP EINZELTEST: genau einen Weg'
-            .' von der Werkstatt Richtung Haus bis zur Terrasse gehen.'
+        $this->setResult('3CAM IN/OUT-BACKUP EINZELTEST: einen Weg'
+            .' entweder HOME→LAGER oder LAGER→HOME gehen.'
             .' Danach Bericht #35115 senden.');
         $this->DiagnoseP03Connections(true);
     }
@@ -4096,9 +4141,64 @@ class JVPresenceP03MultiCamera extends IPSModule
             'ts'=>$ts,'used'=>false
         ];
         $signals=array_values(array_filter($signals,
-            static fn($s)=>$ts-(float)($s['ts']??0.0)<=70.0));
+            static fn($s)=>$ts-(float)($s['ts']??0.0)<=110.0));
         $this->WriteAttributeString('P03TerraceInSignals',
             json_encode(array_slice($signals,-24),JSON_UNESCAPED_UNICODE)?:'[]');
+    }
+
+    /**
+     * A normal 2-mast crossing is stronger evidence than any optional
+     * terrace observation. Display the third camera's supporting Human SMD
+     * or directional IVS if recorded near the JV side, and consume that
+     * OPTIONAL signal so another single mast hit cannot reuse it for a
+     * spurious second transfer. No zone/counter mutation here.
+     *
+     * @param array<int,array<string,mixed>> $events
+     * @param array<string,mixed> $proof
+     */
+    private function markP03TerraceSignalSupportingPrimary(
+        array $events,array $proof
+    ):void {
+        if (!$this->ReadAttributeBoolean('TestActive')
+            || $this->ReadAttributeBoolean('ProductionEnabled')) return;
+        $used=$proof['usedEventIds']??[];
+        $used=is_array($used)?$used:[];
+        $jvAt=null;
+        foreach($events as $e) {
+            if (($e['source']??'')==='JV_LEFT'
+                && in_array((string)($e['id']??''),$used,true)) {
+                $jvAt=(float)($e['ts']??0.0);
+                break;
+            }
+        }
+        if ($jvAt===null||$jvAt<=0.0) return;
+        $signals=json_decode($this->ReadAttributeString('P03TerraceInSignals'),true);
+        if (!is_array($signals)) return;
+        $expected=($proof['action']??'')===P03ProofEngine::ACTION_HOME_TO_LAGER
+            ? 'LeftToRight':'RightToLeft';
+        $label=$expected==='LeftToRight'?'OUT':'IN';
+        $seen=[];
+        foreach($signals as &$signal) {
+            if (!is_array($signal) || !empty($signal['used'])
+                || abs((float)($signal['ts']??0.0)-$jvAt)>15.0) continue;
+            $direction=$signal['direction']??null;
+            $seen[]=$direction===null
+                ? 'SMD Human ohne Richtungsangabe'
+                : ($direction===$expected
+                    ? 'IVS '.(string)$direction.' passt zu '.$label
+                    : 'WARNUNG: IVS '.(string)$direction.' widerspricht '.$label);
+            $signal['used']=true;
+            $signal['usedBy']='2CAM_PRIMARY_SUPPORT';
+        }
+        unset($signal);
+        if ($seen!==[]) {
+            $this->WriteAttributeString('P03TerraceInSignals',
+                json_encode($signals,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'[]');
+        }
+        $this->WriteAttributeString('P03ThreeCameraLastDecision',
+            '2CAM PRIMARY '.$label.' BESTAETIGT | Terrasse: '
+            .($seen===[]?'kein zeitnahes Zusatzsignal':implode(' / ',$seen))
+            .' | Terrasse hat keinen Einfluss auf die Primaerbuchung');
     }
 
     /**
@@ -4110,8 +4210,8 @@ class JVPresenceP03MultiCamera extends IPSModule
      * @param array<int,array<string,mixed>> $mast
      * @param array<int,array<string,mixed>> $terrace
      */
-    private function recordP03TerraceInBackupTest(
-        array $result,array $mast,array $terrace
+    private function recordP03TerraceBackupTest(
+        array $result,array $mast,array $terrace,string $action
     ): void {
         if (!$this->ReadAttributeBoolean('TestActive')
             || $this->ReadAttributeBoolean('ProductionEnabled')) return;
@@ -4129,13 +4229,22 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->setP03HumanEvents($mast);
         $this->WriteAttributeString('P03TerraceInSignals',
             json_encode(array_slice($terrace,-24),JSON_UNESCAPED_UNICODE)?:'[]');
-        $count=$this->ReadAttributeInteger('P03TerraceInBackupCount')+1;
-        $this->WriteAttributeInteger('P03TerraceInBackupCount',$count);
-        $this->SetValue('P03ProofState','IN-BACKUP NUR TEST BESTAETIGT – kein Zonenwechsel');
-        $message='IN-BACKUP TEST BESTAETIGT #'.$count.': '
+        if (!in_array($action,['IN','OUT'],true)) return;
+        $counter=$action==='IN'?'P03TerraceInBackupCount':'P03TerraceOutBackupCount';
+        $count=$this->ReadAttributeInteger($counter)+1;
+        $this->WriteAttributeInteger($counter,$count);
+        $this->SetValue('P03ProofState',
+            $action.'-BACKUP NUR TEST BESTAETIGT – kein Zonenwechsel');
+        $message=$action.'-BACKUP TEST BESTAETIGT #'.$count.': '
             .(string)$result['path'].' | Kameraabstand '
-            .(string)$result['gap'].' s | TERRASSEN-IVS OPTIONAL; '
-            .'KEIN Produktions-/Zonenwechsel';
+            .(string)$result['gap'].' s'
+            .($action==='IN'?' | TERRASSEN-IVS OPTIONAL'
+                :' | TERRASSEN-IVS LeftToRight GEPRUEFT')
+            .' | KEIN Produktions-/Zonenwechsel';
+        $this->WriteAttributeString('P03ThreeCameraLastDecision',$message);
+        if ($action==='OUT') {
+            $this->WriteAttributeString('P03TerraceOutBackupLast',$message);
+        }
         $this->SetValue('P03TerraceInBackupStatus',$message);
         $this->appendProtocol('P03 '.$message);
     }
