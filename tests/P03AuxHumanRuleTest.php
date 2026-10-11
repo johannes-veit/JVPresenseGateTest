@@ -44,6 +44,8 @@ $nativeTemplate = [
     'Config' => [
         'Action' => 'Cross',
         'Direction' => 'Enter',
+        'MinDuration' => 6,
+        'Sensitivity' => 5,
         'DetectRegion' => [[100,100],[7000,100],[7000,7000],[100,7000]],
         'NativeOnly' => ['Keep' => true],
         'SizeFilter' => [
@@ -76,6 +78,10 @@ expectAux(($rule['ObjectTypes'] ?? null) === ['Human'], 'Human-only object filte
 expectAux(($rule['Config']['DetectRegion'] ?? null) === P03AuxHumanRule::REGION, 'fixed broad region');
 expectAux(($rule['Config']['Action'] ?? null) === 'Appear', 'native string Action becomes Appear');
 expectAux(($rule['Config']['Direction'] ?? null) === 'Both', 'direction is non-restrictive');
+expectAux(($rule['Config']['MinDuration'] ?? null) === 1,
+    'real IPC5442 template 6-second minimum replaced by 1-second brief human detection');
+expectAux(($rule['Config']['Sensitivity'] ?? null) === 8,
+    'real IPC5442 template sensitivity 5 raised to 8 on P03-owned rule only');
 expectAux(($rule['Config']['NativeOnly']['Keep'] ?? null) === true, 'unknown Config fields preserved');
 expectAux(($rule['FirmwarePrivate']['Mode'] ?? null) === 17, 'unknown rule fields preserved');
 expectAux(($rule['TimeSection'] ?? null) === $nativeTemplate['TimeSection'], 'native schedule preserved');
@@ -90,6 +96,20 @@ expectAux(($rule['EventHandler']['VoiceEnable'] ?? true) === false, 'voice side 
 expectAux(($rule['EventHandler']['TrigerHttp']['TrigerHttpEnable'] ?? true) === false, 'HTTP side effect disabled');
 expectAux(($rule['EventHandler']['KeepUnrelated'] ?? null) === 123, 'unrelated handler fields preserved');
 expectAux(P03AuxHumanRule::matches($rule, 'P03_JV_LEFT_HUMAN'), 'valid native-template rule matches');
+$oldSlowRule = $rule;
+$oldSlowRule['Config']['MinDuration'] = 6;
+$oldSlowRule['Config']['Sensitivity'] = 5;
+expectAux(!P03AuxHumanRule::matches($oldSlowRule, 'P03_JV_LEFT_HUMAN'),
+    'previous slow P03 rule must fail readback match and trigger controlled repair');
+$slowerOnly = $rule;
+$slowerOnly['Config']['MinDuration'] = 6;
+expectAux(!P03AuxHumanRule::matches($slowerOnly, 'P03_JV_LEFT_HUMAN'),
+    '6-second dwell alone is not accepted for short transit');
+$weakOnly = $rule;
+$weakOnly['Config']['Sensitivity'] = 5;
+expectAux(!P03AuxHumanRule::matches($weakOnly, 'P03_JV_LEFT_HUMAN'),
+    'inherited low sensitivity alone is not accepted');
+
 $legacyDisabled = $rule;
 $legacyDisabled['EventHandler']['MessageEnable'] = false;
 expectAux(!P03AuxHumanRule::matches($legacyDisabled, 'P03_JV_LEFT_HUMAN'),
