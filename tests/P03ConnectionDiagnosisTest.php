@@ -412,6 +412,33 @@ verifyDiag(count($records)===2,
     'identical same-source counter event ID is not duplicated in proof ledger');
 verifyDiag((int)($counterMain->attributes['P03VerifiedCount']??0)===0,
     'same mast camera twice must NEVER authorize HOME/LAGER transition');
+// Regression: queued VM_UPDATE notifications must use their OWN counter
+// snapshots. A late GetValue() already holds 12 while messages for 6 and
+// 7 are being dispatched; both are separate positive Human observations.
+$counterMain->attributes['P03HumanEvents']='[]';
+$counterMain->attributes['AuxJVLastSeenHumanCounter']=5;
+$GLOBALS['variables'][42076]=12;
+$counterMain->MessageSink(100,42076,10603,[6,true]);
+$counterMain->MessageSink(101,42076,10603,[7,true]);
+$queued=json_decode((string)($counterMain->attributes['P03HumanEvents']??'[]'),true);
+verifyDiag(is_array($queued) && count($queued)===2
+    && ($queued[0]['id']??'')==='JV_LEFT:counter:6'
+    && ($queued[1]['id']??'')==='JV_LEFT:counter:7',
+    'queued VM_UPDATE snapshots 6 and 7 remain distinct although live GetValue already reads 12');
+verifyDiag($counterMain->attributes['AuxJVLastSeenHumanCounter']===7,
+    'accepted counter baseline follows notification value rather than future live state');
+$counterMain->MessageSink(102,42076,10603,[7,true]);
+$queued=json_decode((string)($counterMain->attributes['P03HumanEvents']??'[]'),true);
+verifyDiag(count($queued)===2,
+    'replayed VM_UPDATE snapshot is not a second Human event');
+$counterMain->MessageSink(103,42076,10603,[0,true]);
+verifyDiag($counterMain->attributes['P03HumanEvents']==='[]',
+    'queued counter reset clears old proof without creating an artificial crossing');
+$counterMain->MessageSink(104,42076,10603,[1,true]);
+$queued=json_decode((string)($counterMain->attributes['P03HumanEvents']??'[]'),true);
+verifyDiag(count($queued)===1 && ($queued[0]['id']??'')==='JV_LEFT:counter:1',
+    'new positive edge after an actual counter reset is accepted exactly once');
+
 // Raw actor lost stream: cancel remaining pending proof and both camera order.
 $counterMain->attributes['P03HumanEvents']='[{"id":"pending","source":"JV_LEFT","ts":1}]';
 $counterMain->attributes['AuxJVPersonVarID']=55806;
