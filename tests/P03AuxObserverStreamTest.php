@@ -485,4 +485,27 @@ rxP03($wire,"Code=SmartMotionHuman;action=Start;index=0;data="
 checkP03((int)$wire->values['HumanEventCounter']===$counter,
     'explicit SMD Vehicle classification fails closed');
 
+// 5442 VideoMotionInfo may carry an object-class hint that was formerly
+// invisible to P03 after the next generic motion overwrote EventAudit.
+// Expose it explicitly but NEVER promote generic motion to zone evidence.
+$prior=(int)($wire->values['HumanEventCounter'] ?? 0);
+rxP03($wire,"Code=VideoMotionInfo;action=State;index=0;data="
+    . "{\"Object\":{\"ObjectType\":\"Human\"},\"EventID\":811}\r\n");
+checkP03((int)($wire->values['HumanEventCounter'] ?? 0)===$prior,
+    'generic VideoMotionInfo with embedded Human label remains diagnostic-only');
+checkP03((int)($wire->attributes['GenericHumanHintCount'] ?? 0)===1
+    && str_contains((string)($wire->values['HumanHint']??''),'Human'),
+    'explicit Human class in generic Dahua event is visible independently of proof counter');
+$codes=json_decode((string)($wire->attributes['ObservedCodeCounts']??'{}'),true);
+checkP03(is_array($codes) && ($codes['VideoMotionInfo']??0)>=2
+    && ($codes['SmartMotionHuman']??0)>=1,
+    'persistent per-code histogram distinguishes ordinary motion from native SMD Human');
+rxP03($wire,"Code=VideoMotionInfo;action=State;index=0;data="
+    . "{\"Object\":{\"ObjectType\":\"Vehicle\"},\"EventID\":812}\r\n");
+checkP03((int)($wire->attributes['GenericHumanHintCount'] ?? 0)===1,
+    'nonhuman Vehicle MotionInfo never creates a Human candidate');
+$wire->HealthTick();
+checkP03((int)($wire->attributes['GenericHumanHintCount'] ?? 0)===1,
+    'health check does not erase persistent event-code/human-hint diagnostics');
+
 echo "P03 OBSERVER INTEGRATION SIMULATION PASSED ({$tests} assertions)\n";
