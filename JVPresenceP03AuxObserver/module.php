@@ -80,14 +80,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
         $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
-        $this->RegisterVariableString('LastEvent', 'Letztes Personenerkennungs-Ereignis (SMD/IVS)', '', 30);
         $this->RegisterVariableString('LastIVSEvent', 'Letzte CrossLine-Ereignisse und Ablehnungsgründe', '', 40);
-        $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
-        $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
-        $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
-        $this->RegisterVariableString('HumanHint', 'P03 Personhinweis in anderem Dahua-Ereignis (nur Diagnose)', '', 66);
-        $this->RegisterVariableString('OnvifStatus', 'ONVIF PullPoint – eigener Ereignisweg', '', 67);
-        $this->RegisterVariableString('OnvifRecentEvents', 'ONVIF letzte Ereignisse (Metadaten)', '', 68);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03AUX_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03AUX_SocketRestartTimer($_IPS["TARGET"]);');
@@ -98,9 +91,42 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RequireParent(self::CLIENT_SOCKET_GUID);
     }
 
+    /** Restricted, read-only diagnostic API; avoids seven continuously allocated status variables. */
+    public function ReadP03Diagnostic(string $ident): string
+    {
+        if ($ident === 'OnvifRecentEvents') {
+            return $this->ReadAttributeString('OnvifRecentEvents');
+        }
+        if (in_array($ident, [
+            'LastEvent', 'ObserverStatus', 'EventAudit', 'WireProbe',
+            'HumanHint', 'OnvifStatus'
+        ], true)) {
+            return $this->GetBuffer('P03Diag_' . $ident);
+        }
+        return '';
+    }
+
     public function ApplyChanges(): void
     {
         parent::ApplyChanges();
+
+        // Retire obsolete Symcon status variables. Internal state is now
+        // held in module attributes/buffers; the essential observer counters,
+        // live streams and existing P03 report/protocol IDs remain untouched.
+        $obsolete = ['LastEvent','ObserverStatus','EventAudit','WireProbe','HumanHint','OnvifStatus','OnvifRecentEvents'];
+        foreach (IPS_GetChildrenIDs($this->InstanceID) as $childID) {
+            $object = IPS_GetObject($childID);
+            $ident = (string) ($object['ObjectIdent'] ?? '');
+            if ((int) ($object['ObjectType'] ?? -1) !== 2 || !in_array($ident, $obsolete, true)) {
+                continue;
+            }
+            if (count(IPS_GetChildrenIDs($childID)) > 0) {
+                $this->SendDebug('P03VariableMigration', 'Variable mit Unterobjekten nicht gelöscht: ' . $ident, 0);
+                continue;
+            }
+            $this->UnregisterVariable($ident);
+        }
+
 
         // A migrated or manually disconnected observer may have no Parent.
         // Symcon documents RequireParent as creating a NEW dedicated socket,
@@ -119,29 +145,12 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
         $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
-        $this->RegisterVariableString('LastEvent', 'Letztes Personenerkennungs-Ereignis (SMD/IVS)', '', 30);
         $this->RegisterVariableString('LastIVSEvent', 'Letzte CrossLine-Ereignisse und Ablehnungsgründe', '', 40);
-        $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
-        $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
-        $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
-        $this->RegisterVariableString('HumanHint', 'P03 Personhinweis in anderem Dahua-Ereignis (nur Diagnose)', '', 66);
-        $this->RegisterVariableString('OnvifStatus', 'ONVIF PullPoint – eigener Ereignisweg', '', 67);
-        $this->RegisterVariableString('OnvifRecentEvents', 'ONVIF letzte Ereignisse (Metadaten)', '', 68);
 
-        // Keep actual diagnostics intact for #35115 while hiding
-        // redundant observer variables in the Symcon object tree.
-        // Do not delete IDs, which may be referenced by existing automation.
-        if (function_exists('IPS_SetHidden')) {
-            foreach ([
-                'LastEvent', 'LastIVSEvent', 'ObserverStatus',
-                'EventAudit', 'WireProbe', 'HumanHint',
-                'OnvifStatus', 'OnvifRecentEvents'
-            ] as $internalIdent) {
-                $objectId = $this->GetIDForIdent($internalIdent);
-                if ($objectId > 0) {
-                    IPS_SetHidden($objectId, true);
-                }
-            }
+        // IVS history is a transport signal, not a user interface variable.
+        $ivs = $this->GetIDForIdent('LastIVSEvent');
+        if ($ivs > 0 && !IPS_GetObject($ivs)['ObjectIsHidden']) {
+            IPS_SetHidden($ivs, true);
         }
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
@@ -187,9 +196,10 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->WriteAttributeInteger($diagnosticCounter, 0);
         }
         $this->WriteAttributeString('ObservedCodeCounts', '{}');
-        foreach (['WireProbe', 'EventAudit', 'LastEvent', 'LastIVSEvent', 'HumanHint'] as $diagnosticIdent) {
-            $this->SetValue($diagnosticIdent, '');
+        foreach (['WireProbe', 'EventAudit', 'LastEvent', 'HumanHint'] as $diagnosticIdent) {
+            $this->SetBuffer('P03Diag_' . $diagnosticIdent, '');
         }
+        $this->SetValue('LastIVSEvent', '');
         $this->SetValue('PersonDetected', false);
         $this->SetValue('StreamOK', false);
         // ApplyChanges is a new connection epoch. Never keep a stale
@@ -206,8 +216,8 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->WriteAttributeInteger('OnvifEventCount',0);
         $this->WriteAttributeInteger('OnvifHumanStairCount',0);
         $this->WriteAttributeString('OnvifLastStatus','Noch keine ONVIF-Verbindung seit ApplyChanges');
-        $this->SetValue('OnvifRecentEvents','[]');
-        $this->SetValue('OnvifStatus','Noch kein ONVIF-Abruf seit ApplyChanges');
+
+        $this->SetBuffer('P03Diag_OnvifStatus','Noch kein ONVIF-Abruf seit ApplyChanges');
 
         // Proven Dahua lifecycle from AussenlichtAutomatik2/v0.6.12:
         // RequireParent()+GetConfigurationForParent() owns the parent config.
@@ -249,7 +259,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             );
             $status=(string)($result['status']??'UNKNOWN');
             $this->WriteAttributeString('OnvifLastStatus',$status);
-            $this->SetValue('OnvifStatus',date('Y-m-d H:i:s').' '.$status
+            $this->SetBuffer('P03Diag_OnvifStatus',date('Y-m-d H:i:s').' '.$status
                 .' | RX='.$this->ReadAttributeInteger('OnvifEventCount')
                 .' | Treppen-Menschen-Kandidaten='.$this->ReadAttributeInteger('OnvifHumanStairCount'));
             if (empty($result['ok'])) {
@@ -337,8 +347,8 @@ class JVPresenceP03AuxObserver extends IPSModule
                 json_encode($correlation,JSON_UNESCAPED_UNICODE)?:'{"classes":{},"crossings":{}}');
             $encoded=json_encode($recent,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'[]';
             $this->WriteAttributeString('OnvifRecentEvents',$encoded);
-            $this->SetValue('OnvifRecentEvents',$encoded);
-            $this->SetValue('OnvifStatus',date('Y-m-d H:i:s').' '.$status
+
+            $this->SetBuffer('P03Diag_OnvifStatus',date('Y-m-d H:i:s').' '.$status
                 .' | RX='.$this->ReadAttributeInteger('OnvifEventCount')
                 .' | Treppen-Menschen-Kandidaten='.$this->ReadAttributeInteger('OnvifHumanStairCount')
                 .' | KEIN ZONENBEWEIS');
@@ -346,7 +356,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->WriteAttributeString('OnvifSubscriptionURL','');
             $this->WriteAttributeInteger('OnvifSubscriptionUntil',0);
             $this->WriteAttributeInteger('OnvifNextAttemptAt',time()+180);
-            $this->SetValue('OnvifStatus',date('Y-m-d H:i:s')
+            $this->SetBuffer('P03Diag_OnvifStatus',date('Y-m-d H:i:s')
                 .' ONVIF Ausnahme '.get_class($e).' – '.
                 substr((string)$e->getMessage(),0,120));
         } finally {
@@ -856,7 +866,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                 if (in_array($cls, ['human','person','pedestrian'], true)) {
                     $this->WriteAttributeInteger('GenericHumanHintCount',
                         $this->ReadAttributeInteger('GenericHumanHintCount') + 1);
-                    $this->SetValue('HumanHint', json_encode([
+                    $this->SetBuffer('P03Diag_HumanHint', json_encode([
                         'time'=>date('H:i:s'),
                         'code'=>$code,'action'=>$action,
                         'classification'=>$cls,
@@ -1071,7 +1081,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         } else {
             $summary['source']=$source;
         }
-        $this->SetValue('LastEvent',json_encode($summary,
+        $this->SetBuffer('P03Diag_LastEvent',json_encode($summary,
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
         $id=$this->GetIDForIdent('HumanEventCounter');
         if ($id>0 && IPS_VariableExists($id)) {
@@ -1139,7 +1149,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                         // These 5442 cameras send up to 10 VideoMotionInfo
                         // messages PER SECOND, even without Human detection.
                         // No need to rewrite Symcon's WireProbe each time.
-                        $this->SetValue('WireProbe', date('H:i:s') . ' ' . $safeHeader
+                        $this->SetBuffer('P03Diag_WireProbe', date('H:i:s') . ' ' . $safeHeader
                             . ' | Heartbeats=' . $this->ReadAttributeInteger('WireHeartbeatCount'));
                         if ($generic) {
                             $this->WriteAttributeInteger('LastGenericWireProbeAt', $now);
@@ -1185,7 +1195,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             'dedupeRejected' => $this->ReadAttributeInteger('DedupeRejectCount'),
             'humanCount' => (int) $this->GetValue('HumanEventCounter')
         ];
-        $this->SetValue('EventAudit', json_encode($summary,
+        $this->SetBuffer('P03Diag_EventAudit', json_encode($summary,
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
         // Preserve the LAST CrossLine event independently of subsequent
         // RtspSessionDisconnect/VideoMotion/heartbeat diagnostics. In v0.7.9
@@ -1388,7 +1398,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             'lastHumanProofCode' => $this->ReadAttributeString('LastHumanProofCode')
         ];
         $json = json_encode($status, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $this->SetValue('ObserverStatus', $json === false ? '' : $json);
+        $this->SetBuffer('P03Diag_ObserverStatus', $json === false ? '' : $json);
     }
 
     /**

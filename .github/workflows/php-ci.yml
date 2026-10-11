@@ -74,6 +74,8 @@ jobs:
         run: php tests/P03ConnectionDiagnosisTest.php
       - name: P03 Symcon Create and ApplyChanges registration safety
         run: php tests/P03RegistrationLifecycleTest.php
+      - name: P03 physical variable budget and migration safety
+        run: php tests/P03VariableBudgetTest.php
       - name: Dahua IPC-HFW5442E-ZE 2.840 model config and wire security unit
         run: php tests/P03IPC5442AuditTest.php
       - name: P03 dedicated Client Socket creation/connection simulation
@@ -184,7 +186,7 @@ jobs:
                   raise SystemExit('P03 audit attribute missing in legal Create registration: '+ident)
               if ("RegisterAttributeInteger('"+ident+"', 0)") in apply_obs:
                   raise SystemExit('Illegal duplicate observer attribute registration in ApplyChanges: '+ident)
-          for token in ["RegisterVariableString('EventAudit'", "isFreshDelivery(", "recordEventAudit("]:
+          for token in ["SetBuffer('P03Diag_EventAudit'", "isFreshDelivery(", "recordEventAudit("]:
               if token not in observer:
                   raise SystemExit('P03 v0.6.19 event diagnosis/dedupe missing: '+token)
           for token in [

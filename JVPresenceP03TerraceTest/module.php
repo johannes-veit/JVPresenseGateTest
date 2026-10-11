@@ -184,31 +184,14 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeString('P03TestWireTraceBaseline', '{}');
         $this->RegisterAttributeInteger('LastP03AutomaticDiagnosticAt', 0);
 
-        $this->RegisterVariableString('PresenceSystemState', 'Presence Systemstatus', '', 1);
-        $this->RegisterVariableString('HouseStatus', 'Hausstatus', '', 2);
-        $this->RegisterVariableString('PresentPersons', 'Anwesende Personen', '', 3);
-        $this->RegisterVariableString('PresenceLastEvent', 'Letztes Presence-Ereignis', '', 4);
+        $this->RegisterAttributeInteger('P03CrossingCount', 0);
         $this->RegisterVariableString('P03CameraStatus', 'P03 Kamerastatus', '', 5);
         $this->RegisterVariableString('P03ProofState', 'P03 Beweisstatus', '', 6);
-        $this->RegisterVariableString('P03LastProof', 'P03 letzter Beweis', '', 7);
         $this->RegisterVariableInteger('P03VerifiedTransfers', 'P03 verifizierte Übergänge', '', 8);
-        $this->RegisterVariableString('P03DirectionStatus', 'P03 Richtungslernen', '', 9);
 
-        $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 10);
-        $this->RegisterVariableBoolean('Ready', 'Test bereit', '~Switch', 20);
-        $this->RegisterVariableBoolean('TestActive', 'Test läuft', '~Switch', 30);
-        $this->RegisterVariableInteger('CrossingCount', 'Grenzübertritte erkannt', '', 40);
         $this->RegisterVariableString('Result', 'Ergebnis / Nächster Schritt', '', 50);
-        $this->RegisterVariableString('LastEvent', 'Letztes IVS-Ereignis', '', 60);
         $this->RegisterVariableString('Protocol', 'Testprotokoll', '', 70);
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
-        $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
-        $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
-        $this->RegisterVariableString('P03OwnershipAudit', 'P03 Instanz-/Observer-Bestandsprüfung (nur lesen)', '', 78);
-        $this->RegisterVariableString('P03TerraceMonitor', 'P03 Terrasse: IVS-Zusatzsensor', '', 79);
-        $this->RegisterVariableString('P03StreetDirectionStatus', 'P03 Straße: Richtungslernen', '', 80);
-        $this->RegisterVariableString('P03WorkBoundaryStatus', 'P03 Arbeit / außerhalb – letzter Straßenübertritt', '', 81);
-        $this->RegisterVariableString('P03TerraceInBackupStatus', 'P03 Terrasse – IN-Backup (TEST)', '', 82);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03MC_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03MC_SocketRestartTimer($_IPS["TARGET"]);');
@@ -222,37 +205,30 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         parent::ApplyChanges();
 
+        // Retire obsolete Symcon status variables. Internal state is now
+        // held in module attributes/buffers; the essential observer counters,
+        // live streams and existing P03 report/protocol IDs remain untouched.
+        $obsolete = ['PresenceSystemState','HouseStatus','PresentPersons','PresenceLastEvent','P03LastProof','P03DirectionStatus','StreamOK','Ready','TestActive','CrossingCount','LastEvent','P03MastHealth','P03IPC5442Audit','P03OwnershipAudit','P03TerraceMonitor','P03StreetDirectionStatus','P03WorkBoundaryStatus','P03TerraceInBackupStatus'];
+        foreach (IPS_GetChildrenIDs($this->InstanceID) as $childID) {
+            $object = IPS_GetObject($childID);
+            $ident = (string) ($object['ObjectIdent'] ?? '');
+            if ((int) ($object['ObjectType'] ?? -1) !== 2 || !in_array($ident, $obsolete, true)) {
+                continue;
+            }
+            if (count(IPS_GetChildrenIDs($childID)) > 0) {
+                $this->SendDebug('P03VariableMigration', 'Variable mit Unterobjekten nicht gelöscht: ' . $ident, 0);
+                continue;
+            }
+            $this->UnregisterVariable($ident);
+        }
+
+
         // Persistent P03 attributes are registered in Create() only.
         // IP-Symcon runs Create() on instantiation/module reload; repeating
         // RegisterAttribute* in ApplyChanges is forbidden and caused warnings.
 
         // Add the diagnosis variable to P03 instances installed before 0.6.15.
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
-        $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
-        $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
-        $this->RegisterVariableString('P03OwnershipAudit', 'P03 Instanz-/Observer-Bestandsprüfung (nur lesen)', '', 78);
-        $this->RegisterVariableString('P03TerraceMonitor', 'P03 Terrasse: IVS-Zusatzsensor', '', 79);
-        $this->RegisterVariableString('P03StreetDirectionStatus', 'P03 Straße: Richtungslernen', '', 80);
-        $this->RegisterVariableString('P03WorkBoundaryStatus', 'P03 Arbeit / außerhalb – letzter Straßenübertritt', '', 81);
-        // Simplify the visible Symcon instance tree without destroying
-        // existing object IDs, links, archival history, or plugin consumers.
-        // The essential #35115/#53524 diagnostic IDs remain visible.
-        if (function_exists('IPS_SetHidden')) {
-            foreach ([
-                // Internal/legacy state remains addressable by Ident/ID,
-                // but does not clutter the instance tree.
-                'PresenceSystemState', 'HouseStatus', 'PresentPersons',
-                'PresenceLastEvent', 'P03LastProof', 'LastEvent',
-                'StreamOK', 'Ready', 'TestActive', 'CrossingCount',
-                'P03DirectionStatus', 'P03MastHealth', 'P03IPC5442Audit',
-                'P03OwnershipAudit', 'P03TerraceMonitor'
-            ] as $internalIdent) {
-                $objectId = $this->GetIDForIdent($internalIdent);
-                if ($objectId > 0 && !IPS_GetObject($objectId)['ObjectIsHidden']) {
-                    IPS_SetHidden($objectId, true);
-                }
-            }
-        }
         // Timer is registered exclusively in Create(), as required by
         // IP-Symcon; only its active interval changes in ApplyChanges.
         $this->SetTimerInterval('P03MastHealthTimer', 15000);
@@ -265,7 +241,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         // even while neither camera has a mapped stair line. Disarm it
         // before any observer events arrive; field test needs fresh audit.
         $this->WriteAttributeBoolean('TestActive', false);
-        $this->SetValue('TestActive', false);
+
         $this->WriteAttributeBoolean('ProductionEnabled', false);
         $this->WriteAttributeBoolean('P03MultiAuditPassed', false);
         $this->SetBuffer('HttpBuffer', '');
@@ -302,7 +278,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->ConfigureTerraceMonitor();
         } else {
             $this->disableTerraceMonitor();
-            $this->SetValue('P03TerraceMonitor',
+            $this->SetBuffer('P03Internal_P03TerraceMonitor',
                 'IGNORIERT – Terrasse AUS, Zwei-Kamera-Nachweis unveraendert');
         }
 
@@ -481,11 +457,11 @@ class JVPresenceP03MultiCamera extends IPSModule
                         && $this->ReadAttributeBoolean('P03StreetLearningActive')) {
                         if ($this->ReadAttributeBoolean('P03StreetLearningStreamWasLive')) {
                             $this->WriteAttributeBoolean('P03StreetLearningActive',false);
-                            $this->SetValue('P03StreetDirectionStatus',
+                            $this->SetBuffer('P03Internal_P03StreetDirectionStatus',
                                 'ABGEBROCHEN – WORK_LEFT-Straßenstream nach erstem LIVE verloren');
                             $this->appendProtocol('P03 STRASSE LERNEN ABBRUCH – echter WORK_LEFT-Streamverlust.');
                         } else {
-                            $this->SetValue('P03StreetDirectionStatus',
+                            $this->SetBuffer('P03Internal_P03StreetDirectionStatus',
                                 'WARTE AUF WORK_LEFT-LIVE – Initialisierung, Straßenlernen bleibt aktiv');
                         }
                     }
@@ -495,7 +471,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                     && !$this->ReadAttributeBoolean('P03StreetLearningStreamWasLive')
                     && $this->p03WorkStreetReady()) {
                     $this->WriteAttributeBoolean('P03StreetLearningStreamWasLive',true);
-                    $this->SetValue('P03StreetDirectionStatus',
+                    $this->SetBuffer('P03Internal_P03StreetDirectionStatus',
                         'LERNEN 0/4 – WORK_LEFT Street LIVE | OUT → IN → OUT → IN');
                     $this->appendProtocol('P03 STRASSE: WORK_LEFT-LIVE bestaetigt, Richtungserfassung bereit.');
                 }
@@ -726,9 +702,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->WriteAttributeString('P03PendingCrossings', '[]');
             $this->WriteAttributeBoolean('TestActive', false);
             $this->SetTimerInterval('P03ProofTimer', 0);
-            $this->SetValue('TestActive', false);
-            $this->SetValue('CrossingCount', 0);
-            $this->SetValue('LastEvent', '');
+
+            $this->WriteAttributeInteger('P03CrossingCount', 0);
+            $this->SetBuffer('P03Internal_LastEvent', '');
             $this->SetValue('Protocol', '');
             $this->setReady(false);
         } else {
@@ -788,7 +764,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         if ($auditOnly) {
             $this->WriteAttributeBoolean('TestActive', false);
-            $this->SetValue('TestActive', false);
+
             $this->setReady(false);
             $this->setResult(
                 'P03 LESENDER MASTKAMERA-AUDIT – vorhandene Treppen-IVS Zuordnung: '
@@ -811,11 +787,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeInteger('P03TerraceOutBackupCount', 0);
         $this->WriteAttributeString('P03TerraceOutBackupLast', 'NOCH KEIN OUT-BACKUP');
         $this->WriteAttributeString('P03ThreeCameraLastDecision','TEST BEREIT – Zwei-Mast Vorrang');
-        $this->SetValue('P03TerraceInBackupStatus',
+        $this->SetBuffer('P03Internal_P03TerraceInBackupStatus',
             'TEST BEREIT: IN WORK→TERRASSE <=50 s oder JV→TERRASSE <=15 s;'
             .' OUT nur Terrasse-IVS LeftToRight→JV <=15 s / WORK <=50 s');
         $this->WriteAttributeBoolean('TestActive', true);
-        $this->SetValue('TestActive', true);
+
         // Baseline belongs to the fresh test, not old persistent observer
         // stats. Subsequent 30-s reports show only post-start wire changes.
         $this->WriteAttributeInteger('P03TestWireTraceAt', time());
@@ -894,7 +870,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     private function rollbackPreparedP03Config(string $reason): void
     {
         $this->WriteAttributeBoolean('TestActive', false);
-        $this->SetValue('TestActive', false);
+
         $this->setReady(false);
 
         if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
@@ -939,7 +915,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
 
         $this->WriteAttributeBoolean('TestActive', false);
-        $this->SetValue('TestActive', false);
+
         $this->WriteAttributeBoolean('ProductionEnabled', true);
         $this->subscribeP03AuxVariables();
         $this->refreshProductionState();
@@ -967,7 +943,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeInteger('P03TerraceOutBackupCount', 0);
         $this->WriteAttributeString('P03TerraceOutBackupLast','NOCH KEIN OUT-BACKUP');
         $this->WriteAttributeString('P03ThreeCameraLastDecision','AUS');
-        $this->SetValue('P03TerraceInBackupStatus','3-KAMERA-BACKUP AUS – neuen Gehtest starten');
+        $this->SetBuffer('P03Internal_P03TerraceInBackupStatus','3-KAMERA-BACKUP AUS – neuen Gehtest starten');
         $this->WriteAttributeString('P03DirectionMap', '{}');
         $this->WriteAttributeInteger('P03VerifiedCount', 0);
         $this->WriteAttributeString('P03ActionCounts', '{"HOME_TO_LAGER":0,"LAGER_TO_HOME":0}');
@@ -976,13 +952,13 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeBoolean('TestActive', false);
         $this->WriteAttributeBoolean('P03StreetLearningActive', false);
         $this->SetTimerInterval('P03ProofTimer', 0);
-        $this->SetValue('TestActive', false);
-        $this->SetValue('CrossingCount', 0);
+
+        $this->WriteAttributeInteger('P03CrossingCount', 0);
         $this->SetValue('P03VerifiedTransfers', 0);
         $this->SetValue('P03ProofState', 'RESET');
-        $this->SetValue('P03LastProof', '');
-        $this->SetValue('P03DirectionStatus', 'noch nicht gelernt');
-        $this->SetValue('LastEvent', '');
+        $this->SetBuffer('P03Internal_P03LastProof', '');
+        $this->SetBuffer('P03Internal_P03DirectionStatus', 'noch nicht gelernt');
+        $this->SetBuffer('P03Internal_LastEvent', '');
         $this->SetValue('Protocol', '');
         $this->setReady(false);
         $this->setResult('Zurückgesetzt. „P03 Test vorbereiten & starten“ drücken.');
@@ -999,7 +975,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->SetTimerInterval('P03ProofTimer', 0);
         $this->WriteAttributeString('P03PendingCrossings', '[]');
         $this->WriteAttributeString('P03HumanEvents', '[]');
-        $this->SetValue('TestActive', false);
+
         $this->setReady(false);
         $this->appendProtocol('SICHERES BEENDEN: Test/Produktion aus. '
             . 'Keine Wiederherstellung der alten Kamera-Volltabellen; '
@@ -1148,7 +1124,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 'groupId' => $event['groupId'],
                 'objectId' => $event['objectId']
             ];
-            $this->SetValue('LastEvent', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $this->SetBuffer('P03Internal_LastEvent', json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $this->appendProtocol('IVS ' . json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             $this->SendDebug(
                 'CrossLineDetection',
@@ -1178,8 +1154,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
             $this->WriteAttributeString('SeenEventKeys', json_encode($seen));
 
-            $count = (int) $this->GetValue('CrossingCount') + 1;
-            $this->SetValue('CrossingCount', $count);
+            $count = (int) $this->ReadAttributeInteger('P03CrossingCount') + 1;
+            $this->WriteAttributeInteger('P03CrossingCount', $count);
             $this->recordP03Crossing($event, $direction);
         }
     }
@@ -1689,6 +1665,23 @@ class JVPresenceP03MultiCamera extends IPSModule
      *
      * @return array<string,array<string,int|string>>
      */
+    /** Internal on-demand diagnostics: no additional Symcon variables or external sockets. */
+    private function p03AuxDiagnostic(int $instanceID, string $ident): string
+    {
+        if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
+            return '';
+        }
+        if (function_exists('JVP03AUX_ReadP03Diagnostic')) {
+            try {
+                return (string) JVP03AUX_ReadP03Diagnostic($instanceID, $ident);
+            } catch (Throwable $e) {
+                // Read-only compatibility with observers still on the previous version.
+            }
+        }
+        $legacy = $this->findAuxVariable($instanceID, $ident);
+        return $legacy > 0 && IPS_VariableExists($legacy) ? (string) GetValue($legacy) : '';
+    }
+
     private function readP03TestWireSnapshot(): array
     {
         $snapshot = [];
@@ -1711,9 +1704,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             ];
             try {
                 if ($observerID > 0 && IPS_InstanceExists($observerID)) {
-                    $statusVar = $this->findAuxVariable($observerID, 'ObserverStatus');
-                    if ($statusVar > 0 && IPS_VariableExists($statusVar)) {
-                        $status = json_decode((string) GetValue($statusVar), true);
+                    $statusRaw = $this->p03AuxDiagnostic($observerID, 'ObserverStatus');
+                    if ($statusRaw !== '') {
+                        $status = json_decode($statusRaw, true);
                         if (is_array($status)) {
                             $codes = json_decode((string)($status['observedCodeCounts'] ?? '{}'), true);
                             if (!is_array($codes)) {
@@ -1832,7 +1825,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
         $newState = date('H:i:s') . ' ' . implode(' | ', $results);
-        $this->SetValue('P03MastHealth', $newState);
+        $this->SetBuffer('P03Internal_P03MastHealth', $newState);
         if ($manual) {
             $this->appendProtocol('P03 MANUELLER HEARTBEAT-CHECK: ' . $newState);
         }
@@ -1970,9 +1963,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeString('AuxJVAllowedIVSRules','[]');
         $this->WriteAttributeString('AuxWorkAllowedIVSRules','[]');
         $this->SetTimerInterval('P03ProofTimer',0);
-        $this->SetValue('TestActive',false);
+
         $this->SetValue('P03ProofState','GESPERRT – Wechsel zu linken Kameras, kein Live-Personenbeweis.');
-        $this->SetValue('P03DirectionStatus','NICHT VERIFIZIERT – Kameras neu zugeordnet.');
+        $this->SetBuffer('P03Internal_P03DirectionStatus','NICHT VERIFIZIERT – Kameras neu zugeordnet.');
         $this->setReady(false);
 
         $migrationOK=true;
@@ -2004,7 +1997,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 // Reset only P03-local raw counters from the wrong cameras.
                 // Values #42076/#34838 are bound to current observer object IDs.
                 foreach (['HumanEventCounter'=>0,'PersonDetected'=>false,
-                    'LastEvent'=>'','LastIVSEvent'=>''] as $ident=>$value) {
+                    'LastIVSEvent'=>''] as $ident=>$value) {
                     $variableID=$this->findAuxVariable($id,(string)$ident);
                     if ($variableID>0) {
                         SetValue($variableID,$value);
@@ -2308,7 +2301,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $lines[] = '';
         $lines[] = 'ERGEBNIS: Nur Objektbestand und zugewiesene Eigenschaften ausgelesen.';
         $lines[] = 'Nichts neu angelegt, verbunden, gelöscht, synchronisiert oder an Kameras geschrieben.';
-        $this->SetValue('P03OwnershipAudit', implode("\n",$lines));
+        $this->SetBuffer('P03Internal_P03OwnershipAudit', implode("\n",$lines));
     }
 
     /**
@@ -2615,7 +2608,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $lines[] = 'BEWERTUNG: Ohne Ereignis-Rohdaten während eines Testgangs'
             . ' keine Aussage, ob Kamera-AI, Erfassungsfläche, Zeitplan oder P03-Parser schuld ist.';
         $report = implode("\n", $lines);
-        $this->SetValue('P03IPC5442Audit', $report);
+        $this->SetBuffer('P03Internal_P03IPC5442Audit', $report);
         // Known SymBox variable #35115: use this SAME copyable slot for the
         // full model audit so the user does not have to discover a new ID.
         // The standard socket-diagnosis button will overwrite it again with
@@ -2655,9 +2648,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         if ($restore !== '') {
             $lines[] = 'Letzte P03-Observer-Wiederherstellung: ' . $restore;
         }
-        $healthVar = $this->GetIDForIdent('P03MastHealth');
-        if ($healthVar > 0 && IPS_VariableExists($healthVar)) {
-            $lines[] = 'Unabhängiger P03-Mast-Watchdog: ' . (string) GetValue($healthVar);
+        $health = $this->GetBuffer('P03Internal_P03MastHealth');
+        if ($health !== '') {
+            $lines[] = 'Unabhängiger P03-Mast-Watchdog: ' . $health;
         }
 
         $roles = [
@@ -2782,16 +2775,16 @@ class JVPresenceP03MultiCamera extends IPSModule
                     }
                 }
 
-                $wireVar = $this->findAuxVariable($id, 'WireProbe');
-                $wireStatus = $this->findAuxVariable($id, 'ObserverStatus');
+                $wireRaw = $this->p03AuxDiagnostic($id, 'WireProbe');
+                $wireStatus = $this->p03AuxDiagnostic($id, 'ObserverStatus');
                 $wireState=[];
-                if ($wireVar > 0) {
-                    $lastHeader = trim((string) GetValue($wireVar));
+                if ($wireRaw !== '') {
+                    $lastHeader = trim($wireRaw);
                     $lines[] = 'IPC5442 ROHDATEN VOR PARSER: ' . ($lastHeader !== ''
                         ? substr($lastHeader,0,300) : 'Bisher KEIN Dahua Code=...-Event erfasst');
                 }
-                if ($wireStatus > 0) {
-                    $wireState = json_decode((string) GetValue($wireStatus),true);
+                if ($wireStatus !== '') {
+                    $wireState = json_decode($wireStatus,true);
                     if (is_array($wireState)) {
                         $lines[] = 'IPC5442 Wire-Zähler: Code-Events='
                             . (int) ($wireState['wireCodeCount'] ?? 0)
@@ -2851,17 +2844,16 @@ class JVPresenceP03MultiCamera extends IPSModule
                         }
                     }
                 }
-                $humanHintVar=$this->findAuxVariable($id,'HumanHint');
-                if ($humanHintVar>0) {
-                    $hint=trim((string)GetValue($humanHintVar));
+                $humanHintRaw=$this->p03AuxDiagnostic($id,'HumanHint');
+                if ($humanHintRaw!=='') {
+                    $hint=trim($humanHintRaw);
                     if ($hint!=='') {
                         $lines[]='LETZTER GENERIC-HUMAN-HINWEIS: '.substr($hint,0,500)
                             .' (kein Zonenbeweis)';
                     }
                 }
-                $auditVar = $this->findAuxVariable($id, 'EventAudit');
-                if ($auditVar > 0) {
-                    $auditRaw = trim((string) GetValue($auditVar));
+                $auditRaw = trim($this->p03AuxDiagnostic($id, 'EventAudit'));
+                if ($auditRaw !== '') {
                     $audit = json_decode($auditRaw, true);
                     if (is_array($audit)) {
                         $lines[] = 'Letztes Kamera-Ereignis: '
@@ -2933,9 +2925,9 @@ class JVPresenceP03MultiCamera extends IPSModule
                         $lines[] = 'LETZTE CROSSLINE-EREIGNISSE: bisher keine seit Observer-Neustart.';
                     }
                 }
-                $diagnosticVar = $this->findAuxVariable($id, 'ObserverStatus');
-                if ($diagnosticVar > 0) {
-                    $state = json_decode((string) GetValue($diagnosticVar), true);
+                $diagnosticRaw = $this->p03AuxDiagnostic($id, 'ObserverStatus');
+                if ($diagnosticRaw !== '') {
+                    $state = json_decode($diagnosticRaw, true);
                     if (is_array($state)) {
                         $reason = (string) ($state['reason'] ?? 'unbekannt');
                         // The observer reason should contain no secrets; still
@@ -3036,7 +3028,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $terraceID = $this->ReadAttributeInteger('TerraceObserverInstanceID');
             $terraceHost = trim($this->ReadPropertyString('TerraceHost'));
             $lines[] = '--- JV TERRASSE (OPTIONAL, NUR DIAGNOSE) ---';
-            $lines[] = 'Zusatzstatus: '.(string)$this->GetValue('P03TerraceMonitor');
+            $lines[] = 'Zusatzstatus: '.(string)$this->GetBuffer('P03Internal_P03TerraceMonitor');
             $lines[]='TERRACE gespeichertes P03-Socket: #'
                 .$this->ReadAttributeInteger('TerraceManagedSocketID');
             if ($terraceID>0 && IPS_InstanceExists($terraceID)) {
@@ -3074,9 +3066,9 @@ class JVPresenceP03MultiCamera extends IPSModule
                         ? ((bool)GetValue($personID)?'AN':'AUS') : 'FEHLT')
                     .' | Variable '.($personID>0?'#'.$personID:'FEHLT')
                     .' | nur Status, kein Zonenbeweis';
-                $stateID=$this->findAuxVariable($terraceID,'ObserverStatus');
-                if ($stateID>0) {
-                    $state=json_decode((string)GetValue($stateID),true);
+                $stateRaw=$this->p03AuxDiagnostic($terraceID,'ObserverStatus');
+                if ($stateRaw!=='') {
+                    $state=json_decode($stateRaw,true);
                     if (is_array($state)) {
                         $counts=json_decode((string)($state['observedCodeCounts']??'{}'),true);
                         if (!is_array($counts)) {
@@ -3167,7 +3159,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $lines[] = 'IN-BACKUP TESTBESTAETIGUNGEN: '
             .$this->ReadAttributeInteger('P03TerraceInBackupCount');
         $lines[] = 'IN-BACKUP LETZTES ERGEBNIS: '
-            .(string)$this->GetValue('P03TerraceInBackupStatus');
+            .(string)$this->GetBuffer('P03Internal_P03TerraceInBackupStatus');
         $lines[]='OUT-BACKUP: Terrasse-IVS LeftToRight→JV_LEFT Treppe <=15 s'
             .' oder →WORK_LEFT Treppe <=50 s; SMD ohne IVS unzulaessig.';
         $lines[]='OUT-BACKUP TESTBESTAETIGUNGEN: '
@@ -3191,8 +3183,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             .$this->ReadAttributeInteger('P03StreetRawCount');
         $lines[]='STRASSE LETZTES HUMAN-ROHSIGNAL: '
             .$this->ReadAttributeString('P03StreetLastRaw');
-        $lines[]='STRASSE LERNSTATUS: '.(string)$this->GetValue('P03StreetDirectionStatus');
-        $lines[]='ARBEIT-GRENZSTATUS: '.(string)$this->GetValue('P03WorkBoundaryStatus');
+        $lines[]='STRASSE LERNSTATUS: '.(string)$this->GetBuffer('P03Internal_P03StreetDirectionStatus');
+        $lines[]='ARBEIT-GRENZSTATUS: '.(string)$this->GetBuffer('P03Internal_P03WorkBoundaryStatus');
         $lines[]='WICHTIG: einzelner Straßenübertritt ist KEIN Nachweis, dass das'
             .' Haus oder Grundstück personenleer ist.';
         $lines[]='P03-Richtungstest: OUT → IN → OUT → IN'
@@ -3225,7 +3217,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         if (!$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')) {
             $this->disableTerraceMonitor();
-            $this->SetValue('P03TerraceMonitor', 'IGNORIERT – Terrasse AUS');
+            $this->SetBuffer('P03Internal_P03TerraceMonitor', 'IGNORIERT – Terrasse AUS');
             return;
         }
         $host = trim($this->ReadPropertyString('TerraceHost'));
@@ -3234,7 +3226,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         if ($host === '' || $host === $jv || $host === $work
             || !$this->credentialsReady()) {
             $this->disableTerraceMonitor();
-            $this->SetValue('P03TerraceMonitor',
+            $this->SetBuffer('P03Internal_P03TerraceMonitor',
                 'GESPERRT – fehlende Zugangsdaten oder Terrasse identisch mit Mastkamera');
             return;
         }
@@ -3245,7 +3237,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         );
         if (empty($read['ok']) || trim((string)($read['body'] ?? '')) === '') {
             $this->disableTerraceMonitor();
-            $this->SetValue('P03TerraceMonitor',
+            $this->SetBuffer('P03Internal_P03TerraceMonitor',
                 'GESPERRT – Terrassen-IVS-Konfiguration nicht lesbar (Kamera nur gelesen)');
             return;
         }
@@ -3258,7 +3250,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $names = array_map(static fn(array $r): string =>
                 (string)$r['name'].' [ID '.(int)$r['id'].']',
                 $selection['candidates'] ?? []);
-            $this->SetValue('P03TerraceMonitor',
+            $this->SetBuffer('P03Internal_P03TerraceMonitor',
                 'GESPERRT – '.(string)$selection['reason']
                 .' | Verfuegbare Human-CrossLines: '.implode('; ',array_slice($names,0,8)));
             return;
@@ -3270,7 +3262,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             if ($oldID > 0 && IPS_InstanceExists($oldID)) {
                 // Do not abandon an earlier P03 terrace observer with another
                 // host: the old owned observer must be dealt with explicitly.
-                $this->SetValue('P03TerraceMonitor',
+                $this->SetBuffer('P03Internal_P03TerraceMonitor',
                     'GESPERRT – alter Terrassen-Observer #'.$oldID
                     .' vorhanden; Host-/Rollenabweichung zuerst klaeren');
                 return;
@@ -3279,7 +3271,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 'P03 – JV Terrasse (optional)');
         }
         if ($observerID <= 0) {
-            $this->SetValue('P03TerraceMonitor',
+            $this->SetBuffer('P03Internal_P03TerraceMonitor',
                 'GESPERRT – separater P03-Terrassen-Observer konnte nicht erstellt werden');
             return;
         }
@@ -3293,14 +3285,14 @@ class JVPresenceP03MultiCamera extends IPSModule
         // Apply the same guarded repair ONLY to this verified terrace role.
         $socketState = $this->ensureExclusiveTerraceSocket($observerID,$host);
         if (!$socketState['ok']) {
-            $this->SetValue('P03TerraceMonitor',
+            $this->SetBuffer('P03Internal_P03TerraceMonitor',
                 'GESPERRT – Observer #'.$observerID
                 .' | '.$socketState['reason']);
             return;
         }
         $rules = json_encode($selection['allowed'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
         if (!is_string($rules)) {
-            $this->SetValue('P03TerraceMonitor','GESPERRT – IVS-Regeln nicht kodierbar');
+            $this->SetBuffer('P03Internal_P03TerraceMonitor','GESPERRT – IVS-Regeln nicht kodierbar');
             return;
         }
         try {
@@ -3319,7 +3311,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->WriteAttributeInteger('TerraceRuleReadAt',time());
             $this->syncP03TerraceSubscriptions($observerID);
             $chosen = $selection['allowed'][0];
-            $this->SetValue('P03TerraceMonitor',
+            $this->SetBuffer('P03Internal_P03TerraceMonitor',
                 'AKTIV – NUR DIAGNOSE | Observer #'.$observerID
                 .' | Host='.$host
                 .' | IVS-Regel='.(string)$chosen['name']
@@ -3327,7 +3319,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 .' | Mensch-Filter='.(!empty($chosen['humanOnly'])?'nur Human':'Human + weitere')
                 .' | KEIN Einfluss auf HOME/LAGER');
         } catch (Throwable $e) {
-            $this->SetValue('P03TerraceMonitor',
+            $this->SetBuffer('P03Internal_P03TerraceMonitor',
                 'GESPERRT – P03-Terrassen-Observer konnte nicht sicher aktiviert werden ('
                 .get_class($e).')');
         }
@@ -3495,7 +3487,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 IPS_ApplyChanges($observerID);
             }
         } catch (Throwable $e) {
-            $this->SetValue('P03TerraceMonitor',
+            $this->SetBuffer('P03Internal_P03TerraceMonitor',
                 'WARNUNG – Terrasse konnte nicht abgeschaltet werden ('
                 .get_class($e).')');
         }
@@ -3581,7 +3573,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             if ($activeIn && $activeOut) {
                 $this->WriteAttributeString('P03ThreeCameraLastDecision',
                     'WIDERSPRUCH – gleichzeitiger IN- und OUT-Ersatz');
-                $this->SetValue('P03TerraceInBackupStatus',
+                $this->SetBuffer('P03Internal_P03TerraceInBackupStatus',
                     'WIDERSPRUCH: beide Richtungen plausibel – kein Zonenwechsel');
                 $this->SetTimerInterval('P03ProofTimer',0);
                 return;
@@ -3593,7 +3585,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                     .' | Abstand '.$candidate['gap'].' s;'
                     .' wartet auf vollstaendiges Zwei-Mast-Fenster ('.$maxGap.' s)';
                 $this->WriteAttributeString('P03ThreeCameraLastDecision',$message);
-                $this->SetValue('P03TerraceInBackupStatus',$message);
+                $this->SetBuffer('P03Internal_P03TerraceInBackupStatus',$message);
                 $this->SetTimerInterval('P03ProofTimer',500);
                 return;
             }
@@ -3605,7 +3597,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             if ($in['status']==='CONTRADICTION' || $out['status']==='CONTRADICTION') {
                 $this->WriteAttributeString('P03ThreeCameraLastDecision',
                     'WIDERSPRUCH – alternative 3CAM-Zuordnung unklar');
-                $this->SetValue('P03TerraceInBackupStatus',
+                $this->SetBuffer('P03Internal_P03TerraceInBackupStatus',
                     'WIDERSPRUCH: mehrere Mast-/Terrassenkombinationen; kein Backup');
             }
         }
@@ -3671,7 +3663,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $proofText = $this->formatP03Proof($cross, $result);
         $this->SetValue('P03ProofState', (string) ($result['state'] ?? P03ProofEngine::STATE_VERIFIED));
-        $this->SetValue('P03LastProof', $proofText);
+        $this->SetBuffer('P03Internal_P03LastProof', $proofText);
         $this->appendProtocol('P03 PROOF ' . (string) ($result['state'] ?? '') . ' ' . $proofText);
         $this->onP03VerifiedTransfer($cross, $result);
         $this->refreshP03DirectionStatus();
@@ -3693,7 +3685,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         if ($out >= 2 && $in >= 2 && $this->ReadAttributeInteger('P03VerifiedCount') >= 4) {
             $this->WriteAttributeBoolean('TestActive', false);
-            $this->SetValue('TestActive', false);
+
             $this->setReady(false);
             $this->setResult('P03 2-KAMERA-SEQUENZ VERIFIZIERT – 2× HOME→LAGER und 2× LAGER→HOME durch Reihenfolge JV_LEFT/WORK_LEFT bestätigt.');
             $this->appendProtocol('P03 COMMISSIONING COMPLETE: OUT=' . $out . ', IN=' . $in . ' – ausschließlich Mastkamera-Reihenfolge.');
@@ -3701,7 +3693,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 $events=json_decode($this->ReadAttributeString('P03StreetTrainingEvents'),true);
                 $progress=is_array($events)?count($events):0;
                 $this->WriteAttributeBoolean('P03StreetLearningActive',false);
-                $this->SetValue('P03StreetDirectionStatus',
+                $this->SetBuffer('P03Internal_P03StreetDirectionStatus',
                     'UNVOLLSTÄNDIG – Treppenfolgen fertig, Straßenlinie erst '
                     .$progress.'/4 erkannt. Keine Richtungsfreigabe; Gehtest erneut starten.');
                 $this->appendProtocol('P03 STRASSE INCOMPLETE: '.$progress
@@ -3776,8 +3768,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         // P03 is an internal HOME <-> LAGER/WORK zone transfer. It must never
         // create or remove property occupants by itself.
-        $this->SetValue(
-            'PresenceLastEvent',
+        $this->SetBuffer('P03Internal_PresenceLastEvent',
             date('H:i:s') . ' P03 ' . $action . ' VERIFIED (' . (string) ($result['path'] ?? '') . ')'
         );
 
@@ -3802,22 +3793,20 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
         $status = P03ProofEngine::directionStatus($map);
         if (($status['contradiction'] ?? false) === true) {
-            $this->SetValue('P03DirectionStatus', 'WIDERSPRUCH – Richtungslernen gesperrt');
+            $this->SetBuffer('P03Internal_P03DirectionStatus', 'WIDERSPRUCH – Richtungslernen gesperrt');
             return;
         }
 
         $resolved = $status['resolved'] ?? [];
         if (($status['stable'] ?? false) === true) {
-            $this->SetValue(
-                'P03DirectionStatus',
+            $this->SetBuffer('P03Internal_P03DirectionStatus',
                 'STABIL: L→R=' . (string) ($resolved['LeftToRight'] ?? '?')
                     . ' / R→L=' . (string) ($resolved['RightToLeft'] ?? '?')
             );
             return;
         }
 
-        $this->SetValue(
-            'P03DirectionStatus',
+        $this->SetBuffer('P03Internal_P03DirectionStatus',
             'LERNEND: ' . json_encode($status['counts'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
         );
     }
@@ -3842,10 +3831,10 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeBoolean('P03StreetLearningActive',true);
         $live=$this->p03WorkStreetReady();
         $this->WriteAttributeBoolean('P03StreetLearningStreamWasLive',$live);
-        $this->SetValue('P03StreetDirectionStatus', $live
+        $this->SetBuffer('P03Internal_P03StreetDirectionStatus', $live
             ? 'LERNEN 0/4 – WORK_LEFT Street LIVE | OUT → IN → OUT → IN'
             : 'WARTE AUF WORK_LEFT-LIVE – Initialisierung, Straßenlernen bleibt aktiv');
-        $this->SetValue('P03WorkBoundaryStatus',
+        $this->SetBuffer('P03Internal_P03WorkBoundaryStatus',
             'UNBEKANNT – Straße noch nicht eingelernt; keine Anwesenheitszertifizierung');
     }
 
@@ -3896,7 +3885,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                     $status=P03WorkStreetLearning::evaluateTraining($captured);
                     $steps=['OUT','IN','OUT','IN'];
                     $step=count($captured);
-                    $this->SetValue('P03StreetDirectionStatus',
+                    $this->SetBuffer('P03Internal_P03StreetDirectionStatus',
                         $status['status']==='LEARNING'
                             ? 'LERNEN '.$step.'/4 | Straßenlinie '
                                 .$steps[$step-1].'='.$direction
@@ -3925,7 +3914,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 $message.=' | Kamera-Richtung='.$direction
                     .' | beobachtet '.(string)$streetEvent['time'];
             }
-            $this->SetValue('P03WorkBoundaryStatus',$message);
+            $this->SetBuffer('P03Internal_P03WorkBoundaryStatus',$message);
         }
     }
 
@@ -3957,8 +3946,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeInteger('P03TerraceInBackupCount',0);
         $this->SetTimerInterval('P03ProofTimer',0);
         $this->WriteAttributeBoolean('TestActive',true);
-        $this->SetValue('TestActive',true);
-        $this->SetValue('P03TerraceInBackupStatus',
+
+        $this->SetBuffer('P03Internal_P03TerraceInBackupStatus',
             '3CAM-EINZELTEST AKTIV: EINEN vollstaendigen IN- oder OUT-Weg gehen.'
             .' IN WORK→Terrasse <=50 s / JV→Terrasse <=15 s; OUT nur Terrasse-IVS LeftToRight.'
             .' Kein Ruecksetzen frueherer Mastbeweise.');
@@ -3976,13 +3965,13 @@ class JVPresenceP03MultiCamera extends IPSModule
         $work=$this->ReadAttributeInteger('AuxWorkInstanceID');
         $host=trim($this->ReadPropertyString('AuxWorkHost'));
         if (!$this->matchesTrustedP03Observer($work,$host,self::AUX_WORK_ROLE)) {
-            $this->SetValue('P03StreetDirectionStatus',
+            $this->SetBuffer('P03Internal_P03StreetDirectionStatus',
                 'GESPERRT – vorhandener WORK_LEFT Observer nicht sicher zugeordnet');
             return;
         }
         $id=$this->findAuxVariable($work,'LastIVSEvent');
         if ($id<=0) {
-            $this->SetValue('P03StreetDirectionStatus',
+            $this->SetBuffer('P03Internal_P03StreetDirectionStatus',
                 'GESPERRT – WORK_LEFT LastIVSEvent fehlt');
             return;
         }
@@ -4249,7 +4238,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         if ($action==='OUT') {
             $this->WriteAttributeString('P03TerraceOutBackupLast',$message);
         }
-        $this->SetValue('P03TerraceInBackupStatus',$message);
+        $this->SetBuffer('P03Internal_P03TerraceInBackupStatus',$message);
         $this->appendProtocol('P03 '.$message);
     }
 
@@ -5446,14 +5435,14 @@ class JVPresenceP03MultiCamera extends IPSModule
             && $personVar > 0 && $counterVar > 0
             && $streamVar > 0 && (!$readOnly || $streamLive);
 
-        $onvifStatusVar = $this->findAuxVariable($instanceID,'OnvifStatus');
-        $onvifEventsVar = $this->findAuxVariable($instanceID,'OnvifRecentEvents');
-        $onvifStatus = $onvifStatusVar > 0 && IPS_VariableExists($onvifStatusVar)
-            ? substr((string)GetValue($onvifStatusVar),0,260)
-            : 'ONVIF neuer Observer nicht verfügbar';
-        $onvifEvents = $onvifEventsVar > 0 && IPS_VariableExists($onvifEventsVar)
-            ? substr((string)GetValue($onvifEventsVar),0,1500)
-            : '[]';
+        $onvifStatus = substr($this->p03AuxDiagnostic($instanceID,'OnvifStatus'),0,260);
+        if ($onvifStatus === '') {
+            $onvifStatus = 'ONVIF neuer Observer nicht verfügbar';
+        }
+        $onvifEvents = substr($this->p03AuxDiagnostic($instanceID,'OnvifRecentEvents'),0,1500);
+        if ($onvifEvents === '') {
+            $onvifEvents = '[]';
+        }
         $this->appendProtocol($role . ': ONVIF UNABHAENGIGER EREIGNISWEG: ' . $onvifStatus);
         $this->appendProtocol($role . ': ONVIF LETZTE METADATEN: ' . $onvifEvents);
         // ONVIF observations are independent of CGI VideoAnalyseRule and do
@@ -5587,9 +5576,9 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         $enabled = $this->ReadAttributeBoolean('ProductionEnabled');
         if (!$enabled) {
-            $this->SetValue('PresenceSystemState', 'P03 INAKTIV / TEST');
-            $this->SetValue('HouseStatus', 'P03 ist nur Zonenportal');
-            $this->SetValue('PresentPersons', 'Personenzahl wird durch P03 nicht verändert');
+            $this->SetBuffer('P03Internal_PresenceSystemState', 'P03 INAKTIV / TEST');
+            $this->SetBuffer('P03Internal_HouseStatus', 'P03 ist nur Zonenportal');
+            $this->SetBuffer('P03Internal_PresentPersons', 'Personenzahl wird durch P03 nicht verändert');
             return;
         }
 
@@ -5603,9 +5592,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             ? 'P03 PRODUKTIV – 2-Kamera-Sequenz JV_LEFT ↔ WORK_LEFT'
             : 'P03 DEGRADED – kein Übergang ohne beide Mastkamera-Eventstreams';
 
-        $this->SetValue('PresenceSystemState', $state);
-        $this->SetValue('HouseStatus', 'unverändert – P03 verschiebt nur HOME↔WORK');
-        $this->SetValue('PresentPersons', 'unverändert durch P03');
+        $this->SetBuffer('P03Internal_PresenceSystemState', $state);
+        $this->SetBuffer('P03Internal_HouseStatus', 'unverändert – P03 verschiebt nur HOME↔WORK');
+        $this->SetBuffer('P03Internal_PresentPersons', 'unverändert durch P03');
     }
 
     private function beginHandshake(): void
@@ -7340,7 +7329,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $ready = $active && $auxReady && $preflight;
         $this->setReady($ready);
 
-        if ($ready && $this->GetValue('CrossingCount') === 0) {
+        if ($ready && $this->ReadAttributeInteger('P03CrossingCount') === 0) {
             $this->setResult(
                 'BEREIT – P03 2-Kamera-Test aktiv. JV_LEFT→WORK_LEFT=HOME→LAGER; '
                 . 'WORK_LEFT→JV_LEFT=LAGER→HOME. Terrasse ist nicht erforderlich.'
@@ -7352,18 +7341,12 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function setStreamOK(bool $value): void
     {
-        $id = $this->GetIDForIdent('StreamOK');
-        if ($id > 0 && GetValueBoolean($id) !== $value) {
-            SetValueBoolean($id, $value);
-        }
+        $this->SetBuffer('P03UI_StreamOK', $value ? '1' : '0');
     }
 
     private function setReady(bool $value): void
     {
-        $id = $this->GetIDForIdent('Ready');
-        if ($id > 0 && GetValueBoolean($id) !== $value) {
-            SetValueBoolean($id, $value);
-        }
+        $this->SetBuffer('P03UI_Ready', $value ? '1' : '0');
     }
 
     private function setResult(string $text): void

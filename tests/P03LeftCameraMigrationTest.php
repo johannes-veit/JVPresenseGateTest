@@ -104,6 +104,10 @@ class IPSModule {
     protected function WriteAttributeBoolean(string $key,bool $value):void { $this->attributes[$key]=$value; }
     protected function WriteAttributeString(string $key,string $value):void { $this->attributes[$key]=$value; }
     protected function SetValue(string $key,mixed $value):void { $this->values[$key]=$value; }
+    public array $buffers=[];
+    protected function SetBuffer(string $key,string $value):void {$this->buffers[$key]=$value;}
+    protected function GetBuffer(string $key):string {return (string)($this->buffers[$key]??'');}
+
     protected function GetValue(string $key):mixed {return $this->values[$key]??null;}
     protected function SetTimerInterval(string $key,int $v):void {$this->timers[$key]=$v;}
     protected function SendDebug(string $t,string $d,int $f):void{}
@@ -138,8 +142,8 @@ checkLeft(($GLOBALS['props'][60000]['Host']??'')==='192.168.107.250'
         ===[17785,57215,55478,27938,53879],
     'No new observer/socket, no foreign module/socket mutation');
 checkLeft($GLOBALS['vars'][42076]===0 && $GLOBALS['vars'][34838]===0
-    && $GLOBALS['vars'][50069]==='' && $GLOBALS['vars'][25854]==='',
-    'Old JV/WORK right camera counters and stale proof timestamps cleared');
+    && $GLOBALS['vars'][43904]==='' && $GLOBALS['vars'][48490]==='',
+    'Old JV/WORK right camera counters and strict IVS evidence cleared; removed LastEvent is not required');
 checkLeft($main->attributes['TestActive']===false
     && $main->attributes['ProductionEnabled']===false
     && $main->attributes['P03MultiAuditPassed']===false

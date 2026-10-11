@@ -131,6 +131,9 @@ class IPSModule
     protected function ReadPropertyString(string $name):string { return (string)($this->properties[$name]??''); }
     protected function WriteAttributeBoolean(string $name,bool $value):void { $this->attributes[$name]=$value; }
     protected function GetIDForIdent(string $ident):int {return ['P03ConnectionDiagnosis'=>20001,'Result'=>20002,'P03IPC5442Audit'=>20003,'P03OwnershipAudit'=>20004][$ident]??0;}
+    public array $buffers=[];
+    protected function SetBuffer(string $key,string $value):void {$this->buffers[$key]=$value;}
+    protected function GetBuffer(string $key):string {return (string)($this->buffers[$key]??'');}
     protected function GetValue(string $ident):mixed { return $this->values[$ident]??null; }
     protected function SetValue(string $ident,mixed $value):void {
         $this->values[$ident]=$value;
@@ -234,8 +237,8 @@ verifyDiag(!str_contains((string)json_encode($ui),'P03 HUMAN ROH'),
 // the static form content or change button positions while the user clicks.
 $originalForm=$instance->GetConfigurationForm();
 $instance->values['P03ConnectionDiagnosis']=str_repeat('P03 LIVE REPORT ' . time() . "\n",2000);
-$instance->values['P03IPC5442Audit']=str_repeat('KAMERA-AUDIT\n',2000);
-$instance->values['P03OwnershipAudit']='P03 OWNERSHIP REPORT';
+$instance->buffers['P03Internal_P03IPC5442Audit']=str_repeat('KAMERA-AUDIT\n',2000);
+$instance->buffers['P03Internal_P03OwnershipAudit']='P03 OWNERSHIP REPORT';
 $instance->values['Protocol']='P03 HUMAN ROH JV_LEFT counter 7000';
 $instance->values['Result']='Changing status after UI was opened';
 verifyDiag($instance->GetConfigurationForm()===$originalForm,
@@ -298,7 +301,7 @@ $ipc->attributes['AuxWorkHumanRuleIndex']=3;
 $ipc->attributes['AuxJVHumanRuleID']=4;
 $ipc->attributes['AuxWorkHumanRuleID']=4;
 $ipc->DiagnoseIPC5442Configuration();
-$modelReport=(string)$ipc->values['P03IPC5442Audit'];
+$modelReport=(string)$ipc->buffers['P03Internal_P03IPC5442Audit'];
 verifyDiag($modelReport !== '' && (string)$ipc->values['P03ConnectionDiagnosis'] === $modelReport,
     'model CGI audit also writes complete report into existing copyable socket diagnosis slot (#35115 on SymBox)');
 verifyDiag(($GLOBALS['variables'][20001] ?? null) === $modelReport,
@@ -395,7 +398,7 @@ $liveStairAudit->attributes['AuxWorkAllowedIVSRules']=json_encode([
         'humanOnly'=>false,'objects'=>['human','vehicle']]
 ],JSON_UNESCAPED_UNICODE);
 $liveStairAudit->DiagnoseIPC5442Configuration();
-$stairReport=(string)$liveStairAudit->values['P03IPC5442Audit'];
+$stairReport=(string)$liveStairAudit->buffers['P03Internal_P03IPC5442Audit'];
 verifyDiag(substr_count($stairReport,'P03 AKTUELLES TREPPEN-PRUEFZIEL: Überquerung zur Treppe')===2
     && substr_count($stairReport,'P03 AKTUELLER CGI-GEGENCHECK: IDENTISCH')===2
     && substr_count($stairReport,'ABGLEICH: RuleName=PASST | Enable=JA | Type=PASST')===2,
@@ -703,7 +706,7 @@ verifyDiag(($activeP03->timers['P03ProofTimer']??-1)===0,
 // Forensics must work even when the main P03 instance lost the stored IDs
 // and IPS_GetInstanceListByModuleID returns EMPTY after module update.
 $instance->DiagnoseP03Ownership();
-$ownership=(string)$instance->values['P03OwnershipAudit'];
+$ownership=(string)$instance->buffers['P03Internal_P03OwnershipAudit'];
 verifyDiag(str_contains($ownership,'Observer #57215: EXISTIERT')
     && str_contains($ownership,'Observer #27938: EXISTIERT'),
     'forensic read-only scan identifies both historical Observer IDs');
@@ -765,7 +768,7 @@ $instance->attributes['TerraceManagedSocketID']=51876;
 $instance->attributes['TerraceRuleReadAt']=time()-120;
 $instance->properties['TerraceDiagnosticsEnabled']=true;
 $instance->properties['TerraceHost']='192.168.107.110';
-$instance->values['P03TerraceMonitor']='AKTIV – NUR DIAGNOSE';
+$instance->buffers['P03Internal_P03TerraceMonitor']='AKTIV – NUR DIAGNOSE';
 $instance->DiagnoseP03Connections(true);
 $terraceReport=(string)$instance->values['P03ConnectionDiagnosis'];
 verifyDiag(str_contains($terraceReport,'TERRACE Person erkannt: AUS | Variable #20965')
@@ -845,7 +848,7 @@ $evaluate->invoke($inBackup);
 $ledger=json_decode($inBackup->attributes['P03HumanEvents'],true);
 verifyDiag($inBackup->attributes['P03TerraceInBackupCount']===1
     && !empty($ledger[0]['used'])
-    && str_contains((string)$inBackup->values['P03TerraceInBackupStatus'],
+    && str_contains((string)$inBackup->buffers['P03Internal_P03TerraceInBackupStatus'],
         'WORK_LEFT_STAIR_THEN_TERRACE_IN'),
     '21s WORK_LEFT+terrace field replay confirms fourth IN via actual module evaluator');
 verifyDiag((int)$inBackup->attributes['P03VerifiedCount']===3
@@ -943,17 +946,17 @@ $beginStreet=new ReflectionMethod(JVPresenceP03MultiCamera::class,
 $beginStreet->invoke($streetMain);
 verifyDiag($streetMain->attributes['P03StreetLearningActive']===true
     && $streetMain->attributes['P03StreetLearningStreamWasLive']===false
-    && str_contains((string)$streetMain->values['P03StreetDirectionStatus'],
+    && str_contains((string)$streetMain->buffers['P03Internal_P03StreetDirectionStatus'],
         'WARTE AUF WORK_LEFT-LIVE'),
     '20:02 street training waits while audit reopens WORK_LEFT TCP');
 $streetMain->MessageSink(time(),51090,10603,[false,true]);
 verifyDiag($streetMain->attributes['P03StreetLearningActive']===true
-    && !str_contains((string)$streetMain->values['P03StreetDirectionStatus'],'ABGEBROCHEN'),
+    && !str_contains((string)$streetMain->buffers['P03Internal_P03StreetDirectionStatus'],'ABGEBROCHEN'),
     'initial false StreamOK cannot cancel four-walk street training');
 $GLOBALS['variables'][51090]=true;
 $streetMain->MessageSink(time(),51090,10603,[true,true]);
 verifyDiag($streetMain->attributes['P03StreetLearningStreamWasLive']===true
-    && str_contains((string)$streetMain->values['P03StreetDirectionStatus'],'LERNEN 0/4'),
+    && str_contains((string)$streetMain->buffers['P03Internal_P03StreetDirectionStatus'],'LERNEN 0/4'),
     'once live WORK_LEFT stream arms street learning without resetting proof');
 $streetEvent=[
  'time'=>'20:05:20','code'=>'CrossLineDetection','action'=>'Start',
@@ -962,8 +965,8 @@ $streetEvent=[
 ];
 $GLOBALS['variables'][48490]=json_encode([$streetEvent],JSON_UNESCAPED_UNICODE);
 $streetMain->MessageSink(time(),48490,10603,[$GLOBALS['variables'][48490],true]);
-verifyDiag(str_contains((string)$streetMain->values['P03StreetDirectionStatus'],'LERNEN 1/4')
-    && str_contains((string)$streetMain->values['P03WorkBoundaryStatus'],'LeftToRight')
+verifyDiag(str_contains((string)$streetMain->buffers['P03Internal_P03StreetDirectionStatus'],'LERNEN 1/4')
+    && str_contains((string)$streetMain->buffers['P03Internal_P03WorkBoundaryStatus'],'LeftToRight')
     && (int)$streetMain->attributes['P03StreetRawCount']===1,
     'real street Human RuleID5 records learning 1/4 and visible raw direction');
 $streetMain->MessageSink(time(),48490,10603,[$GLOBALS['variables'][48490],true]);
@@ -976,7 +979,7 @@ verifyDiag($streetMain->attributes['P03StreetLearningActive']===true,
 $GLOBALS['variables'][51090]=false;
 $streetMain->MessageSink(time(),51090,10603,[false,true]);
 verifyDiag($streetMain->attributes['P03StreetLearningActive']===false
-    && str_contains((string)$streetMain->values['P03StreetDirectionStatus'],'ABGEBROCHEN'),
+    && str_contains((string)$streetMain->buffers['P03Internal_P03StreetDirectionStatus'],'ABGEBROCHEN'),
     'true WORK_LEFT loss AFTER stream was live aborts incomplete street learning');
 $GLOBALS['variables'][51090]=true;
 $GLOBALS['variables'][54893]=true;
@@ -992,7 +995,7 @@ verifyDiag($streetMain->attributes['P03StreetLearningActive']===true
     && $streetMain->attributes['P03VerifiedCount']===3
     && $streetMain->attributes['P03HumanEvents']==='[{"id":"already-seen"}]',
     'standalone WORK street training preserves historical mast proof and reboots no socket');
-verifyDiag(str_contains((string)$streetMain->values['P03StreetDirectionStatus'],'LERNEN 0/4'),
+verifyDiag(str_contains((string)$streetMain->buffers['P03Internal_P03StreetDirectionStatus'],'LERNEN 0/4'),
     'street-only button bases history without claiming previous crossing as new');
 
 // After a module unload/deletion, never turn an old known Observer ID into
@@ -1011,7 +1014,7 @@ $streamReady=new ReflectionMethod(JVPresenceP03MultiCamera::class,'p03AuxStreams
 verifyDiag($streamReady->invoke($instance)===false,
     'orphaned camera fails closed even if StreamOK remains true');
 $instance->DiagnoseP03Ownership();
-$ownership=(string)$instance->values['P03OwnershipAudit'];
+$ownership=(string)$instance->buffers['P03Internal_P03OwnershipAudit'];
 verifyDiag(str_contains($ownership,'Observer #57215: IPS_InstanceExists=NEIN')
     && str_contains($ownership,'Observer #27938: IPS_InstanceExists=NEIN'),
     'forensic report distinguishes confirmed missing instances from lookup mismatch');

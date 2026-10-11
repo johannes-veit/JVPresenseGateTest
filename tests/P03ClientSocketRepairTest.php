@@ -108,6 +108,10 @@ class IPSModule
     }
     protected function ReadPropertyString(string $name):string { return (string)($this->properties[$name]??''); }
     protected function GetIDForIdent(string $ident):int {return ['P03ConnectionDiagnosis'=>20001,'Result'=>20002][$ident]??0;}
+    public array $buffers=[];
+    protected function SetBuffer(string $key,string $value):void {$this->buffers[$key]=$value;}
+    protected function GetBuffer(string $key):string {return (string)($this->buffers[$key]??'');}
+
     protected function GetValue(string $ident):mixed { return $this->values[$ident]??null; }
     protected function SetValue(string $ident,mixed $value):void {
         $this->values[$ident]=$value;
@@ -193,8 +197,8 @@ $GLOBALS['healthCalls']=[];
 $instance->CheckP03MastHealthNow();
 verifyDiag($GLOBALS['healthCalls']===[57215,27938],
     'manual heartbeat button checks both P03 observers');
-verifyDiag(str_contains((string)$instance->values['P03MastHealth'],'JV_LEFT=LIVE')
-    && str_contains((string)$instance->values['P03MastHealth'],'WORK_LEFT=RECONNECT_GET_SENT'),
+verifyDiag(str_contains((string)$instance->buffers['P03Internal_P03MastHealth'],'JV_LEFT=LIVE')
+    && str_contains((string)$instance->buffers['P03Internal_P03MastHealth'],'WORK_LEFT=RECONNECT_GET_SENT'),
     'manual heartbeat report includes actual outcome of each observer');
 verifyDiag(str_contains((string)$instance->values['P03ConnectionDiagnosis'],'P03 SOCKET-DIAGNOSE'),
     'manual heartbeat button refreshes copyable connection report');
