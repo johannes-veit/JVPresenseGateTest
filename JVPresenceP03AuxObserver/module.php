@@ -91,6 +91,21 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RequireParent(self::CLIENT_SOCKET_GUID);
     }
 
+    /** Restricted, read-only diagnostic API; avoids seven continuously allocated status variables. */
+    public function ReadP03Diagnostic(string $ident): string
+    {
+        if ($ident === 'OnvifRecentEvents') {
+            return $this->ReadAttributeString('OnvifRecentEvents');
+        }
+        if (in_array($ident, [
+            'LastEvent', 'ObserverStatus', 'EventAudit', 'WireProbe',
+            'HumanHint', 'OnvifStatus'
+        ], true)) {
+            return $this->GetBuffer('P03Diag_' . $ident);
+        }
+        return '';
+    }
+
     public function ApplyChanges(): void
     {
         parent::ApplyChanges();
