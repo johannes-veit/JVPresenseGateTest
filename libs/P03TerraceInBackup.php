@@ -69,7 +69,8 @@ final class P03TerraceInBackup
                 $ambiguous=false;
                 foreach($masts as $candidate) {
                     if (($candidate['source']??'')!==$other) continue;
-                    if (abs((float)$candidate['ts']-$t)<=30.0) {
+                    if (abs((float)$candidate['ts']-$t)<=30.0
+                        || abs((float)$candidate['ts']-$m)<=30.0) {
                         $ambiguous=true;
                         break;
                     }
