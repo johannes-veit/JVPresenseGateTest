@@ -211,6 +211,27 @@ final class P03OnvifEvents
         return true;
     }
 
+    /**
+     * PullMessages can include historical/replayed messages. Time from the
+     * INNER tt:Message must be recent before any human evidence is accepted.
+     * The allowed clock skew is deliberately bounded; inaccurate camera time
+     * produces a diagnostic rejection rather than an invented transfer.
+     *
+     * @param array<string,mixed> $event
+     */
+    public static function isRecent(array $event,int $now,int $maxAge=120): bool
+    {
+        $date=trim((string)($event['utc']??''));
+        if ($date==='' || strlen($date)>64) {
+            return false;
+        }
+        $parsed=strtotime($date);
+        if ($parsed===false) {
+            return false;
+        }
+        return abs($now-(int)$parsed)<=max(1,min(300,$maxAge));
+    }
+
     /** Only allow same camera host to prevent ONVIF XAddr SSRF or LAN pivot. */
     public static function verifiedSameHostUrl(string $url, string $host, int $port=80): ?string
     {
