@@ -1665,6 +1665,23 @@ class JVPresenceP03MultiCamera extends IPSModule
      *
      * @return array<string,array<string,int|string>>
      */
+    /** Internal on-demand diagnostics: no additional Symcon variables or external sockets. */
+    private function p03AuxDiagnostic(int $instanceID, string $ident): string
+    {
+        if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
+            return '';
+        }
+        if (function_exists('JVP03AUX_ReadP03Diagnostic')) {
+            try {
+                return (string) JVP03AUX_ReadP03Diagnostic($instanceID, $ident);
+            } catch (Throwable $e) {
+                // Read-only compatibility with observers still on the previous version.
+            }
+        }
+        $legacy = $this->findAuxVariable($instanceID, $ident);
+        return $legacy > 0 && IPS_VariableExists($legacy) ? (string) GetValue($legacy) : '';
+    }
+
     private function readP03TestWireSnapshot(): array
     {
         $snapshot = [];
@@ -1687,9 +1704,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             ];
             try {
                 if ($observerID > 0 && IPS_InstanceExists($observerID)) {
-                    $statusVar = $this->findAuxVariable($observerID, 'ObserverStatus');
-                    if ($statusVar > 0 && IPS_VariableExists($statusVar)) {
-                        $status = json_decode((string) GetValue($statusVar), true);
+                    $statusRaw = $this->p03AuxDiagnostic($observerID, 'ObserverStatus');
+                    if ($statusRaw !== '') {
+                        $status = json_decode($statusRaw, true);
                         if (is_array($status)) {
                             $codes = json_decode((string)($status['observedCodeCounts'] ?? '{}'), true);
                             if (!is_array($codes)) {
@@ -2758,16 +2775,16 @@ class JVPresenceP03MultiCamera extends IPSModule
                     }
                 }
 
-                $wireVar = $this->findAuxVariable($id, 'WireProbe');
-                $wireStatus = $this->findAuxVariable($id, 'ObserverStatus');
+                $wireRaw = $this->p03AuxDiagnostic($id, 'WireProbe');
+                $wireStatus = $this->p03AuxDiagnostic($id, 'ObserverStatus');
                 $wireState=[];
-                if ($wireVar > 0) {
-                    $lastHeader = trim((string) GetValue($wireVar));
+                if ($wireRaw !== '') {
+                    $lastHeader = trim($wireRaw);
                     $lines[] = 'IPC5442 ROHDATEN VOR PARSER: ' . ($lastHeader !== ''
                         ? substr($lastHeader,0,300) : 'Bisher KEIN Dahua Code=...-Event erfasst');
                 }
-                if ($wireStatus > 0) {
-                    $wireState = json_decode((string) GetValue($wireStatus),true);
+                if ($wireStatus !== '') {
+                    $wireState = json_decode($wireStatus,true);
                     if (is_array($wireState)) {
                         $lines[] = 'IPC5442 Wire-Zähler: Code-Events='
                             . (int) ($wireState['wireCodeCount'] ?? 0)
@@ -2827,17 +2844,16 @@ class JVPresenceP03MultiCamera extends IPSModule
                         }
                     }
                 }
-                $humanHintVar=$this->findAuxVariable($id,'HumanHint');
-                if ($humanHintVar>0) {
-                    $hint=trim((string)GetValue($humanHintVar));
+                $humanHintRaw=$this->p03AuxDiagnostic($id,'HumanHint');
+                if ($humanHintRaw!=='') {
+                    $hint=trim($humanHintRaw);
                     if ($hint!=='') {
                         $lines[]='LETZTER GENERIC-HUMAN-HINWEIS: '.substr($hint,0,500)
                             .' (kein Zonenbeweis)';
                     }
                 }
-                $auditVar = $this->findAuxVariable($id, 'EventAudit');
-                if ($auditVar > 0) {
-                    $auditRaw = trim((string) GetValue($auditVar));
+                $auditRaw = trim($this->p03AuxDiagnostic($id, 'EventAudit'));
+                if ($auditRaw !== '') {
                     $audit = json_decode($auditRaw, true);
                     if (is_array($audit)) {
                         $lines[] = 'Letztes Kamera-Ereignis: '
@@ -2909,9 +2925,9 @@ class JVPresenceP03MultiCamera extends IPSModule
                         $lines[] = 'LETZTE CROSSLINE-EREIGNISSE: bisher keine seit Observer-Neustart.';
                     }
                 }
-                $diagnosticVar = $this->findAuxVariable($id, 'ObserverStatus');
-                if ($diagnosticVar > 0) {
-                    $state = json_decode((string) GetValue($diagnosticVar), true);
+                $diagnosticRaw = $this->p03AuxDiagnostic($id, 'ObserverStatus');
+                if ($diagnosticRaw !== '') {
+                    $state = json_decode($diagnosticRaw, true);
                     if (is_array($state)) {
                         $reason = (string) ($state['reason'] ?? 'unbekannt');
                         // The observer reason should contain no secrets; still
@@ -3050,9 +3066,9 @@ class JVPresenceP03MultiCamera extends IPSModule
                         ? ((bool)GetValue($personID)?'AN':'AUS') : 'FEHLT')
                     .' | Variable '.($personID>0?'#'.$personID:'FEHLT')
                     .' | nur Status, kein Zonenbeweis';
-                $stateID=$this->findAuxVariable($terraceID,'ObserverStatus');
-                if ($stateID>0) {
-                    $state=json_decode((string)GetValue($stateID),true);
+                $stateRaw=$this->p03AuxDiagnostic($terraceID,'ObserverStatus');
+                if ($stateRaw!=='') {
+                    $state=json_decode($stateRaw,true);
                     if (is_array($state)) {
                         $counts=json_decode((string)($state['observedCodeCounts']??'{}'),true);
                         if (!is_array($counts)) {
@@ -3752,8 +3768,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         // P03 is an internal HOME <-> LAGER/WORK zone transfer. It must never
         // create or remove property occupants by itself.
-        $this->SetValue(
-            'PresenceLastEvent',
+        $this->SetBuffer('P03Internal_PresenceLastEvent',
             date('H:i:s') . ' P03 ' . $action . ' VERIFIED (' . (string) ($result['path'] ?? '') . ')'
         );
 
@@ -3784,16 +3799,14 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $resolved = $status['resolved'] ?? [];
         if (($status['stable'] ?? false) === true) {
-            $this->SetValue(
-                'P03DirectionStatus',
+            $this->SetBuffer('P03Internal_P03DirectionStatus',
                 'STABIL: L→R=' . (string) ($resolved['LeftToRight'] ?? '?')
                     . ' / R→L=' . (string) ($resolved['RightToLeft'] ?? '?')
             );
             return;
         }
 
-        $this->SetValue(
-            'P03DirectionStatus',
+        $this->SetBuffer('P03Internal_P03DirectionStatus',
             'LERNEND: ' . json_encode($status['counts'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
         );
     }
@@ -5422,14 +5435,14 @@ class JVPresenceP03MultiCamera extends IPSModule
             && $personVar > 0 && $counterVar > 0
             && $streamVar > 0 && (!$readOnly || $streamLive);
 
-        $onvifStatusVar = $this->findAuxVariable($instanceID,'OnvifStatus');
-        $onvifEventsVar = $this->findAuxVariable($instanceID,'OnvifRecentEvents');
-        $onvifStatus = $onvifStatusVar > 0 && IPS_VariableExists($onvifStatusVar)
-            ? substr((string)GetValue($onvifStatusVar),0,260)
-            : 'ONVIF neuer Observer nicht verfügbar';
-        $onvifEvents = $onvifEventsVar > 0 && IPS_VariableExists($onvifEventsVar)
-            ? substr((string)GetValue($onvifEventsVar),0,1500)
-            : '[]';
+        $onvifStatus = substr($this->p03AuxDiagnostic($instanceID,'OnvifStatus'),0,260);
+        if ($onvifStatus === '') {
+            $onvifStatus = 'ONVIF neuer Observer nicht verfügbar';
+        }
+        $onvifEvents = substr($this->p03AuxDiagnostic($instanceID,'OnvifRecentEvents'),0,1500);
+        if ($onvifEvents === '') {
+            $onvifEvents = '[]';
+        }
         $this->appendProtocol($role . ': ONVIF UNABHAENGIGER EREIGNISWEG: ' . $onvifStatus);
         $this->appendProtocol($role . ': ONVIF LETZTE METADATEN: ' . $onvifEvents);
         // ONVIF observations are independent of CGI VideoAnalyseRule and do
