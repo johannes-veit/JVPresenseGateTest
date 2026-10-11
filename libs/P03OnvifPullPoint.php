@@ -26,7 +26,7 @@ final class P03OnvifPullPoint
             return $out;
         }
         $base='http://' . $host . ':' . $port;
-        $clientUrl = P03OnvifEvents::verifiedSameHostUrl($subscriptionUrl,$host);
+        $clientUrl = P03OnvifEvents::verifiedSameHostUrl($subscriptionUrl,$host,$port);
         if ($clientUrl === null || $validUntil <= time()+10) {
             $cap = self::soap($base . '/onvif/device_service',
                 $username,$password,'GetCapabilities',
@@ -38,7 +38,7 @@ final class P03OnvifPullPoint
             }
             $eventService=self::findXmlValue($cap['body'],
                 '//*[local-name()="Capabilities"]/*[local-name()="Events"]/*[local-name()="XAddr"]');
-            $eventUrl=P03OnvifEvents::verifiedSameHostUrl($eventService,$host);
+            $eventUrl=P03OnvifEvents::verifiedSameHostUrl($eventService,$host,$port);
             if ($eventUrl === null) {
                 $out['status']='ONVIF Events XAddr nicht vorhanden oder Fremdadresse';
                 return $out;
@@ -54,7 +54,7 @@ final class P03OnvifPullPoint
             }
             $address=self::findXmlValue($subscription['body'],
                 '//*[local-name()="SubscriptionReference"]/*[local-name()="Address"]');
-            $clientUrl=P03OnvifEvents::verifiedSameHostUrl($address,$host);
+            $clientUrl=P03OnvifEvents::verifiedSameHostUrl($address,$host,$port);
             if ($clientUrl===null) {
                 $out['status']='ONVIF SubscriptionReference ohne verifizierte Kamera-Adresse';
                 return $out;
