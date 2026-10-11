@@ -73,9 +73,15 @@ function IPS_SetName(int $id,string $title): bool {
 }
 function IPS_MediaExists(int $id): bool { return isset($GLOBALS['media'][$id]); }
 function IPS_GetMedia(int $id): array { return $GLOBALS['media'][$id]; }
+function IPS_GetChildrenIDs(int $id): array {
+    if ($id!==53879) throw new RuntimeException('Unexpected foreign child scan');
+    return array_keys(array_filter($GLOBALS['media'],static fn($m)=>($m['ParentID']??0)===53879));
+}
 function IPS_GetObject(int $id): array {
     if (!isset($GLOBALS['media'][$id])) throw new RuntimeException('Foreign IPS_GetObject');
-    return ['ParentID'=>$GLOBALS['media'][$id]['ParentID']];
+    $ident=array_search($id,$GLOBALS['mediaByIdent'],true);
+    return ['ParentID'=>$GLOBALS['media'][$id]['ParentID'],
+        'ObjectIdent'=>$ident===false?'':(string)$ident];
 }
 function IPS_SetMediaFile(int $id,string $filename,bool $mustExist): bool {
     if (!isset($GLOBALS['media'][$id]) || !str_starts_with($filename,'media/P03_IPC5442_'))
@@ -292,7 +298,15 @@ class SimulatedFullIPC5442Main extends SimulatedIPC5442Main
     }
 }
 $full=new SimulatedFullIPC5442Main();
-$full->DiagnoseIPC5442AllValues();
+// Warnings are errors in the test. First export has no existing TXT documents.
+set_error_handler(static function(int $severity,string $message):bool {
+    throw new ErrorException($message,0,$severity);
+});
+try {
+    $full->DiagnoseIPC5442AllValues();
+} finally {
+    restore_error_handler();
+}
 $summary=(string)$full->values['P03ConnectionDiagnosis'];
 verifyDiag(str_contains($summary,'IP-Symcon DOKUMENT-ID: 91001')
     && str_contains($summary,'IP-Symcon DOKUMENT-ID: 91002'),
@@ -318,7 +332,14 @@ verifyDiag(str_contains($GLOBALS['media'][91001]['content'],'NICHT ABGESCHNITTEN
     'both full TXT documents explicitly confirm no silent truncation');
 verifyDiag($GLOBALS['writes']===[],'no socket/foreign instance/camera config modifications');
 $mediaIds=array_keys($GLOBALS['media']);
-$full->DiagnoseIPC5442AllValues();
+set_error_handler(static function(int $severity,string $message):bool {
+    throw new ErrorException($message,0,$severity);
+});
+try {
+    $full->DiagnoseIPC5442AllValues();
+} finally {
+    restore_error_handler();
+}
 verifyDiag(array_keys($GLOBALS['media'])===$mediaIds
     && count($GLOBALS['media'])===2,
     'repeat export UPDATES existing two owned documents without duplicating media');
