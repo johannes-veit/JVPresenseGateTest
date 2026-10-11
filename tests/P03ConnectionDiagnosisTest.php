@@ -863,6 +863,12 @@ verifyDiag($streetMain->attributes['P03StreetLearningActive']===false
     'true WORK_LEFT loss AFTER stream was live aborts incomplete street learning');
 $GLOBALS['variables'][51090]=true;
 $GLOBALS['variables'][54893]=true;
+// A REAL stream dropout intentionally removes in-flight mast evidence;
+// populate the fixture again only AFTER reconnect to verify that the
+// stand-alone street-only command itself never erases unrelated state.
+verifyDiag($streetMain->attributes['P03HumanEvents']==='[]',
+    'real WORK/JV stream loss correctly invalidates pending mast proof');
+$streetMain->attributes['P03HumanEvents']='[{"id":"already-seen"}]';
 $streetMain->StartStreetDirectionOnly();
 verifyDiag($streetMain->attributes['P03StreetLearningActive']===true
     && $streetMain->attributes['P03StreetLearningStreamWasLive']===true
