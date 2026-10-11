@@ -195,7 +195,7 @@ $GLOBALS['terInstances'][$extra]=[
 $before=count($GLOBALS['terChanges']);
 $camera->ConfigureTerraceMonitor();
 tCheck(count($GLOBALS['terChanges'])===$before
-    && str_contains((string)$camera->values['P03TerraceMonitor'],'Socket nicht sicher exklusiv'),
+    && str_contains((string)$camera->values['P03TerraceMonitor'],'kein exklusiver P03 Client Socket'),
     'shared P03 socket cannot be touched, even for existing optional observer');
 unset($GLOBALS['terInstances'][$extra]);
 $camera->properties['TerraceDiagnosticsEnabled']=false;
