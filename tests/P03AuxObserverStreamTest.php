@@ -987,3 +987,82 @@ $events=json_decode((string)($terraceSensor->values['LastIVSEvent']??''),true);
 checkP03((int)$terraceSensor->values['HumanEventCounter']===1
     && count($events)===1 && $events[0]['direction']==='LeftToRight',
     'optional terrace observer records its own Human crossing with native direction');
+
+// Actual JV Terrasse 2026-10-11: camera 192.168.107.110, rule "IVS-1",
+// RuleID 5, initially Human+Vehicle then user changed filter to Human-only.
+// Assert the exact Dahua multipart -> parser -> rule gate -> Symcon variables.
+$terraceLive=new JVPresenceP03AuxObserver();
+$terraceLive->Create();
+$terraceLive->properties['Enabled']=true;
+$terraceLive->properties['CameraHost']='192.0.2.110';
+$terraceLive->properties['Username']='local-test';
+$terraceLive->properties['Password']='local-test';
+$terraceLive->properties['Role']='TERRACE';
+$terraceLive->properties['ProofMode']='EXISTING_STAIR_IVS';
+$terraceLive->properties['AllowedIVSRules']=json_encode([
+    ['name'=>'IVS-1','id'=>5,'tableIndex'=>3,'humanOnly'=>false,
+     'objects'=>['human','vehicle']]
+],JSON_UNESCAPED_UNICODE);
+$terraceLive->ApplyChanges();
+$terraceLive->attributes['Streaming']=true;
+$terraceLive->values['StreamOK']=true;
+rxP03($terraceLive,"HTTP/1.1 200 OK\r\n\r\n");
+rxP03($terraceLive,"Code=SmartMotionHuman;action=Start;index=0;data={\"EventID\":90800}\r\n");
+checkP03(($terraceLive->values['PersonDetected']??false)===true
+    && (int)($terraceLive->values['HumanEventCounter']??0)===0
+    && (int)($terraceLive->attributes['SmdHumanRawCount']??0)===1,
+    'real terrace SMD toggles the visible 5-second person status but never IVS counter');
+$terraceLive->attributes['HumanPulseUntil']=time()-1;
+$terraceLive->PersonPulseTimer();
+checkP03(($terraceLive->values['PersonDetected']??true)===false,
+    'Terrace PersonDetected returns to false after timed pulse');
+$event1='Code=CrossLineDetection;action=Start;index=0;data='
+    .json_encode(['Name'=>'IVS-1','RuleID'=>5,'EventID'=>90801,
+        'ObjectType'=>'Human','Direction'=>'LeftToRight'])."\r\n";
+rxP03($terraceLive,substr($event1,0,40));
+checkP03((int)$terraceLive->values['HumanEventCounter']===0,
+    'partial terrace CrossLine TCP packet cannot increment IVS counter');
+rxP03($terraceLive,substr($event1,40));
+$eventHistory=json_decode((string)($terraceLive->values['LastIVSEvent']??''),true);
+checkP03((int)$terraceLive->values['HumanEventCounter']===1
+    && count($eventHistory)===1
+    && ($eventHistory[0]['decision']??'')==='STAIR_HUMAN_START_COUNTED'
+    && ($eventHistory[0]['ruleName']??'')==='IVS-1'
+    && (int)($eventHistory[0]['ruleIdUpper']??0)===5
+    && ($eventHistory[0]['direction']??'')==='LeftToRight',
+    'real terrace Human CrossLine START updates counter, last eight IVS and direction');
+$terraceStatus=json_decode((string)($terraceLive->values['ObserverStatus']??''),true);
+$counts=json_decode((string)($terraceStatus['observedCodeCounts']??''),true);
+checkP03(($counts['CrossLineDetection']??0)===1
+    && (int)($terraceStatus['counter']??0)===1
+    && (int)($terraceStatus['ruleMatches']??0)===1,
+    'ObserverStatus refreshes on accepted terrace Human crossing');
+rxP03($terraceLive,$event1);
+rxP03($terraceLive,'Code=CrossLineDetection;action=Stop;index=0;data='
+    .json_encode(['Name'=>'IVS-1','RuleID'=>5,'EventID'=>90801,
+        'ObjectType'=>'Human'])."\r\n");
+rxP03($terraceLive,'Code=CrossLineDetection;action=Start;index=0;data='
+    .json_encode(['Name'=>'IVS-1','RuleID'=>5,'EventID'=>90802,
+        'ObjectType'=>'Vehicle'])."\r\n");
+rxP03($terraceLive,'Code=CrossLineDetection;action=Start;index=0;data='
+    .json_encode(['Name'=>'Andere Linie','RuleID'=>6,'EventID'=>90803,
+        'ObjectType'=>'Human'])."\r\n");
+checkP03((int)$terraceLive->values['HumanEventCounter']===1
+    && (int)$terraceLive->attributes['DedupeRejectCount']===1
+    && (int)$terraceLive->attributes['RuleRejectCount']>=3,
+    'duplicate Start, Stop, vehicle and other line do not create terrace Human false positives');
+$eventHistory=json_decode((string)($terraceLive->values['LastIVSEvent']??''),true);
+checkP03(count($eventHistory)===5
+    && ($eventHistory[4]['decision']??'')==='STAIR_IVS_NOT_MAPPED_OR_NOT_HUMAN',
+    'Terrace forensic variable retains rejected events even after accepted Human crossing');
+rxP03($terraceLive,'Code=CrossLineDetection;action=Start;index=0;data='
+    .json_encode(['Name'=>'IVS-1','RuleID'=>5,'EventID'=>90804])."\r\n");
+checkP03((int)$terraceLive->values['HumanEventCounter']===1,
+    'outdated mixed Human/Vehicle rule rejects unclassified CrossLine securely');
+$terraceLive->properties['AllowedIVSRules']=json_encode([
+    ['name'=>'IVS-1','id'=>5,'tableIndex'=>3,'humanOnly'=>true,'objects'=>['human']]
+],JSON_UNESCAPED_UNICODE);
+rxP03($terraceLive,'Code=CrossLineDetection;action=Start;index=0;data='
+    .json_encode(['Name'=>'IVS-1','RuleID'=>5,'EventID'=>90805])."\r\n");
+checkP03((int)$terraceLive->values['HumanEventCounter']===2,
+    'after re-reading camera Person-only config, verified RuleID5 Start may qualify without ObjectType');
