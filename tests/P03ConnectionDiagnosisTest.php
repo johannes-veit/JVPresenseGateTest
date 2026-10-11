@@ -127,6 +127,7 @@ class IPSModule
         if ($var) $GLOBALS['variables'][$var]=$value;
     }
     protected function ReloadForm():void {$this->reload=true;}
+    protected function SendDebug(string $caption,string $message,int $format):void {}
     public array $timers=[];
     protected function SetTimerInterval(string $name,int $ms):void {$this->timers[$name]=$ms;}
 }
