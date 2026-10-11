@@ -727,6 +727,69 @@ verifyDiag($instance->attributes['AuxJVInstanceID']===57215
     && $instance->attributes['AuxWorkInstanceID']===27938,
     'valid recovered Observer IDs stored after accurate GUID/host/role validation');
 
+// Terrace field replay 18:37: LIVE but zero CrossLine, SMD present.
+// #35115 must show the actual observer variable and full code histogram,
+// not just an apparently working socket.
+$GLOBALS['instances'][33107]=[
+ 'ConnectionID'=>51876,'InstanceStatus'=>102,
+ 'ModuleInfo'=>['ModuleID'=>'{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}']
+];
+$GLOBALS['instances'][51876]=[
+ 'ConnectionID'=>0,'InstanceStatus'=>102,
+ 'ModuleInfo'=>['ModuleID'=>'{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}']
+];
+$GLOBALS['props'][33107]=['CameraHost'=>'192.168.107.110','Role'=>'TERRACE'];
+$GLOBALS['props'][51876]=['Host'=>'192.168.107.110','Port'=>80,'Open'=>true];
+$GLOBALS['byIdent'][33107]=[
+ 'PersonDetected'=>20965,'StreamOK'=>39780,
+ 'HumanEventCounter'=>47497,'ObserverStatus'=>18714,'LastIVSEvent'=>22341
+];
+$GLOBALS['variables'][20965]=false;
+$GLOBALS['variables'][39780]=true;
+$GLOBALS['variables'][47497]=0;
+$GLOBALS['variables'][22341]='[]';
+$GLOBALS['variables'][18714]=json_encode([
+    'streamOK'=>true,'observedCodeCounts'=>json_encode([
+        'VideoMotionInfo'=>20,'VideoMotion'=>6,
+        'SmartMotionHuman'=>4,'InterVideoAccess'=>5
+    ]),
+    'smdHumanRawCount'=>4,'lastSmdHumanStartAt'=>time()-30,
+    'ruleMatches'=>0,'ruleRejected'=>31,
+    'allowedStairRules'=>[
+        ['name'=>'IVS-1','id'=>5,'tableIndex'=>3,
+          'humanOnly'=>false,'objects'=>['human','vehicle']]
+    ]
+],JSON_UNESCAPED_UNICODE);
+$instance->attributes['TerraceObserverInstanceID']=33107;
+$instance->attributes['TerraceManagedSocketID']=51876;
+$instance->attributes['TerraceRuleReadAt']=time()-120;
+$instance->properties['TerraceDiagnosticsEnabled']=true;
+$instance->properties['TerraceHost']='192.168.107.110';
+$instance->values['P03TerraceMonitor']='AKTIV – NUR DIAGNOSE';
+$instance->DiagnoseP03Connections(true);
+$terraceReport=(string)$instance->values['P03ConnectionDiagnosis'];
+verifyDiag(str_contains($terraceReport,'TERRACE Person erkannt: AUS | Variable #20965')
+    && str_contains($terraceReport,'SmartMotionHuman=4')
+    && str_contains($terraceReport,'CrossLine-Events=0')
+    && str_contains($terraceReport,'RuleID=5 | Nur Human=NEIN')
+    && str_contains($terraceReport,'Nach Kamera-IVS-Aenderungen erneut'),
+    'real 18:37 terrace SMD vs missing IVS and stale rule filter are explicit in #35115');
+$GLOBALS['variables'][22341]=json_encode([[
+ 'time'=>'18:51:01','action'=>'Start','ruleName'=>'IVS-1',
+ 'ruleIdUpper'=>5,'classification'=>'Human',
+ 'direction'=>'LeftToRight','decision'=>'STAIR_HUMAN_START_COUNTED'
+]],JSON_UNESCAPED_UNICODE);
+$GLOBALS['variables'][47497]=1;
+$instance->DiagnoseP03Connections(true);
+$terraceReport=(string)$instance->values['P03ConnectionDiagnosis'];
+verifyDiag(str_contains($terraceReport,'TERRACE Human-CrossLine-Zaehler: 1')
+    && str_contains($terraceReport,'TERRACE IVS 18:51:01')
+    && str_contains($terraceReport,'Richtung=LeftToRight'),
+    'actual main report reads accepted terrace IVS, counter and direction after update');
+unset($GLOBALS['instances'][33107],$GLOBALS['instances'][51876],
+    $GLOBALS['props'][33107],$GLOBALS['props'][51876]);
+$instance->properties['TerraceDiagnosticsEnabled']=false;
+
 // After a module unload/deletion, never turn an old known Observer ID into
 // 0, never create a new observer or trust leftover StreamOK Boolean.
 unset($GLOBALS['instances'][57215],$GLOBALS['instances'][27938]);
