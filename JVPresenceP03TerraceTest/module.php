@@ -427,7 +427,15 @@ class JVPresenceP03MultiCamera extends IPSModule
                     $source=$isJV
                         ? P03ProofEngine::SRC_JV_LEFT
                         : P03ProofEngine::SRC_WORK_LEFT;
-                    $counter=(int)GetValue($sender);
+                    // VM_UPDATE carries the value at the instant of THIS notification.
+                    // GetValue() can already reflect a later update when notifications
+                    // from two rapid Human STARTs are dispatched back-to-back.
+                    // Reading the current variable twice would collapse two
+                    // independent counter edges into a single apparent jump.
+                    $counter=(is_array($Data) && array_key_exists(0,$Data)
+                        && is_numeric($Data[0]))
+                        ? (int)$Data[0]
+                        : (int)GetValue($sender);
                     $attribute=$isJV?'AuxJVLastSeenHumanCounter':'AuxWorkLastSeenHumanCounter';
                     if ($this->acceptP03NewCounterValue($attribute,$counter,$source)) {
                         $this->recordP03HumanEvent($source, [

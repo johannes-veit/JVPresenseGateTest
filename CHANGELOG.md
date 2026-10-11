@@ -1,3 +1,10 @@
+# v0.6.30 (Build 61) – P03 queued Personenzähler korrekt auswerten
+
+- **Fix P03-Main:** `MessageSink()` verarbeitet bei `VM_UPDATE` den zur Nachricht gehörenden numerischen Zähler-Snapshot `$Data[0]`, statt den inzwischen möglicherweise weitergelaufenen aktuellen Wert mit `GetValue()` auszulesen. Das verhindert den Verlust von positiven Human-Starts, wenn mehrere Symcon-Updates sehr schnell hintereinander eintreffen. Fallback auf `GetValue()` nur ohne gültigen Nachrichtenwert.
+- **Regression:** Zwei wartende Ereignisse (6 und 7) werden unabhängig erkannt, obwohl die Variable bereits auf 12 steht; doppeltes 7 bleibt gesperrt; 0 setzt die unvollständige Beweiskette zurück, die neue 1 zählt wieder. Die vorhandenen 2-Kamera-Beweise und Fail-closed-Regeln bleiben unverändert.
+- Keine Kamera-/KI-/IVS-Konfiguration geändert, keine Sockets neu angelegt, keine Änderung an P05, AussenlichtAutomatik2 oder Alarmanlage. Reale IPC5442-Personen-Events sind erst nach Vor-Ort-Test bestätigt.
+- Symcon: Hauptinstanz #53879, Diagnosevariable #35115 (Taste `P03 Verbindungen diagnostizieren`).
+
 # v0.6.29 (Build 60) – P03-Softwareaudit: Proof-Timer, echte Dahua-Codes, passive Human-Hinweise
 
 - Vollständiger Feldvergleich der beiden am 11.10.2026 ausgelesenen IPC-HFW5442E-ZE-Dumps: 9438 identische Feldnamen, 63 abweichende Werte und 17 zusätzliche WORK_LEFT-Werte. `SmartEncode[0/1].Enable=false`, `SmartMotionDetect[0].Enable=true` / Human=true, `VideoAnalyseGlobal[0].Scene.Type=Normal`, die P03 IVS-Rule[0][3] Enable=true/Type=CrossRegionDetection/Id=4/ObjectTypes[0]=Human/Actions Appear+Cross/24h-Zeitplan stimmen auf beiden Kameras überein. Nur die beabsichtigten verschiedenen P03 RuleNames unterscheiden sich unter VideoAnalyse. Dies macht softwareseitige Verarbeitung als Fehlerquelle plausibel, beweist aber OHNE echte Kamera-Personenmeldung nicht, dass Kamera IVS aktiv auslöst.
