@@ -2396,11 +2396,54 @@ class JVPresenceP03MultiCamera extends IPSModule
                         continue;
                     }
                     if ($table === 'VideoAnalyseRule') {
-                        $meta = $this->p03AuxHumanRuleMeta($role);
-                        $expectedIdx = $this->ReadAttributeInteger($meta['ruleIndex']);
-                        $expectedID = $this->ReadAttributeInteger($meta['ruleId']);
+                        // The live left cameras use EXISTING_STAIR_IVS, not the
+                        // obsolete "P03_JV_LEFT_HUMAN" CrossRegion rectangle.
+                        // Read their previously verified *single* allowlist
+                        // entry, then independently corroborate it with the
+                        // current CGI rule table. Absolutely no camera writes.
+                        $allowAttr = $role === self::AUX_JV_ROLE
+                            ? 'AuxJVAllowedIVSRules' : 'AuxWorkAllowedIVSRules';
+                        $allowed = json_decode($this->ReadAttributeString($allowAttr), true);
+                        $existing = is_array($allowed) && count($allowed) === 1
+                            && is_array($allowed[0])
+                            && trim((string)($allowed[0]['name'] ?? '')) !== ''
+                            && (int)($allowed[0]['id'] ?? -1) >= 0
+                            && (int)($allowed[0]['tableIndex'] ?? -1) >= 0;
+                        if ($existing) {
+                            $target = $allowed[0];
+                            $expectedIdx = (int)$target['tableIndex'];
+                            $expectedID = (int)$target['id'];
+                            $expectedName = (string)$target['name'];
+                            $cameraSelected = P03ExistingIvsLines::select(
+                                P03ExistingIvsLines::fromCgi($body));
+                            $sameRule = P03ExistingIvsLines::sameSelectedStair(
+                                ['mapped' => true, 'allowed' => [$target]], $cameraSelected)
+                                && $expectedIdx === (int)($cameraSelected['allowed'][0]['tableIndex'] ?? -1);
+                            $lines[] = 'P03 AKTUELLES TREPPEN-PRUEFZIEL: ' . $expectedName
+                                . ' | Index=' . $expectedIdx . ' | RuleID=' . $expectedID
+                                . ' | Objektfilter=' . (!empty($target['humanOnly']) ? 'nur Human' : 'Human/Vehicle');
+                            $lines[] = 'P03 AKTUELLER CGI-GEGENCHECK: ' . ($sameRule
+                                ? 'IDENTISCH (Name, ID, Index, Objektfilter)'
+                                : 'WARNUNG: Abweichung vom zuvor freigegebenen Treppenfilter, keine Annahme ueber aktivierte IVS');
+                            if (empty($target['humanOnly'])) {
+                                $lines[] = 'HINWEIS: Mensch/Fahrzeug-Treppenlinie: nur ein einzeln als Human klassifiziertes'
+                                    . ' CrossLine-Ereignis darf den Human-Zaehler erhoehen.';
+                            }
+                            $expectedType = 'CrossLineDetection';
+                        } else {
+                            // For diagnosis only, retain the old legacy target
+                            // to inspect cameras lacking a verified allowlist.
+                            // Never interpret that old rectangle as a proof.
+                            $meta = $this->p03AuxHumanRuleMeta($role);
+                            $expectedIdx = $this->ReadAttributeInteger($meta['ruleIndex']);
+                            $expectedID = $this->ReadAttributeInteger($meta['ruleId']);
+                            $expectedName = (string)$meta['name'];
+                            $expectedType = 'CrossRegionDetection';
+                            $lines[] = 'WARNUNG: KEINE verifizierte Treppen-CrossLine-Freigabe vorhanden.'
+                                . ' Die folgende alte P03-Rechteckregel ist NUR Diagnose.';
+                        }
                         foreach (P03IPC5442Audit::summarizeRulePriorities(
-                            $body, $expectedIdx, (string) $meta['name'], $expectedID
+                            $body, $expectedIdx, $expectedName, $expectedID, $expectedType
                         ) as $field) {
                             $lines[] = $field;
                         }
