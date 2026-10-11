@@ -1,3 +1,13 @@
+# v0.8.4 (Build 85) – JV Terrasse: fehlenden exklusiven Parent-Socket unter IP-Symcon 9 reparieren
+
+- Echter Gehtest 11.10.2026 18:22:24: JV_LEFT und WORK_LEFT melden jeweils weitere 2 korrekte Human-Treppen-Starts, beide Gesamtzähler 4/4. Beide P03-Mast-Eventstreams LIVE. Terrasse meldet dagegen `GESPERRT – Terrassen-Socket nicht sicher exklusiv`.
+- Ursache: Der neue optionale P03-Terrassenobserver kann auf IP-Symcon 9 trotz `RequireParent()` mit `ConnectionID=0` erstellt werden. Exakt dieser Lifecycle-Fehler wurde zuvor beim Anlegen der beiden linken P03-Mastbeobachter mit expliziten eigenen Client Sockets korrigiert; die v0.8.3-Terrassenfunktion enthielt diesen Schritt noch nicht.
+- Beim Aktivieren überprüft P03 nur den verifizierten `TERRACE`-Observer (Modul-GUID, Rolle, IP). Wenn und nur wenn sein `ConnectionID=0` ist, legt es einen neuen dedizierten Client Socket an oder verwendet genau den vorher als P03-Terrasse gespeicherten, unbenutzten Socket. Host/Port und Modul-GUID müssen passen. Danach `IPS_ConnectInstance(TERRACE, Socket)` und `IPS_ApplyChanges(TERRACE)`.
+- Neues persistentes Attribut `TerraceManagedSocketID` verhindert bei Fehlern oder wiederholten Verbindungsversuchen zusätzliche Socket-Duplikate. Existing parent != 0, falsche GUID, abweichende IP, fremde/mehrfach genutzte Sockets werden niemals neu verdrahtet oder verändert.
+- Die bekannte Diagnose-Variable #35115 zeigt jetzt die tatsächliche Terrassen-Observer-ID, `ConnectionID`, gespeicherte Socket-ID, dessen Modul-GUID und weitere Clients, auch bei fehlgeschlagener Verbindung. Keine Kennwörter.
+- Die Testerweiterung reproduziert ausdrücklich IP-Symcon 9 `ConnectionID=0`, kontrolliert genau eine eigene Socket-Neuerstellung und Verbindung, wiederholte Konfiguration, abgebrochenen ersten Connect mit gespeicherter Socket-ID und sichere Wiederholung sowie Verbot der Übernahme bereits verwendeter Sockets.
+- Der funktionierende v0.8.2-Sicherungsstand bleibt unter `baseline/p03-v0.8.2-build83-live-20261011` unverändert. Mastkamera-Observer #57215/#27938 und Sockets #17785/#55478 bleiben vollständig unverändert. Kein Kamera-SetConfig, keine Änderungen an IVS-Linien, Außenlichtautomatik oder anderen Modulen.
+- TEST und PRODUKTION bleiben AUS. Die Terrasse ist nur optionaler diagnostischer dritter IVS-Sensor, kein alternativer HOME/LAGER-Beweis bis zum separaten Abnahmetest.
 # v0.8.3 (Build 84) – JV Terrasse als optionaler unabhängiger IVS-Zusatzsensor
 
 - Unveränderte Ausgangsbasis v0.8.2 Build83 wurde separat unter `baseline/p03-v0.8.2-build83-live-20261011` gesichert und bleibt für künftige Vergleiche eingefroren.
