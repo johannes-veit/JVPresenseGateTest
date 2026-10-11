@@ -127,6 +127,8 @@ class IPSModule
         if ($var) $GLOBALS['variables'][$var]=$value;
     }
     protected function ReloadForm():void {$this->reload=true;}
+    public array $timers=[];
+    protected function SetTimerInterval(string $name,int $ms):void {$this->timers[$name]=$ms;}
 }
 
 require_once dirname(__DIR__).'/JVPresenceP03TerraceTest/module.php';
@@ -346,6 +348,74 @@ verifyDiag(array_keys($GLOBALS['media'])===$mediaIds
 verifyDiag(in_array('JVP03MC_DiagnoseIPC5442AllValues($id);',
     array_column(json_decode($full->GetConfigurationForm(),true)['actions']??[],'onClick'),true),
     'one-click full export is available in P03 main instance form');
+
+// Counter reset/replayed VM_UPDATE handling: the input is a monotonically
+// increasing P03-aux variable (HumanEventCounter) and existing nonzero
+// values after Symcon module reload are NOT new people.
+$counterMain=new JVPresenceP03MultiCamera();
+$counterMain->attributes['AuxJVEventCounterVarID']=42076;
+$counterMain->attributes['AuxWorkEventCounterVarID']=34838;
+$counterMain->attributes['AuxJVLastSeenHumanCounter']=-1;
+$counterMain->attributes['AuxWorkLastSeenHumanCounter']=-1;
+$baseline=new ReflectionMethod(JVPresenceP03MultiCamera::class,'baselineP03Counter');
+$change=new ReflectionMethod(JVPresenceP03MultiCamera::class,'acceptP03NewCounterValue');
+$baseline->invoke($counterMain,'AuxJVEventCounterVarID','AuxJVLastSeenHumanCounter');
+$baseline->invoke($counterMain,'AuxWorkEventCounterVarID','AuxWorkLastSeenHumanCounter');
+verifyDiag($counterMain->attributes['AuxJVLastSeenHumanCounter']===7
+    && $counterMain->attributes['AuxWorkLastSeenHumanCounter']===0,
+    'baseline existing P03 IVS/SMD counters after upgrade – do NOT replay 7 old hits');
+verifyDiag($change->invoke($counterMain,'AuxJVLastSeenHumanCounter',8,'JV_LEFT')===true,
+    'one positive counter increment is new proof signal');
+verifyDiag($change->invoke($counterMain,'AuxJVLastSeenHumanCounter',8,'JV_LEFT')===false,
+    'duplicate VM_UPDATE same counter value cannot create a second person');
+$counterMain->attributes['P03HumanEvents']='[{"source":"JV_LEFT","id":"old","ts":1}]';
+verifyDiag($change->invoke($counterMain,'AuxJVLastSeenHumanCounter',0,'JV_LEFT')===false,
+    'counter reset 8 to 0 is NEVER new person detection');
+verifyDiag($counterMain->attributes['P03HumanEvents']==='[]'
+    && ($counterMain->timers['P03ProofTimer']??-1)===0,
+    'counter reset cancels pending cross-camera proof to prevent stale transfer');
+verifyDiag($change->invoke($counterMain,'AuxJVLastSeenHumanCounter',1,'JV_LEFT')===true,
+    'first real Human Start after legitimate counter reset 0 to 1 accepted');
+verifyDiag($change->invoke($counterMain,'AuxJVLastSeenHumanCounter',5,'JV_LEFT')===true,
+    'counter jump is logged but emits only one new proof signal');
+
+// Regression from P05: multiple unique counter increments while visible
+// PersonDetected=TRUE must not collapse into a 1-second Boolean edge.
+$counterMain->attributes['TestActive']=true;
+$counterMain->attributes['AuxJVInstanceID']=57215;
+$counterMain->attributes['AuxWorkInstanceID']=27938;
+$counterMain->attributes['AuxJVManagedSocketID']=9001;
+$counterMain->attributes['AuxWorkManagedSocketID']=9002;
+$counterMain->attributes['AuxJVStreamVarID']=54893;
+$counterMain->attributes['AuxWorkStreamVarID']=51090;
+$GLOBALS['instances'][9001]['InstanceStatus']=102;
+$GLOBALS['instances'][9002]['InstanceStatus']=102;
+$GLOBALS['props'][9001]['Open']=true;
+$GLOBALS['props'][9002]['Open']=true;
+$GLOBALS['variables'][54893]=true;
+$GLOBALS['variables'][51090]=true;
+$addProof=new ReflectionMethod(JVPresenceP03MultiCamera::class,'recordP03HumanEvent');
+$addProof->invoke($counterMain,P03ProofEngine::SRC_JV_LEFT,['counter'=>901]);
+$addProof->invoke($counterMain,P03ProofEngine::SRC_JV_LEFT,['counter'=>902]);
+$records=json_decode((string)($counterMain->attributes['P03HumanEvents']??'[]'),true);
+verifyDiag(is_array($records)&&count($records)===2
+    && ($records[0]['id']??'')!==($records[1]['id']??''),
+    'two independent camera Human counter increments within 1s are both retained');
+$addProof->invoke($counterMain,P03ProofEngine::SRC_JV_LEFT,['counter'=>902]);
+$records=json_decode((string)($counterMain->attributes['P03HumanEvents']??'[]'),true);
+verifyDiag(count($records)===2,
+    'identical same-source counter event ID is not duplicated in proof ledger');
+verifyDiag((int)($counterMain->attributes['P03VerifiedCount']??0)===0,
+    'same mast camera twice must NEVER authorize HOME/LAGER transition');
+// Raw actor lost stream: cancel remaining pending proof and both camera order.
+$counterMain->attributes['P03HumanEvents']='[{"id":"pending","source":"JV_LEFT","ts":1}]';
+$counterMain->attributes['AuxJVPersonVarID']=55806;
+$counterMain->attributes['AuxWorkPersonVarID']=33071;
+$GLOBALS['variables'][54893]=false;
+$counterMain->MessageSink(time(),54893,10603,[false,true]);
+verifyDiag(($counterMain->attributes['P03HumanEvents']??'')==='[]'
+    && ($counterMain->timers['P03ProofTimer']??-1)===0,
+    'lost observer StreamOK discards stale camera proof instead of combining across reconnection');
 
 // Forensics must work even when the main P03 instance lost the stored IDs
 // and IPS_GetInstanceListByModuleID returns EMPTY after module update.
