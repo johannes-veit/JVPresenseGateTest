@@ -508,4 +508,32 @@ $wire->HealthTick();
 checkP03((int)($wire->attributes['GenericHumanHintCount'] ?? 0)===1,
     'health check does not erase persistent event-code/human-hint diagnostics');
 
+// Production traffic from IPC5442 includes thousands of VideoMotionInfo
+// messages without any person. High-frequency diagnostics must not flood
+// SymBox UI variables, yet raw counts and real AI positive events must remain.
+$beforeGenericCount=(int)($wire->attributes['WireCodeCount']??0);
+$beforeHumanProof=(int)($wire->values['HumanEventCounter']??0);
+$wire->attributes['LastGenericWireProbeAt']=time();
+$wire->attributes['LastGenericEventAuditAt']=time();
+$wire->values['WireProbe']='NO REWRITE DURING GENERIC SPAM';
+$wire->values['EventAudit']='NO EVENTAUDIT REWRITE DURING GENERIC SPAM';
+for($i=0;$i<40;$i++){
+    rxP03($wire,"Code=VideoMotionInfo;action=State;index=0\r\n");
+}
+checkP03(($wire->values['WireProbe']??'')==='NO REWRITE DURING GENERIC SPAM'
+    && ($wire->values['EventAudit']??'')==='NO EVENTAUDIT REWRITE DURING GENERIC SPAM',
+    '40 rapid generic VideoMotionInfo events do not rewrite P03 UI diagnosis variables');
+checkP03((int)($wire->attributes['WireCodeCount']??0)===$beforeGenericCount+40,
+    'throttling preserves every independently observed wire code counter');
+checkP03((int)($wire->values['HumanEventCounter']??0)===$beforeHumanProof,
+    'even a large generic motion burst NEVER becomes human evidence');
+$wire->attributes['LastHumanProofAt']=time()-6;
+rxP03($wire,"Code=SmartMotionHuman;action=Start;index=0;data="
+    ."{\"EventID\":999,\"ObjectType\":\"Human\"}\r\n");
+checkP03((int)($wire->values['HumanEventCounter']??0)===$beforeHumanProof+1
+    && str_contains((string)($wire->values['WireProbe']??''),'SmartMotionHuman')
+    && str_contains((string)($wire->values['EventAudit']??''),'SMD_HUMAN_START_COUNTED'),
+    'real Human START bypasses generic diagnostics throttle and is counted immediately');
+
+
 echo "P03 OBSERVER INTEGRATION SIMULATION PASSED ({$tests} assertions)\n";
