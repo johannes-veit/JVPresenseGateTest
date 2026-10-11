@@ -91,7 +91,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03AUX_SocketRestartTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('Watchdog', 15000, 'JVP03AUX_Watchdog($_IPS["TARGET"]);');
         $this->RegisterTimer('PersonPulseTimer', 0, 'JVP03AUX_PersonPulseTimer($_IPS["TARGET"]);');
-        $this->RegisterTimer('OnvifPullTimer', 15000, 'JVP03AUX_OnvifPoll($_IPS["TARGET"]);');
+        $this->RegisterTimer('OnvifPullTimer', 25000, 'JVP03AUX_OnvifPoll($_IPS["TARGET"]);');
 
         $this->RequireParent(self::CLIENT_SOCKET_GUID);
     }
@@ -131,7 +131,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->SetTimerInterval('PersonPulseTimer', 0);
         $this->SetTimerInterval('Watchdog', 15000);
         $this->SetTimerInterval('OnvifPullTimer',
-            $this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady() ? 15000 : 0);
+            $this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady() ? 25000 : 0);
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
         $this->SetBuffer('WireProbeTail', '');
@@ -152,6 +152,22 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->WriteAttributeString('SeenEventKeys', '{}');
         $this->SetValue('PersonDetected', false);
         $this->SetValue('StreamOK', false);
+        // ApplyChanges is a new connection epoch. Never keep a stale
+        // subscription, object correlation or 180-s authentication backoff
+        // across a configuration change or code upgrade.
+        $this->WriteAttributeString('OnvifSubscriptionURL','');
+        $this->WriteAttributeString('OnvifSubscriptionReference','[]');
+        $this->WriteAttributeInteger('OnvifSubscriptionUntil',0);
+        $this->WriteAttributeInteger('OnvifPollBusyUntil',0);
+        $this->WriteAttributeInteger('OnvifNextAttemptAt',0);
+        $this->WriteAttributeString('OnvifCorrelationState','{"classes":{},"crossings":{}}');
+        $this->WriteAttributeString('OnvifSeenEventKeys','{}');
+        $this->WriteAttributeString('OnvifRecentEvents','[]');
+        $this->WriteAttributeInteger('OnvifEventCount',0);
+        $this->WriteAttributeInteger('OnvifHumanStairCount',0);
+        $this->WriteAttributeString('OnvifLastStatus','Noch keine ONVIF-Verbindung seit ApplyChanges');
+        $this->SetValue('OnvifRecentEvents','[]');
+        $this->SetValue('OnvifStatus','Noch kein ONVIF-Abruf seit ApplyChanges');
 
         // Proven Dahua lifecycle from AussenlichtAutomatik2/v0.6.12:
         // RequireParent()+GetConfigurationForParent() owns the parent config.
@@ -193,7 +209,9 @@ class JVPresenceP03AuxObserver extends IPSModule
             );
             $status=(string)($result['status']??'UNKNOWN');
             $this->WriteAttributeString('OnvifLastStatus',$status);
-            $this->SetValue('OnvifStatus',date('Y-m-d H:i:s').' '.$status);
+            $this->SetValue('OnvifStatus',date('Y-m-d H:i:s').' '.$status
+                .' | RX='.$this->ReadAttributeInteger('OnvifEventCount')
+                .' | Treppen-Menschen-Kandidaten='.$this->ReadAttributeInteger('OnvifHumanStairCount'));
             if (empty($result['ok'])) {
                 $this->WriteAttributeString('OnvifSubscriptionURL','');
                 $this->WriteAttributeInteger('OnvifSubscriptionUntil',0);
@@ -280,6 +298,10 @@ class JVPresenceP03AuxObserver extends IPSModule
             $encoded=json_encode($recent,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'[]';
             $this->WriteAttributeString('OnvifRecentEvents',$encoded);
             $this->SetValue('OnvifRecentEvents',$encoded);
+            $this->SetValue('OnvifStatus',date('Y-m-d H:i:s').' '.$status
+                .' | RX='.$this->ReadAttributeInteger('OnvifEventCount')
+                .' | Treppen-Menschen-Kandidaten='.$this->ReadAttributeInteger('OnvifHumanStairCount')
+                .' | KEIN ZONENBEWEIS');
         } catch (Throwable $e) {
             $this->WriteAttributeString('OnvifSubscriptionURL','');
             $this->WriteAttributeInteger('OnvifSubscriptionUntil',0);
