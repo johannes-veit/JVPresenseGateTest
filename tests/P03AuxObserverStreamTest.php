@@ -494,7 +494,7 @@ rxP03($wire,"Code=VideoMotionInfo;action=State;index=0;data="
 checkP03((int)($wire->values['HumanEventCounter'] ?? 0)===$prior,
     'generic VideoMotionInfo with embedded Human label remains diagnostic-only');
 checkP03((int)($wire->attributes['GenericHumanHintCount'] ?? 0)===1
-    && str_contains((string)($wire->values['HumanHint']??''),'Human'),
+    && str_contains((string)($wire->values['HumanHint']??''),'"classification":"human"'),
     'explicit Human class in generic Dahua event is visible independently of proof counter');
 $codes=json_decode((string)($wire->attributes['ObservedCodeCounts']??'{}'),true);
 checkP03(is_array($codes) && ($codes['VideoMotionInfo']??0)>=2
