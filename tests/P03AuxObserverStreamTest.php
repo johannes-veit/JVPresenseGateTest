@@ -688,3 +688,42 @@ checkP03(P03ExistingIvsLines::wireReadSummary([
     'ok'=>true,'http'=>200,'json'=>['result'=>true,
         'params'=>['table'=>[$actualRpcShape]]]])['totalRules']===4,
     'transport summary distinguishes a populated RPC2 rule table from empty filtered results');
+
+// v0.7.7: a camera/observer reconfiguration MUST NOT reuse the old camera's
+// apparent SMD/IVS history. The native counter stays monotonic and is
+// explicitly reset only by the guarded host migration method.
+$wire->attributes['WireCodeCount']=900;
+$wire->attributes['WireHeartbeatCount']=500;
+$wire->attributes['ParsedEventCount']=300;
+$wire->attributes['CrossRegionEventCount']=17;
+$wire->attributes['RuleMatchEventCount']=6;
+$wire->attributes['RuleRejectCount']=55;
+$wire->attributes['SmdHumanRawCount']=28;
+$wire->attributes['SmdHumanProofCount']=3;
+$wire->attributes['ObservedCodeCounts']='{"SmartMotionHuman":28,"CrossRegionDetection":17}';
+$wire->values['WireProbe']='16:22:10 Code=SmartMotionHuman;action=Start;index=0';
+$wire->values['EventAudit']='{"time":"16:22:10","humanCount":6}';
+$wire->values['LastIVSEvent']='{"oldCamera":true}';
+$wire->values['LastEvent']='OLD CAMERA';
+$wire->values['HumanHint']='OLD CAMERA HINT';
+$humanBeforeApply=(int)($wire->values['HumanEventCounter']??0);
+$wire->ApplyChanges();
+checkP03(($wire->attributes['WireCodeCount']??-1)===0
+    && ($wire->attributes['WireHeartbeatCount']??-1)===0
+    && ($wire->attributes['ParsedEventCount']??-1)===0
+    && ($wire->attributes['CrossRegionEventCount']??-1)===0
+    && ($wire->attributes['RuleMatchEventCount']??-1)===0
+    && ($wire->attributes['RuleRejectCount']??-1)===0
+    && ($wire->attributes['SmdHumanRawCount']??-1)===0
+    && ($wire->attributes['SmdHumanProofCount']??-1)===0,
+    'camera reconfiguration resets old per-observer wire/AI/IVS diagnostic counters');
+checkP03(($wire->attributes['ObservedCodeCounts']??'')==='{}'
+    && ($wire->values['WireProbe']??'NOT EMPTY')===''
+    && ($wire->values['EventAudit']??'NOT EMPTY')===''
+    && ($wire->values['LastIVSEvent']??'NOT EMPTY')===''
+    && ($wire->values['LastEvent']??'NOT EMPTY')===''
+    && ($wire->values['HumanHint']??'NOT EMPTY')==='',
+    'camera reconfiguration clears old camera code histogram and timestamped audit');
+checkP03((int)($wire->values['HumanEventCounter']??-1)===$humanBeforeApply,
+    'regular ApplyChanges never forges or silently resets the monotonic human counter');
+
