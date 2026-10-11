@@ -727,8 +727,9 @@ verifyDiag(str_contains($ownership,'Observer #57215: IPS_InstanceExists=NEIN')
 verifyDiag($GLOBALS['writes']===[],
     'forensic and noncreating discovery issue NO camera, socket or foreign module writes');
 $ui2=json_decode($instance->GetConfigurationForm(),true);
-verifyDiag(in_array('JVP03MC_DiagnoseP03Ownership($id);',
-    array_column($ui2['actions']??[],'onClick'),true),
-    'ownership diagnostic one-click button wired on the real main module');
+verifyDiag(!in_array('JVP03MC_DiagnoseP03Ownership($id);',
+    array_column($ui2['actions']??[],'onClick'),true)
+    && count($ui2['actions']??[])===7,
+    'legacy ownership button removed; main UI exposes precisely seven essential commands');
 
 echo "P03 READ-ONLY CONNECTION DIAGNOSIS TEST PASSED\n";
