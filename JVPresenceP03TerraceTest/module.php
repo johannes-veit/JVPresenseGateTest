@@ -2601,6 +2601,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                     $lines[] = 'FEHLER: Rolle oder Kamera-IP weicht von P03-Hauptinstanz ab.';
                 }
 
+                $personStatusVariableId = $this->findAuxVariable($id, 'PersonDetected');
                 foreach ([
                     'StreamOK' => 'Eventstream',
                     'PersonDetected' => 'Person erkannt',
@@ -2665,8 +2666,9 @@ class JVPresenceP03MultiCamera extends IPSModule
                         $lines[] = 'TREPPEN-BEWEISMODUS: ' . $proofMode
                             . ' | erlaubte Treppen-CrossLine-Regeln=' . count($stairRules);
                         if ($proofMode === 'EXISTING_STAIR_IVS') {
-                            $lines[] = 'PERSONENLOGIK: SMD/SmartMotionHuman ist nur Rohdiagnose; '
-                                . 'CrossRegionDetection ersetzt keine zugeordnete Treppen-CrossLine.';
+                            $lines[] = 'PERSONENLOGIK: SMD Human START setzt nur Person erkannt'
+                                . ' (5 s); nur bestaetigte Human-Treppen-CrossLine erhoeht Human-Zaehler.'
+                                . ' Generische Bewegung oder CrossRegion ersetzen sie nicht.';
                             if ($stairRules === []) {
                                 $lines[] = 'WARNUNG: Keine erlaubte Treppen-CrossLine zugeordnet. '
                                     . 'Es wird bewusst kein Human-Start gebucht.';
@@ -2676,8 +2678,8 @@ class JVPresenceP03MultiCamera extends IPSModule
                         if (is_array($observed)) {
                             arsort($observed, SORT_NUMERIC);
                             $items=[];
-                            foreach (array_slice($observed,0,15,true) as $name=>$count) {
-                                $items[]=$name.'='.(int)$count;
+                            foreach (array_slice($observed,0,15,true) as $codeName=>$count) {
+                                $items[]=$codeName.'='.(int)$count;
                             }
                             $lines[]='KAMERA-CODES SEIT OBSERVER-START: '
                                 .($items===[] ? 'noch keine geparsten Code-Events' : implode(', ',$items));
@@ -2689,7 +2691,8 @@ class JVPresenceP03MultiCamera extends IPSModule
                                     .' (vor '.max(0,time()-$lastSmdStart).' s)'
                                 : 'noch kein Human-START seit Observer-Neustart')
                             . ' | Variable '
-                            . ($name === self::AUX_JV_ROLE ? '#55806' : '#33071')
+                            . ($personStatusVariableId > 0
+                                ? '#' . $personStatusVariableId : 'FEHLT')
                             . ' schaltet fuer 5 Sekunden auf AN.';
                         $lines[]='GENERIC-HUMAN-HINWEISE (kein Beweis): '
                             .(int)($wireState['genericHumanHintCount'] ?? 0);

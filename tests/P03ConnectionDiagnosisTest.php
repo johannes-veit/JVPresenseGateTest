@@ -194,6 +194,26 @@ verifyDiag(str_contains($report,'LETZTE CROSSLINE-EREIGNISSE: 1')
     'frozen CrossLine evidence survives later generic EventAudit and explains exact reject reason');
 verifyDiag(str_contains($report,'Duplikate=2'),
     'rejected duplicate counter included in one-click diagnostic');
+// Regression for live 17:40: histogram iteration must not overwrite
+// the current camera role and therefore mislabel #55806 as #33071.
+$originalJvDiag=$GLOBALS['variables'][26298];
+$GLOBALS['variables'][26298]=json_encode([
+    'streaming'=>true,'streamOK'=>true,
+    'observedCodeCounts'=>json_encode(['CrossLineDetection'=>3,'SmartMotionHuman'=>2]),
+    'smdHumanRawCount'=>2,'lastSmdHumanStartAt'=>time()-25,
+    'proofMode'=>'EXISTING_STAIR_IVS','allowedStairRules'=>[
+        ['name'=>'Überquerung zur Treppe','id'=>4,'tableIndex'=>3,'humanOnly'=>true]
+    ]
+],JSON_UNESCAPED_UNICODE);
+$instance->DiagnoseP03Connections();
+$withCodes=(string)$instance->values['P03ConnectionDiagnosis'];
+$jvPart=explode('--- WORK_LEFT',$withCodes)[0];
+verifyDiag(str_contains($jvPart,'CrossLineDetection=3')
+    && str_contains($jvPart,'letzter Human-START')
+    && str_contains($jvPart,'Variable #55806 schaltet')
+    && !str_contains($jvPart,'Variable #33071 schaltet'),
+    '17:40 JV_LEFT histogram does not overwrite correct visible PersonDetected ID');
+$GLOBALS['variables'][26298]=$originalJvDiag;
 verifyDiag(!str_contains($report,'secret-jv') && !str_contains($report,'secret-work'),'credentials not exposed');
 verifyDiag(!str_contains($report,'do-not-leak-jv') && !str_contains($report,'do-not-leak-work'),'username not exposed');
 verifyDiag(str_contains($report,'Nur Istzustand erfasst'),'read-only report is explicit');

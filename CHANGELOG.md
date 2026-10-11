@@ -1,3 +1,12 @@
+# v0.8.2 (Build 83) – Dahua-Umlautkodierung der echten Treppenlinie korrigieren
+
+- Reale Feldmessung 11.10.2026 17:40: JV_LEFT 192.168.107.95 liefert 3 CrossLineDetection, darunter 2 Human-Starts mit RuleID=4, aber Kamera-Eventname ist fehlerhaft zu Ã+Steuerzeichen+berquerung dekodiert. Bisher wurden sie wegen EVENT_RULE_NAME_NOT_STAIR gesperrt.
+- Strenger Abgleich repariert diese beobachtete Zeichenkodierung ausschließlich, wenn die korrigierte Bezeichnung exakt der zuvor unabhängig geprüften erlaubten Treppen-CrossLine entspricht und alle im Event vorhandenen numerischen Regel-IDs mit RuleID=4 übereinstimmen. Kein erratener Streamindex, keine Teilstring-/Fuzzy-Regeln.
+- Testet beide üblichen Latin-1/Windows-1252-Mojibake-Varianten mit ID4/Human, widersprüchlicher ID5, fehlender ID, Fahrzeug, Stop sowie echten Dahua-Parser- und Observer-Durchlauf. WORK_LEFT Human/Vehicle bleibt ohne ausdrückliche Human-Klasse gesperrt.
+- Zweiter Diagnosefehler: der Code-Histogramm-Foreach verwendete $name und überschattete die Kamera-Rolle JV_LEFT. Dadurch meldete die SMD-Zeile dort fälschlich WORK-Variable #33071 statt JV #55806. Der Bericht zeigt jetzt direkt die tatsächlich ausgelesene Symcon-Variable.
+- Neue LIVE-Tests sind nötig: nach Modulupdate verwirft ApplyChanges alte diagnostische Zähler. SMD-Personstatus bleibt unabhängig vom verifizierten Grenzübertritt; TEST/PRODUKTION werden weiter fail-closed behandelt. An WORK_LEFT wurde bisher noch kein CrossLineDetection beobachtet.
+- Keine Kamera- oder fremden Symcon-Modul-Schreibzugriffe, keine neuen Instanzen oder Variablen, bestehende IDs bleiben erhalten.
+
 # v0.8.1 (Build 82) – Schlanker P03-Status und klare Trennung SMD/Übertritt
 
 - Live-Ursache: SMD/SmartMotionHuman Start (bereits auf JV_LEFT empfangen) wurde im vorhandenen Treppen-IVS-Modus nur protokolliert; die sichtbare Boolean-Variable PersonDetected blieb AUS, bis ein von den Kameras nicht gelieferter/verifizierter Human-CrossLine-Übertritt angenommen wurde.

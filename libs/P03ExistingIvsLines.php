@@ -163,6 +163,69 @@ final class P03ExistingIvsLines
     }
 
     /**
+     * Some IPC-HFW5442E-ZE streams report a camera-configured UTF-8 rule
+     * name as mojibake: "Überquerung" becomes "Ã<0x9c>berquerung".
+     *
+     * ONLY accept a restored spelling if it is exactly the already-verified
+     * camera rule name AND a numeric camera RuleID unequivocally matches.
+     * No name stripping, fuzzy prefix, stream channel index or relaxed
+     * rule IDs: Straße/Vehicle remain fail-closed.
+     *
+     * @param array<string,mixed> $event
+     */
+    private static function eventNameMatchesVerifiedRule(
+        string $eventName, string $expectedName, array $event, int $ruleID
+    ): bool {
+        if (strcasecmp($eventName, $expectedName) === 0) {
+            return true;
+        }
+        // A different, correctly decoded label can never be repaired into a
+        // different rule. Genuine UTF-8 mojibake starts with UTF-8 "Ã".
+        if ($eventName === '' || !str_contains($eventName, "Ã")) {
+            return false;
+        }
+        $hasVerifiedID = false;
+        foreach (['cfgRuleId', 'ruleIdUpper', 'ruleIdLower', 'ruleId'] as $key) {
+            $value = $event[$key] ?? null;
+            if ($value === null || $value === '') {
+                continue;
+            }
+            if (!is_numeric($value) || (int)$value !== $ruleID) {
+                return false;
+            }
+            $hasVerifiedID = true;
+        }
+        if (!$hasVerifiedID) {
+            return false;
+        }
+
+        // Most Dahua payloads are UTF-8 bytes interpreted once as Latin-1
+        // (U+009C), or by a browser/client as Windows-1252 (U+0153).
+        // Both transformations are reversible; inspect only the result for
+        // exact equality to the independently verified rule name.
+        $repaired = str_replace(
+            ["Ã\xC2\x9C", "Ã\xC5\x93"],
+            ["\xC3\x9C", "\xC3\x9C"],
+            $eventName
+        );
+        if ($repaired !== $eventName && strcasecmp($repaired, $expectedName) === 0) {
+            return true;
+        }
+        if (!function_exists('iconv')) {
+            return false;
+        }
+        foreach (['ISO-8859-1', 'Windows-1252'] as $encoding) {
+            $originalBytes = @iconv('UTF-8', $encoding, $eventName);
+            if (is_string($originalBytes) && $originalBytes !== ''
+                && preg_match('//u', $originalBytes) === 1
+                && strcasecmp($originalBytes, $expectedName) === 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Strictly diagnostic explanation of why a Dahua event could not qualify
      * as a staircase Human START. This NEVER authorizes a proof or changes
      * matchingHumanStart(). Do not guess the camera's rule from stream index.
@@ -189,7 +252,9 @@ final class P03ExistingIvsLines
             return 'VERIFIED_STAIR_RULE_INVALID';
         }
         $eventName = trim((string)($event['ruleName'] ?? ''));
-        if ($eventName !== '' && strcasecmp($eventName, $name) !== 0) {
+        if ($eventName !== '' && !self::eventNameMatchesVerifiedRule(
+            $eventName, $name, $event, $id
+        )) {
             return 'EVENT_RULE_NAME_NOT_STAIR';
         }
         $hasNumeric = false;
@@ -233,7 +298,9 @@ final class P03ExistingIvsLines
                 continue;
             }
             if ($eventName !== '') {
-                if (strcasecmp($eventName, (string)$rule['name']) !== 0) {
+                if (!self::eventNameMatchesVerifiedRule(
+                    $eventName, (string)$rule['name'], $event, (int)$rule['id']
+                )) {
                     continue;
                 }
                 // Even a matching name must not override an explicitly
