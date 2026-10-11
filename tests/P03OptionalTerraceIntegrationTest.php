@@ -15,6 +15,9 @@ $GLOBALS['terCreateCount']=0;
 $GLOBALS['terOwnSocketIDs']=[];
 $GLOBALS['terAutoParentLink']=true;
 $GLOBALS['terFailConnectOnce']=false;
+$GLOBALS['terVarIds']=[];
+$GLOBALS['terVarValues']=[];
+$GLOBALS['terVarNext']=85000;
 function IPS_InstanceExists(int $id):bool { return isset($GLOBALS['terInstances'][$id]); }
 function IPS_GetInstance(int $id):array { return $GLOBALS['terInstances'][$id]??[]; }
 function IPS_GetInstanceList():array { return array_keys($GLOBALS['terInstances']); }
@@ -24,6 +27,31 @@ function IPS_GetInstanceListByModuleID(string $guid):array {
 }
 function IPS_GetProperty(int $id,string $key):mixed {
     return $GLOBALS['terProps'][$id][$key]??null;
+}
+function IPS_GetObjectIDByIdent(string $ident,int $instanceID):int {
+    if (!isset($GLOBALS['terInstances'][$instanceID])) {
+        return 0;
+    }
+    if (($GLOBALS['terProps'][$instanceID]['Role']??'')!=='TERRACE') {
+        return 0;
+    }
+    if (!in_array($ident,['PersonDetected','HumanEventCounter','StreamOK','LastIVSEvent','ObserverStatus','EventAudit'],true)) {
+        return 0;
+    }
+    if (!isset($GLOBALS['terVarIds'][$instanceID][$ident])) {
+        $id=++$GLOBALS['terVarNext'];
+        $GLOBALS['terVarIds'][$instanceID][$ident]=$id;
+        $GLOBALS['terVarValues'][$id]=
+            $ident==='HumanEventCounter' ? 0
+            : ($ident==='PersonDetected'||$ident==='StreamOK' ? false : '');
+    }
+    return $GLOBALS['terVarIds'][$instanceID][$ident];
+}
+function IPS_VariableExists(int $id):bool {
+    return array_key_exists($id,$GLOBALS['terVarValues']);
+}
+function GetValue(int $id):mixed {
+    return $GLOBALS['terVarValues'][$id]??null;
 }
 function IPS_SetProperty(int $id,string $key,mixed $value):void {
     if (!isset($GLOBALS['terInstances'][$id])
@@ -107,11 +135,20 @@ class IPSModule {
     protected function WriteAttributeString(string $key,string $value):void {$this->attributes[$key]=$value;}
     protected function GetValue(string $key):mixed {return $this->values[$key]??'';}
     protected function SetValue(string $key,mixed $value):void {$this->values[$key]=$value;}
+    public array $subscribed=[];
+    protected function RegisterMessage(int $id,int $message):void {$this->subscribed[$id]=$message;}
+    protected function UnregisterMessage(int $id,int $message):void {unset($this->subscribed[$id]);}
 }
 require_once dirname(__DIR__).'/JVPresenceP03TerraceTest/module.php';
 
 class MockTerraceMain extends JVPresenceP03MultiCamera {
     public string $cgiBody='';
+    public int $autoDiagnosisCount=0;
+    public function DiagnoseP03Connections(bool $automatic=false):void {
+        $this->autoDiagnosisCount++;
+        $this->values['P03ConnectionDiagnosis']='Terrace callback diagnosis '
+            .$this->autoDiagnosisCount;
+    }
     protected function genericCameraGet(
         string $host,int $port,string $username,string $password,
         string $uri,int $timeoutSeconds=6
@@ -168,6 +205,28 @@ tCheck($id>0 && $GLOBALS['terCreateCount']===1
     && $GLOBALS['terProps'][$id]['ProofMode']==='EXISTING_STAIR_IVS'
     && $GLOBALS['terProps'][$id]['AllowedIVSRules']!=='[]',
     'explicit selected unique Human line yields dedicated third P03 observer');
+$ids=array_values($GLOBALS['terVarIds'][$id]??[]);
+tCheck(count($camera->subscribed)===4
+    && count(array_intersect($ids,array_keys($camera->subscribed)))===4,
+    'P03 main subscribes exactly four owned terrace variables for instant read-only diagnosis');
+$diagBefore=$camera->autoDiagnosisCount;
+$terraceCountVar=$GLOBALS['terVarIds'][$id]['HumanEventCounter'];
+$GLOBALS['terVarValues'][$terraceCountVar]=1;
+$camera->MessageSink(time(),$terraceCountVar,10603,[1,true]);
+tCheck($camera->autoDiagnosisCount===$diagBefore+1
+    && !isset($camera->attributes['AuxJVLastSeenHumanCounter'])
+    && !isset($camera->attributes['AuxWorkLastSeenHumanCounter'])
+    && !isset($camera->attributes['P03HumanEvents']),
+    'terrace counter VM_UPDATE refreshes #35115 but cannot enter mast proof or create transfer');
+$lastIVS=$GLOBALS['terVarIds'][$id]['LastIVSEvent'];
+$diagBefore=$camera->autoDiagnosisCount;
+$camera->MessageSink(time(),$lastIVS,10603,['[{"code":"CrossLineDetection"}]',true]);
+tCheck($camera->autoDiagnosisCount===$diagBefore+1,
+    'both accepted and rejected terrace IVS diagnostic updates refresh main immediately');
+$diagBefore=$camera->autoDiagnosisCount;
+$camera->MessageSink(time(),123456,10603,[1,true]);
+tCheck($camera->autoDiagnosisCount===$diagBefore,
+    'unsubscribed foreign Symcon variable cannot fake optional camera event');
 $allow=json_decode($GLOBALS['terProps'][$id]['AllowedIVSRules'],true);
 tCheck(count($allow)===1 && $allow[0]['id']===8 && $allow[0]['tableIndex']===2,
     'third observer enforces exact existing camera rule identity');
@@ -183,6 +242,14 @@ $camera->ConfigureTerraceMonitor();
 tCheck($GLOBALS['terProps'][$id]['Enabled']===false
     && ($camera->values['P03TerraceMonitor']??'')==='IGNORIERT – Terrasse AUS',
     'turn OFF disables only optional terrace observer');
+tCheck(count($camera->subscribed)===0
+    && (int)($camera->attributes['TerraceHumanCounterVarID']??-1)===0
+    && (int)($camera->attributes['TerraceLastIVSVarID']??-1)===0,
+    'turn OFF unregisters terrace event triggers and drops all diagnostic subscriptions');
+$diagBefore=$camera->autoDiagnosisCount;
+$camera->MessageSink(time(),$terraceCountVar,10603,[99,true]);
+tCheck($camera->autoDiagnosisCount===$diagBefore,
+    'disabled terrace event may never refresh or alter any zone proof');
 $camera->properties['TerraceDiagnosticsEnabled']=true;
 $camera->ConfigureTerraceMonitor();
 tCheck($GLOBALS['terCreateCount']===1 && $GLOBALS['terProps'][$id]['Enabled']===true,
