@@ -2916,6 +2916,29 @@ class JVPresenceP03MultiCamera extends IPSModule
             $terraceHost = trim($this->ReadPropertyString('TerraceHost'));
             $lines[] = '--- JV TERRASSE (OPTIONAL, NUR DIAGNOSE) ---';
             $lines[] = 'Zusatzstatus: '.(string)$this->GetValue('P03TerraceMonitor');
+            $lines[]='TERRACE gespeichertes P03-Socket: #'
+                .$this->ReadAttributeInteger('TerraceManagedSocketID');
+            if ($terraceID>0 && IPS_InstanceExists($terraceID)) {
+                $current=IPS_GetInstance($terraceID);
+                $parentID=(int)($current['ConnectionID']??0);
+                $lines[]='TERRACE Observer #'.$terraceID
+                    .' | Parent-ConnectionID='.$parentID;
+                if ($parentID>0 && IPS_InstanceExists($parentID)) {
+                    $others=[];
+                    foreach (IPS_GetInstanceList() as $other) {
+                        $other=(int)$other;
+                        if ($other!==$terraceID && $other>0 && IPS_InstanceExists($other)
+                            && (int)(IPS_GetInstance($other)['ConnectionID']??0)===$parentID) {
+                            $others[]=$other;
+                        }
+                    }
+                    $lines[]='TERRACE Parent #'.$parentID
+                        .' | Socket-Typ='.(string)(IPS_GetInstance($parentID)['ModuleInfo']['ModuleID']??'?')
+                        .' | andere Clients='.($others===[]?'KEINE':'#'.implode(', #',$others));
+                } elseif ($parentID===0) {
+                    $lines[]='TERRACE Fehlerursache: Observer ohne Parent-Socket (ConnectionID=0)';
+                }
+            }
             if ($this->matchesTrustedP03Observer($terraceID,$terraceHost,self::TERRACE_ROLE)
                 && $this->terraceObserverSocketExclusive($terraceID)) {
                 $lines[] = 'TERRACE Observer-ID: #'.$terraceID.' | Host: '.$terraceHost
