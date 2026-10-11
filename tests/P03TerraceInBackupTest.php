@@ -12,24 +12,26 @@ $a=P03TerraceInBackup::evaluate([$work],[$person],1023.0);
 bOk($a['status']==='PENDING'&&$a['path']==='WORK_LEFT_STAIR_THEN_TERRACE_IN'
     && $a['gap']===21.0,
     'real 20:06:02 WORK_LEFT then 20:06:23 terrace recognized as delayed IN pending at 21 s');
-$a=P03TerraceInBackup::evaluate([$work],[$person],1026.0);
+bOk(P03TerraceInBackup::evaluate([$work],[$person],1029.999)['status']==='PENDING',
+    'IN backup cannot displace late normal second mast before full 30s window');
+$a=P03TerraceInBackup::evaluate([$work],[$person],1031.0);
 bOk($a['status']==='VERIFIED'&&$a['mastId']==='w12'&&$a['terraceId']==='p1',
-    'real 4th IN candidate confirmed after 5-second contradiction settle (TEST only)');
+    '4th IN confirmed after full 30s mast priority window (TEST only)');
 bOk(P03TerraceInBackup::evaluate([$work],[array_replace($person,['ts'=>1026.0])],1032.0)['status']==='VERIFIED',
     '26-second delayed terrace Human now accepted under 50-second WORK window');
 bOk(P03TerraceInBackup::evaluate([$work],[array_replace($person,['ts'=>1050.0])],1055.0)['status']==='VERIFIED',
     'EXACT 50s WORK→terrace is valid through 5s settling and extended mast lifetime');
 bOk(P03TerraceInBackup::evaluate([$work],[array_replace($person,['ts'=>1050.001])],1055.001)['status']==='UNKNOWN',
     '50.001s WORK→terrace must be excluded at upper boundary');
-bOk(P03TerraceInBackup::evaluate([$jv],[array_replace($person,['ts'=>1004.0])],1009.0)['status']==='VERIFIED',
+bOk(P03TerraceInBackup::evaluate([$jv],[array_replace($person,['ts'=>1004.0])],1031.0)['status']==='VERIFIED',
     'backup for missed WORK stair: JV_LEFT then terrace 4s later');
-bOk(P03TerraceInBackup::evaluate([$jv],[array_replace($person,['ts'=>1007.0])],1012.0)['status']==='VERIFIED',
+bOk(P03TerraceInBackup::evaluate([$jv],[array_replace($person,['ts'=>1007.0])],1031.0)['status']==='VERIFIED',
     '7-second JV_LEFT→terrace is now accepted under 15-second window');
-bOk(P03TerraceInBackup::evaluate([$jv],[array_replace($person,['ts'=>1015.0])],1020.0)['status']==='VERIFIED',
+bOk(P03TerraceInBackup::evaluate([$jv],[array_replace($person,['ts'=>1015.0])],1031.0)['status']==='VERIFIED',
     'EXACT 15s JV_LEFT→terrace accepted');
 bOk(P03TerraceInBackup::evaluate([$jv],[array_replace($person,['ts'=>1015.001])],1020.001)['status']==='UNKNOWN',
     '15.001s JV_LEFT→terrace rejected');
-bOk(P03TerraceInBackup::evaluate([$work],[array_replace($person,['direction'=>'RightToLeft'])],1026.0)['status']==='VERIFIED',
+bOk(P03TerraceInBackup::evaluate([$work],[array_replace($person,['direction'=>'RightToLeft'])],1031.0)['status']==='VERIFIED',
     'optional terrace Human IVS IN direction strengthens but is NOT mandatory');
 bOk(P03TerraceInBackup::evaluate([$work],[array_replace($person,['direction'=>'LeftToRight'])],1026.0)['status']==='UNKNOWN',
     'terrace physical OUT IVS direction never qualifies as IN backup');
