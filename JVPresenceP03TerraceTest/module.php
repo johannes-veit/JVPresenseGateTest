@@ -451,6 +451,12 @@ class JVPresenceP03MultiCamera extends IPSModule
                     $this->WriteAttributeString('P03HumanEvents','[]');
                     $this->SetTimerInterval('P03ProofTimer',0);
                     $this->SetValue('P03ProofState','BLOCKIERT – Mastkamera-Stream abgebrochen');
+                    if ($this->ReadAttributeBoolean('P03StreetLearningActive')) {
+                        $this->WriteAttributeBoolean('P03StreetLearningActive',false);
+                        $this->SetValue('P03StreetDirectionStatus',
+                            'ABGEBROCHEN – Mastkamera-Stream verloren; OUT–IN–OUT–IN neu starten');
+                        $this->appendProtocol('P03 STRASSE LERNEN ABBRUCH – Streamverlust, keine Richtungsfreigabe.');
+                    }
                 }
                 $this->refreshProductionState();
                 $this->refreshReadyState();
@@ -3557,6 +3563,16 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->setReady(false);
             $this->setResult('P03 2-KAMERA-SEQUENZ VERIFIZIERT – 2× HOME→LAGER und 2× LAGER→HOME durch Reihenfolge JV_LEFT/WORK_LEFT bestätigt.');
             $this->appendProtocol('P03 COMMISSIONING COMPLETE: OUT=' . $out . ', IN=' . $in . ' – ausschließlich Mastkamera-Reihenfolge.');
+            if ($this->ReadAttributeBoolean('P03StreetLearningActive')) {
+                $events=json_decode($this->ReadAttributeString('P03StreetTrainingEvents'),true);
+                $progress=is_array($events)?count($events):0;
+                $this->WriteAttributeBoolean('P03StreetLearningActive',false);
+                $this->SetValue('P03StreetDirectionStatus',
+                    'UNVOLLSTÄNDIG – Treppenfolgen fertig, Straßenlinie erst '
+                    .$progress.'/4 erkannt. Keine Richtungsfreigabe; Gehtest erneut starten.');
+                $this->appendProtocol('P03 STRASSE INCOMPLETE: '.$progress
+                    .'/4 – Kamera Richtung nicht automatisch angenommen.');
+            }
         }
     }
 
