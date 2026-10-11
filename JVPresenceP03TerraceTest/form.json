@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03 HOME ↔ LAGER: JV links + Werkstatt links. Person erkannt = SMD-Status (5 Sekunden); nur bestätigte Treppen-CrossLine-Human-Ereignisse zählen als Übertritt. TEST/PRODUKTION nur nach sicherem Gehtest."
+      "caption": "P03 HOME ↔ LAGER: Zwei Mastkameras liefern derzeit den verifizierten Grenzübertritt. JV Terrasse kann separat als dritter IVS-Zusatzsensor (AN/AUS) eingelesen werden, ohne die bisherigen Übertritte zu ändern. Spätere Alternative TERRASSE ODER beide Mastkameras erst nach eigenem Richtungs-Abnahmetest."
     },
     {
       "type": "CheckBox",
@@ -26,6 +26,40 @@
           "caption": "Kameras durch Weboberfläche bestätigt: JV_LEFT=192.168.107.95, WORK_LEFT=192.168.107.94. 192.168.107.96 und .99 sind die RECHTEN Kameras und dürfen NICHT als Mastkameras verwendet werden. Nur bestehende P03-Observer/Sockets; keine Kamera-/IVS-Änderungen."
         }
       ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "JV Terrasse – optionale dritte IVS-Kamera",
+      "expanded": true,
+      "items": [
+        {
+          "type": "CheckBox",
+          "name": "TerraceDiagnosticsEnabled",
+          "caption": "JV Terrasse IVS verwenden (AUS = vollständig ignorieren)"
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "TerraceHost",
+          "caption": "Terrassenkamera IP (bisher 192.168.107.110)"
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "TerraceIVSRuleName",
+          "caption": "Name der IVS-Linie (optional, nur bei mehreren Linien)"
+        },
+        {
+          "type": "Label",
+          "caption": "Aktivierung erstellt/verwendet nur einen eigenen P03-Observer samt exklusivem Socket. Vorhandene IVS-Linie wird ausschließlich gelesen; an Dahua-Einstellungen, Außenlichtautomatik, Alarmanlage und Mastkameras wird nichts verändert."
+        },
+        {
+          "type": "Label",
+          "caption": "Der optionale Terrassen-Observer erfasst die eigene CrossLine und Richtung für spätere Auswertung. Vorerst Diagnosemodus: bestehender HOME↔LAGER-Nachweis bleibt strikt JV_LEFT + WORK_LEFT. Terrasse allein löst KEINEN Statuswechsel aus."
+        },
+        {
+          "type": "Label",
+          "caption": "AUS: Observer wird nach Übernehmen deaktiviert, seine Ereignisse sind für P03 irrelevant. Eindeutige aktive Human-CrossLine erforderlich; andernfalls bleibt der Zusatzsensor gesperrt."
+        }
+      ]
     }
   ],
   "actions": [
@@ -43,6 +77,11 @@
       "type": "Button",
       "caption": "3. Treppen-CrossLine-Zuordnung neu prüfen (nur lesen)",
       "onClick": "JVP03MC_AuditCameraConfiguration($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Terrasse: IVS-Regel einlesen / optionalen Observer verbinden",
+      "onClick": "JVP03MC_ConfigureTerraceMonitor($id);"
     },
     {
       "type": "Button",
