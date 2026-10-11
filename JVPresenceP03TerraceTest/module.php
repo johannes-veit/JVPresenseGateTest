@@ -2915,6 +2915,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                                 . ' | RuleId=' . (string)($cross['ruleIdLower'] ?? '?')
                                 . ' | StreamIndex=' . (string)($cross['streamIndex'] ?? '?')
                                 . ' | Objektklasse=' . substr((string)($cross['classification'] ?? 'NICHT_GELIEFERT'),0,32)
+                                . ' | Richtung=' . (string)($cross['direction'] ?? 'KAMERA_LIEFERT_KEINE')
                                 . ' | Soll-Treppe-ID=' . (string)($cross['expectedRuleId'] ?? '?')
                                 . ' | Entscheidung=' . (string)($cross['decision'] ?? '?')
                                 . ' | Grund=' . (string)($cross['rejectionReason'] ?? '?');
