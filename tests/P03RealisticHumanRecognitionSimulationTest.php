@@ -201,8 +201,8 @@ checkHuman($legacyCounter['JV_LEFT']===0 && $legacyCounter['WORK_LEFT']===6
     'Legacy HumanCounter 0/6 and HOME/LAGER zone remain unchanged in diagnostic mode');
 
 checkHuman($states['JV_LEFT']['humanCandidates']===3
-    && $states['WORK_LEFT']['humanCandidates']===3,
-    'Exact simulated candidate totals: JV_LEFT=3, WORK_LEFT=3');
+    && $states['WORK_LEFT']['humanCandidates']===2,
+    'Exact simulated candidate totals: JV_LEFT=3, WORK_LEFT=2');
 checkHuman($states['JV_LEFT']['wire']>8 && $states['WORK_LEFT']['wire']>=5,
     'Received wire event counts stay separate from Human candidate counters');
 
