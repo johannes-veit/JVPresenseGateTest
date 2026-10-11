@@ -50,6 +50,8 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('LastHealthTick', 0);
         $this->RegisterAttributeString('LastHealthAction', 'UNTESTED');
         $this->RegisterAttributeInteger('LastStaleRx', 0);
+        $this->RegisterAttributeString('ObservedCodeCounts', '{}');
+        $this->RegisterAttributeInteger('GenericHumanHintCount', 0);
         $this->RegisterAttributeInteger('SmdHumanRawCount', 0);
         $this->RegisterAttributeInteger('SmdHumanProofCount', 0);
         $this->RegisterAttributeInteger('LastHumanProofAt', 0);
@@ -63,6 +65,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
         $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
+        $this->RegisterVariableString('HumanHint', 'P03 Personhinweis in anderem Dahua-Ereignis (nur Diagnose)', '', 66);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03AUX_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03AUX_SocketRestartTimer($_IPS["TARGET"]);');
@@ -98,6 +101,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
         $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
+        $this->RegisterVariableString('HumanHint', 'P03 Personhinweis in anderem Dahua-Ereignis (nur Diagnose)', '', 66);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
@@ -607,6 +611,41 @@ class JVPresenceP03AuxObserver extends IPSModule
             $code = trim((string) ($event['code'] ?? ''));
             $action = strtolower(trim((string) ($event['action'] ?? '')));
 
+            // Persistent code histogram distinguishes actual Dahua AI events
+            // from heartbeat and ordinary motion even when EventAudit is
+            // overwritten by the next VideoMotionInfo message.
+            $observed = json_decode($this->ReadAttributeString('ObservedCodeCounts'), true);
+            if (!is_array($observed)) {
+                $observed = [];
+            }
+            $codeKey = preg_replace('/[^A-Za-z0-9_+-]/', '?', $code) ?: 'UNBEKANNT';
+            $codeKey = substr($codeKey, 0, 48);
+            $observed[$codeKey] = max(0, (int)($observed[$codeKey] ?? 0)) + 1;
+            if (count($observed) > 32) {
+                arsort($observed, SORT_NUMERIC);
+                $observed = array_slice($observed, 0, 32, true);
+            }
+            $this->WriteAttributeString('ObservedCodeCounts', json_encode($observed) ?: '{}');
+
+            // Some firmware transmits a structured Human classification in
+            // VideoMotionInfo/VideoMotion, which our strict Human evidence path
+            // purposely rejects. Surface that as a DIAGNOSTIC candidate, never
+            // increment a HumanEventCounter from generic motion alone.
+            if (in_array(strtolower($code), ['videomotioninfo','videomotion'], true)
+                && (bool)($event['human'] ?? false)) {
+                $cls = strtolower(trim((string)($event['classification'] ?? '')));
+                if (in_array($cls, ['human','person','pedestrian'], true)) {
+                    $this->WriteAttributeInteger('GenericHumanHintCount',
+                        $this->ReadAttributeInteger('GenericHumanHintCount') + 1);
+                    $this->SetValue('HumanHint', json_encode([
+                        'time'=>date('H:i:s'),
+                        'code'=>$code,'action'=>$action,
+                        'classification'=>$cls,
+                        'hint'=>'MENSCHENKLASSE IN BEWEGUNGSDATEN – nur Diagnose, KEIN Zonenbeweis'
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+                }
+            }
+
             if (strcasecmp($code, 'CrossRegionDetection') === 0) {
                 $rawSummary = [
                     'time' => date('H:i:s'),
@@ -989,6 +1028,8 @@ class JVPresenceP03AuxObserver extends IPSModule
             'counter' => (int) $this->GetValue('HumanEventCounter'),
             'wireCodeCount' => $this->ReadAttributeInteger('WireCodeCount'),
             'wireHeartbeatCount' => $this->ReadAttributeInteger('WireHeartbeatCount'),
+            'observedCodeCounts' => $this->ReadAttributeString('ObservedCodeCounts'),
+            'genericHumanHintCount' => $this->ReadAttributeInteger('GenericHumanHintCount'),
             'eventsTotal' => $this->ReadAttributeInteger('ParsedEventCount'),
             'crossRegionTotal' => $this->ReadAttributeInteger('CrossRegionEventCount'),
             'ruleMatches' => $this->ReadAttributeInteger('RuleMatchEventCount'),
