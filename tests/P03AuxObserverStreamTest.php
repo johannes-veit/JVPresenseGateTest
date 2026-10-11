@@ -26,6 +26,8 @@ function IPS_SetHidden(int $id,bool $hidden): void
     }
     $GLOBALS['hiddenP03ObjectIDs'][$id]=true;
 }
+function IPS_GetChildrenIDs(int $id): array { return []; }
+function IPS_GetObject(int $id): array { return ['ObjectType' => 2, 'ObjectIsHidden' => false]; }
 function IPS_InstanceExists(int $id): bool
 {
     return $id === 57215 || isset($GLOBALS['mockSocket'][$id]);
@@ -192,8 +194,8 @@ $x->properties['RuleID'] = 4;
 $x->ApplyChanges();
 checkP03(count($x->attributes) >= 24,
     'Observer Create registers all properties once; ApplyChanges adds no duplicate attributes');
-checkP03(count($GLOBALS['hiddenP03ObjectIDs'])===8,
-    'only eight internal observer diagnostic IDs are hidden; public person/status/counter IDs remain visible');
+checkP03(count($GLOBALS['hiddenP03ObjectIDs'])===1,
+    'Only needed IVS history is hidden; seven obsolete observer diagnostic variables are not created');
 checkP03(($x->values['StreamOK'] ?? null) === false, 'No false-positive StreamOK before handshake');
 checkP03(($x->attributes['SocketRestartStage'] ?? null) === 1, 'Reconnection staged after ApplyChanges');
 $x->SocketRestartTimer(); // close
@@ -238,8 +240,8 @@ checkP03(($x->values['HumanEventCounter'] ?? null) === 1, 'Foreign rule ignored'
 $vehicle = str_replace('"ObjectType":"Human"', '"ObjectType":"Vehicle"', str_replace('"EventID":801', '"EventID":803', $event));
 rxP03($x, $vehicle);
 checkP03(($x->values['HumanEventCounter'] ?? null) === 1, 'Explicit nonhuman payload fails closed');
-checkP03(($x->values['EventAudit'] ?? '') !== '' &&
-    str_contains((string) $x->values['EventAudit'], 'RULE_OR_EVENTCODE_REJECTED') === false,
+checkP03(($x->buffers['P03Diag_EventAudit'] ?? '') !== '' &&
+    str_contains((string) $x->buffers['P03Diag_EventAudit'], 'RULE_OR_EVENTCODE_REJECTED') === false,
     'Matched Vehicle event has a visible noncounting reason');
 
 // Simulate the Dahua IPC reusing EventID=801 for a completely new crossing
@@ -251,16 +253,16 @@ $x->attributes['SeenEventKeys'] = json_encode($seen);
 rxP03($x, $event);
 checkP03(($x->values['HumanEventCounter'] ?? null) === 2,
     'Recycled Dahua EventID counts new Human Start after expiry');
-$lastHuman = (string) ($x->values['LastEvent'] ?? '');
-checkP03(str_contains((string) ($x->values['EventAudit'] ?? ''), 'HUMAN_START_COUNTED'),
+$lastHuman = (string) ($x->buffers['P03Diag_LastEvent'] ?? '');
+checkP03(str_contains((string) ($x->buffers['P03Diag_EventAudit'] ?? ''), 'HUMAN_START_COUNTED'),
     'Recycled EventID reports actual Human count');
 rxP03($x, $event);
 checkP03(($x->values['HumanEventCounter'] ?? null) === 2,
     'Immediate same EventID delivery still deduplicated');
-checkP03(str_contains((string) ($x->values['EventAudit'] ?? ''), 'DUPLICATE_WITHIN_3_SECONDS'),
+checkP03(str_contains((string) ($x->buffers['P03Diag_EventAudit'] ?? ''), 'DUPLICATE_WITHIN_3_SECONDS'),
     'Duplicate rejection is explicitly visible');
 rxP03($x, $stopped);
-checkP03((string) ($x->values['LastEvent'] ?? '') === $lastHuman,
+checkP03((string) ($x->buffers['P03Diag_LastEvent'] ?? '') === $lastHuman,
     'Stop cannot overwrite last valid Human proof');
 checkP03(($x->values['HumanEventCounter'] ?? null) === 2,
     'Stop never increments Human counter');
@@ -296,7 +298,7 @@ checkP03($x->GetConfigurationForParent() === '{}',
     'P03 does not override a shared foreign socket configuration');
 checkP03(($x->attributes['SocketRestartStage'] ?? -1) === 0,
     'Shared parent aborts reconnect fail-closed');
-checkP03(str_contains((string) ($x->values['ObserverStatus'] ?? ''), 'geteilt'),
+checkP03(str_contains((string) ($x->buffers['P03Diag_ObserverStatus'] ?? ''), 'geteilt'),
     'Shared parent reports actionable diagnosis');
 
 // Missing parent must produce visible status; cannot be mistaken for live TCP.
@@ -304,7 +306,7 @@ $GLOBALS['mockForeignChild'] = false;
 $GLOBALS['mockChildParent'] = 0;
 $x->Reconnect();
 $x->SocketRestartTimer();
-checkP03(str_contains((string) ($x->values['ObserverStatus'] ?? ''), 'Client Socket'),
+checkP03(str_contains((string) ($x->buffers['P03Diag_ObserverStatus'] ?? ''), 'Client Socket'),
     'Missing parent has explicit diagnostic');
 checkP03(($x->values['StreamOK'] ?? true) === false,
     'Missing parent never emits StreamOK=true');
@@ -382,7 +384,7 @@ rxP03($direct, "HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace\r\n\r
 $before=count($direct->sent);
 checkP03($direct->HealthTick()==='LIVE' && count($direct->sent)===$before,
     'Current response with HTTP-200 is healthy, no unnecessary reconnect');
-$healthReported = json_decode((string)($direct->values['ObserverStatus']??''),true);
+$healthReported = json_decode((string)($direct->buffers['P03Diag_ObserverStatus']??''),true);
 checkP03(is_array($healthReported)
     && ($healthReported['lastHealthAction']??'')==='LIVE'
     && (int)($healthReported['lastHealthTick']??0)>0,
@@ -437,7 +439,7 @@ foreach ($parts as $part) {
 }
 checkP03(($wire->attributes['WireCodeCount'] ?? -1)===1,
     'Raw wire probe independently captures fragmented SmartMotionHuman event');
-checkP03(str_contains((string)($wire->values['WireProbe']??''),'Code=SmartMotionHuman'),
+checkP03(str_contains((string)($wire->buffers['P03Diag_WireProbe']??''),'Code=SmartMotionHuman'),
     'Wire probe exposes exact SMD event code on 5442');
 checkP03(($wire->values['HumanEventCounter']??0)===1,
     'native SMD Human START increments exactly one camera-native human observation');
@@ -446,7 +448,7 @@ checkP03(($wire->attributes['SmdHumanRawCount']??0)===1
     'separate SMD raw/accepted counters show real positive Human source');
 checkP03(($wire->values['PersonDetected']??false)===true,
     'visible PersonDetected pulse reacts immediately to real SMD Human START');
-checkP03(str_contains((string)($wire->values['LastEvent']??''),'SMD_HUMAN'),
+checkP03(str_contains((string)($wire->buffers['P03Diag_LastEvent']??''),'SMD_HUMAN'),
     'LastEvent reports accepted Human source without pretending to have IVS direction');
 rxP03($wire, "Code=SmartMotionVehicle;action=Start;index=0;data={\"ObjectType\":\"Vehicle\"}\r\n");
 rxP03($wire, "Code=VideoMotion;action=Start;index=0\r\n");
@@ -507,7 +509,7 @@ rxP03($wire,"Code=VideoMotionInfo;action=State;index=0;data="
 checkP03((int)($wire->values['HumanEventCounter'] ?? 0)===$prior,
     'generic VideoMotionInfo with embedded Human label remains diagnostic-only');
 checkP03((int)($wire->attributes['GenericHumanHintCount'] ?? 0)===1
-    && str_contains((string)($wire->values['HumanHint']??''),'"classification":"human"'),
+    && str_contains((string)($wire->buffers['P03Diag_HumanHint']??''),'"classification":"human"'),
     'explicit Human class in generic Dahua event is visible independently of proof counter');
 $codes=json_decode((string)($wire->attributes['ObservedCodeCounts']??'{}'),true);
 checkP03(is_array($codes) && ($codes['VideoMotionInfo']??0)>=2
@@ -528,13 +530,13 @@ $beforeGenericCount=(int)($wire->attributes['WireCodeCount']??0);
 $beforeHumanProof=(int)($wire->values['HumanEventCounter']??0);
 $wire->attributes['LastGenericWireProbeAt']=time();
 $wire->attributes['LastGenericEventAuditAt']=time();
-$wire->values['WireProbe']='NO REWRITE DURING GENERIC SPAM';
-$wire->values['EventAudit']='NO EVENTAUDIT REWRITE DURING GENERIC SPAM';
+$wire->buffers['P03Diag_WireProbe']='NO REWRITE DURING GENERIC SPAM';
+$wire->buffers['P03Diag_EventAudit']='NO EVENTAUDIT REWRITE DURING GENERIC SPAM';
 for($i=0;$i<40;$i++){
     rxP03($wire,"Code=VideoMotionInfo;action=State;index=0\r\n");
 }
-checkP03(($wire->values['WireProbe']??'')==='NO REWRITE DURING GENERIC SPAM'
-    && ($wire->values['EventAudit']??'')==='NO EVENTAUDIT REWRITE DURING GENERIC SPAM',
+checkP03(($wire->buffers['P03Diag_WireProbe']??'')==='NO REWRITE DURING GENERIC SPAM'
+    && ($wire->buffers['P03Diag_EventAudit']??'')==='NO EVENTAUDIT REWRITE DURING GENERIC SPAM',
     '40 rapid generic VideoMotionInfo events do not rewrite P03 UI diagnosis variables');
 checkP03((int)($wire->attributes['WireCodeCount']??0)===$beforeGenericCount+40,
     'throttling preserves every independently observed wire code counter');
@@ -544,8 +546,8 @@ $wire->attributes['LastHumanProofAt']=time()-6;
 rxP03($wire,"Code=SmartMotionHuman;action=Start;index=0;data="
     ."{\"EventID\":999,\"ObjectType\":\"Human\"}\r\n");
 checkP03((int)($wire->values['HumanEventCounter']??0)===$beforeHumanProof+1
-    && str_contains((string)($wire->values['WireProbe']??''),'SmartMotionHuman')
-    && str_contains((string)($wire->values['EventAudit']??''),'SMD_HUMAN_START_COUNTED'),
+    && str_contains((string)($wire->buffers['P03Diag_WireProbe']??''),'SmartMotionHuman')
+    && str_contains((string)($wire->buffers['P03Diag_EventAudit']??''),'SMD_HUMAN_START_COUNTED'),
     'real Human START bypasses generic diagnostics throttle and is counted immediately');
 
 
@@ -595,8 +597,8 @@ checkP03(($manual->values['PersonDetected']??false)===true
     && ($manual->attributes['LastSmdHumanStartAt']??0)>0
     && (int)($manual->values['HumanEventCounter']??0)===0,
     'P03 strict staircase mode: camera SMD Human immediately drives visible PersonDetected WITHOUT incrementing proof');
-checkP03(str_contains((string)($manual->values['ObserverStatus']??''),'lastSmdHumanStartAt')
-    && str_contains((string)($manual->values['EventAudit']??''),'SMD_PERSON_STATUS_ONLY_NO_STAIR_PROOF'),
+checkP03(str_contains((string)($manual->buffers['P03Diag_ObserverStatus']??''),'lastSmdHumanStartAt')
+    && str_contains((string)($manual->buffers['P03Diag_EventAudit']??''),'SMD_PERSON_STATUS_ONLY_NO_STAIR_PROOF'),
     'SMD status trace explicitly differentiates Boolean person presence from proof counter');
 rxP03($manual,"Code=SmartMotionHuman;action=Stop;index=0\r\n");
 checkP03((int)($manual->values['HumanEventCounter']??0)===0,
@@ -621,7 +623,7 @@ checkP03((int)($manual->values['HumanEventCounter']??0)===0,
     'stair-ONLY mode refuses vehicle, street, SMD-anywhere, rectangle and mixed unclassified traffic');
 rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":12,\"ObjectType\":\"Human\",\"EventID\":501}\r\n");
 checkP03((int)($manual->values['HumanEventCounter']??0)===1
-    && str_contains((string)($manual->values['LastEvent']??''),'IVS_EXISTING_STAIR_LINE'),
+    && str_contains((string)($manual->buffers['P03Diag_LastEvent']??''),'IVS_EXISTING_STAIR_LINE'),
     'positive human on selected existing stair line increments exactly one counter');
 rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":999,\"ObjectType\":\"Human\",\"EventID\":502}\r\n");
 checkP03((int)($manual->values['HumanEventCounter']??0)===1,
@@ -733,11 +735,11 @@ $wire->attributes['RuleRejectCount']=55;
 $wire->attributes['SmdHumanRawCount']=28;
 $wire->attributes['SmdHumanProofCount']=3;
 $wire->attributes['ObservedCodeCounts']='{"SmartMotionHuman":28,"CrossRegionDetection":17}';
-$wire->values['WireProbe']='16:22:10 Code=SmartMotionHuman;action=Start;index=0';
-$wire->values['EventAudit']='{"time":"16:22:10","humanCount":6}';
+$wire->buffers['P03Diag_WireProbe']='16:22:10 Code=SmartMotionHuman;action=Start;index=0';
+$wire->buffers['P03Diag_EventAudit']='{"time":"16:22:10","humanCount":6}';
 $wire->values['LastIVSEvent']='{"oldCamera":true}';
-$wire->values['LastEvent']='OLD CAMERA';
-$wire->values['HumanHint']='OLD CAMERA HINT';
+$wire->buffers['P03Diag_LastEvent']='OLD CAMERA';
+$wire->buffers['P03Diag_HumanHint']='OLD CAMERA HINT';
 $humanBeforeApply=(int)($wire->values['HumanEventCounter']??0);
 $wire->ApplyChanges();
 checkP03(($wire->attributes['WireCodeCount']??-1)===0
@@ -750,11 +752,11 @@ checkP03(($wire->attributes['WireCodeCount']??-1)===0
     && ($wire->attributes['SmdHumanProofCount']??-1)===0,
     'camera reconfiguration resets old per-observer wire/AI/IVS diagnostic counters');
 checkP03(($wire->attributes['ObservedCodeCounts']??'')==='{}'
-    && ($wire->values['WireProbe']??'NOT EMPTY')===''
-    && ($wire->values['EventAudit']??'NOT EMPTY')===''
+    && ($wire->buffers['P03Diag_WireProbe']??'NOT EMPTY')===''
+    && ($wire->buffers['P03Diag_EventAudit']??'NOT EMPTY')===''
     && ($wire->values['LastIVSEvent']??'NOT EMPTY')===''
-    && ($wire->values['LastEvent']??'NOT EMPTY')===''
-    && ($wire->values['HumanHint']??'NOT EMPTY')==='',
+    && ($wire->buffers['P03Diag_LastEvent']??'NOT EMPTY')===''
+    && ($wire->buffers['P03Diag_HumanHint']??'NOT EMPTY')==='',
     'camera reconfiguration clears old camera code histogram and timestamped audit');
 checkP03((int)($wire->values['HumanEventCounter']??-1)===$humanBeforeApply,
     'regular ApplyChanges never forges or silently resets the monotonic human counter');
@@ -1031,7 +1033,7 @@ checkP03((int)$terraceLive->values['HumanEventCounter']===1
     && (int)($eventHistory[0]['ruleIdUpper']??0)===5
     && ($eventHistory[0]['direction']??'')==='LeftToRight',
     'real terrace Human CrossLine START updates counter, last eight IVS and direction');
-$terraceStatus=json_decode((string)($terraceLive->values['ObserverStatus']??''),true);
+$terraceStatus=json_decode((string)($terraceLive->buffers['P03Diag_ObserverStatus']??''),true);
 $counts=json_decode((string)($terraceStatus['observedCodeCounts']??''),true);
 checkP03(($counts['CrossLineDetection']??0)===1
     && (int)($terraceStatus['counter']??0)===1
