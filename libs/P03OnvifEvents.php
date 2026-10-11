@@ -183,6 +183,21 @@ final class P03OnvifEvents
         return count($normalized)===1 ? (string)array_key_first($normalized) : '';
     }
 
+    /** @param array<string,mixed> $data */
+    public static function hasExplicitClassField(array $data): bool
+    {
+        foreach ($data as $key=>$value) {
+            if (!is_scalar($value) || trim((string)$value)==='') {
+                continue;
+            }
+            if (in_array(strtolower((string)$key),
+                ['classtypes','objecttype','objectclass','targettype','classtype'],true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Dahua may recycle ObjectId and timestamps, so a previously seen event
      * must never remain permanently blocked. Remove expired keys BEFORE
@@ -222,7 +237,10 @@ final class P03OnvifEvents
     public static function isRecent(array $event,int $now,int $maxAge=120): bool
     {
         $date=trim((string)($event['utc']??''));
-        if ($date==='' || strlen($date)>64) {
+        // UtcTime is a camera-supplied xsd:dateTime, never an arbitrary
+        // relative strtotime() expression such as "now" or "tomorrow".
+        if ($date==='' || strlen($date)>64
+            || !preg_match('/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+\\-]\\d{2}:\\d{2})$/D',$date)) {
             return false;
         }
         $parsed=strtotime($date);
