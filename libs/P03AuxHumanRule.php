@@ -79,6 +79,16 @@ final class P03AuxHumanRule
         // Non-restrictive because HOME/LAGER direction comes from camera order.
         $config['Direction'] = 'Both';
 
+        // Real IPC-HFW5442E-ZE 2.840 dumps: BOTH P03-owned rules had
+        // Config.MinDuration=6 s / Sensitivity=5, inherited untouched from
+        // the camera template. A person walking through either camera can
+        // disappear before the 6-second dwell threshold. This is a short
+        // human transit detector, NOT a loitering detector. Use the camera's
+        // valid minimum of 1 second and a moderately higher IVS sensitivity.
+        // No foreign IVS rule / global camera AI configuration is modified.
+        $config['MinDuration'] = 1;
+        $config['Sensitivity'] = 8;
+
         if (is_array($config['SizeFilter'] ?? null)) {
             $config['SizeFilter']['MaxSize'] = [8191, 8191];
             $config['SizeFilter']['MinSize'] = [0, 0];
@@ -113,6 +123,12 @@ final class P03AuxHumanRule
             && $appear
             && $crossOk
             && strcasecmp((string) $direction, 'Both') === 0
+            && (isset($rule['Config']['MinDuration'])
+                && is_numeric($rule['Config']['MinDuration'])
+                && (int) $rule['Config']['MinDuration'] === 1)
+            && (isset($rule['Config']['Sensitivity'])
+                && is_numeric($rule['Config']['Sensitivity'])
+                && (int) $rule['Config']['Sensitivity'] === 8)
             // Previously created P03 rules had this falsely switched OFF.
             // Force controlled revalidation/rewrite of P03-owned rules rather
             // than accepting a rule that cannot report to alarm clients.
