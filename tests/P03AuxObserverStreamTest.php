@@ -727,3 +727,52 @@ checkP03(($wire->attributes['ObservedCodeCounts']??'')==='{}'
 checkP03((int)($wire->values['HumanEventCounter']??-1)===$humanBeforeApply,
     'regular ApplyChanges never forges or silently resets the monotonic human counter');
 
+
+
+// v0.7.8: reproduce the actual 16:50 left-camera RPC2 rules.
+// Logging ALL enabled CrossLines must NEVER be confused with the proof
+// allowlist. Both roles permit only ID 4 / index 3, NEVER street ID 5.
+$liveJvRules=[
+    3=>['Enable'=>true,'Name'=>'Überquerung zur Treppe','Type'=>'CrossLineDetection',
+        'Id'=>4,'ObjectTypes'=>['Human']]
+];
+$liveWorkRules=[
+    3=>['Enable'=>true,'Name'=>'Überquerung zur Treppe','Type'=>'CrossLineDetection',
+        'Id'=>4,'ObjectTypes'=>['Human','Vehicle']],
+    4=>['Enable'=>true,'Name'=>'Überquerung zur Straße','Type'=>'CrossLineDetection',
+        'Id'=>5,'ObjectTypes'=>['Human','Vehicle']]
+];
+$jvSelected=P03ExistingIvsLines::select($liveJvRules);
+$workSelected=P03ExistingIvsLines::select($liveWorkRules);
+checkP03($jvSelected['mapped'] && count($jvSelected['allowed'])===1
+    && $jvSelected['allowed'][0]['id']===4
+    && $jvSelected['allowed'][0]['tableIndex']===3
+    && $jvSelected['allowed'][0]['humanOnly'],
+    'actual JV_LEFT 16:50 camera: one allowed human-only stair rule ID 4');
+checkP03($workSelected['mapped'] && count($workSelected['all'])===2
+    && count($workSelected['allowed'])===1
+    && $workSelected['allowed'][0]['id']===4
+    && $workSelected['allowed'][0]['tableIndex']===3
+    && !$workSelected['allowed'][0]['humanOnly'],
+    'actual WORK_LEFT 16:50 camera: street rule ID 5 is inventory only, never allowed');
+checkP03(!P03ExistingIvsLines::matchingHumanStart([
+    'code'=>'CrossLineDetection','action'=>'Start','ruleName'=>'Überquerung zur Straße',
+    'cfgRuleId'=>5,'classification'=>'Human'
+],$workSelected['allowed']),
+    'explicit Human crossing on street line ID 5 is rejected');
+checkP03(!P03ExistingIvsLines::matchingHumanStart([
+    'code'=>'CrossLineDetection','action'=>'Start','ruleName'=>'Überquerung zur Treppe',
+    'cfgRuleId'=>4
+],$workSelected['allowed']),
+    'mixed Human/Vehicle stair rule requires per-event Human classification');
+checkP03(P03ExistingIvsLines::matchingHumanStart([
+    'code'=>'CrossLineDetection','action'=>'Start','ruleName'=>'Überquerung zur Treppe',
+    'cfgRuleId'=>4,'classification'=>'Human'
+],$workSelected['allowed']),
+    'mixed class stair rule accepts explicitly classified Human event only');
+$mainText=file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/module.php');
+checkP03(is_string($mainText)
+    && str_contains($mainText,'CROSSLINE-INVENTAR (KEINE FREIGABE)')
+    && str_contains($mainText,'FREIGEGEBENE TREPPEN-CROSSLINE')
+    && str_contains($mainText,'$mapped ? $rpcSelection[\'allowed\'] : []'),
+    'read-only audit reports actual allowlist separately from all CrossLine inventory');

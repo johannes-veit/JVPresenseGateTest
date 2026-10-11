@@ -4107,10 +4107,24 @@ class JVPresenceP03MultiCamera extends IPSModule
             . '): ' . json_encode(
                 P03ExistingIvsLines::inventory($cgiRules),
                 JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        $this->appendProtocol($role . ': TREPPENFILTER RPC2='
+        // "all" is only the CrossLine inventory; it also contains "Straße".
+        // Never label the inventory a Treppenfilter or user-facing operators
+        // could mistake an excluded street rule for a permitted crossing.
+        $this->appendProtocol($role . ': CROSSLINE-INVENTAR (KEINE FREIGABE) RPC2='
             . json_encode($rpcSelection['all'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
             . ' | CGI=' . json_encode($cgiSelection['all'],
                 JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $this->appendProtocol($role . ': FREIGEGEBENE TREPPEN-CROSSLINE RPC2='
+            . json_encode($mapped ? $rpcSelection['allowed'] : [],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            . ' | CGI=' . json_encode($mapped ? $cgiSelection['allowed'] : [],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        if ($mapped && !($rpcSelection['allowed'][0]['humanOnly'] ?? false)) {
+            $this->appendProtocol($role . ': HINWEIS: Treppenregel akzeptiert Mensch und Fahrzeug. '
+                . 'Für einen Human-Zähler ist die explizite Objektklasse Human im '
+                . 'einzelnen CrossLine-Ereignis erforderlich; unklassifizierte '
+                . 'Übertritte bleiben gesperrt.');
+        }
         $this->appendProtocol($role . ': TREPPENLINIE '
             . ($mapped ? 'IN CGI UND RPC2 EINDEUTIG – ' : 'NICHT VERIFIZIERT – ')
             . ($mapped ? 'Name, RuleID und Objektfilter stimmen überein'
@@ -4255,7 +4269,10 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', StreamVar=' . $streamVar
                 . ', StreamLive=' . ($streamLive ? 'TRUE' : 'FALSE')
                 . ', ReadOnly=' . ($readOnly ? 'TRUE' : 'FALSE')
-                . ' -> ' . ($ok ? 'OK' : 'FEHLER')
+                . ' -> ' . ($ok ? 'OK'
+                    : (($readOnly && !$streamLive && !empty($ivs['mapped']))
+                        ? 'STREAM NACH AUDIT-RECONNECT NOCH NICHT BESTÄTIGT'
+                        : 'FEHLER'))
         );
 
         return [
