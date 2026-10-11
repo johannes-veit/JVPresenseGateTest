@@ -79,7 +79,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
         $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
         $this->RegisterVariableString('LastEvent', 'Letztes Personenerkennungs-Ereignis (SMD/IVS)', '', 30);
-        $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
+        $this->RegisterVariableString('LastIVSEvent', 'Letzte CrossLine-Ereignisse und Ablehnungsgründe', '', 40);
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
         $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
@@ -118,7 +118,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
         $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
         $this->RegisterVariableString('LastEvent', 'Letztes Personenerkennungs-Ereignis (SMD/IVS)', '', 30);
-        $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
+        $this->RegisterVariableString('LastIVSEvent', 'Letzte CrossLine-Ereignisse und Ablehnungsgründe', '', 40);
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
         $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
@@ -134,6 +134,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady() ? 25000 : 0);
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
+        $this->SetBuffer('CrossLineEvidenceHistory', '[]');
         $this->SetBuffer('WireProbeTail', '');
         $this->WriteAttributeBoolean('Streaming', false);
         $this->WriteAttributeBoolean('AuthPending', false);
@@ -863,7 +864,8 @@ class JVPresenceP03AuxObserver extends IPSModule
                     'classification' => $event['classification'] ?? null,
                     'eventId' => $event['eventId'] ?? null
                 ];
-                $this->SetValue('LastIVSEvent', json_encode($rawSummary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                // Final per-event decision and last eight CrossLine payloads
+                // are persisted by recordEventAudit, never overwritten here.
                 $this->SendDebug('CrossRegionDetection', json_encode($rawSummary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
             }
 
@@ -1180,8 +1182,15 @@ class JVPresenceP03AuxObserver extends IPSModule
                     ? 'MATCHED_FILTER'
                     : P03ExistingIvsLines::explainRejection($event, $allowed)
             ];
-            $this->SetValue('LastIVSEvent', json_encode($cross,
-                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+            $history = json_decode($this->GetBuffer('CrossLineEvidenceHistory'), true);
+            if (!is_array($history)) {
+                $history = [];
+            }
+            $history[] = $cross;
+            $history = array_slice($history, -8);
+            $encoded = json_encode($history, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $this->SetBuffer('CrossLineEvidenceHistory', $encoded === false ? '[]' : $encoded);
+            $this->SetValue('LastIVSEvent', $encoded === false ? '[]' : $encoded);
         }
     }
 
