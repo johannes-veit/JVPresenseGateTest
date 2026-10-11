@@ -2975,15 +2975,46 @@ class JVPresenceP03MultiCamera extends IPSModule
                 && $this->terraceObserverSocketExclusive($terraceID)) {
                 $lines[] = 'TERRACE Observer-ID: #'.$terraceID.' | Host: '.$terraceHost
                     .' | eigener Socket: EXKLUSIV';
+                $readAt=$this->ReadAttributeInteger('TerraceRuleReadAt');
+                $lines[]='TERRACE IVS-Regel zuletzt eingelesen: '
+                    .($readAt>0?date('H:i:s',$readAt):'UNBEKANNT')
+                    .' | Nach Kamera-IVS-Aenderungen erneut "Regel einlesen" ausfuehren.';
+                $personID=$this->findAuxVariable($terraceID,'PersonDetected');
+                $lines[]='TERRACE Person erkannt: '
+                    .($personID>0 && IPS_VariableExists($personID)
+                        ? ((bool)GetValue($personID)?'AN':'AUS') : 'FEHLT')
+                    .' | Variable '.($personID>0?'#'.$personID:'FEHLT')
+                    .' | nur Status, kein Zonenbeweis';
                 $stateID=$this->findAuxVariable($terraceID,'ObserverStatus');
                 if ($stateID>0) {
                     $state=json_decode((string)GetValue($stateID),true);
                     if (is_array($state)) {
+                        $counts=json_decode((string)($state['observedCodeCounts']??'{}'),true);
+                        if (!is_array($counts)) {
+                            $counts=[];
+                        }
                         $lines[]='TERRACE Stream: '
                             .(!empty($state['streamOK'])?'LIVE':'NOCH NICHT LIVE')
-                            .' | CrossLine-Events='
-                            .(int)(json_decode((string)($state['observedCodeCounts']??'{}'),true)
-                                ['CrossLineDetection']??0);
+                            .' | CrossLine-Events='.(int)($counts['CrossLineDetection']??0);
+                        $lines[]='TERRACE Kamera-Codes seit Observer-Start: '
+                            .($counts===[]?'NOCH KEINE':implode(', ',array_map(
+                                static fn(string $key,int $value):string=>$key.'='.$value,
+                                array_keys($counts),array_values($counts))));
+                        $smdAt=(int)($state['lastSmdHumanStartAt']??0);
+                        $lines[]='TERRACE SMD Person (kein IVS-Beweis): '
+                            .(int)($state['smdHumanRawCount']??0)
+                            .' Meldungen | letzter START '
+                            .($smdAt>0?date('H:i:s',$smdAt):'KEINER')
+                            .' | IVS RegelTreffer='.(int)($state['ruleMatches']??0)
+                            .' | RegelAbgewiesen='.(int)($state['ruleRejected']??0);
+                        $allowed=$state['allowedStairRules']??[];
+                        if (is_array($allowed) && count($allowed)===1) {
+                            $rule=$allowed[0];
+                            $lines[]='TERRACE aktuell gespeicherte IVS-Freigabe: '
+                                .(string)($rule['name']??'?')
+                                .' | RuleID='.(string)($rule['id']??'?')
+                                .' | Nur Human='.(!empty($rule['humanOnly'])?'JA':'NEIN');
+                        }
                     }
                 }
                 $counterID=$this->findAuxVariable($terraceID,'HumanEventCounter');
