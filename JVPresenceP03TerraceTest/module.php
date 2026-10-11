@@ -25,6 +25,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     private const AUX_WORK_OLD_RIGHT_HOST = '192.168.107.99';
     private const AUX_JV_ROLE = 'JV_LEFT';
     private const AUX_WORK_ROLE = 'WORK_LEFT';
+    private const TERRACE_ROLE = 'TERRACE';
     private const RULE_NAME = 'P03_HOME_LAGER';
     // Aktuelle rote P03-Grenzlinie aus dem Bild vom 07.10.2026:
     // Sie deckt jetzt neben dem P03-Grenze auch die links liegende Personentür ab.
@@ -56,7 +57,10 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterPropertyBoolean('AutoCreateWorkObserver', true); // legacy, unused
 
         $this->RegisterPropertyString('TerraceHost', self::TERRACE_DEFAULT_HOST);
+        // Optional third sensor OFF by default. Independent observer only;
+        // it never substitutes either mast source for HOME/LAGER proof.
         $this->RegisterPropertyBoolean('TerraceDiagnosticsEnabled', false);
+        $this->RegisterPropertyString('TerraceIVSRuleName', '');
         $this->RegisterPropertyInteger('CameraPort', 80);
         $this->RegisterPropertyString('Username', '');
         $this->RegisterPropertyString('Password', '');
@@ -113,6 +117,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         // P03 multi-camera proof state.
         $this->RegisterAttributeInteger('AuxJVInstanceID', 0);
         $this->RegisterAttributeInteger('AuxWorkInstanceID', 0);
+        $this->RegisterAttributeInteger('TerraceObserverInstanceID', 0);
+        $this->RegisterAttributeString('TerraceAllowedIVSRules', '[]');
         $this->RegisterAttributeInteger('AuxJVPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxJVEventCounterVarID', 0);
@@ -176,6 +182,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
         $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
         $this->RegisterVariableString('P03OwnershipAudit', 'P03 Instanz-/Observer-Bestandsprüfung (nur lesen)', '', 78);
+        $this->RegisterVariableString('P03TerraceMonitor', 'P03 Terrasse: IVS-Zusatzsensor', '', 79);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03MC_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03MC_SocketRestartTimer($_IPS["TARGET"]);');
@@ -198,6 +205,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
         $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
         $this->RegisterVariableString('P03OwnershipAudit', 'P03 Instanz-/Observer-Bestandsprüfung (nur lesen)', '', 78);
+        $this->RegisterVariableString('P03TerraceMonitor', 'P03 Terrasse: IVS-Zusatzsensor', '', 79);
         // Simplify the visible Symcon instance tree without destroying
         // existing object IDs, links, archival history, or plugin consumers.
         // The essential #35115/#53524 diagnostic IDs remain visible.
@@ -253,6 +261,15 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->baselineP03Counter('AuxJVEventCounterVarID','AuxJVLastSeenHumanCounter');
         $this->baselineP03Counter('AuxWorkEventCounterVarID','AuxWorkLastSeenHumanCounter');
         $this->refreshP03CameraStatus();
+        // Disabled-by-default third sensor is deliberately independent.
+        // No camera setConfig and no mast observer reconfiguration.
+        if ($this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')) {
+            $this->ConfigureTerraceMonitor();
+        } else {
+            $this->disableTerraceMonitor();
+            $this->SetValue('P03TerraceMonitor',
+                'IGNORIERT – Terrasse AUS, Zwei-Kamera-Nachweis unveraendert');
+        }
 
         if (!$this->credentialsReady()) {
             $this->setResult('NICHT BEREIT – P03 Dahua-Benutzername/Passwort direkt im P03-Modul eintragen.');
@@ -2888,6 +2905,58 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
 
+        // Third camera is 100% optional; it has no subscription in the
+        // main HOME/LAGER proof path and cannot block the two mast streams.
+        $lines[] = '';
+        if (!$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')) {
+            $lines[] = '--- JV TERRASSE: AUS / IGNORIERT – kein Einfluss auf HOME/LAGER ---';
+        } else {
+            $terraceID = $this->ReadAttributeInteger('TerraceObserverInstanceID');
+            $terraceHost = trim($this->ReadPropertyString('TerraceHost'));
+            $lines[] = '--- JV TERRASSE (OPTIONAL, NUR DIAGNOSE) ---';
+            $lines[] = 'Zusatzstatus: '.(string)$this->GetValue('P03TerraceMonitor');
+            if ($this->matchesTrustedP03Observer($terraceID,$terraceHost,self::TERRACE_ROLE)
+                && $this->terraceObserverSocketExclusive($terraceID)) {
+                $lines[] = 'TERRACE Observer-ID: #'.$terraceID.' | Host: '.$terraceHost
+                    .' | eigener Socket: EXKLUSIV';
+                $stateID=$this->findAuxVariable($terraceID,'ObserverStatus');
+                if ($stateID>0) {
+                    $state=json_decode((string)GetValue($stateID),true);
+                    if (is_array($state)) {
+                        $lines[]='TERRACE Stream: '
+                            .(!empty($state['streamOK'])?'LIVE':'NOCH NICHT LIVE')
+                            .' | CrossLine-Events='
+                            .(int)(json_decode((string)($state['observedCodeCounts']??'{}'),true)
+                                ['CrossLineDetection']??0);
+                    }
+                }
+                $counterID=$this->findAuxVariable($terraceID,'HumanEventCounter');
+                $lines[]='TERRACE Human-CrossLine-Zaehler: '
+                    .($counterID>0 ? (int)GetValue($counterID) : 'FEHLT')
+                    .' | NUR TERRASSEN-DIAGNOSE';
+                $ivId=$this->findAuxVariable($terraceID,'LastIVSEvent');
+                if ($ivId>0) {
+                    $last=json_decode((string)GetValue($ivId),true);
+                    if (is_array($last) && array_is_list($last)) {
+                        foreach (array_slice($last,-4) as $entry) {
+                            if (!is_array($entry)) continue;
+                            $lines[]='  TERRACE IVS '.(string)($entry['time']??'?')
+                                .' | Aktion='.(string)($entry['action']??'?')
+                                .' | Regel='.(string)($entry['ruleName']??'?')
+                                .' | RuleID='.(string)($entry['ruleIdUpper']
+                                    ??$entry['cfgRuleId']??'?')
+                                .' | Klasse='.(string)($entry['classification']??'?')
+                                .' | Richtung='.(string)($entry['direction']??'FEHLT')
+                                .' | Entscheidung='.(string)($entry['decision']??'?');
+                        }
+                    }
+                }
+            } else {
+                $lines[]='TERRACE Observer: noch nicht sicher eingerichtet oder Socket geteilt.';
+            }
+            $lines[]='TERRACE darf weder JV_LEFT noch WORK_LEFT fuer Zonenbeweise ersetzen.';
+        }
+
         $lines[] = '';
         $lines[] = 'ERGEBNIS: Nur Istzustand erfasst – keine Verbindung neu gestartet.';
         $report = implode("\n", $lines);
@@ -2900,6 +2969,169 @@ class JVPresenceP03MultiCamera extends IPSModule
     private static function p03DiagBool($value): string
     {
         return $value === null ? '?' : ((bool) $value ? 'JA' : 'NEIN');
+    }
+
+    /**
+     * Optional third-camera observer. Reads existing camera IVS rules via CGI;
+     * refuses ambiguous or vehicle-only rules. No setConfig, no camera changes.
+     * The observer uses its own exclusively linked P03 client socket.
+     *
+     * IMPORTANT: no subscription to the terrace HumanEventCounter is installed
+     * in P03 main; neither terrace SMD nor its IVS triggers a gate transition.
+     * A future alternative proof path requires separately audited direction
+     * mapping and explicit user selection.
+     */
+    public function ConfigureTerraceMonitor(): void
+    {
+        if (!$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')) {
+            $this->disableTerraceMonitor();
+            $this->SetValue('P03TerraceMonitor', 'IGNORIERT – Terrasse AUS');
+            return;
+        }
+        $host = trim($this->ReadPropertyString('TerraceHost'));
+        $jv = trim($this->ReadPropertyString('AuxJVHost'));
+        $work = trim($this->ReadPropertyString('AuxWorkHost'));
+        if ($host === '' || $host === $jv || $host === $work
+            || !$this->credentialsReady()) {
+            $this->disableTerraceMonitor();
+            $this->SetValue('P03TerraceMonitor',
+                'GESPERRT – fehlende Zugangsdaten oder Terrasse identisch mit Mastkamera');
+            return;
+        }
+        $read = $this->genericCameraGet(
+            $host, max(1,$this->ReadPropertyInteger('CameraPort')),
+            $this->ReadPropertyString('Username'), $this->ReadPropertyString('Password'),
+            '/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule'
+        );
+        if (empty($read['ok']) || trim((string)($read['body'] ?? '')) === '') {
+            $this->disableTerraceMonitor();
+            $this->SetValue('P03TerraceMonitor',
+                'GESPERRT – Terrassen-IVS-Konfiguration nicht lesbar (Kamera nur gelesen)');
+            return;
+        }
+        $selection = P03ExistingIvsLines::selectTerrace(
+            P03ExistingIvsLines::fromCgi((string)$read['body']),
+            $this->ReadPropertyString('TerraceIVSRuleName')
+        );
+        if (empty($selection['mapped'])) {
+            $this->disableTerraceMonitor();
+            $names = array_map(static fn(array $r): string =>
+                (string)$r['name'].' [ID '.(int)$r['id'].']',
+                $selection['candidates'] ?? []);
+            $this->SetValue('P03TerraceMonitor',
+                'GESPERRT – '.(string)$selection['reason']
+                .' | Verfuegbare Human-CrossLines: '.implode('; ',array_slice($names,0,8)));
+            return;
+        }
+
+        $observerID = $this->findP03AuxObserver($host, self::TERRACE_ROLE);
+        if ($observerID === 0) {
+            $oldID = $this->ReadAttributeInteger('TerraceObserverInstanceID');
+            if ($oldID > 0 && IPS_InstanceExists($oldID)) {
+                // Do not abandon an earlier P03 terrace observer with another
+                // host: the old owned observer must be dealt with explicitly.
+                $this->SetValue('P03TerraceMonitor',
+                    'GESPERRT – alter Terrassen-Observer #'.$oldID
+                    .' vorhanden; Host-/Rollenabweichung zuerst klaeren');
+                return;
+            }
+            $observerID = $this->createP03AuxObserver($host,self::TERRACE_ROLE,
+                'P03 – JV Terrasse (optional)');
+        }
+        if ($observerID <= 0) {
+            $this->SetValue('P03TerraceMonitor',
+                'GESPERRT – separater P03-Terrassen-Observer konnte nicht erstellt werden');
+            return;
+        }
+        // Save a newly created, role-verified observer before socket
+        // readiness checks: a transient socket setup must not orphan it.
+        if ($this->matchesTrustedP03Observer($observerID, $host, self::TERRACE_ROLE)) {
+            $this->WriteAttributeInteger('TerraceObserverInstanceID', $observerID);
+        }
+        if (!$this->terraceObserverSocketExclusive($observerID)) {
+            $this->SetValue('P03TerraceMonitor',
+                'GESPERRT – Terrassen-Socket nicht sicher exklusiv; keine Aenderung');
+            return;
+        }
+        $rules = json_encode($selection['allowed'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        if (!is_string($rules)) {
+            $this->SetValue('P03TerraceMonitor','GESPERRT – IVS-Regeln nicht kodierbar');
+            return;
+        }
+        try {
+            IPS_SetProperty($observerID, 'Enabled', true);
+            IPS_SetProperty($observerID, 'ProofMode', 'EXISTING_STAIR_IVS');
+            IPS_SetProperty($observerID, 'AllowedIVSRules', $rules);
+            IPS_SetProperty($observerID, 'CameraHost', $host);
+            IPS_SetProperty($observerID, 'CameraPort',
+                max(1,$this->ReadPropertyInteger('CameraPort')));
+            IPS_SetProperty($observerID, 'Username', $this->ReadPropertyString('Username'));
+            IPS_SetProperty($observerID, 'Password', $this->ReadPropertyString('Password'));
+            IPS_SetProperty($observerID, 'Role', self::TERRACE_ROLE);
+            IPS_ApplyChanges($observerID);
+            $this->WriteAttributeInteger('TerraceObserverInstanceID',$observerID);
+            $this->WriteAttributeString('TerraceAllowedIVSRules',$rules);
+            $chosen = $selection['allowed'][0];
+            $this->SetValue('P03TerraceMonitor',
+                'AKTIV – NUR DIAGNOSE | Observer #'.$observerID
+                .' | Host='.$host
+                .' | IVS-Regel='.(string)$chosen['name']
+                .' | RuleID='.(int)$chosen['id']
+                .' | Mensch-Filter='.(!empty($chosen['humanOnly'])?'nur Human':'Human + weitere')
+                .' | KEIN Einfluss auf HOME/LAGER');
+        } catch (Throwable $e) {
+            $this->SetValue('P03TerraceMonitor',
+                'GESPERRT – P03-Terrassen-Observer konnte nicht sicher aktiviert werden ('
+                .get_class($e).')');
+        }
+    }
+
+    private function terraceObserverSocketExclusive(int $observerID): bool
+    {
+        if ($observerID <= 0 || !IPS_InstanceExists($observerID)) {
+            return false;
+        }
+        try {
+            $observer = IPS_GetInstance($observerID);
+            if (strcasecmp((string)($observer['ModuleInfo']['ModuleID']??''),
+                self::AUX_OBSERVER_MODULE_GUID) !== 0
+                || (string)IPS_GetProperty($observerID,'Role') !== self::TERRACE_ROLE) {
+                return false;
+            }
+            $parentID = (int)($observer['ConnectionID']??0);
+            if ($parentID <= 0 || !IPS_InstanceExists($parentID)
+                || strcasecmp((string)(IPS_GetInstance($parentID)['ModuleInfo']['ModuleID']??''),
+                    self::CLIENT_SOCKET_GUID) !== 0) {
+                return false;
+            }
+            foreach (IPS_GetInstanceList() as $candidate) {
+                if ((int)$candidate !== $observerID
+                    && (int)(IPS_GetInstance((int)$candidate)['ConnectionID']??0)===$parentID) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    private function disableTerraceMonitor(): void
+    {
+        $observerID=$this->ReadAttributeInteger('TerraceObserverInstanceID');
+        if (!$this->terraceObserverSocketExclusive($observerID)) {
+            return;
+        }
+        try {
+            if ((bool)IPS_GetProperty($observerID,'Enabled')) {
+                IPS_SetProperty($observerID,'Enabled',false);
+                IPS_ApplyChanges($observerID);
+            }
+        } catch (Throwable $e) {
+            $this->SetValue('P03TerraceMonitor',
+                'WARNUNG – Terrasse konnte nicht abgeschaltet werden ('
+                .get_class($e).')');
+        }
     }
 
     public function P03AuxRescan(): void
@@ -3226,7 +3458,15 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
         // 1. Trust stored identities only after independently verifying actual
         // ModuleID + Host + Role; do not take over any similarly named module.
-        $savedAttr = $role === self::AUX_JV_ROLE ? 'AuxJVInstanceID' : 'AuxWorkInstanceID';
+        $savedAttr = match ($role) {
+            self::AUX_JV_ROLE => 'AuxJVInstanceID',
+            self::AUX_WORK_ROLE => 'AuxWorkInstanceID',
+            self::TERRACE_ROLE => 'TerraceObserverInstanceID',
+            default => ''
+        };
+        if ($savedAttr === '') {
+            return 0;
+        }
         $savedID = $this->ReadAttributeInteger($savedAttr);
         if ($this->matchesTrustedP03Observer($savedID,$host,$role)) {
             return $savedID;
@@ -3404,7 +3644,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /** @return array{ok:bool,error:string,http:int,body:string} */
-    private function genericCameraGet(string $host, int $port, string $username, string $password, string $uri, int $timeoutSeconds = 6): array
+    protected function genericCameraGet(string $host, int $port, string $username, string $password, string $uri, int $timeoutSeconds = 6): array
     {
         if ($host === '' || $username === '' || $password === '') {
             return ['ok' => false, 'error' => 'Konfiguration unvollständig', 'http' => 0, 'body' => ''];

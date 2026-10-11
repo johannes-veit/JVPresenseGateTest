@@ -174,6 +174,9 @@ $instance=new JVPresenceP03MultiCamera();
 $instance->DiagnoseP03Connections();
 $report=(string) $instance->values['P03ConnectionDiagnosis'];
 verifyDiag(str_contains($report,'JV_LEFT') && str_contains($report,'WORK_LEFT'),'both mast roles included');
+verifyDiag(str_contains($report,'JV TERRASSE: AUS / IGNORIERT')
+    && !str_contains($report,'TERRACE Observer-ID:'),
+    'default-disabled third terrace source stays ignored and does not enter mast proof');
 verifyDiag(str_contains($report,'57215') && str_contains($report,'27938'),'both observer IDs included');
 verifyDiag(str_contains($report,'54893') && str_contains($report,'51090'),'both stream IDs included');
 verifyDiag(str_contains($report,'9001') && str_contains($report,'9002'),'both client socket IDs included');
@@ -749,7 +752,7 @@ verifyDiag($GLOBALS['writes']===[],
 $ui2=json_decode($instance->GetConfigurationForm(),true);
 verifyDiag(!in_array('JVP03MC_DiagnoseP03Ownership($id);',
     array_column($ui2['actions']??[],'onClick'),true)
-    && count($ui2['actions']??[])===7,
-    'legacy ownership button removed; main UI exposes precisely seven essential commands');
+    && count($ui2['actions']??[])===8,
+    'legacy ownership button removed; main UI exposes eight essential commands with optional terrace');
 
 echo "P03 READ-ONLY CONNECTION DIAGNOSIS TEST PASSED\n";
