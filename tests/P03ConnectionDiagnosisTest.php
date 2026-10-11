@@ -473,9 +473,9 @@ try {
 verifyDiag(array_keys($GLOBALS['media'])===$mediaIds
     && count($GLOBALS['media'])===2,
     'repeat export UPDATES existing two owned documents without duplicating media');
-verifyDiag(in_array('JVP03MC_DiagnoseIPC5442AllValues($id);',
+verifyDiag(!in_array('JVP03MC_DiagnoseIPC5442AllValues($id);',
     array_column(json_decode($full->GetConfigurationForm(),true)['actions']??[],'onClick'),true),
-    'one-click full export is available in P03 main instance form');
+    'obsolete full-dump button removed from lean UI; safe backend export remains available');
 
 // A read-only 30-second wire trace must update the test protocol even if no
 // new Human event arrives, showing distinguishable camera-level motion traffic.
