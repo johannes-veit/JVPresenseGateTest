@@ -295,5 +295,13 @@ okOnvif(P03OnvifEvents::isFresh($newEventKey,$retrySeen,118,180),
 okOnvif(!P03OnvifEvents::isRecent(['utc'=>'now'],$baseTime,120),
     'Non ISO8601 relative time strings can never masquerade as camera UTC');
 
+$differentAnalytics=$classEvent;
+$differentAnalytics['source']['VideoAnalyticsConfigurationToken']='ANALYSIS_B';
+$matchingAnalyticsCross=$crossEvent;
+$matchingAnalyticsCross['source']['VideoAnalyticsConfigurationToken']='ANALYSIS_A';
+$analyticsState=[];
+P03OnvifCorrelator::ingest($differentAnalytics,$analyticsState,100);
+okOnvif(P03OnvifCorrelator::ingest($matchingAnalyticsCross,$analyticsState,101)===null,
+    'ObjectId collision across different analytics configurations cannot prove a person');
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
