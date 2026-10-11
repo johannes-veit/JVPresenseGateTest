@@ -3117,7 +3117,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     /**
      * IP-Symcon 9 does not automatically connect every newly created
-     * RequireParent() device. Connect only an already verified P03-TERRACE
+     * observer relying on automatic parent creation. Connect only a verified P03-TERRACE
      * observer with ConnectionID=0 to a freshly created or previously
      * registered, UNUSED dedicated P03 Client Socket.
      *
