@@ -75,5 +75,49 @@ okOnvif(count($parameters)===1 && $parameters[0]['name']==='SubscriptionId'
     && $parameters[0]['value']==='42' && $parameters[0]['namespace']==='urn:dahua:onvif:subscription',
     'ONVIF subscription reference parameters parsed for subsequent PullMessages');
 
+// v0.7.1: official ONVIF ClassTypes is plural. Never accidentally
+// accept a Human/Vehicle mixture in one notification.
+$classed=$events[0];
+unset($classed['data']['ObjectType']);
+$classed['data']['ClassTypes']='Human';
+okOnvif(P03OnvifEvents::isHumanStairCrossing($classed),
+    'Real ONVIF ClassTypes=Human counts on staircase');
+$classed['data']['ClassTypes']='Human,Vehicle';
+okOnvif(!P03OnvifEvents::isHumanStairCrossing($classed),
+    'Mixed ClassTypes=Human,Vehicle does not fabricate a person');
+$classed['data']['ClassTypes']='Vehicle';
+okOnvif(!P03OnvifEvents::isHumanStairCrossing($classed),
+    'Vehicle-only classification does not count as Human');
+$classed['data']['ClassTypes']='Human';
+$classed['data']['ObjectClass']='MotorVehicle';
+okOnvif(!P03OnvifEvents::isHumanStairCrossing($classed),
+    'Contradictory ONVIF object class fields fail closed');
+okOnvif(P03OnvifEvents::verifiedSameHostUrl(
+    'http://192.168.107.96:8899/onvif/events','192.168.107.96',8899)!==null,
+    'Camera-configured nonstandard ONVIF port is supported safely');
+okOnvif(P03OnvifEvents::verifiedSameHostUrl(
+    'http://192.168.107.96:8899/onvif/events','192.168.107.96')===null,
+    'Unexpected port denied without explicit configured value');
+$when='2010-09-16T07:50:45Z';
+$nonce=base64_decode('LKqI6G/AikKCQrN0zqZFlg==');
+$token=P03OnvifPullPoint::wsUsernameToken('someone','userpassword',$nonce,$when);
+okOnvif(str_contains($token,'wsse:UsernameToken')
+    && str_contains($token,'wsu:Created')
+    && str_contains($token,base64_encode(sha1($nonce.$when.'userpassword',true)))
+    && !str_contains($token,'>userpassword<'),
+    'ONVIF UsernameToken uses nonce/UTC/SHA1 digest, never plaintext secret');
+$good='<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body>'
+    .'<x:PullMessagesResponse xmlns:x="http://www.onvif.org/ver10/events/wsdl"/>'
+    .'</s:Body></s:Envelope>';
+$fault='<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body>'
+    .'<s:Fault><s:Code><s:Value>s:Sender</s:Value></s:Code></s:Fault>'
+    .'</s:Body></s:Envelope>';
+okOnvif(P03OnvifPullPoint::isValidSoapResponse($good,'PullMessagesResponse'),
+    'Proper ONVIF SOAP success response verified');
+okOnvif(!P03OnvifPullPoint::isValidSoapResponse($fault,'PullMessagesResponse'),
+    'SOAP Fault over HTTP 200 must never mean a live event stream');
+okOnvif(!P03OnvifPullPoint::isValidSoapResponse('<html>error</html>','PullMessagesResponse'),
+    'HTTP 200 HTML/error is rejected as ONVIF events');
+
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
