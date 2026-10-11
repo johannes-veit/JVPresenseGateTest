@@ -134,6 +134,9 @@ class IPSModule {
     protected function ReadAttributeString(string $key):string {return (string)($this->attributes[$key]??'');}
     protected function WriteAttributeInteger(string $key,int $value):void {$this->attributes[$key]=$value;}
     protected function WriteAttributeString(string $key,string $value):void {$this->attributes[$key]=$value;}
+    public array $buffers=[];
+    protected function SetBuffer(string $key,string $value):void {$this->buffers[$key]=$value;}
+    protected function GetBuffer(string $key):string {return (string)($this->buffers[$key]??'');}
     protected function GetValue(string $key):mixed {return $this->values[$key]??'';}
     protected function SetValue(string $key,mixed $value):void {$this->values[$key]=$value;}
     public array $subscribed=[];
@@ -184,7 +187,7 @@ $camera->properties=[
 ];
 $camera->cgiBody=$oneLine;
 $camera->ConfigureTerraceMonitor();
-tCheck(($camera->values['P03TerraceMonitor']??'')==='IGNORIERT – Terrasse AUS'
+tCheck(($camera->buffers['P03Internal_P03TerraceMonitor']??'')==='IGNORIERT – Terrasse AUS'
     && $GLOBALS['terCreateCount']===0 && $GLOBALS['terGetCount']===0,
     'disabled by default: neither camera read nor new socket/observer');
 $camera->properties['TerraceDiagnosticsEnabled']=true;
@@ -196,7 +199,7 @@ $camera->cgiBody=$oneLine
     .'table.VideoAnalyseRule[0][3].ObjectTypes[0]=Human'.chr(13).chr(10);
 $camera->ConfigureTerraceMonitor();
 tCheck($GLOBALS['terCreateCount']===0
-    && str_contains((string)$camera->values['P03TerraceMonitor'],'GESPERRT'),
+    && str_contains((string)$camera->buffers['P03Internal_P03TerraceMonitor'],'GESPERRT'),
     'ambiguous two-line terrace camera produces no P03 observer');
 $camera->properties['TerraceIVSRuleName']='Terrasse Grenzlinie';
 $camera->ConfigureTerraceMonitor();
@@ -233,7 +236,7 @@ tCheck(count($allow)===1 && $allow[0]['id']===8 && $allow[0]['tableIndex']===2,
     'third observer enforces exact existing camera rule identity');
 tCheck(!isset($camera->attributes['AuxJVEventCounterVarID'])
     && !isset($camera->attributes['AuxWorkEventCounterVarID'])
-    && str_contains((string)$camera->values['P03TerraceMonitor'],'KEIN Einfluss'),
+    && str_contains((string)$camera->buffers['P03Internal_P03TerraceMonitor'],'KEIN Einfluss'),
     'third observer is not wired as a mast source or zone transition');
 $camera->ConfigureTerraceMonitor();
 tCheck($GLOBALS['terCreateCount']===1,
@@ -241,7 +244,7 @@ tCheck($GLOBALS['terCreateCount']===1,
 $camera->properties['TerraceDiagnosticsEnabled']=false;
 $camera->ConfigureTerraceMonitor();
 tCheck($GLOBALS['terProps'][$id]['Enabled']===false
-    && ($camera->values['P03TerraceMonitor']??'')==='IGNORIERT – Terrasse AUS',
+    && ($camera->buffers['P03Internal_P03TerraceMonitor']??'')==='IGNORIERT – Terrasse AUS',
     'turn OFF disables only optional terrace observer');
 tCheck(count($camera->subscribed)===0
     && (int)($camera->attributes['TerraceHumanCounterVarID']??-1)===0
@@ -263,7 +266,7 @@ $GLOBALS['terInstances'][$extra]=[
 $before=count($GLOBALS['terChanges']);
 $camera->ConfigureTerraceMonitor();
 tCheck(count($GLOBALS['terChanges'])===$before
-    && str_contains((string)$camera->values['P03TerraceMonitor'],'kein exklusiver P03 Client Socket'),
+    && str_contains((string)$camera->buffers['P03Internal_P03TerraceMonitor'],'kein exklusiver P03 Client Socket'),
     'shared P03 socket cannot be touched, even for existing optional observer');
 unset($GLOBALS['terInstances'][$extra]);
 $camera->properties['TerraceDiagnosticsEnabled']=false;
@@ -292,7 +295,7 @@ tCheck($GLOBALS['terCreateCount']===$oldCreates+1
     && ($GLOBALS['terInstances'][$orphanID]['ConnectionID']??0)===$ownedSocket
     && ($GLOBALS['terProps'][$ownedSocket]['Host']??'')==='192.0.2.41',
     'Symcon9 orphaned terrace observer gets exactly one explicit owned parent socket');
-tCheck(str_contains((string)$orphan->values['P03TerraceMonitor'],'AKTIV')
+tCheck(str_contains((string)$orphan->buffers['P03Internal_P03TerraceMonitor'],'AKTIV')
     && $GLOBALS['terProps'][$orphanID]['Enabled']===true,
     'fixed orphaned TERRACE becomes active without changing mast sockets');
 $orphan->ConfigureTerraceMonitor();
@@ -310,13 +313,13 @@ $retryID=(int)($retry->attributes['TerraceObserverInstanceID']??0);
 $retrySocket=(int)($retry->attributes['TerraceManagedSocketID']??0);
 tCheck($retryID>0 && $retrySocket>0
     && ($GLOBALS['terInstances'][$retryID]['ConnectionID']??-1)===0
-    && str_contains((string)$retry->values['P03TerraceMonitor'],'GESPERRT'),
+    && str_contains((string)$retry->buffers['P03Internal_P03TerraceMonitor'],'GESPERRT'),
     'failed initial IPS_ConnectInstance preserves exact observer/socket IDs');
 $socketCount=count($GLOBALS['terOwnSocketIDs']);
 $retry->ConfigureTerraceMonitor();
 tCheck(count($GLOBALS['terOwnSocketIDs'])===$socketCount
     && ($GLOBALS['terInstances'][$retryID]['ConnectionID']??0)===$retrySocket
-    && str_contains((string)$retry->values['P03TerraceMonitor'],'AKTIV'),
+    && str_contains((string)$retry->buffers['P03Internal_P03TerraceMonitor'],'AKTIV'),
     'retry reconnects same pending P03 socket without creating any duplicate');
 
 $retry->properties['TerraceDiagnosticsEnabled']=false;
@@ -332,8 +335,8 @@ $blocked->properties['TerraceDiagnosticsEnabled']=true;
 $blocked->cgiBody=$oneLine;
 $blocked->attributes['TerraceManagedSocketID']=$retrySocket;
 $blocked->ConfigureTerraceMonitor();
-tCheck(str_contains((string)$blocked->values['P03TerraceMonitor'],'GESPERRT')
-    && str_contains((string)$blocked->values['P03TerraceMonitor'],'bereits')
+tCheck(str_contains((string)$blocked->buffers['P03Internal_P03TerraceMonitor'],'GESPERRT')
+    && str_contains((string)$blocked->buffers['P03Internal_P03TerraceMonitor'],'bereits')
     && ($GLOBALS['terInstances'][$retryID]['ConnectionID']??0)===$retrySocket,
     'old managed socket attached to another observer cannot be hijacked');
 echo 'P03 OPTIONAL TERRACE INTEGRATION SIMULATION PASSED'.PHP_EOL;
