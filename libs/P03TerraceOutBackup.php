@@ -14,13 +14,17 @@ final class P03TerraceOutBackup
     public const JV_MAX_SEC=15.0;
     public const WORK_MAX_SEC=50.0;
     public const SETTLE_SEC=5.0;
+    public const MAST_HISTORY_SEC=45.0;
+    public const TERRACE_HISTORY_SEC=100.0;
 
     /**
      * @param array<int,array<string,mixed>> $mast
      * @param array<int,array<string,mixed>> $terrace
      * @return array{status:string,mastId:?string,terraceId:?string,path:string,gap:float,reason:string}
      */
-    public static function evaluate(array $mast,array $terrace,float $now):array
+    public static function evaluate(
+        array $mast,array $terrace,float $now,float $primaryWindow=30.0
+    ):array
     {
         $fail=static fn(string $state,string $why):array=>[
             'status'=>$state,'mastId'=>null,'terraceId'=>null,
@@ -33,7 +37,7 @@ final class P03TerraceOutBackup
             && trim((string)($e['id']??''))!==''
             && is_numeric($e['ts']??null)
             && (float)$e['ts']>0 && (float)$e['ts']<=$now
-            && $now-(float)$e['ts']<=15.0));
+            && $now-(float)$e['ts']<=self::MAST_HISTORY_SEC));
         $signals=array_values(array_filter($terrace,static fn($e):bool=>
             is_array($e) && empty($e['used'])
             && (string)($e['kind']??'')==='IVS'
@@ -41,7 +45,7 @@ final class P03TerraceOutBackup
             && trim((string)($e['id']??''))!==''
             && is_numeric($e['ts']??null)
             && (float)$e['ts']>0.0 && (float)$e['ts']<=$now
-            && $now-(float)$e['ts']<=75.0));
+            && $now-(float)$e['ts']<=self::TERRACE_HISTORY_SEC));
         if (!$masts || !$signals) return $fail('UNKNOWN','MISSING_OUT_EVIDENCE');
         $candidates=[];
         foreach($signals as $signal) {
@@ -77,7 +81,8 @@ final class P03TerraceOutBackup
                 }
                 if ($secondMast) continue;
                 $candidates[]=[
-                    'status'=>$now<$m+self::SETTLE_SEC?'PENDING':'VERIFIED',
+                    'status'=>$now<max($m+max(0.0,$primaryWindow),
+                        $m+self::SETTLE_SEC)?'PENDING':'VERIFIED',
                     'mastId'=>(string)$mastEvent['id'],
                     'terraceId'=>(string)$signal['id'],
                     'path'=>$src==='JV_LEFT'
