@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/libs/DahuaDigest.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/P03AuxObserverLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ExistingIvsLines.php';
+require_once dirname(__DIR__) . '/libs/P03OnvifPullPoint.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03AuxObserver extends IPSModule
@@ -61,6 +62,13 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('SmdHumanProofCount', 0);
         $this->RegisterAttributeInteger('LastHumanProofAt', 0);
         $this->RegisterAttributeString('LastHumanProofCode', '');
+        $this->RegisterAttributeString('OnvifSubscriptionURL', '');
+        $this->RegisterAttributeInteger('OnvifSubscriptionUntil', 0);
+        $this->RegisterAttributeInteger('OnvifEventCount', 0);
+        $this->RegisterAttributeInteger('OnvifHumanStairCount', 0);
+        $this->RegisterAttributeString('OnvifSeenEventKeys', '{}');
+        $this->RegisterAttributeString('OnvifRecentEvents', '[]');
+        $this->RegisterAttributeString('OnvifLastStatus', 'Noch nicht abgefragt');
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
@@ -71,11 +79,14 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
         $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
         $this->RegisterVariableString('HumanHint', 'P03 Personhinweis in anderem Dahua-Ereignis (nur Diagnose)', '', 66);
+        $this->RegisterVariableString('OnvifStatus', 'ONVIF PullPoint – eigener Ereignisweg', '', 67);
+        $this->RegisterVariableString('OnvifRecentEvents', 'ONVIF letzte Ereignisse (Metadaten)', '', 68);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03AUX_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03AUX_SocketRestartTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('Watchdog', 15000, 'JVP03AUX_Watchdog($_IPS["TARGET"]);');
         $this->RegisterTimer('PersonPulseTimer', 0, 'JVP03AUX_PersonPulseTimer($_IPS["TARGET"]);');
+        $this->RegisterTimer('OnvifPullTimer', 15000, 'JVP03AUX_OnvifPoll($_IPS["TARGET"]);');
 
         $this->RequireParent(self::CLIENT_SOCKET_GUID);
     }
@@ -107,11 +118,15 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
         $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
         $this->RegisterVariableString('HumanHint', 'P03 Personhinweis in anderem Dahua-Ereignis (nur Diagnose)', '', 66);
+        $this->RegisterVariableString('OnvifStatus', 'ONVIF PullPoint – eigener Ereignisweg', '', 67);
+        $this->RegisterVariableString('OnvifRecentEvents', 'ONVIF letzte Ereignisse (Metadaten)', '', 68);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
         $this->SetTimerInterval('PersonPulseTimer', 0);
         $this->SetTimerInterval('Watchdog', 15000);
+        $this->SetTimerInterval('OnvifPullTimer',
+            $this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady() ? 15000 : 0);
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
         $this->SetBuffer('WireProbeTail', '');
