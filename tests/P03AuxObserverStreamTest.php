@@ -649,3 +649,42 @@ checkP03(!P03ExistingIvsLines::sameSelectedStair(
 checkP03(P03ExistingIvsLines::fromCgi('table.VideoAnalyseRule[0][0].Name=Unknown')!==[],
     'Dahua CGI one-line rules read without requiring hardcoded field order');
 
+
+// Regression v0.6.39: unfiltered camera inventory must reveal P03 and
+// NumberStat rows even if CrossLine selection is empty.
+$actualRpcShape = [
+    ['Name'=>'HeatMap1','Type'=>'HeatMap','Class'=>'HeatMap','Enable'=>false,'Id'=>1],
+    ['Name'=>'FaceDetection','Type'=>'FaceDetection','Class'=>'FaceDetection','Enable'=>false,'Id'=>2],
+    ['Name'=>'NumberStat1','Type'=>'NumberStat','Class'=>'NumberStat','Enable'=>true,'Id'=>3,
+        'ObjectTypes'=>['Human']],
+    ['Name'=>'P03_WORK_LEFT_HUMAN','Type'=>'CrossRegionDetection','Class'=>'Normal',
+        'Enable'=>true,'Id'=>4,'ObjectTypes'=>['Human'],
+        'Config'=>['DetectRegion'=>[[256,256],[7935,256],[7935,7935],[256,7935]]]]
+];
+$unfiltered=P03ExistingIvsLines::inventory($actualRpcShape);
+checkP03(count($unfiltered)===4
+    && $unfiltered[2]['name']==='NumberStat1'
+    && $unfiltered[3]['name']==='P03_WORK_LEFT_HUMAN'
+    && $unfiltered[3]['hasRegion']===true,
+    'unfiltered camera inventory shows all four real API rules even when no staircase line exists');
+checkP03(P03ExistingIvsLines::select($actualRpcShape)['all']===[],
+    'no CrossLine candidates is NOT the same as an empty RPC2 response');
+$actualCgiShape=implode("\n", [
+    'table.All.VideoAnalyseRule[0][0].Name=HeatMap1',
+    'table.All.VideoAnalyseRule[0][0].Enable=false',
+    'table.All.VideoAnalyseRule[0][0].Type=HeatMap',
+    'table.All.VideoAnalyseRule[0][2].Name=NumberStat1',
+    'table.All.VideoAnalyseRule[0][2].Enable=true',
+    'table.All.VideoAnalyseRule[0][2].Type=NumberStat',
+    'table.All.VideoAnalyseRule[0][3].Name=P03_WORK_LEFT_HUMAN',
+    'table.All.VideoAnalyseRule[0][3].Enable=true',
+    'table.All.VideoAnalyseRule[0][3].Type=CrossRegionDetection'
+]);
+$fromAll=P03ExistingIvsLines::fromCgi($actualCgiShape);
+checkP03(count($fromAll)===3
+    && count(P03ExistingIvsLines::inventory($fromAll))===3,
+    'CGI inventory accepts the full getConfig&name=All prefix without discarding unrelated rules');
+checkP03(P03ExistingIvsLines::wireReadSummary([
+    'ok'=>true,'http'=>200,'json'=>['result'=>true,
+        'params'=>['table'=>[$actualRpcShape]]]])['totalRules']===4,
+    'transport summary distinguishes a populated RPC2 rule table from empty filtered results');

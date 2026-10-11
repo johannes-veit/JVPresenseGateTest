@@ -20,7 +20,7 @@ final class P03ExistingIvsLines
     {
         $rules = [];
         foreach (preg_split('/\\r?\\n/', $body) ?: [] as $line) {
-            if (!preg_match('/^table\\.VideoAnalyseRule\\[0\\]\\[(\\d+)\\]\\.(Name|Type|Class|Enable|Id|ObjectTypes\\[(\\d+)\\])=(.*)$/D', trim($line), $match)) {
+            if (!preg_match('/^table\\.(?:All\\.)?VideoAnalyseRule\\[0\\]\\[(\\d+)\\]\\.(Name|Type|Class|Enable|Id|ObjectTypes\\[(\\d+)\\])=(.*)$/D', trim($line), $match)) {
                 continue;
             }
             $index = (int)$match[1];
@@ -44,6 +44,57 @@ final class P03ExistingIvsLines
         }
         ksort($rules, SORT_NUMERIC);
         return $rules;
+    }
+
+    /**
+     * All camera rules, not just selected CrossLine candidates. An empty list
+     * of filtered IVS lines MUST NOT be confused with an empty API response.
+     *
+     * @param array<int,mixed> $rules
+     * @return array<int,array<string,mixed>>
+     */
+    public static function inventory(array $rules): array
+    {
+        $out = [];
+        foreach ($rules as $idx => $rule) {
+            if (!is_array($rule)) {
+                continue;
+            }
+            $enable = $rule['Enable'] ?? null;
+            $out[] = [
+                'index' => (int)$idx,
+                'name' => (string)($rule['Name'] ?? ''),
+                'type' => (string)($rule['Type'] ?? ''),
+                'class' => (string)($rule['Class'] ?? ''),
+                'enable' => is_bool($enable) ? $enable
+                    : (strcasecmp((string)$enable, 'true') === 0),
+                'id' => is_numeric($rule['Id'] ?? null) ? (int)$rule['Id'] : null,
+                'objectTypes' => array_values(array_map('strval',
+                    is_array($rule['ObjectTypes'] ?? null) ? $rule['ObjectTypes'] : [])),
+                'hasLine' => is_array($rule['Config']['DetectLine'] ?? null),
+                'hasRegion' => is_array($rule['Config']['DetectRegion'] ?? null)
+            ];
+            if (count($out) >= 128) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    /** @return array<string,mixed> */
+    public static function wireReadSummary(array $reply): array
+    {
+        $json = $reply['json'] ?? [];
+        $error = is_array($json) ? ($json['error'] ?? null) : null;
+        $table = is_array($json) ? ($json['params']['table'][0] ?? null) : null;
+        return [
+            'ok' => !empty($reply['ok']),
+            'http' => (int)($reply['http'] ?? 0),
+            'result' => is_array($json) ? ($json['result'] ?? null) : null,
+            'error' => $error,
+            'hasTable' => is_array($table),
+            'totalRules' => is_array($table) ? count($table) : null
+        ];
     }
 
     /** @param array<string,mixed> $one
