@@ -1149,6 +1149,40 @@ class JVPresenceP03AuxObserver extends IPSModule
         ];
         $this->SetValue('EventAudit', json_encode($summary,
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+        // Preserve the LAST CrossLine event independently of subsequent
+        // RtspSessionDisconnect/VideoMotion/heartbeat diagnostics. In v0.7.9
+        // the 17:20 live report already contained four CrossLine events but
+        // displayed only the later generic VideoMotion rejection.
+        if (strcasecmp((string)($event['code'] ?? ''), 'CrossLineDetection') === 0) {
+            $allowed = json_decode($this->ReadPropertyString('AllowedIVSRules'), true);
+            if (!is_array($allowed)) {
+                $allowed = [];
+            }
+            $selected = count($allowed) === 1 && is_array($allowed[0]) ? $allowed[0] : [];
+            $cross = [
+                'time' => date('H:i:s'),
+                'code' => 'CrossLineDetection',
+                'action' => (string)($event['action'] ?? ''),
+                'streamIndex' => $event['index'] ?? null,
+                'ruleName' => $event['ruleName'] ?? null,
+                'cfgRuleId' => $event['cfgRuleId'] ?? null,
+                'ruleIdUpper' => $event['ruleIdUpper'] ?? null,
+                'ruleIdLower' => $event['ruleIdLower'] ?? null,
+                'ruleId' => $event['ruleId'] ?? null,
+                'classification' => $event['classification'] ?? null,
+                'payloadHuman' => (bool)($event['human'] ?? false),
+                'eventId' => $event['eventId'] ?? null,
+                'expectedRuleName' => $selected['name'] ?? null,
+                'expectedRuleId' => $selected['id'] ?? null,
+                'expectedHumanOnly' => $selected['humanOnly'] ?? null,
+                'decision' => $decision,
+                'rejectionReason' => P03ExistingIvsLines::matchingHumanStart($event, $allowed)
+                    ? 'MATCHED_FILTER'
+                    : P03ExistingIvsLines::explainRejection($event, $allowed)
+            ];
+            $this->SetValue('LastIVSEvent', json_encode($cross,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+        }
     }
 
     private function expectedRuleName(): string
