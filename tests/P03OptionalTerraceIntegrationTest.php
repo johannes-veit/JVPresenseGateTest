@@ -202,4 +202,69 @@ $camera->properties['TerraceDiagnosticsEnabled']=false;
 $camera->ConfigureTerraceMonitor();
 tCheck($GLOBALS['terProps'][$id]['Enabled']===false,
     'after removing simulated foreign sharer optional monitor can be disabled');
+
+ 
+// Reproduce Oct 11 18:22: genuine Symcon 9 observer with ConnectionID=0.
+// This MUST use exactly one brand-new P03-owned socket. No mast/foreign IO.
+$GLOBALS['terAutoParentLink']=false;
+$orphan=new MockTerraceMain();
+$orphan->properties=$camera->properties;
+$orphan->properties['TerraceDiagnosticsEnabled']=true;
+$orphan->properties['TerraceHost']='192.0.2.41';
+$orphan->properties['TerraceIVSRuleName']='Terrasse Grenzlinie';
+$orphan->cgiBody=$oneLine;
+$oldCreates=$GLOBALS['terCreateCount'];
+$oldSockets=count($GLOBALS['terOwnSocketIDs']);
+$orphan->ConfigureTerraceMonitor();
+$orphanID=(int)($orphan->attributes['TerraceObserverInstanceID']??0);
+$ownedSocket=(int)($orphan->attributes['TerraceManagedSocketID']??0);
+tCheck($GLOBALS['terCreateCount']===$oldCreates+1
+    && count($GLOBALS['terOwnSocketIDs'])===$oldSockets+1
+    && $orphanID>0 && $ownedSocket>0
+    && ($GLOBALS['terInstances'][$orphanID]['ConnectionID']??0)===$ownedSocket
+    && ($GLOBALS['terProps'][$ownedSocket]['Host']??'')==='192.0.2.41',
+    'Symcon9 orphaned terrace observer gets exactly one explicit owned parent socket');
+tCheck(str_contains((string)$orphan->values['P03TerraceMonitor'],'AKTIV')
+    && $GLOBALS['terProps'][$orphanID]['Enabled']===true,
+    'fixed orphaned TERRACE becomes active without changing mast sockets');
+$orphan->ConfigureTerraceMonitor();
+tCheck($GLOBALS['terCreateCount']===$oldCreates+1
+    && count($GLOBALS['terOwnSocketIDs'])===$oldSockets+1,
+    'repeated orphan repair is idempotent; no redundant sockets');
+
+$GLOBALS['terFailConnectOnce']=true;
+$retry=new MockTerraceMain();
+$retry->properties=$orphan->properties;
+$retry->properties['TerraceHost']='192.0.2.42';
+$retry->cgiBody=$oneLine;
+$retry->ConfigureTerraceMonitor();
+$retryID=(int)($retry->attributes['TerraceObserverInstanceID']??0);
+$retrySocket=(int)($retry->attributes['TerraceManagedSocketID']??0);
+tCheck($retryID>0 && $retrySocket>0
+    && ($GLOBALS['terInstances'][$retryID]['ConnectionID']??-1)===0
+    && str_contains((string)$retry->values['P03TerraceMonitor'],'GESPERRT'),
+    'failed initial IPS_ConnectInstance preserves exact observer/socket IDs');
+$socketCount=count($GLOBALS['terOwnSocketIDs']);
+$retry->ConfigureTerraceMonitor();
+tCheck(count($GLOBALS['terOwnSocketIDs'])===$socketCount
+    && ($GLOBALS['terInstances'][$retryID]['ConnectionID']??0)===$retrySocket
+    && str_contains((string)$retry->values['P03TerraceMonitor'],'AKTIV'),
+    'retry reconnects same pending P03 socket without creating any duplicate');
+
+$retry->properties['TerraceDiagnosticsEnabled']=false;
+$retry->ConfigureTerraceMonitor();
+tCheck($GLOBALS['terProps'][$retryID]['Enabled']===false,
+    'optional explicit-parent TERRACE disables without touching mast clients');
+
+// Persisted pending socket belonging to another instance must never be reused.
+$blocked=new MockTerraceMain();
+$blocked->properties=$retry->properties;
+$blocked->properties['TerraceDiagnosticsEnabled']=true;
+$blocked->cgiBody=$oneLine;
+$blocked->attributes['TerraceManagedSocketID']=$retrySocket;
+$blocked->ConfigureTerraceMonitor();
+tCheck(str_contains((string)$blocked->values['P03TerraceMonitor'],'GESPERRT')
+    && str_contains((string)$blocked->values['P03TerraceMonitor'],'bereits')
+    && ($GLOBALS['terInstances'][$retryID]['ConnectionID']??0)===$retrySocket,
+    'old managed socket attached to another observer cannot be hijacked');
 echo 'P03 OPTIONAL TERRACE INTEGRATION SIMULATION PASSED'.PHP_EOL;
