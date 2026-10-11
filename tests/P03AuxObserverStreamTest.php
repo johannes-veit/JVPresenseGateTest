@@ -873,3 +873,32 @@ checkP03(str_contains((string)$mainModuleSource, 'LETZTE CROSSLINE-EREIGNISSE:')
     && str_contains((string)$mainModuleSource, 'Ablehnungsgrund')===false
     && str_contains((string)$mainModuleSource, "['rejectionReason']"),
     'known P03 diagnostic includes parser-independent last-eight IVS reasons');
+
+ 
+// Field reproduction: v0.8.1 observed actual camera RuleID=4 and Human,
+// but the rule name began with UTF-8 mojibake instead of a German U-umlaut.
+$actualRule=[['name'=>'Überquerung zur Treppe','id'=>4,'tableIndex'=>3,
+    'humanOnly'=>true,'objects'=>['human']]];
+$brokenLatin1='Ã'.chr(0xC2).chr(0x9C).'berquerung zur Treppe';
+$brokenCp1252='Ã'.chr(0xC5).chr(0x93).'berquerung zur Treppe';
+foreach([$brokenLatin1,$brokenCp1252] as $brokenName) {
+    $event=['code'=>'CrossLineDetection','action'=>'Start',
+        'ruleName'=>$brokenName,'ruleIdUpper'=>4,'classification'=>'Human'];
+    checkP03(P03ExistingIvsLines::matchingHumanStart($event,$actualRule),
+        'verified RuleID4 repairs the observed encoded Treppe name');
+    checkP03(!P03ExistingIvsLines::matchingHumanStart(
+        array_replace($event,['ruleIdUpper'=>5]),$actualRule),
+        'street RuleID5 is never trusted');
+    checkP03(!P03ExistingIvsLines::matchingHumanStart(
+        array_replace($event,['cfgRuleId'=>5]),$actualRule),
+        'conflicting camera RuleIDs remain blocked');
+    checkP03(!P03ExistingIvsLines::matchingHumanStart(
+        array_replace($event,['ruleIdUpper'=>null]),$actualRule),
+        'misencoded name without a camera ID cannot be accepted');
+    checkP03(!P03ExistingIvsLines::matchingHumanStart(
+        array_replace($event,['classification'=>'Vehicle']),$actualRule),
+        'explicit Vehicle class is not a Human');
+    checkP03(!P03ExistingIvsLines::matchingHumanStart(
+        array_replace($event,['action'=>'Stop']),$actualRule),
+        'Stop does not qualify as a Human Start');
+}
