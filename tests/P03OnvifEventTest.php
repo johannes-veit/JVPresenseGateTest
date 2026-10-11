@@ -61,5 +61,19 @@ okOnvif(P03OnvifEvents::verifiedSameHostUrl(
 okOnvif(P03OnvifEvents::verifiedSameHostUrl(
     'http://192.168.107.96:37777/onvif/Subscription','192.168.107.96')===null,
     'ONVIF XAddr cannot escape to Dahua TCP control ports');
+$refEnvelope='<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"'
+    .' xmlns:tev="http://www.onvif.org/ver10/events/wsdl"'
+    .' xmlns:wsa="http://www.w3.org/2005/08/addressing"'
+    .' xmlns:sub="urn:dahua:onvif:subscription">'
+    .'<s:Body><tev:CreatePullPointSubscriptionResponse>'
+    .'<tev:SubscriptionReference><wsa:Address>http://192.168.107.96/onvif/services</wsa:Address>'
+    .'<wsa:ReferenceParameters><sub:SubscriptionId>42</sub:SubscriptionId>'
+    .'</wsa:ReferenceParameters></tev:SubscriptionReference>'
+    .'</tev:CreatePullPointSubscriptionResponse></s:Body></s:Envelope>';
+$parameters=P03OnvifPullPoint::referenceParameters($refEnvelope);
+okOnvif(count($parameters)===1 && $parameters[0]['name']==='SubscriptionId'
+    && $parameters[0]['value']==='42' && $parameters[0]['namespace']==='urn:dahua:onvif:subscription',
+    'ONVIF subscription reference parameters parsed for subsequent PullMessages');
+
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
