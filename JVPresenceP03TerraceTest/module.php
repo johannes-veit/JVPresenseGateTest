@@ -3335,6 +3335,39 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /**
+     * Camera smart-plan activation is NOT the same as scene "Normal".
+     * A separately enabled NumberStat / FaceDetection / HeatMap rule can
+     * consume a different AI engine plan even while a P03 IVS rule exists.
+     * Preserve foreign rules and make the potential resource conflict visible.
+     *
+     * @param array<int,mixed> $rules One camera's VideoAnalyseRule[0] rows.
+     */
+    private static function p03ForeignAIPlans(array $rules, string $ownName): string
+    {
+        $active = [];
+        foreach ($rules as $rule) {
+            if (!is_array($rule) || !($rule['Enable'] ?? false)) {
+                continue;
+            }
+            $name = (string)($rule['Name'] ?? '');
+            if ($name !== '' && strcasecmp($name, $ownName) === 0) {
+                continue;
+            }
+            $class = trim((string)($rule['Class'] ?? ''));
+            $type = trim((string)($rule['Type'] ?? ''));
+            if ($class === '' && $type === '') {
+                continue;
+            }
+            if (strcasecmp($class, 'Normal') !== 0
+                || !in_array(strtolower($type), ['crossregiondetection','crosslinedetection'], true)) {
+                $active[] = substr($name, 0, 80) . ' ('
+                    . substr($type, 0, 48) . '/Class=' . substr($class, 0, 48) . ')';
+            }
+        }
+        return $active === [] ? 'KEINE' : implode(', ', array_slice($active, 0, 12));
+    }
+
+    /**
      * Ensures a P03-owned Human-only CrossRegion rule on an auxiliary mast IPC.
      * Existing foreign IVS rules are never modified. The complete original rule
      * table and, if necessary, the original smart-plan table are kept for cleanup.
@@ -3396,7 +3429,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $normalizedScene = strtolower(trim((string) ($sceneType ?? '')));
         if ($normalizedScene !== '' && $normalizedScene !== '0' && $normalizedScene !== 'normal') {
             $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
-            return ['ok' => false, 'error' => $role . ': anderer AI-Smart-Plan aktiv (' . (string) $sceneType . '), keine Änderung'];
+            return ['ok' => false, 'error' => $role . ': abweichender Videoanalyse-Szenentyp (' . (string) $sceneType . '), keine Änderung'];
         }
 
         if ($normalizedScene === '' || $normalizedScene === '0') {
@@ -3432,7 +3465,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->WriteAttributeBoolean($meta['globalChanged'], true);
             $globalChangedThisRun = true;
             $changed = true;
-            $this->appendProtocol($role . ': IVS-Szene Normal aktiviert und rückgelesen.');
+            $this->appendProtocol($role . ': Videoanalyse-Szenentyp Normal gesetzt und rückgelesen; '
+                . 'Smart-Plan-Aktivierung dadurch NICHT nachgewiesen.');
         }
 
         $read = $this->rpc2Call($host, $port, $session, 220, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
@@ -3445,6 +3479,15 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
             return ['ok' => false, 'error' => $role . ': VideoAnalyseRule nicht sicher lesbar'];
         }
+
+        $foreignAI = self::p03ForeignAIPlans($rules[0], $meta['name']);
+        if ($foreignAI !== 'KEINE') {
+            $this->appendProtocol($role . ': ACHTUNG: Weitere aktive KI-Regeln: ' . $foreignAI
+                . '. Möglicher Smart-Plan-/AI-Ressourcenkonflikt. '
+                . 'P03 deaktiviert KEINE fremden Regeln.');
+        }
+        $this->appendProtocol($role . ': IVS SMART-PLAN STATUS=NICHT VERIFIZIERT; '
+            . 'Scene.Type=Normal bestätigt ausschließlich den Szenentyp, nicht die KI-Aktivierung.');
 
         $ownIndex = -1;
         foreach ($rules[0] as $i => $rule) {
@@ -3777,6 +3820,11 @@ class JVPresenceP03MultiCamera extends IPSModule
             return ['ok' => false, 'error' => $role . ': IVS-Regeltabelle nicht lesbar'];
         }
         $name = (string) $this->p03AuxHumanRuleMeta($role)['name'];
+        $foreignAI = self::p03ForeignAIPlans($list, $name);
+        if ($foreignAI !== 'KEINE') {
+            $this->appendProtocol($role . ': READONLY WARNUNG aktive fremde KI-Regeln: '
+                . $foreignAI . ' – P03 greift nicht ein.');
+        }
         foreach ($list as $index => $rule) {
             if (!is_array($rule) || strcasecmp((string) ($rule['Name'] ?? ''), $name) !== 0) {
                 continue;
@@ -3802,7 +3850,8 @@ class JVPresenceP03MultiCamera extends IPSModule
                 'index' => (int) $index, 'id' => (int) $rule['Id'],
                 'actions' => is_array($rule['Config']['Action'] ?? null)
                     ? $rule['Config']['Action'] : [(string) ($rule['Config']['Action'] ?? '')],
-                'direction' => (string) ($rule['Config']['Direction'] ?? '')
+                'direction' => (string) ($rule['Config']['Direction'] ?? ''),
+                'foreignAI' => $foreignAI
             ];
         }
         return ['ok' => false, 'error' => $role . ': P03 Human-IVS-Regel fehlt auf der Kamera'];
@@ -3876,7 +3925,9 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', SMD-Human=' . ($human === null ? '<nur Diagnose/nicht gemeldet>' : (string) $human)
                 . ', Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
                 . ', MotionDetect=' . ($motionEnable !== '' ? $motionEnable : '<nicht gemeldet>')
-                . ', AI-IVS-Plan=' . (($ivs['ok'] ?? false) ? 'Normal readback' : 'NICHT VERIFIZIERT')
+                . ', Videoanalyse-Szene=' . (($ivs['ok'] ?? false) ? 'Normal readback' : 'NICHT VERIFIZIERT')
+                . ', IVS-Smart-Plan-Aktivierung=NICHT VERIFIZIERT'
+                . ', Andere-AI-Regeln=' . (string) ($ivs['foreignAI'] ?? 'siehe P03 Konfigwarnung')
                 . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'OK' : 'FEHLER')
                 . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
                 . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
