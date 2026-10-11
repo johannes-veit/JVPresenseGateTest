@@ -62,6 +62,8 @@ jobs:
         run: php tests/P03AuxObserverStreamTest.php
       - name: Optional third TERRACE IVS read-only observer and isolation integration
         run: php tests/P03OptionalTerraceIntegrationTest.php
+      - name: P03 TERRACE directional OUT backup with validated Human IVS and two-mast precedence
+        run: php tests/P03TerraceOutBackupTest.php
       - name: P03 TERRACE delayed IN backup matching real fourth return and false-positive cases
         run: php tests/P03TerraceInBackupTest.php
       - name: P03 WORK_LEFT street RuleID5 and combined OUT-IN training
