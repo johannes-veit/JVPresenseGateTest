@@ -402,6 +402,23 @@ verifyDiag(str_contains((string)($idle->values['P03ConnectionDiagnosis']??''),'T
 verifyDiag(($idle->values['Result']??'')==='User working; do not overwrite result'
     && !$idle->reload,'automatic diagnosis never overwrites user result or reloads form');
 
+// Passive 30-second timer refresh must never turn into a busy-loop.
+$auto=new JVPresenceP03MultiCamera();
+$auto->attributes['LastP03AutomaticDiagnosticAt']=0;
+$auto->values['Result']='retain';
+$auto->P03MastHealthTimer();
+verifyDiag(str_contains((string)($auto->values['P03ConnectionDiagnosis']??''),'AUTOMATISCH'),
+    'health timer generates the first fresh passive diagnostic automatically');
+$auto->values['P03ConnectionDiagnosis']='SENTINEL: refresh is throttled';
+$auto->P03MastHealthTimer();
+verifyDiag($auto->values['P03ConnectionDiagnosis']==='SENTINEL: refresh is throttled',
+    '30-second cooldown prevents expensive repeated diagnostic reads');
+$auto->attributes['LastP03AutomaticDiagnosticAt']=time()-31;
+$auto->P03MastHealthTimer();
+verifyDiag(str_contains((string)$auto->values['P03ConnectionDiagnosis'],'AUTOMATISCH')
+    && $auto->values['Result']==='retain',
+    'automatic diagnostic resumes after cooldown without overwriting user status');
+
 // Regression from P05: multiple unique counter increments while visible
 // PersonDetected=TRUE must not collapse into a 1-second Boolean edge.
 $counterMain->attributes['TestActive']=true;
