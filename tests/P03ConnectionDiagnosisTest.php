@@ -112,7 +112,6 @@ class IPSModule
     ];
     public array $values=['P03ConnectionDiagnosis'=>'','Result'=>'','P03IPC5442Audit'=>'','P03OwnershipAudit'=>''];
     public bool $reload=false;
-    public array $timerIntervals=[];
     public function Create():void {}
     public function ApplyChanges():void {}
     protected function ReadAttributeInteger(string $name):int { return (int) ($this->attributes[$name]??0); }
@@ -123,12 +122,7 @@ class IPSModule
     protected function WriteAttributeString(string $name,string $value):void { $this->attributes[$name]=$value; }
     protected function WriteAttributeInteger(string $name,int $value):void { $this->attributes[$name]=$value; }
     protected function ReadPropertyString(string $name):string { return (string)($this->properties[$name]??''); }
-    protected function ReadPropertyInteger(string $name):int { return (int)($this->properties[$name]??0); }
-    protected function ReadAttributeBoolean(string $name):bool { return (bool)($this->attributes[$name]??false); }
     protected function WriteAttributeBoolean(string $name,bool $value):void { $this->attributes[$name]=$value; }
-    protected function SetTimerInterval(string $ident,int $interval):void {
-        $this->timerIntervals[$ident]=$interval;
-    }
     protected function GetIDForIdent(string $ident):int {return ['P03ConnectionDiagnosis'=>20001,'Result'=>20002,'P03IPC5442Audit'=>20003,'P03OwnershipAudit'=>20004][$ident]??0;}
     protected function GetValue(string $ident):mixed { return $this->values[$ident]??null; }
     protected function SetValue(string $ident,mixed $value):void {
@@ -435,17 +429,17 @@ $activeP03->attributes['TestActive']=true;
 $activeP03->attributes['ProductionEnabled']=false;
 $activeP03->attributes['P03HumanEvents']='[]';
 $activeP03->properties['NearProofWindowSeconds']=30;
-$activeP03->timerIntervals['P03ProofTimer']=500;
+$activeP03->timers['P03ProofTimer']=500;
 $evalP03=new ReflectionMethod(JVPresenceP03MultiCamera::class,'evaluateP03MastSequence');
 $evalP03->invoke($activeP03);
-verifyDiag(($activeP03->timerIntervals['P03ProofTimer']??-1)===0,
+verifyDiag(($activeP03->timers['P03ProofTimer']??-1)===0,
     'actual P03 main stops stale 500ms settle timer after no valid two-camera pair');
 verifyDiag(str_contains((string)$activeP03->values['P03ProofState'],'UNVOLLSTÄNDIG'),
     'actual P03 main resets stale PENDING text after proof expires');
 $activeP03->attributes['TestActive']=false;
-$activeP03->timerIntervals['P03ProofTimer']=500;
+$activeP03->timers['P03ProofTimer']=500;
 $evalP03->invoke($activeP03);
-verifyDiag(($activeP03->timerIntervals['P03ProofTimer']??-1)===0,
+verifyDiag(($activeP03->timers['P03ProofTimer']??-1)===0,
     'actual P03 main stops stale settle timer when test and production disabled');
 
 // Forensics must work even when the main P03 instance lost the stored IDs
