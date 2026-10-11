@@ -1,3 +1,11 @@
+# v0.8.10 (Build 91) – IN-Backup-Intervall Terrasse erweitert: 50 Sekunden / 15 Sekunden
+
+- Anforderung: Bei optionaler Terrassen-Personenerkennung sind 25 s zwischen WORK_LEFT Treppen-IVS und Terrasse sowie 6 s zwischen JV_LEFT Treppen-IVS und Terrasse zu knapp. Ab jetzt gelten **50 s WORK_LEFT → Terrasse** und **15 s JV_LEFT → Terrasse**. Die Benutzervorgabe 15 s hat Vorrang vor rein mathematischem Verdoppeln von 6 s.
+- Entscheidend: Bisher filterte der reine Backup-Rechner alle Mast-Human-Beweise bereits nach 40 s aus; nur die beiden Konstanten zu ändern hätte das 50-Sekunden-Fenster weiterhin blockiert. Die begrenzte Aufbewahrung im Rechner beträgt jetzt 50 s + 5 s Settle + 10 s Reserve = 65 s. Die vorhandene umfassendere Modul-Ledger-Aufbewahrung (180 s) und die Terrassen-Signale bleiben unverändert.
+- Hinzugefügte Regressionen für den realen 21-s-Feldfall, 26 s und **exakt 50 s** als gültige WORK-Fälle, **50,001 s** als ungültig, 7 s und **exakt 15 s** als gültige JV-Fälle und **15,001 s** als ungültig. Der 5-s-Plausibilitätsabstand, Unterscheidung echter IVS Treppe von SMD Mast und die Gegenrichtungs- bzw. Duplikatsperren bleiben erhalten.
+- Aktualisierte deutsche Texte im Modulbericht #35115, beim IN-Backup-Einzeltest und in der Symcon-Form. Keine erneute 4-Wege-Einlernprozedur, keine Kamera- oder Socket-Änderungen erforderlich.
+- Der optionale IN-Backup-Kandidat bleibt ausschließlich **TEST/SHADOW**: keine Änderung von Produktionsbetrieb, Personenbilanz, normalen 2-Mast-Beweisen oder Anwesenheitsstatus.
+
 # v0.8.9 (Build 90) – Optionaler verzögerter Terrasse-IN-Ersatz im kontrollierten Test
 
 - Feldlauf 11.10.2026: WORK_LEFT Treppen-Human-START 20:06:02, JV_LEFT nur SMD Human um 20:06:22 (kein IVS Treppe), JV Terrasse Human-START `IVS-1` RuleID5 `RightToLeft` um 20:06:23. Die vorherige 2-Mast-Bedingung konnte diesen **vierten IN nicht bestätigen**, obwohl die Terrasse eine unabhängige reale Personenerkennung und einen IVS-IN-Kandidaten lieferte.

@@ -801,7 +801,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->baselineP03TerraceIVSHistory();
         $this->WriteAttributeInteger('P03TerraceInBackupCount', 0);
         $this->SetValue('P03TerraceInBackupStatus',
-            'TEST BEREIT: WORK_LEFT→TERRASSE bis 25 s, JV_LEFT→TERRASSE bis 6 s; IVS optional');
+            'TEST BEREIT: WORK_LEFT→TERRASSE bis 50 s, JV_LEFT→TERRASSE bis 15 s; IVS optional');
         $this->WriteAttributeBoolean('TestActive', true);
         $this->SetValue('TestActive', true);
         // Baseline belongs to the fresh test, not old persistent observer
@@ -3143,8 +3143,8 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $lines[] = '';
         $lines[] = '--- TERRASSE IN-BACKUP (AKTUELL NUR TEST) ---';
-        $lines[] = 'IN-BACKUP Zeitfenster: WORK_LEFT Treppe→TERRASSE Person <=25 s;'
-            .' JV_LEFT Treppe→TERRASSE Person <=6 s. Terrassen-IVS RightToLeft'
+        $lines[] = 'IN-BACKUP Zeitfenster: WORK_LEFT Treppe→TERRASSE Person <=50 s;'
+            .' JV_LEFT Treppe→TERRASSE Person <=15 s. Terrassen-IVS RightToLeft'
             .' optional, LeftToRight kein IN.';
         $lines[] = 'IN-BACKUP TESTBESTAETIGUNGEN: '
             .$this->ReadAttributeInteger('P03TerraceInBackupCount');
@@ -3911,7 +3911,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->SetValue('TestActive',true);
         $this->SetValue('P03TerraceInBackupStatus',
             'IN-EINZELTEST AKTIV: nur einen vollstaendigen IN-Weg gehen.'
-            .' WORK_LEFT→Terrasse <=25 s oder JV_LEFT→Terrasse <=6 s.'
+            .' WORK_LEFT→Terrasse <=50 s oder JV_LEFT→Terrasse <=15 s.'
             .' Kein Ruecksetzen frueherer Mastbeweise.');
         $this->appendProtocol('P03 IN-BACKUP EINZELTEST BEREIT:'
             .' vorhandene P03VerifiedCount/P03ActionCounts nicht veraendert,'

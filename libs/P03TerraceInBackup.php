@@ -9,16 +9,19 @@ declare(strict_types=1);
  * The physical direction calibration is provisional: these are isolated
  * SHADOW/TEST candidates only, never production occupancy evidence.
  *
- * Case A: WORK_LEFT human stair IVS -> TERRACE human status, 0..25 s.
- * Case B: JV_LEFT human stair IVS -> TERRACE human status, 0..6 s.
+ * Case A: WORK_LEFT human stair IVS -> TERRACE human status, 0..50 s.
+ * Case B: JV_LEFT human stair IVS -> TERRACE human status, 0..15 s.
  * Additional Human TERRACE CrossLine/RightToLeft strengthens this match,
  * but is never required. LeftToRight blocks any IN candidate.
  */
 final class P03TerraceInBackup
 {
-    public const WORK_MAX_SEC=25.0;
-    public const JV_MAX_SEC=6.0;
+    public const WORK_MAX_SEC=50.0;
+    public const JV_MAX_SEC=15.0;
     public const SETTLE_SEC=5.0;
+    // Include the FULL 50s path plus the 5s settle time and scheduling
+    // headroom. 40s previously rejected a valid WORK→Terrace 50s pair.
+    public const MAST_HISTORY_SEC=self::WORK_MAX_SEC+self::SETTLE_SEC+10.0;
 
     /**
      * @param array<int,array<string,mixed>> $mast
@@ -39,7 +42,7 @@ final class P03TerraceInBackup
             && trim((string)($e['id']??''))!==''
             && isset($e['ts']) && is_numeric($e['ts'])
             && (float)$e['ts']>0.0 && (float)$e['ts']<=$now
-            && $now-(float)$e['ts']<=40.0));
+            && $now-(float)$e['ts']<=self::MAST_HISTORY_SEC));
         $signals=array_values(array_filter($terrace,static fn($e):bool=>
             is_array($e) && empty($e['used'])
             && trim((string)($e['id']??''))!==''
