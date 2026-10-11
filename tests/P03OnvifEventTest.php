@@ -257,7 +257,7 @@ $from=strpos($observerSource,'public function OnvifPoll(): void');
 $to=strpos($observerSource,'public function GetConfigurationForParent(): string',$from);
 $pollSource=substr($observerSource,$from,$to-$from);
 okOnvif(!str_contains($pollSource,'publishHumanProof(')
-    && !str_contains($pollSource,'HumanEventCounter'),
+    && !preg_match('/->(?:SetValue|WriteAttributeInteger)\\([\\x27\\x22]HumanEventCounter/', $pollSource),
     'ONVIF diagnostic candidates cannot bypass event-time sequencing or claim HOME/LAGER transfers');
 
 
