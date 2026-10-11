@@ -1,3 +1,14 @@
+# v0.8.3 (Build 84) – JV Terrasse als optionaler unabhängiger IVS-Zusatzsensor
+
+- Unveränderte Ausgangsbasis v0.8.2 Build83 wurde separat unter `baseline/p03-v0.8.2-build83-live-20261011` gesichert und bleibt für künftige Vergleiche eingefroren.
+- Konfiguration der P03-Hauptinstanz #53879 enthält jetzt einen dritten Abschnitt: `JV Terrasse – optionale dritte IVS-Kamera` mit `TerraceDiagnosticsEnabled` (standardmäßig AUS), einstellbarem `TerraceHost` (bisher 192.168.107.110) und optional exaktem `TerraceIVSRuleName`.
+- Bei AN liest P03 ausschließlich `configManager.cgi?action=getConfig&name=VideoAnalyseRule` der Terrasse. Nur eine eindeutig ausgewählte bereits aktivierte `CrossLineDetection` mit im Kamerafilter ausdrücklich freigegebenem Human ist zulässig. Bei mehreren geeigneten Linien ist der exakte Name erforderlich. Ohne eindeutige Regel erfolgt keine neue Instanzerstellung.
+- Für die Terrasse wird bei Bedarf ein dritter **ausschließlich P03-eigener** AuxObserver angelegt oder ein eigener vorhandener anhand Modul-GUID, Host und Rolle `TERRACE` wiederverwendet. Die exklusive Client-Socket-Verbindung wird auf Fremdnutzung geprüft. Keine Kamera- oder Fremdmoduleinstellung und kein bestehender linker Kameraobserver wird geändert.
+- Beim Ausschalten wird der nachweislich eigene Terrassen-Observer deaktiviert. Der Zwei-Kamera-Nachweis funktioniert weiter unverändert, auch wenn die Terrasse nicht verfügbar ist.
+- Der Terrassen-Observer führt nur eine eigene Human-CrossLine-Zählung und zeichnet im IVS-Verlauf optional das Kamera-Direction-Feld auf. Er wird **nicht** als JV_LEFT oder WORK_LEFT in die beiden Haupt-Counter abonniert und löst alleine keinen HOME/LAGER-Übergang aus.
+- Spätere Optionen sind vorgesehen: bestätigte Terrassen-IVS-Überquerung **ODER** das unveränderte JV_LEFT + WORK_LEFT Sequenzverfahren. Die alleinige Terrassenfreigabe bleibt bis zu separatem Richtungslernen, Feldvalidierung und ausdrücklicher Freigabe deaktiviert.
+- Bekanntes Diagnosefeld #35115 zeigt die Zusatzkamera bei AN mit eigener Rolle/Socket, Stream, Regelidentität, Zähler und bis zu vier zuletzt empfangenen IVS-Ereignissen und Richtungen; bei AUS nur `IGNORIERT`.
+- Zusätzliche Regressionen prüfen aktivierte/deaktivierte und mehrdeutige Terrassenlinien, menschliche und Fahrzeug-Klassifizierung, regelgetreue Identität, eigene Events mit Direction, Observer-Neuanlage/Wiederverwendung, Ausschalten, Wiederaktivieren und Fremd-Socket-Isolation. Die vollständigen Mastkamera- und Sicherheits-Suites bleiben unverändert.
 # v0.8.2 (Build 83) – Dahua-Umlautkodierung der echten Treppenlinie korrigieren
 
 - Reale Feldmessung 11.10.2026 17:40: JV_LEFT 192.168.107.95 liefert 3 CrossLineDetection, darunter 2 Human-Starts mit RuleID=4, aber Kamera-Eventname ist fehlerhaft zu Ã+Steuerzeichen+berquerung dekodiert. Bisher wurden sie wegen EVENT_RULE_NAME_NOT_STAIR gesperrt.
