@@ -426,7 +426,7 @@ $GLOBALS['variables'][26298]=json_encode([
 $appendTrace->invoke($trace);
 $liveReport=(string)($trace->values['Protocol']??'');
 verifyDiag(str_contains($liveReport,'P03 ROHMONITOR 30s')
-    && str_contains($liveReport,'JV_LEFT Stream=LIVE, Wire+=10, Motion+=2, MotionInfo+=8, CrossRegion+=0, SMDHuman+=0, HumanCounter=7'),
+    && str_contains($liveReport,'JV_LEFT Stream=LIVE, Wire+=10, Motion+=2, MotionInfo+=8, CrossRegion+=0, CrossLine+=0, SMDHuman+=0, HumanCounter=7'),
     'silent real-world test now logs live motion activity but correctly reports ZERO positive AI events');
 verifyDiag(str_contains($liveReport,'WORK_LEFT Stream=LIVE, Wire+=0, Motion+=0'),
     'no motion traffic from second camera is explicitly visible, not hidden');

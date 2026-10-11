@@ -173,6 +173,7 @@ function rxP03(JVPresenceP03AuxObserver $observer, string $payload): void
 
 $x = new JVPresenceP03AuxObserver();
 $x->Create();
+$x->properties['ProofMode'] = 'LEGACY_OWNED';
 $x->properties['CameraHost'] = '192.0.2.5';
 $x->properties['CameraPort'] = 80;
 $x->properties['Username'] = 'sim-user';
@@ -314,6 +315,7 @@ $GLOBALS['mockSocket'][99001]['InstanceStatus'] = 104;
 $GLOBALS['mockSocket'][99001]['properties']['Open'] = false;
 $direct = new JVPresenceP03AuxObserver();
 $direct->Create();
+$direct->properties['ProofMode'] = 'LEGACY_OWNED';
 $direct->properties['CameraHost'] = '192.0.2.5';
 $direct->properties['Username'] = 'sim-user';
 $direct->properties['Password'] = 'sim-password';
@@ -405,6 +407,7 @@ checkP03($direct->attributes['LastHealthAction']==='RECONNECT_GET_SENT',
 // Generic VideoMotion and Vehicle events must never create a proof.
 $wire = new JVPresenceP03AuxObserver();
 $wire->Create();
+$wire->properties['ProofMode'] = 'LEGACY_OWNED';
 $wire->properties['Enabled'] = true;
 $wire->properties['Role'] = 'JV_LEFT';
 $wire->properties['CameraHost'] = '192.0.2.5';
@@ -537,3 +540,62 @@ checkP03((int)($wire->values['HumanEventCounter']??0)===$beforeHumanProof+1
 
 
 echo "P03 OBSERVER INTEGRATION SIMULATION PASSED ({$tests} assertions)\n";
+
+
+// v0.6.37: camera UI can show both Treppe and Straße line crossing,
+// but the API must corroborate their identity before ANY gate proof.
+// One observer must never treat a vehicle, street event, P03 rectangle,
+// anonymous ambiguous crossing or SMD anywhere in the frame as a transfer.
+$sel=P03ExistingIvsLines::select([
+    ['Enable'=>true,'Name'=>'Überquerung zur Treppe','Type'=>'CrossLineDetection',
+        'Id'=>12,'ObjectTypes'=>['Human','MotorVehicle']],
+    ['Enable'=>true,'Name'=>'Überquerung zur Straße','Type'=>'CrossLineDetection',
+        'Id'=>13,'ObjectTypes'=>['Human','MotorVehicle']],
+    ['Enable'=>true,'Name'=>'P03_WORK_LEFT_HUMAN','Type'=>'CrossRegionDetection',
+        'Id'=>4,'ObjectTypes'=>['Human']]
+]);
+checkP03($sel['mapped']===true && count($sel['allowed'])===1
+    && $sel['allowed'][0]['id']===12 && !$sel['allowed'][0]['humanOnly'],
+    'only the existing staircase line is mapped, street line and old P03 rectangle excluded');
+checkP03(!P03ExistingIvsLines::select([
+    ['Enable'=>true,'Name'=>'P03_JV_LEFT_HUMAN','Type'=>'CrossRegionDetection',
+        'Id'=>4,'ObjectTypes'=>['Human']]
+])['mapped'],'old P03 rectangle is never silently substituted for missing manual stair line');
+checkP03(!P03ExistingIvsLines::select([
+    ['Enable'=>true,'Name'=>'Überquerung zur Treppe','Type'=>'CrossLineDetection',
+        'Id'=>12,'ObjectTypes'=>['Human']],
+    ['Enable'=>true,'Name'=>'Überquerung zur Treppe 2','Type'=>'CrossLineDetection',
+        'Id'=>14,'ObjectTypes'=>['Human']]
+])['mapped'],'two possible stair lines without unique identity fail closed');
+$manual=new JVPresenceP03AuxObserver();
+$manual->Create();
+$manual->properties['Enabled']=true;
+$manual->properties['Role']='WORK_LEFT';
+$manual->properties['CameraHost']='192.0.2.6';
+$manual->properties['Username']='mock';
+$manual->properties['Password']='mock';
+$manual->properties['ProofMode']='EXISTING_STAIR_IVS';
+$manual->properties['AllowedIVSRules']=json_encode($sel['allowed']);
+$manual->ApplyChanges();
+$manual->attributes['Streaming']=true;
+$manual->values['StreamOK']=true;
+rxP03($manual,"HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace\r\n\r\n");
+rxP03($manual,"Code=SmartMotionHuman;action=Start;index=0;data={\"EventID\":500}\r\n");
+rxP03($manual,"Code=CrossRegionDetection;action=Start;index=0;data={\"Name\":\"P03_WORK_LEFT_HUMAN\",\"CfgRuleId\":4,\"ObjectType\":\"Human\"}\r\n");
+rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Überquerung zur Straße\",\"CfgRuleId\":13,\"ObjectType\":\"Human\"}\r\n");
+rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":12,\"ObjectType\":\"MotorVehicle\"}\r\n");
+rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":12}\r\n");
+checkP03((int)($manual->values['HumanEventCounter']??0)===0,
+    'stair-ONLY mode refuses vehicle, street, SMD-anywhere, rectangle and mixed unclassified traffic');
+rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":12,\"ObjectType\":\"Human\",\"EventID\":501}\r\n");
+checkP03((int)($manual->values['HumanEventCounter']??0)===1
+    && str_contains((string)($manual->values['LastEvent']??''),'IVS_EXISTING_STAIR_LINE'),
+    'positive human on selected existing stair line increments exactly one counter');
+rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":999,\"ObjectType\":\"Human\",\"EventID\":502}\r\n");
+checkP03((int)($manual->values['HumanEventCounter']??0)===1,
+    'conflicting RuleName/CfgRuleId identity does NOT create a proof');
+$manual->properties['AllowedIVSRules']='[]';
+rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":12,\"ObjectType\":\"Human\",\"EventID\":503}\r\n");
+checkP03((int)($manual->values['HumanEventCounter']??0)===1,
+    'missing camera API mapping keeps existing-line proof strictly disabled');
+

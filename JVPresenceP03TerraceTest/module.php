@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . '/libs/GateTestLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ProofEngine.php';
 require_once dirname(__DIR__) . '/libs/P03DahuaTemplate.php';
 require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
+require_once dirname(__DIR__) . '/libs/P03ExistingIvsLines.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03MultiCamera extends IPSModule
@@ -136,6 +137,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeBoolean('AuxWorkGlobalChangedByModule', false);
         $this->RegisterAttributeString('AuxJVOriginalVideoAnalyseGlobalRpc2', '');
         $this->RegisterAttributeString('AuxWorkOriginalVideoAnalyseGlobalRpc2', '');
+        $this->RegisterAttributeString('AuxJVAllowedIVSRules', '[]');
+        $this->RegisterAttributeString('AuxWorkAllowedIVSRules', '[]');
         $this->RegisterAttributeString('P03HumanEvents', '[]');
         $this->RegisterAttributeString('P03PendingCrossings', '[]');
         $this->RegisterAttributeString('P03DirectionMap', '{}');
@@ -573,6 +576,9 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function PrepareAndStartTest(): void
     {
         $auditOnly = $this->ReadAttributeBoolean('AuditOnlyNextRun');
+        // Switching from earlier writing P03 releases must never restore an
+        // old full-table camera backup onto today's manually edited IVS lines.
+        $this->WriteAttributeBoolean('ProductionEnabled', false);
         if ($auditOnly) {
             // Audit must not erase already verified field evidence.
             $this->WriteAttributeString('SeenEventKeys', '{}');
@@ -598,7 +604,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
-        $this->appendProtocol('=== P03 MASTKAMERA HOME-LAGER TEST ===');
+        $this->appendProtocol('=== P03 MASTKAMERA HOME-LAGER TEST (STRICT READ ONLY) ===');
+        $this->appendProtocol('KAMERASCHREIBSPERRE: kein setConfig, kein IVS-Anlegen, kein Restore alter Kompletttabellen.');
         $this->appendProtocol('Primärsensoren: JV_LEFT=' . $jvHost . ' | WORK_LEFT=' . $workHost . '.');
         $this->appendProtocol('Richtung: JV_LEFT→WORK_LEFT = HOME→LAGER; WORK_LEFT→JV_LEFT = LAGER→HOME.');
         $this->appendProtocol('JV Terrasse/CrossLine ist optional und wird für Audit/Test/Produktion nicht benötigt.');
@@ -644,8 +651,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->SetValue('TestActive', false);
             $this->setReady(false);
             $this->setResult(
-                'P03 MASTKAMERA-AUDIT LIVE OK – beide Human-IVS-Regeln + BEIDE aktiven Eventstreams + Simulation geprüft. '
-                . 'Terrasse wurde nicht als Voraussetzung verwendet.'
+                'P03 LESENDER MASTKAMERA-AUDIT – vorhandene Treppen-IVS Zuordnung: '
+                . ($this->ReadAttributeBoolean('P03MultiAuditPassed') ? 'BEIDE VERIFIZIERT' : 'NICHT VERIFIZIERT / Monitorbetrieb')
+                . '. Kein Kamera-Write; Live-Human-Ereignisse weiterhin gesondert nachzuweisen.'
             );
             $this->appendProtocol(
                 'AUDIT-ONLY: Mastkameras strukturell OK. HumanEventCounter muss im kurzen Einzeltest real hochzählen; '
@@ -821,52 +829,20 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     public function CleanupCameraTestConfig(): void
     {
-        if ($this->ReadAttributeBoolean('Rpc2ModuleChangedByModule')) {
-            $restoreModule = $this->restoreOriginalVideoAnalyseModuleViaRpc2();
-            $this->appendProtocol(($restoreModule['ok'] ?? false)
-                ? 'P03 Sensitivity-Teständerung entfernt; ursprüngliche VideoAnalyseModule-Tabelle vollständig wiederhergestellt.'
-                : 'WARNUNG: ursprüngliche VideoAnalyseModule-Tabelle konnte nicht automatisch wiederhergestellt werden: ' . (string) ($restoreModule['error'] ?? 'unbekannt'));
-        }
-        // Ein expliziter Cleanup bedeutet auch: kein produktiver P03-Betrieb.
+        // Read-only generation: an old P03 full-table backup could be older
+        // than the user's hand-drawn Treppe/Straße lines. NEVER restore it.
         $this->WriteAttributeBoolean('ProductionEnabled', false);
-        if ($this->ReadAttributeBoolean('Rpc2GlobalChangedByModule')) {
-            $restoreGlobal = $this->restoreOriginalVideoAnalyseGlobalViaRpc2();
-            $this->appendProtocol(($restoreGlobal['ok'] ?? false)
-                ? 'IVS-Smart-Plan entfernt; ursprüngliche VideoAnalyseGlobal-Tabelle vollständig wiederhergestellt.'
-                : 'WARNUNG: ursprüngliche VideoAnalyseGlobal-Tabelle konnte nicht automatisch wiederhergestellt werden: ' . (string) ($restoreGlobal['error'] ?? 'unbekannt'));
-        }
-        if ($this->ReadAttributeBoolean('Rpc2RuleCreatedByModule')) {
-            $restore = $this->restoreOriginalVideoAnalyseRuleViaRpc2();
-            $this->appendProtocol(($restore['ok'] ?? false)
-                ? 'P03-Testregel entfernt; ursprüngliche VideoAnalyseRule-Tabelle vollständig wiederhergestellt.'
-                : 'WARNUNG: ursprüngliche VideoAnalyseRule-Tabelle konnte nicht automatisch wiederhergestellt werden: ' . (string) ($restore['error'] ?? 'unbekannt'));
-        } else {
-            $this->appendProtocol('Keine vom Testmodul erzeugte IVS-Regel vorhanden; bestehende Kamera-Regeln bleiben unverändert.');
-        }
-        $this->restoreGlobalSceneType();
-
-        $jvRestore = $this->restoreP03AuxHumanRule(
-            $this->ReadAttributeInteger('AuxJVInstanceID'),
-            self::AUX_JV_ROLE
-        );
-        $workRestore = $this->restoreP03AuxHumanRule(
-            $this->ReadAttributeInteger('AuxWorkInstanceID'),
-            self::AUX_WORK_ROLE
-        );
-        $this->appendProtocol(($jvRestore['ok'] ?? false)
-            ? 'P03 JV_LEFT Human-IVS sauber zurückgesetzt.'
-            : 'WARNUNG: ' . (string) ($jvRestore['error'] ?? 'JV_LEFT Restore fehlgeschlagen'));
-        $this->appendProtocol(($workRestore['ok'] ?? false)
-            ? 'P03 WORK_LEFT Human-IVS sauber zurückgesetzt.'
-            : 'WARNUNG: ' . (string) ($workRestore['error'] ?? 'WORK_LEFT Restore fehlgeschlagen'));
-
         $this->WriteAttributeBoolean('TestActive', false);
+        $this->WriteAttributeBoolean('P03MultiAuditPassed', false);
         $this->SetTimerInterval('P03ProofTimer', 0);
         $this->WriteAttributeString('P03PendingCrossings', '[]');
         $this->WriteAttributeString('P03HumanEvents', '[]');
         $this->SetValue('TestActive', false);
         $this->setReady(false);
-        $this->setResult('Test beendet. Vom Modul erzeugte Testkonfiguration wurde soweit vorhanden zurückgesetzt.');
+        $this->appendProtocol('SICHERES BEENDEN: Test/Produktion aus. '
+            . 'Keine Wiederherstellung der alten Kamera-Volltabellen; '
+            . 'manuelle IVS-Linien bleiben unberührt.');
+        $this->setResult('Test beendet; KEINE Kameraeinstellungen verändert.');
     }
 
     public function DumpState(): void
@@ -1567,6 +1543,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 'motion' => 0,
                 'motionInfo' => 0,
                 'cross' => 0,
+                'line' => 0,
                 'smd' => 0,
                 'counter' => 0
             ];
@@ -1586,6 +1563,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                             $entry['motion'] = (int) ($codes['VideoMotion'] ?? 0);
                             $entry['motionInfo'] = (int) ($codes['VideoMotionInfo'] ?? 0);
                             $entry['cross'] = (int) ($status['crossRegionTotal'] ?? 0);
+                            $entry['line'] = (int) ($codes['CrossLineDetection'] ?? 0);
                             $entry['smd'] = (int) ($status['smdHumanRawCount'] ?? 0);
                         }
                     }
@@ -1634,6 +1612,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', Motion+=' . $delta('motion')
                 . ', MotionInfo+=' . $delta('motionInfo')
                 . ', CrossRegion+=' . $delta('cross')
+                . ', CrossLine+=' . $delta('line')
                 . ', SMDHuman+=' . $delta('smd')
                 . ', HumanCounter=' . (int) ($c['counter'] ?? 0);
         }
@@ -3204,9 +3183,11 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
 
-        $meta = $this->p03AuxHumanRuleMeta($role);
-        $ruleIndex = $this->ReadAttributeInteger($meta['ruleIndex']);
-        $ruleId = $this->ReadAttributeInteger($meta['ruleId']);
+        $ruleIndex = -1;
+        $ruleId = -1;
+        $allowedAttr = $role === self::AUX_JV_ROLE
+            ? 'AuxJVAllowedIVSRules' : 'AuxWorkAllowedIVSRules';
+        $allowed = $this->ReadAttributeString($allowedAttr);
         $host = $role === self::AUX_JV_ROLE
             ? trim($this->ReadPropertyString('AuxJVHost'))
             : trim($this->ReadPropertyString('AuxWorkHost'));
@@ -3223,6 +3204,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             IPS_SetProperty($instanceID, 'Role', $role);
             IPS_SetProperty($instanceID, 'RuleIndex', $ruleIndex);
             IPS_SetProperty($instanceID, 'RuleID', $ruleId);
+            IPS_SetProperty($instanceID, 'ProofMode', 'EXISTING_STAIR_IVS');
+            IPS_SetProperty($instanceID, 'AllowedIVSRules', $allowed);
             IPS_ApplyChanges($instanceID);
             $this->appendProtocol($role . ': P03-Observer vollständig synchronisiert und Eventstream-Neuaufbau angefordert.');
         } catch (Throwable $e) {
@@ -3792,74 +3775,71 @@ class JVPresenceP03MultiCamera extends IPSModule
      */
     private function inspectP03AuxHumanRuleReadOnly(int $instanceID, string $role): array
     {
+        // The caller closes old proof gates BEFORE all camera checks, even
+        // when the model/HTTP/SMD preflight fails and this method is skipped.
+        $attr = $role === self::AUX_JV_ROLE
+            ? 'AuxJVAllowedIVSRules' : 'AuxWorkAllowedIVSRules';
         $cfg = $this->p03AuxCameraConfiguration($instanceID);
-        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === '' || ($cfg['password'] ?? '') === '') {
-            return ['ok' => false, 'error' => $role . ': Zugang unvollständig'];
+        if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === ''
+            || ($cfg['password'] ?? '') === '') {
+            return ['ok' => false, 'error' => $role . ': lesender Kamerazugang unvollständig'];
         }
         $login = $this->rpc2Login(
-            (string) $cfg['host'], (int) $cfg['port'],
-            (string) $cfg['username'], (string) $cfg['password']
+            (string)$cfg['host'], (int)$cfg['port'],
+            (string)$cfg['username'], (string)$cfg['password']
         );
         if (!($login['ok'] ?? false)) {
-            return ['ok' => false, 'error' => $role . ': Read-only RPC2-Login fehlgeschlagen'];
+            return ['ok' => false, 'error' => $role . ': lesender RPC2-Login fehlgeschlagen'];
         }
-
-        $host = (string) $cfg['host'];
-        $port = (int) $cfg['port'];
-        $session = (string) ($login['session'] ?? '');
-        $global = $this->rpc2Call($host, $port, $session, 740, 'configManager.getConfig', ['name' => 'VideoAnalyseGlobal']);
-        $rules = $this->rpc2Call($host, $port, $session, 741, 'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
+        $host = (string)$cfg['host'];
+        $port = (int)$cfg['port'];
+        $session = (string)($login['session'] ?? '');
+        $read = $this->rpc2Call($host, $port, $session, 741,
+            'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
         $this->rpc2Call($host, $port, $session, 749, 'global.logout', null);
-
-        $scene = $global['json']['params']['table'][0]['Scene']['Type'] ?? null;
-        if (!($global['ok'] ?? false) || strcasecmp((string) $scene, 'Normal') !== 0) {
-            return ['ok' => false, 'error' => $role . ': IVS Smart-Plan Scene.Type ist nicht Normal'];
+        $rules = $read['json']['params']['table'][0] ?? null;
+        if (!($read['ok'] ?? false) || !is_array($rules)) {
+            return ['ok' => false, 'error' => $role . ': VideoAnalyseRule NICHT lesbar'];
         }
-        $list = $rules['json']['params']['table'][0] ?? null;
-        if (!($rules['ok'] ?? false) || !is_array($list)) {
-            return ['ok' => false, 'error' => $role . ': IVS-Regeltabelle nicht lesbar'];
+        $selection = P03ExistingIvsLines::select($rules);
+        $mapped = (bool)$selection['mapped'];
+        $this->appendProtocol($role . ': VORHANDENE IVS-LINIEN (nur lesen): '
+            . json_encode($selection['all'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $this->appendProtocol($role . ': TREPPENLINIE '
+            . ($mapped ? 'EINDEUTIG – ' : 'NICHT ZUGEORDNET – ')
+            . (string)$selection['reason']
+            . '. Straßenlinie und P03-Rechteck werden niemals als Übergang verwendet.');
+        if ($mapped) {
+            $this->WriteAttributeString($attr, json_encode($selection['allowed'],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]');
+            $this->reconnectP03AuxObserver($instanceID, $role);
+        } else {
+            $this->appendProtocol($role . ': UI/API-KONFLIKT: Kameramenü zeigt IVS-Linien, '
+                . 'aber im gelesenen VideoAnalyseRule-API fehlt die eindeutig '
+                . 'benannte aktive Treppen-CrossLine. Auswertung GESPERRT, '
+                . 'statt eine fremde ID zu erraten.');
         }
-        $name = (string) $this->p03AuxHumanRuleMeta($role)['name'];
-        $foreignAI = self::p03ForeignAIPlans($list, $name);
-        if ($foreignAI !== 'KEINE') {
-            $this->appendProtocol($role . ': READONLY WARNUNG aktive fremde KI-Regeln: '
-                . $foreignAI . ' – P03 greift nicht ein.');
-        }
-        foreach ($list as $index => $rule) {
-            if (!is_array($rule) || strcasecmp((string) ($rule['Name'] ?? ''), $name) !== 0) {
-                continue;
-            }
-            if (!P03AuxHumanRule::matches($rule, $name) || !isset($rule['Id']) || !is_numeric($rule['Id'])) {
-                $noMessage = ($rule['EventHandler']['MessageEnable'] ?? null) === false;
-                $duration = $rule['Config']['MinDuration'] ?? null;
-                $sensitivity = $rule['Config']['Sensitivity'] ?? null;
-                $slow = is_numeric($duration) && (int)$duration > 1;
-                $weak = is_numeric($sensitivity) && (int)$sensitivity < 8;
-                $problem = $noMessage
-                    ? 'MessageEnable=false (Meldungen deaktiviert)'
-                    : ($slow || $weak
-                        ? 'MinDuration=' . (is_scalar($duration) ? (string)$duration : '?')
-                            . 's; Sensitivity=' . (is_scalar($sensitivity) ? (string)$sensitivity : '?')
-                            . ' (P03 benötigt 1s / 8)'
-                        : 'Human-IVS-Regel nicht vollständig gültig');
-                return ['ok' => false, 'error' => $role . ': P03 IVS ' . $problem
-                    . ' – kontrollierte Reparatur über P03 Lauftest erforderlich'];
-            }
-            return [
-                'ok' => true, 'error' => '',
-                'index' => (int) $index, 'id' => (int) $rule['Id'],
-                'actions' => is_array($rule['Config']['Action'] ?? null)
-                    ? $rule['Config']['Action'] : [(string) ($rule['Config']['Action'] ?? '')],
-                'direction' => (string) ($rule['Config']['Direction'] ?? ''),
-                'foreignAI' => $foreignAI
-            ];
-        }
-        return ['ok' => false, 'error' => $role . ': P03 Human-IVS-Regel fehlt auf der Kamera'];
+        $rule = $mapped ? $selection['allowed'][0] : [];
+        return [
+            'ok' => true, 'error' => '', 'mapped' => $mapped,
+            'index' => (int)($rule['tableIndex'] ?? -1),
+            'id' => (int)($rule['id'] ?? -1),
+            'actions' => [],
+            'direction' => 'Aus Kamera-Regel / keine P03-Umkonfiguration',
+            'foreignAI' => self::p03ForeignAIPlans($rules, ''),
+            'source' => $mapped ? 'EXISTING_STAIR_CROSSLINE' : 'UNMAPPED_OBSERVER_ONLY'
+        ];
     }
 
     /** @return array{ok:bool,error:string,model:string,firmware:string,sensitivity:string} */
     private function auditP03AuxCamera(int $instanceID, string $role, bool $readOnly = false): array
     {
+        // Fail CLOSED even if the camera cannot be reached: disable any
+        // previously stored allowed rule before reading model/SMD/RPC tables.
+        $allowedAttr = $role === self::AUX_JV_ROLE
+            ? 'AuxJVAllowedIVSRules' : 'AuxWorkAllowedIVSRules';
+        $this->WriteAttributeString($allowedAttr, '[]');
+        $this->reconnectP03AuxObserver($instanceID, $role);
         if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
             return ['ok' => false, 'error' => $role . ': Instanz fehlt', 'model' => '', 'firmware' => '', 'sensitivity' => ''];
         }
@@ -3906,9 +3886,9 @@ class JVPresenceP03MultiCamera extends IPSModule
             ];
         }
 
-        $ivs = $readOnly
-            ? $this->inspectP03AuxHumanRuleReadOnly($instanceID, $role)
-            : $this->ensureP03AuxHumanRule($instanceID, $role);
+        // Always read only, including the "prepare and start" button.
+        // Never create a rectangle rule or rewrite VideoAnalyseRule.
+        $ivs = $this->inspectP03AuxHumanRuleReadOnly($instanceID, $role);
         $personVar = $this->findPersonDetectedVariable($instanceID);
         $counterVar = $this->findAuxVariable($instanceID, 'HumanEventCounter');
         $streamVar = $this->findAuxVariable($instanceID, 'StreamOK');
@@ -3928,7 +3908,8 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', Videoanalyse-Szene=' . (($ivs['ok'] ?? false) ? 'Normal readback' : 'NICHT VERIFIZIERT')
                 . ', IVS-Smart-Plan-Aktivierung=NICHT VERIFIZIERT'
                 . ', Andere-AI-Regeln=' . (string) ($ivs['foreignAI'] ?? 'siehe P03 Konfigwarnung')
-                . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'OK' : 'FEHLER')
+                . ', Bestehende-Treppenlinie=' . (!empty($ivs['mapped']) ? 'VERIFIZIERT' : 'NICHT IM API ZUGEORDNET')
+                . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'LESE-AUDIT OK' : 'FEHLER')
                 . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
                 . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
                 . ', IVS-Actions=' . json_encode($ivs['actions'] ?? null, JSON_UNESCAPED_SLASHES)
@@ -3950,7 +3931,8 @@ class JVPresenceP03MultiCamera extends IPSModule
                     : (string) ($ivs['error'] ?? 'Human-IVS/Observervariablen nicht vollständig bereit'))),
             'model' => $model,
             'firmware' => $firmware,
-            'sensitivity' => $sensitivity
+            'sensitivity' => $sensitivity,
+            'mapped' => (bool)($ivs['mapped'] ?? false)
         ];
     }
 
@@ -3970,7 +3952,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeString('AuxWorkSensitivity', (string) ($workAudit['sensitivity'] ?? ''));
 
         $ok = ($jvAudit['ok'] ?? false) && ($workAudit['ok'] ?? false);
-        $this->WriteAttributeBoolean('P03MultiAuditPassed', $ok);
+        $this->WriteAttributeBoolean('P03MultiAuditPassed', $ok
+            && !empty($jvAudit['mapped']) && !empty($workAudit['mapped']));
         $this->refreshP03CameraStatus();
 
         return [
