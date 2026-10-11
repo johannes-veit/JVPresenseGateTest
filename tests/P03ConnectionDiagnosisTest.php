@@ -115,6 +115,9 @@ class IPSModule
     public function Create():void {}
     public function ApplyChanges():void {}
     protected function ReadAttributeInteger(string $name):int { return (int) ($this->attributes[$name]??0); }
+    protected function ReadAttributeBoolean(string $name):bool { return (bool) ($this->attributes[$name]??false); }
+    protected function ReadPropertyBoolean(string $name):bool { return (bool) ($this->properties[$name]??false); }
+    protected function ReadPropertyInteger(string $name):int { return (int) ($this->properties[$name]??0); }
     protected function ReadAttributeString(string $name):string { return (string) ($this->attributes[$name]??''); }
     protected function WriteAttributeString(string $name,string $value):void { $this->attributes[$name]=$value; }
     protected function WriteAttributeInteger(string $name,int $value):void { $this->attributes[$name]=$value; }
