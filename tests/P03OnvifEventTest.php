@@ -132,5 +132,12 @@ $seen['invalidTimestamp']=9999;
 okOnvif(P03OnvifEvents::isFresh(['objectId'=>'42'],$seen,105,3)
     && !isset($seen['invalidTimestamp']),
     'Future/broken dedupe entries are removed before matching');
+okOnvif(P03OnvifEvents::verifiedSameHostUrl(
+    'http://192.168.107.96/Subscription?Idx=0','192.168.107.96')!==null,
+    'Standard ONVIF subscription endpoint from the official specification is accepted');
+okOnvif(P03OnvifEvents::verifiedSameHostUrl(
+    'http://192.168.107.96/cgi-bin/configManager.cgi?action=setConfig',
+    '192.168.107.96')===null,
+    'ONVIF endpoint validation rejects any CGI configuration path');
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
