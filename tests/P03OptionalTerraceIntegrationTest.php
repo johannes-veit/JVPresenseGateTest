@@ -116,7 +116,7 @@ class MockTerraceMain extends JVPresenceP03MultiCamera {
         string $host,int $port,string $username,string $password,
         string $uri,int $timeoutSeconds=6
     ):array {
-        if (!in_array($host,['192.0.2.40','192.0.2.41','192.0.2.42'],true)
+        if (!in_array($host,['192.0.2.40','192.0.2.41','192.0.2.42','192.0.2.43'],true)
             || $username!=='mockuser'
             || $password!=='mockpass'
             || $uri!=='/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule') {
@@ -259,6 +259,7 @@ tCheck($GLOBALS['terProps'][$retryID]['Enabled']===false,
 // Persisted pending socket belonging to another instance must never be reused.
 $blocked=new MockTerraceMain();
 $blocked->properties=$retry->properties;
+$blocked->properties['TerraceHost']='192.0.2.43';
 $blocked->properties['TerraceDiagnosticsEnabled']=true;
 $blocked->cgiBody=$oneLine;
 $blocked->attributes['TerraceManagedSocketID']=$retrySocket;
