@@ -232,5 +232,33 @@ $parsedChanged=P03OnvifEvents::parseNotifications($changed);
 okOnvif(count($parsedChanged)===1
     && P03OnvifEvents::isHumanStairCrossing($parsedChanged[0]),
     'Nested ONVIF Changed with explicit Human is accepted by precise parser');
+
+$baseTime=strtotime('2026-10-11T13:33:00Z');
+okOnvif(P03OnvifEvents::isRecent(
+    ['utc'=>'2026-10-11T13:33:00Z'],$baseTime,120),
+    'Exact camera UTC timestamp is accepted as fresh evidence');
+okOnvif(!P03OnvifEvents::isRecent(
+    ['utc'=>'2026-10-11T12:53:00Z'],$baseTime,120),
+    'Old ONVIF replay is rejected regardless of matching rule and class');
+okOnvif(!P03OnvifEvents::isRecent(
+    ['utc'=>''],$baseTime,120),
+    'Missing camera event time never contributes to Human gate evidence');
+okOnvif(!P03OnvifEvents::isRecent(
+    ['utc'=>'2026-10-11T17:00:00Z'],$baseTime,120),
+    'Future or badly skewed camera clock fails closed');
+$missingStream=$crossEvent;
+unset($missingStream['source']['VideoSourceConfigurationToken']);
+$noClassState=[];
+P03OnvifCorrelator::ingest($classEvent,$noClassState,100);
+okOnvif(P03OnvifCorrelator::ingest($missingStream,$noClassState,101)===null,
+    'Unidentified video source cannot correlate Human class with crossing ObjectId');
+$observerSource=file_get_contents(dirname(__DIR__).'/JVPresenceP03AuxObserver/module.php');
+$from=strpos($observerSource,'public function OnvifPoll(): void');
+$to=strpos($observerSource,'public function GetConfigurationForParent(): string',$from);
+$pollSource=substr($observerSource,$from,$to-$from);
+okOnvif(!str_contains($pollSource,'publishHumanProof(')
+    && !str_contains($pollSource,'HumanEventCounter'),
+    'ONVIF diagnostic candidates cannot bypass event-time sequencing or claim HOME/LAGER transfers');
+
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
