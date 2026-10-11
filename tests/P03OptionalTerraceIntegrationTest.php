@@ -24,7 +24,8 @@ function IPS_GetProperty(int $id,string $key):mixed {
 }
 function IPS_SetProperty(int $id,string $key,mixed $value):void {
     if (!isset($GLOBALS['terInstances'][$id]) ||
-        ($GLOBALS['terProps'][$id]['Role']??'TERRACE')!=='TERRACE') {
+        ($GLOBALS['terInstances'][$id]['ModuleInfo']['ModuleID']??'')
+            !=='{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}') {
         throw new RuntimeException('Attempt to mutate non-terrace instance');
     }
     $GLOBALS['terChanges'][]=[$id,$key,$value];
