@@ -197,8 +197,8 @@ $GLOBALS['healthCalls']=[];
 $instance->CheckP03MastHealthNow();
 verifyDiag($GLOBALS['healthCalls']===[57215,27938],
     'manual heartbeat button checks both P03 observers');
-verifyDiag(str_contains((string)$instance->values['P03MastHealth'],'JV_LEFT=LIVE')
-    && str_contains((string)$instance->values['P03MastHealth'],'WORK_LEFT=RECONNECT_GET_SENT'),
+verifyDiag(str_contains((string)$instance->buffers['P03Internal_P03MastHealth'],'JV_LEFT=LIVE')
+    && str_contains((string)$instance->buffers['P03Internal_P03MastHealth'],'WORK_LEFT=RECONNECT_GET_SENT'),
     'manual heartbeat report includes actual outcome of each observer');
 verifyDiag(str_contains((string)$instance->values['P03ConnectionDiagnosis'],'P03 SOCKET-DIAGNOSE'),
     'manual heartbeat button refreshes copyable connection report');
