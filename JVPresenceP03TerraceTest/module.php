@@ -2676,8 +2676,10 @@ class JVPresenceP03MultiCamera extends IPSModule
                                     . ' (vor ' . max(0,time()-$lastProofAt) . ' s)'
                                 : 'SEIT OBSERVER-START KEINER')
                             . ' | Quelle: ' . (string)($wireState['lastHumanProofCode'] ?? '');
+                        $recentCodes = json_decode((string)($wireState['observedCodeCounts'] ?? '{}'), true);
                         $humanCodes = (int)($wireState['smdHumanRawCount'] ?? 0)
-                            + (int)($wireState['crossRegionTotal'] ?? 0);
+                            + (int)($wireState['crossRegionTotal'] ?? 0)
+                            + (int)(is_array($recentCodes) ? ($recentCodes['CrossLineDetection'] ?? 0) : 0);
                         if ($humanCodes === 0 && (int)($wireState['wireHeartbeatCount'] ?? 0) > 0) {
                             $lines[] = 'STREAM-INHALT: Heartbeats / evtl. generische Bewegung, '
                                 . 'aber NOCH KEIN SMD-/CrossRegion-Code seit Observer-Start.';
@@ -2702,7 +2704,11 @@ class JVPresenceP03MultiCamera extends IPSModule
                             . ' | ' . (string) ($audit['code'] ?? '?')
                             . ' | ' . (string) ($audit['action'] ?? '?')
                             . ' | Entscheidung=' . (string) ($audit['decision'] ?? '?');
+                        $crossLineHistogram = json_decode(
+                            (string)($wireState['observedCodeCounts'] ?? '{}'), true);
                         $lines[] = 'IVS Statistik: Events=' . (int) ($audit['eventsTotal'] ?? 0)
+                            . ', CrossLine=' . (int)(is_array($crossLineHistogram)
+                                ? ($crossLineHistogram['CrossLineDetection'] ?? 0) : 0)
                             . ', CrossRegion=' . (int) ($audit['crossRegionTotal'] ?? 0)
                             . ', RegelTreffer=' . (int) ($audit['ruleMatches'] ?? 0)
                             . ', RegelAbgewiesen=' . (int) ($audit['ruleRejected'] ?? 0)
@@ -2726,6 +2732,41 @@ class JVPresenceP03MultiCamera extends IPSModule
                     $lines[] = 'IVS Ereignisdiagnose: Variable noch nicht registriert.';
                 }
 
+                // CrossLine events cannot be diagnosed from EventAudit,
+                // because later VideoMotion/RtspSessionDisconnect overwrites it.
+                // Emit the observer's last eight *actual* IVS line events
+                // with their exact rule IDs and per-event rejection reasons.
+                $lastCrossLineVar = $this->findAuxVariable($id, 'LastIVSEvent');
+                if ($lastCrossLineVar > 0 && IPS_VariableExists($lastCrossLineVar)) {
+                    $crossLines = json_decode((string)GetValue($lastCrossLineVar), true);
+                    if (is_array($crossLines) && array_is_list($crossLines)) {
+                        $lines[] = 'LETZTE CROSSLINE-EREIGNISSE: ' . count($crossLines)
+                            . ' (nicht durch spätere Bewegung überschrieben)';
+                        foreach (array_slice($crossLines, -8) as $cross) {
+                            if (!is_array($cross)) {
+                                continue;
+                            }
+                            $lines[] = '  ' . (string)($cross['time'] ?? '?')
+                                . ' | Aktion=' . (string)($cross['action'] ?? '?')
+                                . ' | Kamera-Regel=' . substr((string)($cross['ruleName'] ?? '?'),0,100)
+                                . ' | cfgRuleId=' . (string)($cross['cfgRuleId'] ?? '?')
+                                . ' | RuleID=' . (string)($cross['ruleIdUpper'] ?? '?')
+                                . ' | RuleId=' . (string)($cross['ruleIdLower'] ?? '?')
+                                . ' | StreamIndex=' . (string)($cross['streamIndex'] ?? '?')
+                                . ' | Objektklasse=' . substr((string)($cross['classification'] ?? 'NICHT_GELIEFERT'),0,32)
+                                . ' | Soll-Treppe-ID=' . (string)($cross['expectedRuleId'] ?? '?')
+                                . ' | Entscheidung=' . (string)($cross['decision'] ?? '?')
+                                . ' | Grund=' . (string)($cross['rejectionReason'] ?? '?');
+                        }
+                    } elseif (is_array($crossLines)) {
+                        // Old builds kept a single event object, without
+                        // classification/decision; preserve its minimal context.
+                        $lines[] = 'LETZTES CROSSLINE-EREIGNIS (Altformat): '
+                            . substr((string)GetValue($lastCrossLineVar),0,700);
+                    } else {
+                        $lines[] = 'LETZTE CROSSLINE-EREIGNISSE: bisher keine seit Observer-Neustart.';
+                    }
+                }
                 $diagnosticVar = $this->findAuxVariable($id, 'ObserverStatus');
                 if ($diagnosticVar > 0) {
                     $state = json_decode((string) GetValue($diagnosticVar), true);

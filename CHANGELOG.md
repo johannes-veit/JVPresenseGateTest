@@ -1,3 +1,14 @@
+# v0.8.0 (Build 81) – Vier reale Treppen-CrossLine-Ereignisse erhalten und Ablehnungsursache sichtbar machen
+
+- Gehtest 11.10.2026 17:20: JV_LEFT 192.168.107.95 hat jetzt 4 echte Code=CrossLineDetection-Ereignisse (bei 0 Human-Counter), WORK_LEFT 192.168.107.94 weiterhin 0 CrossLine. Beide Eventstreams 102/LIVE. Damit ist ein pauschales MessageEnable=false verhindert jeden IVS-Stream zumindest auf JV_LEFT widerlegt.
+- Bisherige #35115 Socket-Diagnose zeigte nur das allgemeine zuletzt geparste VideoMotion-/InterVideoAccess-Ereignis statt des bereits vorhandenen separaten LastIVSEvent: die entscheidenden CrossLine-Objekt- und Regelidentitäten gingen im Bericht unter.
+- Neuer Observer-Verlauf speichert bis zu 8 echte CrossLine-Ereignisse, auch wenn später Stop, RTSP und Bewegung eintreffen. Sichtbar: Aktion, Event-Regelname, CfgRuleId/RuleID/RuleId getrennt, Eventstream-Kanalindex, Person-Klassifizierung, erwartete Treppen-ID 4, Matcher-Entscheidung und spezifischer Ablehnungsgrund. Kein voller Camera-JSON-Dump, keine Zugangsdaten.
+- Hauptdiagnose #35115 listet den vollständigen begrenzten CrossLine-Verlauf automatisch unter jedem Mastobserver; CrossLine wird auch in der separaten IVS-Statistik gezählt. Der Hinweis über fehlende SMD-/CrossRegion-Ereignisse ignoriert vorhandene CrossLine-Ereignisse nicht mehr.
+- Diagnose unterscheidet STOP, falschen Namen/Strasse, abweichende Dahua-ID-Varianten, fehlende verifizierbare Identität, Fahrzeug-Klassifizierung und bei WORK_LEFT gemischtem Mensch/Fahrzeug-Filter fehlende objektgenaue Human-Klassifikation.
+- **Kein automatisches Akzeptieren unbekannter RuleIDs oder SMD-Anwesenheit:** Produktions-/Teststatus bleiben AUS, bestehende IVS-CrossLine-Beweisfreigabe unverändert.
+- Unit-/Integrationstests spielen kritische Szenarien nach: CrossLine Start mit widersprüchlichen ID-Feldern, Stop, Straßenlinie, spätere generische Bewegung, positiver Human-Start und Speichergrenze 8.
+- Nach Modulaktualisierung ist ein neuer Gehtest notwendig, denn ApplyChanges setzt nur diagnostische Kamera-Epochendaten zurück. Danach genügt genau #35115.
+
 # v0.7.9 (Build 80) – Ursache fehlender echter Treppen-CrossLine-Events gezielt lesen
 
 - Gehtest 11.10.2026 16:59:45 beweist frische Personenerkennung auf beiden LEFT-Kameras (JV 4× SmartMotionHuman; WORK 2× SmartMotionHuman), funktionierende Sockets und gültige Treppen-CrossLine-Freigabe. Trotzdem 0× Code=CrossLineDetection an beiden Kameras und 0 neue Human-Zähler. SMD im gesamten Bild ist kein gerichteter Treppenübertritt.

@@ -162,6 +162,60 @@ final class P03ExistingIvsLines
             'all' => $all];
     }
 
+    /**
+     * Strictly diagnostic explanation of why a Dahua event could not qualify
+     * as a staircase Human START. This NEVER authorizes a proof or changes
+     * matchingHumanStart(). Do not guess the camera's rule from stream index.
+     *
+     * @param array<string,mixed> $event
+     * @param array<int,array<string,mixed>> $allowed
+     */
+    public static function explainRejection(array $event, array $allowed): string
+    {
+        if (strcasecmp((string)($event['code'] ?? ''), 'CrossLineDetection') !== 0) {
+            return 'NOT_CROSSLINE';
+        }
+        if (!in_array(strtolower(trim((string)($event['action'] ?? ''))),
+            ['start','on','pulse'], true)) {
+            return 'NOT_START_OR_PULSE';
+        }
+        if (count($allowed) !== 1 || !is_array($allowed[0] ?? null)) {
+            return 'NO_UNIQUE_VERIFIED_STAIR_RULE';
+        }
+        $rule = $allowed[0];
+        $name = trim((string)($rule['name'] ?? ''));
+        $id = (int)($rule['id'] ?? -1);
+        if ($name === '' || $id < 0) {
+            return 'VERIFIED_STAIR_RULE_INVALID';
+        }
+        $eventName = trim((string)($event['ruleName'] ?? ''));
+        if ($eventName !== '' && strcasecmp($eventName, $name) !== 0) {
+            return 'EVENT_RULE_NAME_NOT_STAIR';
+        }
+        $hasNumeric = false;
+        foreach (['cfgRuleId','ruleIdUpper','ruleIdLower','ruleId'] as $key) {
+            $value = $event[$key] ?? null;
+            if ($value === null || $value === '') {
+                continue;
+            }
+            if (!is_numeric($value) || (int)$value !== $id) {
+                return 'CAMERA_EVENT_RULE_ID_CONFLICT';
+            }
+            $hasNumeric = true;
+        }
+        if ($eventName === '' && !$hasNumeric) {
+            return 'EVENT_HAS_NO_VERIFIABLE_RULE_IDENTITY';
+        }
+        $type = strtolower(trim((string)($event['classification'] ?? '')));
+        if ($type !== '' && !in_array($type, ['human','person','pedestrian'], true)) {
+            return 'NOT_HUMAN_CLASSIFICATION';
+        }
+        if ($type === '' && empty($rule['humanOnly'])) {
+            return 'MIXED_HUMAN_VEHICLE_REQUIRES_CLASSIFICATION';
+        }
+        return 'MATCHED_BY_FILTER_OR_UNEXPECTED_REJECTION';
+    }
+
     /** @param array<string,mixed> $event
      *  @param array<int,array<string,mixed>> $allowed
      */
