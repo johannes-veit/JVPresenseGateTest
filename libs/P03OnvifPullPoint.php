@@ -13,9 +13,13 @@ final class P03OnvifPullPoint
     /** @return array{ok:bool,url:string,until:int,status:string,events:array} */
     public static function poll(
         string $host, int $port, string $username, string $password,
-        string $subscriptionUrl, int $validUntil
+        string $subscriptionUrl, int $validUntil, string $referenceJson = '[]'
     ): array {
-        $out = ['ok'=>false,'url'=>'','until'=>0,'status'=>'','events'=>[]];
+        $out = ['ok'=>false,'url'=>'','until'=>0,'status'=>'','events'=>[], 'reference'=>'[]'];
+        $refs = json_decode($referenceJson,true);
+        if (!is_array($refs)) {
+            $refs=[];
+        }
         if ($host === '' || $port < 1 || $port > 65535
             || $username === '' || $password === '') {
             $out['status']='ONVIF-Zugang nicht vollständig';
@@ -55,6 +59,9 @@ final class P03OnvifPullPoint
                 $out['status']='ONVIF SubscriptionReference ohne verifizierte Kamera-Adresse';
                 return $out;
             }
+            // Some Dahua firmwares return an ONVIF ReferenceParameters
+            // SubscriptionId instead of an identity-bearing unique URL.
+            $refs=self::referenceParameters($subscription['body']);
             // Soft expiry before ONVIF's requested PT10M hard expiration.
             $validUntil=time()+8*60;
         }
@@ -63,7 +70,7 @@ final class P03OnvifPullPoint
             '<tev:PullMessages>'
             . '<tev:Timeout>PT1S</tev:Timeout>'
             . '<tev:MessageLimit>24</tev:MessageLimit>'
-            . '</tev:PullMessages>', 'events');
+            . '</tev:PullMessages>', 'events', $refs);
         if (!$pull['ok']) {
             // Drop stale PullPoint on the next iteration; never reuse a dead
             // subscription or claim a live stream merely from an old HTTP 200.
@@ -73,6 +80,7 @@ final class P03OnvifPullPoint
         $out['ok']=true;
         $out['url']=$clientUrl;
         $out['until']=$validUntil;
+        $out['reference']=json_encode($refs, JSON_UNESCAPED_SLASHES)?:'[]';
         $out['status']='ONVIF PullPoint LIVE, HTTP 200';
         $out['events']=P03OnvifEvents::parseNotifications($pull['body']);
         return $out;
@@ -81,7 +89,7 @@ final class P03OnvifPullPoint
     /** @return array{ok:bool,body:string,status:string} */
     private static function soap(
         string $url, string $username,string $password,string $action,
-        string $body,string $service
+        string $body,string $service,array $referenceParams=[]
     ): array {
         $namespace = $service==='device'
             ? 'http://www.onvif.org/ver10/device/wsdl'
@@ -100,7 +108,8 @@ final class P03OnvifPullPoint
             . ' xmlns:wsa="http://www.w3.org/2005/08/addressing">'
             . '<s:Header><wsa:Action>' . htmlspecialchars($actionUri,ENT_XML1)
             . '</wsa:Action><wsa:To>'
-            . htmlspecialchars($url, ENT_XML1) . '</wsa:To></s:Header>'
+            . htmlspecialchars($url, ENT_XML1) . '</wsa:To>'
+            . self::referencesSoapHeader($referenceParams) . '</s:Header>'
             . '<s:Body>' . $body . '</s:Body></s:Envelope>';
         $ch=curl_init($url);
         if ($ch===false) {
@@ -138,6 +147,70 @@ final class P03OnvifPullPoint
             return ['ok'=>false,'body'=>'','status'=>'SOAP Body zu groß'];
         }
         return ['ok'=>true,'body'=>$answer,'status'=>'HTTP 200'];
+    }
+
+
+    /** Extract ONVIF SubscriptionReference/ReferenceParameters safely as data. */
+    public static function referenceParameters(string $xml): array
+    {
+        if (!class_exists('DOMDocument') || strlen($xml)>1024*1024) {
+            return [];
+        }
+        $doc=new DOMDocument();
+        $prev=libxml_use_internal_errors(true);
+        try {
+            if (!@$doc->loadXML($xml,LIBXML_NONET|LIBXML_NOBLANKS)) {
+                return [];
+            }
+            $xp=new DOMXPath($doc);
+            $nodes=$xp->query('//*[local-name()="SubscriptionReference"]/*[local-name()="ReferenceParameters"]/*');
+            if ($nodes===false) {
+                return [];
+            }
+            $result=[];
+            foreach ($nodes as $node) {
+                if (!($node instanceof DOMElement)) {
+                    continue;
+                }
+                $name=(string)$node->localName;
+                $ns=(string)$node->namespaceURI;
+                $val=trim((string)$node->textContent);
+                if (!preg_match('/^[A-Za-z_][A-Za-z0-9_.-]{0,79}$/D',$name)
+                    || strlen($ns)>250 || strlen($val)>160 || $ns===''
+                    || count($result)>=8) {
+                    continue;
+                }
+                $result[]=['name'=>$name,'namespace'=>$ns,'value'=>$val];
+            }
+            return $result;
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($prev);
+        }
+    }
+
+    /** @param array<int,array<string,string>> $refs */
+    private static function referencesSoapHeader(array $refs): string
+    {
+        $out='';
+        foreach (array_slice($refs,0,8) as $i=>$ref) {
+            if (!is_array($ref)) {
+                continue;
+            }
+            $name=(string)($ref['name']??'');
+            $ns=(string)($ref['namespace']??'');
+            $val=(string)($ref['value']??'');
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_.-]{0,79}$/D',$name)
+                || $ns==='' || strlen($ns)>250 || strlen($val)>160) {
+                continue;
+            }
+            $q='p'.(int)$i;
+            $out.='<'.$q.':'.$name.' xmlns:'.$q.'="'.htmlspecialchars($ns,ENT_XML1|ENT_QUOTES).'"'
+                .' wsa:IsReferenceParameter="true">'
+                .htmlspecialchars($val,ENT_XML1|ENT_QUOTES)
+                .'</'.$q.':'.$name.'>';
+        }
+        return $out;
     }
 
     private static function findXmlValue(string $xml,string $path): string
