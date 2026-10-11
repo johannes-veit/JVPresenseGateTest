@@ -1,3 +1,13 @@
+# v0.6.39 (Build 70) – Fehler der weggefilterten IVS-Regeln und native Dahua-Web-API-Quellensuche
+
+- Reale Ursache einer falschen Diagnosebehauptung: `P03ExistingIvsLines::select` zeigte bisher ausschließlich `CrossLineDetection`-Treffer. Beim Nutzer blieb der Kameraregelbestand als `[]` sichtbar, obwohl CGI/RPC2 mehrere andere IVS/Analyse-Regeln tatsächlich zurückgeliefert hatten. `[]` bedeutet nun klar nur `keine Treppen-CrossLine im ausgewerteten Speicherbereich`.
+- READONLY-Audit protokolliert jetzt `RPC2 ALLE REGELN (ungefiltert)` und `CGI ALLE REGELN (ungefiltert)`: Index, Name, Typ, Klasse, Aktivierung, echte RuleID, Objektfilter und ob eine Linie oder ein Polygon vorhanden ist. Dazu Transportmetadaten (HTTP, `result`, Tabellenumfang) und eine separat benannte Treppenregel-Filteransicht.
+- Das native Dahua-Webmenü zeigt beim Nutzer gespeicherte Treppen- und Straßenlinien, die der alte einzelne `VideoAnalyseRule`-Ausleseweg NICHT sah. Solange unklar ist, wie die native Weboberfläche diese Regeln lädt, fragt ein fehlgeschlagener Audit zusätzlich einmalig (niemals im Dauer-Watchdog) vier reine GET-/getCaps-Quellen ab (`VideoInAnalyse.cgi`, `devVideoAnalyse.cgi`) und die verfügbare RPC2-Methodenliste `system.listMethod` nur nach nativen Analyse-Methodennamen. Ausgaben begrenzt und sensible Tokens geschwärzt. **Keine erfundenen Regel-IDs, kein setConfig, keine Kameraänderung.**
+- Volles `getConfig&name=All`-Format (Präfix `table.All.VideoAnalyseRule`) wird für die Auswertung ebenfalls unterstützt; vorher akzeptierte der CGI-Parser nur das direkte `table.VideoAnalyseRule`-Format.
+- Eindeutige Treppenlinie fehlt => Test und produktive Übertrittserkennung bleiben gesperrt. `VideoMotion`, `VideoMotionInfo`, Fahrzeuge, Straßenlinie und historische P03-Rechtecke werden weiterhin NICHT als HOME↔LAGER-Personenbeweis gewertet.
+- Regressionstest mit der realen Vier-Regel-Konfiguration der Kamera (HeatMap1, FaceDetection, NumberStat1, P03-Rechteck), CGI-`All`-Präfix und gefilterter leerer Treppenlinienstrecke.
+- Kein weiterer physischer Gang nötig. Ein einzelner read-only Audit nach Update zeigt, ob die native Weboberfläche andere Rule-Sources verwendet; erst mit belegtem Strukturformat ist das automatische Zuordnen dieser Linien sicher.
+
 # v0.6.38 (Build 69) – fehlende IVS-Treppenlinien jetzt echter Testabbruch; unabhängiger CGI/RPC2-Abgleich
 
 - Befund Test 11.10.2026 13:25: Die beiden IPC-HFW5442E-ZE haben funktionierende Eventstreams, aber im RPC2 `VideoAnalyseRule` keine einzige aktive `CrossLineDetection`. Vorher meldete P03 trotzdem `P03 AUX AUDIT ... -> OK`, zeigte eine erfolgreiche Simulation und startete die Testuhr. Das war falsch.
