@@ -71,6 +71,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeString('OnvifRecentEvents', '[]');
         $this->RegisterAttributeString('OnvifLastStatus', 'Noch nicht abgefragt');
         $this->RegisterAttributeInteger('OnvifNextAttemptAt', 0);
+        $this->RegisterAttributeInteger('OnvifPollBusyUntil', 0);
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
@@ -171,9 +172,13 @@ class JVPresenceP03AuxObserver extends IPSModule
     public function OnvifPoll(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()
-            || time() < $this->ReadAttributeInteger('OnvifNextAttemptAt')) {
+            || time() < $this->ReadAttributeInteger('OnvifNextAttemptAt')
+            || time() < $this->ReadAttributeInteger('OnvifPollBusyUntil')) {
             return;
         }
+        // Initial device + Events + Pull requests may take longer than one
+        // 15-s timer tick. Never overlap two polling rounds.
+        $this->WriteAttributeInteger('OnvifPollBusyUntil',time()+25);
         try {
             $result=P03OnvifPullPoint::poll(
                 trim($this->ReadPropertyString('CameraHost')),
@@ -257,6 +262,8 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->SetValue('OnvifStatus',date('Y-m-d H:i:s')
                 .' ONVIF Ausnahme '.get_class($e).' – '.
                 substr((string)$e->getMessage(),0,120));
+        } finally {
+            $this->WriteAttributeInteger('OnvifPollBusyUntil',0);
         }
     }
 
