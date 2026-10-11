@@ -142,8 +142,8 @@ checkLeft(($GLOBALS['props'][60000]['Host']??'')==='192.168.107.250'
         ===[17785,57215,55478,27938,53879],
     'No new observer/socket, no foreign module/socket mutation');
 checkLeft($GLOBALS['vars'][42076]===0 && $GLOBALS['vars'][34838]===0
-    && $GLOBALS['vars'][50069]==='' && $GLOBALS['vars'][25854]==='',
-    'Old JV/WORK right camera counters and stale proof timestamps cleared');
+    && $GLOBALS['vars'][43904]==='' && $GLOBALS['vars'][48490]==='',
+    'Old JV/WORK right camera counters and strict IVS evidence cleared; removed LastEvent is not required');
 checkLeft($main->attributes['TestActive']===false
     && $main->attributes['ProductionEnabled']===false
     && $main->attributes['P03MultiAuditPassed']===false
