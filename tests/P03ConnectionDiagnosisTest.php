@@ -856,6 +856,56 @@ $evaluate->invoke($inBackup);
 verifyDiag($inBackup->attributes['P03TerraceInBackupCount']===1,
     'replayed same terrace/mast IN backup never increments twice');
 
+// OUT fallback only after accepted Terrace Human-IVS LeftToRight followed by
+// ONE valid real mast stair-IVS. Never count SMD as directed OUT.
+$now=microtime(true);
+$inBackup->attributes['P03HumanEvents']=json_encode([[
+  'id'=>'WORK_LEFT:counter:14','source'=>'WORK_LEFT',
+  'ts'=>$now-32,'used'=>false
+]]);
+$inBackup->attributes['P03TerraceInSignals']=json_encode([[
+  'id'=>'ivs:terrace-ltr','kind'=>'IVS','direction'=>'LeftToRight',
+  'ts'=>$now-46,'used'=>false
+]]);
+$evaluate->invoke($inBackup);
+$outLedger=json_decode($inBackup->attributes['P03HumanEvents'],true);
+verifyDiag($inBackup->attributes['P03TerraceOutBackupCount']===1
+    && !empty($outLedger[0]['used'])
+    && str_contains($inBackup->attributes['P03ThreeCameraLastDecision'],
+        'TERRACE_OUT_IVS_THEN_WORK_LEFT_STAIR'),
+    'real 3-camera dispatcher confirms OUT with Terrassen-Human-IVS plus WORK stair');
+verifyDiag($inBackup->attributes['P03VerifiedCount']===3
+    && $inBackup->attributes['P03TerraceInBackupCount']===1
+    && !$inBackup->attributes['ProductionEnabled'],
+    'OUT backup does not forge ordinary mast proofs, IN or production');
+$evaluate->invoke($inBackup);
+verifyDiag($inBackup->attributes['P03TerraceOutBackupCount']===1,
+    'consumed terrace+mast OUT cannot be double-counted');
+
+// A complete pair is always primary, with available terrace SMD/IVS only
+// reported as direction-consistent or contradictory supplemental evidence.
+$now=microtime(true);
+$inBackup->attributes['P03HumanEvents']=json_encode([
+ ['id'=>'JV_LEFT:counter:16','source'=>'JV_LEFT','ts'=>$now-15,'used'=>false],
+ ['id'=>'WORK_LEFT:counter:16','source'=>'WORK_LEFT','ts'=>$now-3,'used'=>false]
+]);
+$inBackup->attributes['P03TerraceInSignals']=json_encode([[
+ 'id'=>'ivs:primary-out','kind'=>'IVS','direction'=>'LeftToRight',
+ 'ts'=>$now-14,'used'=>false
+]]);
+$evaluate->invoke($inBackup);
+$primaryT=json_decode($inBackup->attributes['P03TerraceInSignals'],true);
+verifyDiag(!empty($primaryT[0]['used'])
+    && str_contains($inBackup->attributes['P03ThreeCameraLastDecision'],
+       '2CAM PRIMARY OUT BESTAETIGT')
+    && str_contains($inBackup->attributes['P03ThreeCameraLastDecision'],
+       'LeftToRight passt zu OUT'),
+    'complete 2-mast OUT takes priority, logs compatible 3rd-camera IVS and consumes it');
+verifyDiag($inBackup->attributes['P03TerraceOutBackupCount']===1
+    && $inBackup->attributes['P03TerraceInBackupCount']===1,
+    'three-camera support must not also count fallback');
+
+
 unset($GLOBALS['instances'][33107],$GLOBALS['instances'][51876],
     $GLOBALS['props'][33107],$GLOBALS['props'][51876]);
 $instance->properties['TerraceDiagnosticsEnabled']=false;
