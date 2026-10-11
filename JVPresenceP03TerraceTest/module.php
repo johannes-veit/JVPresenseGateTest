@@ -146,6 +146,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('AuxJVManagedSocketID', 0);
         $this->RegisterAttributeInteger('AuxWorkManagedSocketID', 0);
         $this->RegisterAttributeString('P03RestoreSummary', 'Noch keine Wiederherstellung ausgeführt.');
+        $this->RegisterAttributeInteger('P03TestWireTraceAt', 0);
+        $this->RegisterAttributeString('P03TestWireTraceBaseline', '{}');
         $this->RegisterAttributeInteger('LastP03AutomaticDiagnosticAt', 0);
 
         $this->RegisterVariableString('PresenceSystemState', 'Presence Systemstatus', '', 1);
@@ -657,6 +659,14 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->SetTimerInterval('P03ProofTimer', 0);
         $this->WriteAttributeBoolean('TestActive', true);
         $this->SetValue('TestActive', true);
+        // Baseline belongs to the fresh test, not old persistent observer
+        // stats. Subsequent 30-s reports show only post-start wire changes.
+        $this->WriteAttributeInteger('P03TestWireTraceAt', time());
+        $this->WriteAttributeString('P03TestWireTraceBaseline',
+            json_encode($this->readP03TestWireSnapshot()) ?: '{}');
+        $this->appendProtocol(
+            'ROHMONITOR: alle 30 Sekunden automatische Status-/Deltameldung; '
+            . 'kein Human-Start = keine Bewegung oder Mensch wird hinzuerfunden.');
 
         $this->appendProtocol(
             'TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. '
@@ -1518,6 +1528,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function P03MastHealthTimer(): void
     {
         $this->checkP03MastHealth(false);
+        $this->appendP03TestWireTraceIfDue();
         // Every 30 s: read-only observer snapshots with fresh timestamps;
         // never restart a healthy stream for lack of person detections.
         $now = time();
@@ -1531,6 +1542,105 @@ class JVPresenceP03MultiCamera extends IPSModule
                     'Automatische Diagnose fehlgeschlagen: ' . get_class($e), 0);
             }
         }
+    }
+
+    /**
+     * Passive observer snapshots. The data comes from each P03-owned observer's
+     * JSON status, which is produced by the existing 15-s HealthTick. No CGI
+     * request, camera write, alarm trigger or observer reconnection is needed.
+     *
+     * @return array<string,array<string,int|string>>
+     */
+    private function readP03TestWireSnapshot(): array
+    {
+        $snapshot = [];
+        foreach ([
+            ['role' => self::AUX_JV_ROLE, 'attr' => 'AuxJVInstanceID', 'counter' => 'AuxJVEventCounterVarID'],
+            ['role' => self::AUX_WORK_ROLE, 'attr' => 'AuxWorkInstanceID', 'counter' => 'AuxWorkEventCounterVarID']
+        ] as $camera) {
+            $role = $camera['role'];
+            $observerID = $this->ReadAttributeInteger($camera['attr']);
+            $entry = [
+                'id' => $observerID,
+                'state' => 'OBSERVER_STATUS_FEHLT',
+                'wire' => 0,
+                'motion' => 0,
+                'motionInfo' => 0,
+                'cross' => 0,
+                'smd' => 0,
+                'counter' => 0
+            ];
+            try {
+                if ($observerID > 0 && IPS_InstanceExists($observerID)) {
+                    $statusVar = $this->findAuxVariable($observerID, 'ObserverStatus');
+                    if ($statusVar > 0 && IPS_VariableExists($statusVar)) {
+                        $status = json_decode((string) GetValue($statusVar), true);
+                        if (is_array($status)) {
+                            $codes = json_decode((string)($status['observedCodeCounts'] ?? '{}'), true);
+                            if (!is_array($codes)) {
+                                $codes = [];
+                            }
+                            $entry['state'] = !empty($status['streaming'])
+                                && !empty($status['streamOK']) ? 'LIVE' : 'NICHT_LIVE';
+                            $entry['wire'] = (int) ($status['wireCodeCount'] ?? 0);
+                            $entry['motion'] = (int) ($codes['VideoMotion'] ?? 0);
+                            $entry['motionInfo'] = (int) ($codes['VideoMotionInfo'] ?? 0);
+                            $entry['cross'] = (int) ($status['crossRegionTotal'] ?? 0);
+                            $entry['smd'] = (int) ($status['smdHumanRawCount'] ?? 0);
+                        }
+                    }
+                    $counterVar = $this->ReadAttributeInteger($camera['counter']);
+                    if ($counterVar > 0 && IPS_VariableExists($counterVar)) {
+                        $entry['counter'] = (int) GetValue($counterVar);
+                    }
+                }
+            } catch (Throwable $e) {
+                $entry['state'] = 'READ_FAILED_' . get_class($e);
+            }
+            $snapshot[$role] = $entry;
+        }
+        return $snapshot;
+    }
+
+    /**
+     * Keep the test protocol fresh even when a camera sends ONLY motion or
+     * heartbeats. Before v0.6.35 it never changed without a Human event,
+     * making an active but entirely ineffective test look hung.
+     */
+    private function appendP03TestWireTraceIfDue(): void
+    {
+        if (!$this->ReadAttributeBoolean('TestActive')) {
+            return;
+        }
+        $now = time();
+        $last = $this->ReadAttributeInteger('P03TestWireTraceAt');
+        if ($last > 0 && $last <= $now && $now - $last < 30) {
+            return;
+        }
+        $current = $this->readP03TestWireSnapshot();
+        $previous = json_decode($this->ReadAttributeString('P03TestWireTraceBaseline'), true);
+        if (!is_array($previous)) {
+            $previous = [];
+        }
+        $parts = [];
+        foreach ([self::AUX_JV_ROLE, self::AUX_WORK_ROLE] as $role) {
+            $c = $current[$role] ?? [];
+            $p = $previous[$role] ?? [];
+            $delta = static fn(string $key): int =>
+                max(0, (int) ($c[$key] ?? 0) - (int) ($p[$key] ?? 0));
+            $parts[] = $role
+                . ' Stream=' . (string)($c['state'] ?? 'UNBEKANNT')
+                . ', Wire+=' . $delta('wire')
+                . ', Motion+=' . $delta('motion')
+                . ', MotionInfo+=' . $delta('motionInfo')
+                . ', CrossRegion+=' . $delta('cross')
+                . ', SMDHuman+=' . $delta('smd')
+                . ', HumanCounter=' . (int) ($c['counter'] ?? 0);
+        }
+        $this->WriteAttributeString('P03TestWireTraceBaseline', json_encode($current) ?: '{}');
+        $this->WriteAttributeInteger('P03TestWireTraceAt', $now);
+        $this->appendProtocol('P03 ROHMONITOR 30s (nur Daten, KEIN Zonenwechsel): '
+            . implode(' | ', $parts));
     }
 
     public function CheckP03MastHealthNow(): void
