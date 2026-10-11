@@ -86,7 +86,11 @@ final class P03OnvifPullPoint
         $namespace = $service==='device'
             ? 'http://www.onvif.org/ver10/device/wsdl'
             : 'http://www.onvif.org/ver10/events/wsdl';
-        $actionUri = $namespace . '/' . $action;
+        $actionUri = $service==='device'
+            ? $namespace . '/' . $action
+            : ($action==='PullMessages'
+                ? $namespace . '/PullPointSubscription/PullMessagesRequest'
+                : $namespace . '/EventPortType/' . $action . 'Request');
         // SOAP 1.2 with ONVIF WSA Action. Real hardware may require WSSE
         // instead of Digest; if unavailable the module reports an auth error.
         $xml='<?xml version="1.0" encoding="UTF-8"?>'
@@ -95,7 +99,8 @@ final class P03OnvifPullPoint
             . ' xmlns:tev="http://www.onvif.org/ver10/events/wsdl"'
             . ' xmlns:wsa="http://www.w3.org/2005/08/addressing">'
             . '<s:Header><wsa:Action>' . htmlspecialchars($actionUri,ENT_XML1)
-            . '</wsa:Action></s:Header>'
+            . '</wsa:Action><wsa:To>'
+            . htmlspecialchars($url, ENT_XML1) . '</wsa:To></s:Header>'
             . '<s:Body>' . $body . '</s:Body></s:Envelope>';
         $ch=curl_init($url);
         if ($ch===false) {
