@@ -119,5 +119,18 @@ okOnvif(!P03OnvifPullPoint::isValidSoapResponse($fault,'PullMessagesResponse'),
 okOnvif(!P03OnvifPullPoint::isValidSoapResponse('<html>error</html>','PullMessagesResponse'),
     'HTTP 200 HTML/error is rejected as ONVIF events');
 
+$seen=[];
+$e=['topic'=>'tns1:RuleEngine/LineDetector/Crossed','utc'=>'2026-10-11T09:00:00Z',
+    'rule'=>'Überquerung zur Treppe','objectId'=>'41'];
+okOnvif(P03OnvifEvents::isFresh($e,$seen,100,3),
+    'First unique ONVIF person is accepted');
+okOnvif(!P03OnvifEvents::isFresh($e,$seen,101,3),
+    'Same wire event delivered again within 3 s is ignored');
+okOnvif(P03OnvifEvents::isFresh($e,$seen,103,3),
+    'Reused camera identifier after 3 s is accepted again');
+$seen['invalidTimestamp']=9999;
+okOnvif(P03OnvifEvents::isFresh(['objectId'=>'42'],$seen,105,3)
+    && !isset($seen['invalidTimestamp']),
+    'Future/broken dedupe entries are removed before matching');
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
