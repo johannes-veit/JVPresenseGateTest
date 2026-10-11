@@ -788,7 +788,8 @@ verifyDiag(str_contains($terraceReport,'TERRACE Human-CrossLine-Zaehler: 1')
     && str_contains($terraceReport,'Richtung=LeftToRight')
     && str_contains($terraceReport,'TERRACE OUT-SHADOW: 1 OUT-Kandidat(en)')
     && str_contains($terraceReport,'OUT-Schatten=OUT_CANDIDATE_ONLY')
-    && str_contains($terraceReport,'IN) ausschliesslich WORK_LEFT'),
+    && str_contains($terraceReport,'LeftToRight=OUT, RightToLeft=IN')
+    && str_contains($terraceReport,'DREI-KAMERA-FUSION'),
     'actual main report reads accepted terrace IVS, counter and direction after update');
 // Real 20:06:02 WORK stair + 20:06:23 terrace Human 21s later:
 // exercise actual main P03 callback and proof result with no zone booking.
