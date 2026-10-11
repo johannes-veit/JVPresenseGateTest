@@ -1543,6 +1543,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 'motion' => 0,
                 'motionInfo' => 0,
                 'cross' => 0,
+                'line' => 0,
                 'smd' => 0,
                 'counter' => 0
             ];
@@ -1562,6 +1563,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                             $entry['motion'] = (int) ($codes['VideoMotion'] ?? 0);
                             $entry['motionInfo'] = (int) ($codes['VideoMotionInfo'] ?? 0);
                             $entry['cross'] = (int) ($status['crossRegionTotal'] ?? 0);
+                            $entry['line'] = (int) ($codes['CrossLineDetection'] ?? 0);
                             $entry['smd'] = (int) ($status['smdHumanRawCount'] ?? 0);
                         }
                     }
@@ -1610,6 +1612,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', Motion+=' . $delta('motion')
                 . ', MotionInfo+=' . $delta('motionInfo')
                 . ', CrossRegion+=' . $delta('cross')
+                . ', CrossLine+=' . $delta('line')
                 . ', SMDHuman+=' . $delta('smd')
                 . ', HumanCounter=' . (int) ($c['counter'] ?? 0);
         }
