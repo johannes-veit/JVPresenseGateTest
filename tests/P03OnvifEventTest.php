@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once dirname(__DIR__).'/libs/P03OnvifEvents.php';
 require_once dirname(__DIR__).'/libs/P03OnvifPullPoint.php';
+require_once dirname(__DIR__).'/libs/P03OnvifCorrelator.php';
 
 $errors=0;
 function okOnvif(bool $good,string $why): void {
@@ -139,5 +140,65 @@ okOnvif(P03OnvifEvents::verifiedSameHostUrl(
     'http://192.168.107.96/cgi-bin/configManager.cgi?action=setConfig',
     '192.168.107.96')===null,
     'ONVIF endpoint validation rejects any CGI configuration path');
+// Standard ONVIF LineDetector events commonly carry ObjectId only.
+// Human classification can arrive as a separate ObjectDetection event.
+$classEvent=[
+    'topic'=>'tns1:RuleEngine/ObjectDetection/Object',
+    'utc'=>'2026-10-11T13:33:01Z',
+    'source'=>['VideoSourceConfigurationToken'=>'IPC1'],
+    'data'=>['ObjectId'=>'77','ClassTypes'=>'Human']
+];
+$crossEvent=[
+    'topic'=>'tns1:RuleEngine/LineDetector/Crossed',
+    'utc'=>'2026-10-11T13:33:03Z',
+    'source'=>['VideoSourceConfigurationToken'=>'IPC1',
+        'Rule'=>'Überquerung zur Treppe'],
+    'data'=>['ObjectId'=>'77']
+];
+$state=[];
+okOnvif(P03OnvifCorrelator::ingest($crossEvent,$state,100)===null,
+    'Bare line crossing with object ID is not automatically human');
+$proof=P03OnvifCorrelator::ingest($classEvent,$state,115);
+okOnvif(is_array($proof)&&$proof['objectId']==='77'
+    && $proof['source']==='ONVIF_OBJECTID_CLASS_CORRELATION',
+    'Human ObjectDetection joins stair LineDetector by same ObjectId across polls');
+okOnvif(P03OnvifCorrelator::ingest($classEvent,$state,116)===null,
+    'One completed correlation cannot emit two proofs');
+$state=[];
+okOnvif(P03OnvifCorrelator::ingest($classEvent,$state,100)===null,
+    'Human class alone is not a crossing');
+$proof=P03OnvifCorrelator::ingest($crossEvent,$state,115);
+okOnvif(is_array($proof)&&$proof['objectId']==='77',
+    'Crossing after classification works in reverse order');
+$state=[];
+$wrongStream=$classEvent;
+$wrongStream['source']['VideoSourceConfigurationToken']='OTHER';
+P03OnvifCorrelator::ingest($wrongStream,$state,100);
+okOnvif(P03OnvifCorrelator::ingest($crossEvent,$state,101)===null,
+    'ObjectId may not be correlated between different video sources');
+$state=[];
+$vehicle=$classEvent;
+$vehicle['data']['ClassTypes']='Vehicle';
+P03OnvifCorrelator::ingest($vehicle,$state,100);
+okOnvif(P03OnvifCorrelator::ingest($crossEvent,$state,101)===null,
+    'Vehicle on staircase never becomes a person by object ID alone');
+$state=[];
+$road=$crossEvent;
+$road['source']['Rule']='Überquerung zur Straße';
+P03OnvifCorrelator::ingest($classEvent,$state,100);
+okOnvif(P03OnvifCorrelator::ingest($road,$state,101)===null,
+    'Street line is excluded even if Human classifier detects same object');
+$state=[];
+$stale=$classEvent;
+$stale['utc']='2026-10-11T13:31:01Z';
+P03OnvifCorrelator::ingest($stale,$state,100);
+okOnvif(P03OnvifCorrelator::ingest($crossEvent,$state,115)===null,
+    'ObjectId with stale class timestamp is never combined with a later crossing');
+$state=[];
+$bare=$crossEvent;
+$bare['data']['ObjectId']='';
+okOnvif(P03OnvifCorrelator::ingest($bare,$state,110)===null,
+    'No human proof without an object ID for delayed correlation');
+
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
