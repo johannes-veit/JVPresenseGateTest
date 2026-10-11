@@ -239,12 +239,16 @@ class JVPresenceP03MultiCamera extends IPSModule
         // The essential #35115/#53524 diagnostic IDs remain visible.
         if (function_exists('IPS_SetHidden')) {
             foreach ([
+                // Internal/legacy state remains addressable by Ident/ID,
+                // but does not clutter the instance tree.
+                'PresenceSystemState', 'HouseStatus', 'PresentPersons',
                 'PresenceLastEvent', 'P03LastProof', 'LastEvent',
-                'StreamOK', 'P03MastHealth', 'P03IPC5442Audit',
-                'P03OwnershipAudit'
+                'StreamOK', 'Ready', 'TestActive', 'CrossingCount',
+                'P03DirectionStatus', 'P03MastHealth', 'P03IPC5442Audit',
+                'P03OwnershipAudit', 'P03TerraceMonitor'
             ] as $internalIdent) {
                 $objectId = $this->GetIDForIdent($internalIdent);
-                if ($objectId > 0) {
+                if ($objectId > 0 && !IPS_GetObject($objectId)['ObjectIsHidden']) {
                     IPS_SetHidden($objectId, true);
                 }
             }
