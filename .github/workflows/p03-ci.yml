@@ -39,7 +39,7 @@ jobs:
             "recordP03HumanEvent",
             "recordP03Crossing",
             "evaluateP03Pending",
-            "evaluateP03NoLineFallback",
+            # Mast-only P03 no longer has the legacy terrace no-line fallback.
             "runP03SimulationInternal",
             "auditP03AuxCameras",
             "P03ProofTimer",

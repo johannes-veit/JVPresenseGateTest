@@ -1,3 +1,11 @@
+# v0.6.31 (Build 62) – P03-Live-Diagnose und unarmierte Human-Ereignisse
+
+- Bekannte P03 Socket-Diagnose-Variable (#35115 in Hauptinstanz #53879) wird jetzt **automatisch alle 30 Sekunden** aktualisiert, mit neuem Zeitstempel; zusätzliche sofortige Aktualisierung bei jedem neuen echten Human-Zählerereignis. Keine Aktion des Benutzers notwendig.
+- Der Bericht zeigt explizit `TEST: AKTIV/AUS` und `PRODUKTION: AKTIV/AUS`, den letzten echten Human-Start je Observer und unterscheidet Heartbeat/gewöhnliche Bewegung von den fehlenden spezifischen SMD-/IVS-Personencodes. **StreamOK/LIVE belegt nur Empfang**, nicht funktionierende Personenerkennung.
+- **Bisher irreführende Stille behoben:** Auch wenn Test/Produktion ausgeschaltet sind, protokolliert die Hauptinstanz den tatsächlich eingegangenen Human-Zähler als `P03 HUMAN ROH`. Ohne Test oder Produktivbetrieb entsteht weiterhin KEIN Transfer; 2-Kamera-Prüfung bleibt unverändert.
+- Automatische Berichte verändern `Result` nicht, rufen `ReloadForm` nicht auf, konfigurieren weder Kameras noch Fremdmodule und starten keine neuen Sockets. Regresstests für alle diese Fälle, inklusive 30-s-Drosselung.
+- Kameras senden laut Live-Bericht bisher teils ausschließlich Heartbeat/VideoMotionInfo. Diese Version behebt fehlende Sichtbarkeit; eine reale Personenmeldung beider Kameras kann nur der nächste Lauftest bestätigen.
+
 # v0.6.30 (Build 61) – P03 queued Personenzähler korrekt auswerten
 
 - **Fix P03-Main:** `MessageSink()` verarbeitet bei `VM_UPDATE` den zur Nachricht gehörenden numerischen Zähler-Snapshot `$Data[0]`, statt den inzwischen möglicherweise weitergelaufenen aktuellen Wert mit `GetValue()` auszulesen. Das verhindert den Verlust von positiven Human-Starts, wenn mehrere Symcon-Updates sehr schnell hintereinander eintreffen. Fallback auf `GetValue()` nur ohne gültigen Nachrichtenwert.
