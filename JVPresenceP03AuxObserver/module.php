@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/P03AuxObserverLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ExistingIvsLines.php';
 require_once dirname(__DIR__) . '/libs/P03OnvifPullPoint.php';
+require_once dirname(__DIR__) . '/libs/P03OnvifCorrelator.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03AuxObserver extends IPSModule
@@ -68,6 +69,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('OnvifEventCount', 0);
         $this->RegisterAttributeInteger('OnvifHumanStairCount', 0);
         $this->RegisterAttributeString('OnvifSeenEventKeys', '{}');
+        $this->RegisterAttributeString('OnvifCorrelationState', '{"classes":{},"crossings":{}}');
         $this->RegisterAttributeString('OnvifRecentEvents', '[]');
         $this->RegisterAttributeString('OnvifLastStatus', 'Noch nicht abgefragt');
         $this->RegisterAttributeInteger('OnvifNextAttemptAt', 0);
@@ -214,6 +216,10 @@ class JVPresenceP03AuxObserver extends IPSModule
             if (!is_array($seen)) {
                 $seen=[];
             }
+            $correlation=json_decode($this->ReadAttributeString('OnvifCorrelationState'),true);
+            if (!is_array($correlation)) {
+                $correlation=['classes'=>[],'crossings'=>[]];
+            }
             foreach ($events as $event) {
                 if (!is_array($event)) {
                     continue;
@@ -227,10 +233,17 @@ class JVPresenceP03AuxObserver extends IPSModule
                 if (count($recent)>15) {
                     $recent=array_slice($recent,-15);
                 }
-                if (!P03OnvifEvents::isHumanStairCrossing($event)) {
+                $positive=P03OnvifCorrelator::ingest($event,$correlation,time());
+                if (!is_array($positive)) {
                     continue;
                 }
-                if (!P03OnvifEvents::isFresh($summary,$seen,time(),3)) {
+                // De-duplication is based on the actual qualifying CROSSING,
+                // not an unrelated ObjectDetection message.
+                $evidence=['rule'=>$positive['rule'],
+                    'objectId'=>$positive['objectId'],
+                    'utc'=>$positive['utc'],
+                    'origin'=>$positive['source']];
+                if (!P03OnvifEvents::isFresh($evidence,$seen,time(),3)) {
                     continue;
                 }
                 $this->WriteAttributeInteger('OnvifHumanStairCount',
@@ -239,19 +252,22 @@ class JVPresenceP03AuxObserver extends IPSModule
                     'code'=>'ONVIF_LineDetector_Crossed',
                     'action'=>'Start',
                     'classification'=>'Human',
-                    'ruleName'=>$summary['rule'],
-                    'eventId'=>$summary['utc'],
-                    'objectId'=>$summary['objectId']
+                    'ruleName'=>$positive['rule'],
+                    'eventId'=>$positive['utc'],
+                    'objectId'=>$positive['objectId']
                 ];
                 $this->publishHumanProof($observation,'ONVIF_HUMAN_STAIR',[
                     'time'=>date('H:i:s'),'role'=>$this->ReadPropertyString('Role'),
                     'source'=>'ONVIF_HUMAN_STAIR','code'=>'ONVIF_LineDetector_Crossed',
-                    'ruleName'=>$summary['rule'],'human'=>true,
+                    'ruleName'=>$positive['rule'],'human'=>true,
                     'humanFromRule'=>true,'classification'=>'Human',
-                    'utc'=>$summary['utc'],'objectId'=>$summary['objectId']
+                    'utc'=>$positive['utc'],'objectId'=>$positive['objectId'],
+                    'evidence'=>$positive['source']
                 ]);
             }
             $this->WriteAttributeString('OnvifSeenEventKeys',json_encode($seen)?:'{}');
+            $this->WriteAttributeString('OnvifCorrelationState',
+                json_encode($correlation,JSON_UNESCAPED_UNICODE)?:'{"classes":{},"crossings":{}}');
             $encoded=json_encode($recent,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'[]';
             $this->WriteAttributeString('OnvifRecentEvents',$encoded);
             $this->SetValue('OnvifRecentEvents',$encoded);
