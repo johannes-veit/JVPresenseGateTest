@@ -249,7 +249,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                     'objectId'=>$positive['objectId'],
                     'utc'=>$positive['utc'],
                     'origin'=>$positive['source']];
-                if (!P03OnvifEvents::isFresh($evidence,$seen,time(),3)) {
+                if (!P03OnvifEvents::isFresh($evidence,$seen,time(),180)) {
                     continue;
                 }
                 $this->WriteAttributeInteger('OnvifHumanStairCount',
