@@ -1,3 +1,23 @@
+# v0.7.5 (Build 76) – ONVIF Transportdiagnose
+
+- OnvifStatus meldet nun HTTP-Status, cURL-Fehlernummer und Verbindungslaufzeiten bei fehlgeschlagener GetCapabilities-Anfrage.
+- Kompatibilitätsoptionen für Embedded-HTTP/1.1: direkte Verbindung, explizites Connection-Close und keine Expect-100-Anforderung.
+- Bei Transportabbruch erfolgt eine einmalige kurze lesende Prüfung der HTTP-Erreichbarkeit am konfigurierten Port und an Port 8899 derselben Kamera. Der Status zeigt die jeweiligen HTTP-/cURL-Codes.
+- Passive Diagnose bleibt unverändert: keine Kamera-Konfigurationsänderungen und keine HOME/LAGER-Übertritte auf Basis unbestätigter ONVIF-Ereignisse.
+- Zusätzlicher Regressionstest reproduziert die konkrete Fehlerart HTTP 0 und prüft die sichere Fehlerbehandlung.
+- Der tatsächliche ONVIF-Zugriff muss weiterhin auf der SymBox bestätigt werden.
+
+# v0.7.5 (Build 76) – Diagnose für ONVIF HTTP 0 / Empty reply from server
+
+- Realer Befund SymBox 11.10.2026 15:55:32: JV_LEFT Observer #57215, ONVIF-Statusvariable #13012 meldet `ONVIF Device/GetCapabilities HTTP 0 / Empty reply from server`. `OnvifRecentEvents` #19099 = `[]`; legacy Dahua Eventstream #54893 ist weiterhin LIVE, HumanCounter #42076 bleibt 0. WORK_LEFT Observer #27938 Statusvar #43245 und ONVIF-Ereignisse #27091; dessen vollständiger Status muss separat geprüft werden, nicht aus der abgeschnittenen Spalte geraten werden.
+- **Erstmals technisch eindeutig lokalisierte Ausfallphase:** Der ONVIF-SOAP-POST `GetCapabilities` erhält auf JV_LEFT **keine HTTP-Antwort**. Damit kann kein `CreatePullPointSubscription` und kein `PullMessages` stattfinden. Dies ist ein unabhängiger Fehler vom bereits funktionierenden Dahua HTTP CGI/Eventstream – aus `HTTP 0` lässt sich **weder** eine falsche IVS-Kameraregel **noch** eine falsche Passwortkonfiguration beweisen.
+- cURL-Transport protokolliert nur ungefährliche Metadaten: `HTTP`-Code, numerischen `CURL`-Fehler (u.a. 52=Empty reply, 7=Connect refused, 28=Timeout), Zeit bis TCP-Verbindungsaufbau und bis zum HTTP-Erstbyte. Keine Benutzer/Passwörter/Headers/Token.
+- Für HTTP/1.1 Dahua-Kameras werden direkte Verbindung ohne Systemproxy, `Connection: close` und explizit unterdrücktes `Expect: 100-continue` verwendet. Ob das für diese Firmware reicht, ist erst mit erneutem LIVE-Status belegt.
+- Nur wenn ein tatsächlicher `CURL 52/56` im realen SOAP-Request auftritt, erfolgen höchstens zwei kurze, **nicht authentifizierte und ausschließlich lesende** HTTP-GET-Transportproben zur selben Kamera auf dem bereits eingestellten HTTP-Port und dem häufig für ONVIF eingesetzten Port 8899. Ausgabe enthält nur HTTP- und CURL-Codes. HTTP-GET 401/404/200 ist **kein** Beweis, dass ONVIF Events funktioniert; es dient nur zur Abgrenzung von Port-/TCP-Problemen.
+- 180-Sekunden-Backoff des Observers bleibt bestehen; keine regelmäßigen Portscans, keine Passwortraterei, kein automatischer Kamera-/Portwechsel, kein `setConfig`, keine IVS-Modifikation, keine Fremdmodule/Sockets anrühren. Die ONVIF-Erkennung verbleibt allein in der passiven Diagnose und kann weiterhin keine HOME/LAGER-Zonenbeweise auslösen.
+- Erweiterte ONVIF-End-to-End-Regression: simuliert exakt den erhaltenen `HTTP0/CURL52`-Fehler vor Subscribe; bestätigt, dass kein Ereignis oder „LIVE“ erfunden wird und dass Tests den einzigen read-only Diagnoseweg absichern.
+- **Keine Behauptung einer behobenen Personenerkennung.** Erst nach eindeutigem ONVIF-HTTP-/SOAP-Erfolg kann Subscription, Eventregistration und spätere Human-Meldung überprüft werden.
+
 # v0.7.4 (Build 75) – abschließender 2-Kamera-Personenerkennungstest vor Installation
 
 - Neue vollständige ONVIF-Ereignissimulation `tests/P03RealisticHumanRecognitionSimulationTest.php` für die tatsächlich vorhandenen P03-Mastkameras: JV_LEFT (Treppe) und WORK_LEFT (Treppe + Straße). Durchläuft vom synthetisch aufgebauten SOAP `PullMessagesResponse` mit verschachtelten `tt:Message`, UTC und `tt:Key/ObjectId` den **echten** ONVIF-XML-Parser, Uhrzeitfilter, ClassTypes-Korrelator und 180s-Duplikatfilter.

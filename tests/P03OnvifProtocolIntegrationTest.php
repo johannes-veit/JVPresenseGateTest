@@ -121,5 +121,28 @@ $noEvents=P03OnvifPullPoint::poll($host,$port,'user','pw',
 confirm($noEvents['ok']===true && $noEvents['eventCount']===0
     && str_contains($noEvents['status'],'Ereignisse=0'),
     'Established subscription with zero events distinct from connection error');
+// 2026-10-11 real JV_LEFT: HTTP 0 "Empty reply from server" occurs
+// BEFORE subscription or event registration. Do not manufacture an IVS fault.
+// Under injected transport the production read-only probe must not run.
+$emptyReply=static function($url,$user,$pass,$action,$body,$service,$refs) {
+    return ['ok'=>false,'body'=>'',
+        'status'=>'HTTP 0 / CURL 52 / TCP=20ms / HTTP-Wartezeit=0ms / Empty reply from server'];
+};
+$zero=P03OnvifPullPoint::poll($host,$port,'user','pw','',0,'[]',$emptyReply,1000);
+confirm($zero['ok']===false && $zero['eventCount']===0
+    && str_contains($zero['status'],'GetCapabilities')
+    && str_contains($zero['status'],'CURL 52')
+    && !($zero['subscribed']??false),
+    'Real-world HTTP0/cURL52 classified as ONVIF transport failure before registration');
+$module=file_get_contents(dirname(__DIR__).'/libs/P03OnvifPullPoint.php');
+confirm(str_contains($module,'CURLOPT_HTTP_VERSION=>CURL_HTTP_VERSION_1_1')
+    && str_contains($module,"CURLOPT_NOPROXY=>'*'")
+    && str_contains($module,"'Expect:'")
+    && str_contains($module,"'Connection: close'"),
+    'Embedded Dahua SOAP POST explicitly uses HTTP/1.1, direct camera connection, no Expect');
+confirm(str_contains($module,'CURLOPT_HTTPGET=>true')
+    && !str_contains($module,'action=setConfig')
+    && !str_contains($module,'configManager.setConfig'),
+    'Optional HTTP0 transport probes are read-only; no Dahua camera configuration writes');
 echo "P03 ONVIF PROTOCOL INTEGRATION: $count tests, $bad errors\n";
 exit($bad>0?1:0);
