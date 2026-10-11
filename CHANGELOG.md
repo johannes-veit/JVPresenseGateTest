@@ -1,3 +1,11 @@
+# v0.6.28 Build 59 – Warnungsfreie IP-Symcon-Dokumentverwaltung
+
+- Realbericht 11.10.2026 07:42: `getConfig&name=All` lieferte erfolgreich **9438** Felder (JV_LEFT) bzw. **9455** Felder (WORK_LEFT); zwei vollständige, sensible Werte maskierende TXT-Dokumente existieren unter Hauptinstanz #53879: **Dokument-IDs #13142 / #24653**. **Keinen Export wiederholen oder neue Dokumente erzeugen müssen.**
+- Zwei IP-Symcon-Warnungen in `writeP03PrivateDocument` beim ersten Aufruf: `IPS_GetObjectIDByIdent` meldet bei nicht vorhandener Kennung eine **PHP-Warnung**, die `try/catch` nicht auffängt. Dabei wurden beide Dokumente trotzdem erfolgreich erzeugt, was die tatsächlichen Dokument-IDs bestätigt.
+- Die Dokumentkennung wird nun ausschließlich durch `IPS_GetChildrenIDs($this->InstanceID)` + `IPS_GetObject($id)['ObjectIdent']` gesucht. Es gibt keinen fehlschlagenden API-Lookup mehr, wenn das Dokument beim ersten Lauf erwartungsgemäß fehlt. Dokumenttyp 5 und Eltern-ID werden beim Wiederverwenden weiterhin ausdrücklich geprüft, und Kollisionen führen zum sofortigen Abbruch ohne fremde Medien zu überschreiben.
+- Regression verwendet eine reale Hauptmodul-Testklasse und simuliert den ersten und zweiten vollständigen Export, wobei **alle PHP-Warnungen in testweise geworfene Exceptions umgewandelt** werden. Tests überprüfen weiter genau zwei P03-eigene Dokumente, Aktualisierung ohne Duplikat sowie vollständigen CGI-/Backup-Werteexport.
+- Keine Änderungen an den bestehenden Kameraexporten, keine zusätzlichen P03-Observer oder Sockets, keine Änderung an KI/IVS, NVR, AussenlichtAutomatik2 oder Alarmanlage, keine Aktivierung von HOME↔LAGER. Bericht bleibt **Variable #35115**; vorhandene **Dokument-IDs #13142 und #24653** bleiben erhalten.
+
 # v0.6.27 (Build 58) – ALLE von den IPC-HFW5442E-ZE gelieferten Werte als vollständiger TXT-Export
 
 - Nutzerwunsch: **Keine willkürlich gefilterte Auswahl relevanter Werte mehr.** Jede verfügbare Konfiguration beider IPC-HFW5442E-ZE (192.168.107.96 JV_LEFT; 192.168.107.99 WORK_LEFT) soll vollständig dokumentiert werden, einschließlich nicht bekannter Firmware-Felder, statt nur 48/80 von hunderten Einträgen.
