@@ -790,6 +790,72 @@ verifyDiag(str_contains($terraceReport,'TERRACE Human-CrossLine-Zaehler: 1')
     && str_contains($terraceReport,'OUT-Schatten=OUT_CANDIDATE_ONLY')
     && str_contains($terraceReport,'IN) ausschliesslich WORK_LEFT'),
     'actual main report reads accepted terrace IVS, counter and direction after update');
+// Real 20:06:02 WORK stair + 20:06:23 terrace Human 21s later:
+// exercise actual main P03 callback and proof result with no zone booking.
+$GLOBALS['variables'][39780]=true;
+$GLOBALS['instances'][57215]['ConnectionID']=9001;
+$GLOBALS['instances'][27938]['ConnectionID']=9002;
+$GLOBALS['instances'][9001]['InstanceStatus']=102;
+$GLOBALS['instances'][9002]['InstanceStatus']=102;
+$GLOBALS['props'][9001]=['Host'=>'192.168.107.96','Port'=>80,'Open'=>true];
+$GLOBALS['props'][9002]=['Host'=>'192.168.107.99','Port'=>80,'Open'=>true];
+$GLOBALS['variables'][54893]=true;
+$GLOBALS['variables'][51090]=true;
+$inBackup=new JVPresenceP03MultiCamera();
+$inBackup->properties=[
+ 'AuxJVHost'=>'192.168.107.96','AuxWorkHost'=>'192.168.107.99',
+ 'TerraceDiagnosticsEnabled'=>true,'TerraceHost'=>'192.168.107.110',
+ 'NearProofWindowSeconds'=>30
+];
+$inBackup->attributes=[
+ 'AuxJVInstanceID'=>57215,'AuxJVManagedSocketID'=>9001,
+ 'AuxJVStreamVarID'=>54893,'AuxWorkInstanceID'=>27938,
+ 'AuxWorkManagedSocketID'=>9002,'AuxWorkStreamVarID'=>51090,
+ 'TerraceObserverInstanceID'=>33107,'TerraceStreamVarID'=>39780,
+ 'TerracePersonVarID'=>20965,'TerraceLastIVSVarID'=>22341,
+ 'TerraceAllowedIVSRules'=>json_encode([[
+    'name'=>'IVS-1','id'=>5,'humanOnly'=>true
+ ]]),
+ 'P03HumanEvents'=>'[]','P03TerraceInSignals'=>'[]',
+ 'P03TerraceInSeenIVS'=>'[]',
+ 'TestActive'=>true,'ProductionEnabled'=>false,
+ 'P03VerifiedCount'=>3,
+ 'P03ActionCounts'=>'{"HOME_TO_LAGER":2,"LAGER_TO_HOME":1}'
+];
+$inBackup->MessageSink(time(),20965,10603,[true,true]);
+$signals=json_decode($inBackup->attributes['P03TerraceInSignals'],true);
+verifyDiag(count($signals)===1 && ($signals[0]['kind']??'')==='PERSON'
+    && ($signals[0]['direction']??null)===null,
+    'real terrace Boolean Human TRUE triggers distinct IN backup status without requiring terrace IVS');
+$inBackup->MessageSink(time(),20965,10603,[false,true]);
+verifyDiag(count(json_decode($inBackup->attributes['P03TerraceInSignals'],true))===1,
+    'terrace 5s Human pulse OFF does not count as independent IN observation');
+$ts=microtime(true);
+$inBackup->attributes['P03HumanEvents']=json_encode([[
+ 'id'=>'WORK_LEFT:counter:13','source'=>'WORK_LEFT',
+ 'ts'=>$ts-27,'used'=>false
+]]);
+$inBackup->attributes['P03TerraceInSignals']=json_encode([[
+ 'id'=>'person:20:06:23','kind'=>'PERSON','direction'=>null,
+ 'ts'=>$ts-6,'used'=>false
+]]);
+$evaluate=new ReflectionMethod(JVPresenceP03MultiCamera::class,'evaluateP03MastSequence');
+$evaluate->invoke($inBackup);
+$ledger=json_decode($inBackup->attributes['P03HumanEvents'],true);
+verifyDiag($inBackup->attributes['P03TerraceInBackupCount']===1
+    && !empty($ledger[0]['used'])
+    && str_contains((string)$inBackup->values['P03TerraceInBackupStatus'],
+        'WORK_LEFT_STAIR_THEN_TERRACE_IN'),
+    '21s WORK_LEFT+terrace field replay confirms fourth IN via actual module evaluator');
+verifyDiag((int)$inBackup->attributes['P03VerifiedCount']===3
+    && $inBackup->attributes['P03ActionCounts']
+       ==='{"HOME_TO_LAGER":2,"LAGER_TO_HOME":1}'
+    && !$inBackup->attributes['ProductionEnabled'],
+    'terrace IN backup does not forge fourth mast proof, production or zone change');
+$evaluate->invoke($inBackup);
+verifyDiag($inBackup->attributes['P03TerraceInBackupCount']===1,
+    'replayed same terrace/mast IN backup never increments twice');
+
 unset($GLOBALS['instances'][33107],$GLOBALS['instances'][51876],
     $GLOBALS['props'][33107],$GLOBALS['props'][51876]);
 $instance->properties['TerraceDiagnosticsEnabled']=false;
