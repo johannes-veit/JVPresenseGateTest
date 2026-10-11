@@ -53,6 +53,11 @@ final class P03AuxHumanRule
         $rule['EventHandler'] = self::disableSideEffects(
             is_array($rule['EventHandler'] ?? null) ? $rule['EventHandler'] : $eventHandler
         );
+        // This rule is consumed through Dahua eventManager.cgi. Disabling
+        // MessageEnable together with siren/record/snapshot side effects can
+        // suppress the alarm notification path that the P03 observer needs.
+        // This is only the P03-owned IVS rule, never an existing foreign rule.
+        $rule['EventHandler']['MessageEnable'] = true;
 
         $config = is_array($rule['Config'] ?? null) ? $rule['Config'] : [];
         $config['DetectRegion'] = self::REGION;
@@ -107,7 +112,11 @@ final class P03AuxHumanRule
             && $region === self::REGION
             && $appear
             && $crossOk
-            && strcasecmp((string) $direction, 'Both') === 0;
+            && strcasecmp((string) $direction, 'Both') === 0
+            // Previously created P03 rules had this falsely switched OFF.
+            // Force controlled revalidation/rewrite of P03-owned rules rather
+            // than accepting a rule that cannot report to alarm clients.
+            && (($rule['EventHandler']['MessageEnable'] ?? false) === true);
     }
 
     /** @param array<string,mixed> $eventHandler */
@@ -115,7 +124,7 @@ final class P03AuxHumanRule
     {
         foreach ([
             'AlarmOutEnable', 'BeepEnable', 'ExAlarmOutEnable', 'LogEnable', 'MMSEnable',
-            'MailEnable', 'MatrixEnable', 'MessageEnable', 'PtzLinkEnable', 'RecordEnable',
+            'MailEnable', 'MatrixEnable', 'PtzLinkEnable', 'RecordEnable',
             'SnapshotEnable', 'TipEnable', 'TourEnable', 'VoiceEnable',
         ] as $flag) {
             if (array_key_exists($flag, $eventHandler)) {

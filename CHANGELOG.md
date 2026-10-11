@@ -1,3 +1,11 @@
+# v0.6.32 (Build 63) – P03 IVS-Ereignismeldung der eigenen Kamera-Regeln
+
+- Konkreter Software-Konfigurationsfehler aus den vollständigen IPC-HFW5442E-ZE-Dumps vom 11.10.2026: Beide P03-eigenen `VideoAnalyseRule[0][3].EventHandler.MessageEnable=false`. Die frühere `P03AuxHumanRule::disableSideEffects()`-Funktion hat dies ausdrücklich deaktiviert, obwohl P03 die dahua-seitige Ereignismeldung für `eventManager.cgi` benötigt. Diese falsche Deaktivierung entfällt.
+- P03 Human-IVS wird beim **expliziten Start des P03-Lauftests** ausschließlich für die P03-eigene Regel mit `MessageEnable=true` neu erzeugt bzw. repariert; nur mit nachfolgendem RPC2-Readback `true` wird die Regel als einsatzfähig akzeptiert. Bestehende Fremdregeln und Module bleiben unverändert. Bei nicht gesicherter Eigentümerschaft erfolgt KEIN Überschreiben.
+- Sirene, Aufnahme, Snapshot, Mail, Relay, HTTP-Trigger usw. bleiben weiterhin deaktiviert. Die bisherigen vollständigen Backup-/NO-OP-/Rollback-Schutzschritte des P03-Kamerawriters bleiben unverändert.
+- Lesender Human-IVS-Check zeigt jetzt `MessageEnable=false` als explizite Ursache einer unvollständig gültigen P03-Regel, statt das bloße Enable-Feld als Beweis zu werten. Integrationstests decken alte kaputte und reparierte Regelvorlagen ab.
+- Die Hypothese, dass diese Änderung die fehlenden Live-`CrossRegionDetection`-Events behebt, ist auf echten Kameras noch zu bestätigen. Kein automatischer Kamera-Write beim Modulupdate; Reparatur nur nach explizitem Lauftest-Start.
+
 # v0.6.31 (Build 62) – P03-Live-Diagnose und unarmierte Human-Ereignisse
 
 - Bekannte P03 Socket-Diagnose-Variable (#35115 in Hauptinstanz #53879) wird jetzt **automatisch alle 30 Sekunden** aktualisiert, mit neuem Zeitstempel; zusätzliche sofortige Aktualisierung bei jedem neuen echten Human-Zählerereignis. Keine Aktion des Benutzers notwendig.

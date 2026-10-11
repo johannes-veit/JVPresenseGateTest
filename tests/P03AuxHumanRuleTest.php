@@ -17,6 +17,9 @@ function expectAux(bool $condition, string $message): void
 }
 
 $handler = [
+    // Regression against the exact stored IPC5442 setting:
+    // P03 old rules carried EventHandler.MessageEnable=false.
+    'MessageEnable' => false,
     'RecordEnable' => true,
     'SnapshotEnable' => true,
     'MailEnable' => true,
@@ -78,6 +81,8 @@ expectAux(($rule['FirmwarePrivate']['Mode'] ?? null) === 17, 'unknown rule field
 expectAux(($rule['TimeSection'] ?? null) === $nativeTemplate['TimeSection'], 'native schedule preserved');
 expectAux(($rule['Config']['SizeFilter']['MinSize'] ?? null) === [0,0], 'min size opened');
 expectAux(($rule['Config']['SizeFilter']['MaxSize'] ?? null) === [8191,8191], 'max size opened');
+expectAux(($rule['EventHandler']['MessageEnable'] ?? false) === true,
+    'P03 rule leaves event notification to subscribers ENABLED');
 expectAux(($rule['EventHandler']['RecordEnable'] ?? true) === false, 'record side effect disabled');
 expectAux(($rule['EventHandler']['SnapshotEnable'] ?? true) === false, 'snapshot side effect disabled');
 expectAux(($rule['EventHandler']['MailEnable'] ?? true) === false, 'mail side effect disabled');
@@ -85,6 +90,16 @@ expectAux(($rule['EventHandler']['VoiceEnable'] ?? true) === false, 'voice side 
 expectAux(($rule['EventHandler']['TrigerHttp']['TrigerHttpEnable'] ?? true) === false, 'HTTP side effect disabled');
 expectAux(($rule['EventHandler']['KeepUnrelated'] ?? null) === 123, 'unrelated handler fields preserved');
 expectAux(P03AuxHumanRule::matches($rule, 'P03_JV_LEFT_HUMAN'), 'valid native-template rule matches');
+$legacyDisabled = $rule;
+$legacyDisabled['EventHandler']['MessageEnable'] = false;
+expectAux(!P03AuxHumanRule::matches($legacyDisabled, 'P03_JV_LEFT_HUMAN'),
+    'previous P03-owned IVS rule with MessageEnable=false is identified for controlled repair');
+$legacyRebuilt = P03AuxHumanRule::buildFromTemplate(
+    'P03_JV_LEFT_HUMAN', 7, $nativeTemplate, $legacyDisabled['EventHandler']);
+expectAux(P03AuxHumanRule::matches($legacyRebuilt, 'P03_JV_LEFT_HUMAN')
+    && $legacyRebuilt['EventHandler']['MessageEnable'] === true
+    && $legacyRebuilt['EventHandler']['RecordEnable'] === false,
+    'repair enables event messaging but leaves siren/record/snapshot side effects disabled');
 
 $arrayTemplate = $nativeTemplate;
 $arrayTemplate['Config']['Action'] = ['Cross', 'Inside'];

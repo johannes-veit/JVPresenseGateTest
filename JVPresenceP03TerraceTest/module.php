@@ -3557,7 +3557,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
         $this->appendProtocol(
             $role . ': P03 Human-IVS aktiv – ' . $meta['name']
-                . ', CrossRegionDetection, ObjectTypes=Human, Index=' . $verifiedIndex . ', Id=' . $verifiedId . ', Region='
+                . ', CrossRegionDetection, ObjectTypes=Human, MessageEnable=JA (Ereignismeldung), Index=' . $verifiedIndex . ', Id=' . $verifiedId . ', Region='
                 . json_encode(P03AuxHumanRule::REGION, JSON_UNESCAPED_SLASHES)
         );
         $this->reconnectP03AuxObserver($instanceID, $role);
@@ -3732,7 +3732,12 @@ class JVPresenceP03MultiCamera extends IPSModule
                 continue;
             }
             if (!P03AuxHumanRule::matches($rule, $name) || !isset($rule['Id']) || !is_numeric($rule['Id'])) {
-                return ['ok' => false, 'error' => $role . ': eigene Human-IVS-Regel nicht vollständig gültig'];
+                $noMessage = ($rule['EventHandler']['MessageEnable'] ?? null) === false;
+                return ['ok' => false, 'error' => $role
+                    . ($noMessage
+                        ? ': P03 Human-IVS-Regel MessageEnable=false – kein sicherer Meldungspfad; '
+                            . 'kontrollierte Reparatur über P03 Lauftest erforderlich'
+                        : ': eigene Human-IVS-Regel nicht vollständig gültig')];
             }
             return [
                 'ok' => true, 'error' => '',
