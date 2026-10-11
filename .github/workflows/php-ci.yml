@@ -74,6 +74,8 @@ jobs:
         run: php tests/P03ConnectionDiagnosisTest.php
       - name: P03 Symcon Create and ApplyChanges registration safety
         run: php tests/P03RegistrationLifecycleTest.php
+      - name: P03 physical variable budget and migration safety
+        run: php tests/P03VariableBudgetTest.php
       - name: Dahua IPC-HFW5442E-ZE 2.840 model config and wire security unit
         run: php tests/P03IPC5442AuditTest.php
       - name: P03 dedicated Client Socket creation/connection simulation
