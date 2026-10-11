@@ -1037,6 +1037,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             'dedupeRejected' => $this->ReadAttributeInteger('DedupeRejectCount'),
             'smdHumanRawCount' => $this->ReadAttributeInteger('SmdHumanRawCount'),
             'smdHumanProofCount' => $this->ReadAttributeInteger('SmdHumanProofCount'),
+            'lastHumanProofAt' => $this->ReadAttributeInteger('LastHumanProofAt'),
             'lastHumanProofCode' => $this->ReadAttributeString('LastHumanProofCode')
         ];
         $json = json_encode($status, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
