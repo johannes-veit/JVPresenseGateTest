@@ -165,11 +165,29 @@ verifyDiag(str_contains($report,'Duplikate=2'),
 verifyDiag(!str_contains($report,'secret-jv') && !str_contains($report,'secret-work'),'credentials not exposed');
 verifyDiag(!str_contains($report,'do-not-leak-jv') && !str_contains($report,'do-not-leak-work'),'username not exposed');
 verifyDiag(str_contains($report,'Nur Istzustand erfasst'),'read-only report is explicit');
-verifyDiag($instance->reload,'configuration form reloaded after report generated');
+verifyDiag(!$instance->reload,
+    'diagnosis never reloads the configuration form or interrupts button access');
 verifyDiag($GLOBALS['writes']===[],'no state mutations in unrelated modules');
 $ui=json_decode($instance->GetConfigurationForm(),true);
 verifyDiag(is_array($ui),'configuration form returns valid JSON');
-verifyDiag(str_contains(json_encode($ui),'P03 SOCKET-DIAGNOSE'),'generated report visible in configuration form');
+verifyDiag(!str_contains((string)json_encode($ui),'P03 SOCKET-DIAGNOSE')
+    && !str_contains((string)json_encode($ui),'P03 Socket-Diagnose – Bericht'),
+    'large periodically updated socket diagnosis is never embedded in the configuration form');
+verifyDiag(!str_contains((string)json_encode($ui),'P03 HUMAN ROH'),
+    'changing P03 protocol entries cannot appear inside the static configuration form');
+// Even a very large auto-refreshing diagnosis/protocol must never affect
+// the static form content or change button positions while the user clicks.
+$originalForm=$instance->GetConfigurationForm();
+$instance->values['P03ConnectionDiagnosis']=str_repeat('P03 LIVE REPORT ' . time() . "\n",2000);
+$instance->values['P03IPC5442Audit']=str_repeat('KAMERA-AUDIT\n',2000);
+$instance->values['P03OwnershipAudit']='P03 OWNERSHIP REPORT';
+$instance->values['Protocol']='P03 HUMAN ROH JV_LEFT counter 7000';
+$instance->values['Result']='Changing status after UI was opened';
+verifyDiag($instance->GetConfigurationForm()===$originalForm,
+    'changing diagnoses, log and status cannot rebuild or resize the form');
+verifyDiag(!str_contains($originalForm,'ExpansionPanel') || 
+    !str_contains($originalForm,'P03 Socket-Diagnose – Bericht'),
+    'diagnostic report expansions removed without removing ordinary settings');
 $onClicks=array_column($ui['actions']??[],'onClick');
 verifyDiag(in_array('JVP03MC_DiagnoseP03Connections($id);',$onClicks,true),'one-click button wired to diagnosis method');
 // Read-only IPC-HFW5442E-ZE model-config audit: replace transport with
@@ -262,8 +280,9 @@ verifyDiag(count(array_filter($ipc->uris,static fn($uri)=>
     'only GET diagnostic commands, no camera modifications');
 verifyDiag($GLOBALS['writes']===[],'no foreign module or camera writes');
 $ipcUI=json_decode($ipc->GetConfigurationForm(),true);
-verifyDiag(str_contains((string)json_encode($ipcUI,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE),'SMD/IVS-SPEZIALDIAGNOSE'),
-    'one-click model report appears directly in Symcon form');
+verifyDiag(!str_contains((string)json_encode($ipcUI,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE),'SMD/IVS-SPEZIALDIAGNOSE'),
+    'even manually requested large model audit remains exclusively in instance variables');
+verifyDiag(!$ipc->reload,'model audit never triggers a form rebuild');
 $buttons=array_column($ipcUI['actions']??[],'onClick');
 verifyDiag(in_array('JVP03MC_DiagnoseIPC5442Configuration($id);',$buttons,true),
     'one-click model-specific read-only button correctly wired');
