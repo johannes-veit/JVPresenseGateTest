@@ -581,6 +581,28 @@ $manual->attributes['Streaming']=true;
 $manual->values['StreamOK']=true;
 rxP03($manual,"HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace\r\n\r\n");
 rxP03($manual,"Code=SmartMotionHuman;action=Start;index=0;data={\"EventID\":500}\r\n");
+checkP03(($manual->values['PersonDetected']??false)===true
+    && ($manual->attributes['LastSmdHumanStartAt']??0)>0
+    && (int)($manual->values['HumanEventCounter']??0)===0,
+    'P03 strict staircase mode: camera SMD Human immediately drives visible PersonDetected WITHOUT incrementing proof');
+checkP03(str_contains((string)($manual->values['ObserverStatus']??''),'lastSmdHumanStartAt')
+    && str_contains((string)($manual->values['EventAudit']??''),'SMD_PERSON_STATUS_ONLY_NO_STAIR_PROOF'),
+    'SMD status trace explicitly differentiates Boolean person presence from proof counter');
+rxP03($manual,"Code=SmartMotionHuman;action=Stop;index=0\r\n");
+checkP03((int)($manual->values['HumanEventCounter']??0)===0,
+    'SMD Stop also never creates a directional transfer');
+$manual->attributes['HumanPulseUntil']=time()-1;
+$manual->PersonPulseTimer();
+checkP03(($manual->values['PersonDetected']??true)===false,
+    '5-second status expires automatically; no false permanent person detection');
+rxP03($manual,"Code=SmartMotionHuman;action=Start;index=0;data={\"EventID\":501,\"ObjectType\":\"Vehicle\"}\r\n");
+checkP03(($manual->values['PersonDetected']??false)===false
+    && (int)($manual->values['HumanEventCounter']??0)===0,
+    'explicit vehicle classification in SmartMotionHuman cannot activate person presence or proof');
+rxP03($manual,"Code=SmartMotionHuman;action=Start;index=0;data={\"EventID\":502}\r\n");
+checkP03(($manual->values['PersonDetected']??false)===true
+    && (int)($manual->values['HumanEventCounter']??0)===0,
+    'subsequent SMD Human Start reactivates Boolean independently from forbidden SMD proof');
 rxP03($manual,"Code=CrossRegionDetection;action=Start;index=0;data={\"Name\":\"P03_WORK_LEFT_HUMAN\",\"CfgRuleId\":4,\"ObjectType\":\"Human\"}\r\n");
 rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Überquerung zur Straße\",\"CfgRuleId\":13,\"ObjectType\":\"Human\"}\r\n");
 rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":12,\"ObjectType\":\"MotorVehicle\"}\r\n");
