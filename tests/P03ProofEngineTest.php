@@ -217,3 +217,62 @@ $status = P03ProofEngine::directionStatus($map);
 assertSameValue(true, $status['stable'], 'diagnostic CrossLine direction map stable');
 
 echo "ALL P03 2-CAMERA PROOF TESTS PASSED" . PHP_EOL;
+
+
+// Real JV Terrasse: single accepted LeftToRight Human RuleID=5 can
+// indicate OUT in SHADOW only. Never turn RightToLeft into an IN proof.
+$terraceRule=['name'=>'IVS-1','id'=>5,'humanOnly'=>true];
+$terraceEvent=[
+    'code'=>'CrossLineDetection','action'=>'Start',
+    'ruleName'=>'IVS-1','ruleIdUpper'=>5,'classification'=>'Human',
+    'decision'=>'STAIR_HUMAN_START_COUNTED','rejectionReason'=>'MATCHED_FILTER',
+    'direction'=>'LeftToRight'
+];
+$t=P03ProofEngine::terraceOutOnlyShadow($terraceEvent,$terraceRule);
+assertSameValue('OUT_CANDIDATE_ONLY',$t['status'],'terrace LeftToRight classified as OUT-only shadow');
+assertSameValue(P03ProofEngine::ACTION_HOME_TO_LAGER,$t['action'],'shadow never forms IN direction');
+$t=P03ProofEngine::terraceOutOnlyShadow(array_replace(
+    $terraceEvent,['direction'=>'RightToLeft']),$terraceRule);
+assertSameValue('IGNORED',$t['status'],'Terrace opposite IVS direction rejected, not IN');
+assertSameValue(null,$t['action'],'terrace opposite event action null');
+foreach([
+    ['action'=>'Stop'],
+    ['classification'=>'Vehicle'],
+    ['ruleIdUpper'=>6],
+    ['cfgRuleId'=>6],
+    ['ruleIdUpper'=>null],
+    ['ruleName'=>'IVS-2'],
+    ['code'=>'SmartMotionHuman'],
+    ['decision'=>'STAIR_IVS_NOT_MAPPED_OR_NOT_HUMAN'],
+    ['rejectionReason'=>'NOT_START_OR_PULSE'],
+    ['direction'=>''],
+    ['direction'=>'Both']
+] as $reject) {
+    $t=P03ProofEngine::terraceOutOnlyShadow(
+        array_replace($terraceEvent,$reject),$terraceRule);
+    assertSameValue('IGNORED',$t['status'],
+        'terrace out-only shadow refuses invalid event '.json_encode($reject));
+    assertSameValue(null,$t['action'],
+        'invalid terrace event cannot create zone action');
+}
+$t=P03ProofEngine::terraceOutOnlyShadow(
+    array_replace($terraceEvent,['classification'=>null]),
+    ['name'=>'IVS-1','id'=>5,'humanOnly'=>false]);
+assertSameValue('IGNORED',$t['status'],
+    'mixed human+vehicle camera filter requires explicit Human for OUT shadow');
+$t=P03ProofEngine::terraceOutOnlyShadow(
+    array_replace($terraceEvent,['classification'=>null]),$terraceRule);
+assertSameValue('OUT_CANDIDATE_ONLY',$t['status'],
+    'verified Human-only rule supports accepted camera CrossLine without class');
+
+// Independent real two-mast IN must work while an OUT-only terrace signal
+// exists. Main module still uses evaluateTwoCameraSequence exclusively.
+$r=P03ProofEngine::evaluateTwoCameraSequence([
+    e('terrace-proposal',P03ProofEngine::SRC_TERRACE,$base-9),
+    e('work-in',P03ProofEngine::SRC_WORK_LEFT,$base-6),
+    e('jv-in',P03ProofEngine::SRC_JV_LEFT,$base)
+],$base+3,30,2);
+assertSameValue(P03ProofEngine::ACTION_LAGER_TO_HOME,$r['action'],
+    'OUT-only optional terrace cannot suppress valid mast pair IN');
+assertSameValue(['work-in','jv-in'],$r['usedEventIds'],
+    'IN consumes only two mast events, never optional terrace');
