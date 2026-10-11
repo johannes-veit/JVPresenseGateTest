@@ -150,6 +150,27 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->WriteAttributeInteger('LastHumanProofAt', 0);
         $this->WriteAttributeString('LastHumanProofCode', '');
         $this->WriteAttributeString('SeenEventKeys', '{}');
+        // A newly applied observer configuration begins a NEW diagnostic
+        // epoch. On 11 October 2026 the socket was migrated from right
+        // (.96/.99) to left (.95/.94), while historical code/SMD/IVS counters
+        // and cached audit messages were still displayed as if received from
+        // the new cameras. Reset ONLY diagnostic observations here.
+        // HumanEventCounter stays monotonic within a camera epoch; the guarded
+        // left-camera migration explicitly resets it when the camera changes,
+        // and the P03 main instance baselines it on ApplyChanges.
+        foreach ([
+            'ParsedEventCount', 'CrossRegionEventCount',
+            'RuleMatchEventCount', 'DedupeRejectCount', 'RuleRejectCount',
+            'WireCodeCount', 'WireHeartbeatCount',
+            'LastGenericWireProbeAt', 'LastGenericEventAuditAt',
+            'GenericHumanHintCount', 'SmdHumanRawCount', 'SmdHumanProofCount'
+        ] as $diagnosticCounter) {
+            $this->WriteAttributeInteger($diagnosticCounter, 0);
+        }
+        $this->WriteAttributeString('ObservedCodeCounts', '{}');
+        foreach (['WireProbe', 'EventAudit', 'LastEvent', 'LastIVSEvent', 'HumanHint'] as $diagnosticIdent) {
+            $this->SetValue($diagnosticIdent, '');
+        }
         $this->SetValue('PersonDetected', false);
         $this->SetValue('StreamOK', false);
         // ApplyChanges is a new connection epoch. Never keep a stale
