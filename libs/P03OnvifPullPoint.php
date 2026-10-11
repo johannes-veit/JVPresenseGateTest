@@ -151,6 +151,10 @@ final class P03OnvifPullPoint
         if (strlen($answer)>1024*1024) {
             return ['ok'=>false,'body'=>'','status'=>'SOAP Body zu groß'];
         }
+        if (!self::isValidSoapResponse($answer,$action.'Response')) {
+            return ['ok'=>false,'body'=>'','status'=>'HTTP 200, aber keine '
+                .$action.'Response (SOAP Fault/ungueltige XML-Antwort)'];
+        }
         return ['ok'=>true,'body'=>$answer,'status'=>'HTTP 200'];
     }
 
