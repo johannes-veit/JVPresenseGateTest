@@ -18,6 +18,14 @@ $GLOBALS['mockForeignChild'] = false;
 $GLOBALS['socketWrites'] = [];
 $GLOBALS['mockCount'] = 0;
 
+$GLOBALS['hiddenP03ObjectIDs']=[];
+function IPS_SetHidden(int $id,bool $hidden): void
+{
+    if ($id<100000 || !$hidden) {
+        throw new RuntimeException('P03 may only hide existing own diagnostic variable IDs');
+    }
+    $GLOBALS['hiddenP03ObjectIDs'][$id]=true;
+}
 function IPS_InstanceExists(int $id): bool
 {
     return $id === 57215 || isset($GLOBALS['mockSocket'][$id]);
@@ -184,6 +192,8 @@ $x->properties['RuleID'] = 4;
 $x->ApplyChanges();
 checkP03(count($x->attributes) >= 24,
     'Observer Create registers all properties once; ApplyChanges adds no duplicate attributes');
+checkP03(count($GLOBALS['hiddenP03ObjectIDs'])===8,
+    'only eight internal observer diagnostic IDs are hidden; public person/status/counter IDs remain visible');
 checkP03(($x->values['StreamOK'] ?? null) === false, 'No false-positive StreamOK before handshake');
 checkP03(($x->attributes['SocketRestartStage'] ?? null) === 1, 'Reconnection staged after ApplyChanges');
 $x->SocketRestartTimer(); // close
