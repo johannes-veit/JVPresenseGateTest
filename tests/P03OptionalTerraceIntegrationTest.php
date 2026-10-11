@@ -12,6 +12,9 @@ $GLOBALS['terChanges']=[];
 $GLOBALS['terNextID']=96000;
 $GLOBALS['terGetCount']=0;
 $GLOBALS['terCreateCount']=0;
+$GLOBALS['terOwnSocketIDs']=[];
+$GLOBALS['terAutoParentLink']=true;
+$GLOBALS['terFailConnectOnce']=false;
 function IPS_InstanceExists(int $id):bool { return isset($GLOBALS['terInstances'][$id]); }
 function IPS_GetInstance(int $id):array { return $GLOBALS['terInstances'][$id]??[]; }
 function IPS_GetInstanceList():array { return array_keys($GLOBALS['terInstances']); }
@@ -23,15 +26,26 @@ function IPS_GetProperty(int $id,string $key):mixed {
     return $GLOBALS['terProps'][$id][$key]??null;
 }
 function IPS_SetProperty(int $id,string $key,mixed $value):void {
-    if (!isset($GLOBALS['terInstances'][$id]) ||
-        ($GLOBALS['terInstances'][$id]['ModuleInfo']['ModuleID']??'')
-            !=='{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}') {
+    if (!isset($GLOBALS['terInstances'][$id])
+        || (!(bool)($GLOBALS['terOwnSocketIDs'][$id]??false)
+            && ($GLOBALS['terInstances'][$id]['ModuleInfo']['ModuleID']??'')
+                !=='{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}')) {
         throw new RuntimeException('Attempt to mutate non-terrace instance');
     }
     $GLOBALS['terChanges'][]=[$id,$key,$value];
     $GLOBALS['terProps'][$id][$key]=$value;
 }
 function IPS_CreateInstance(string $guid):int {
+    if ($guid==='{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}') {
+        $id=++$GLOBALS['terNextID'];
+        $GLOBALS['terInstances'][$id]=[
+            'ConnectionID'=>0,'InstanceStatus'=>104,
+            'ModuleInfo'=>['ModuleID'=>$guid]
+        ];
+        $GLOBALS['terProps'][$id]=['Host'=>'','Port'=>80,'Open'=>false];
+        $GLOBALS['terOwnSocketIDs'][$id]=true;
+        return $id;
+    }
     if ($guid!=='{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}') {
         throw new RuntimeException('Wrong or foreign observer type');
     }
@@ -45,10 +59,14 @@ function IPS_CreateInstance(string $guid):int {
 }
 function IPS_SetName(int $id,string $name):bool { return isset($GLOBALS['terInstances'][$id]); }
 function IPS_ApplyChanges(int $id):void {
+    if (!empty($GLOBALS['terOwnSocketIDs'][$id])) {
+        return;
+    }
     if (($GLOBALS['terProps'][$id]['Role']??'')!=='TERRACE') {
         throw new RuntimeException('Unexpected ApplyChanges outside optional terrace');
     }
-    if (($GLOBALS['terInstances'][$id]['ConnectionID']??0)===0) {
+    if ($GLOBALS['terAutoParentLink']
+        && ($GLOBALS['terInstances'][$id]['ConnectionID']??0)===0) {
         $socket=++$GLOBALS['terNextID'];
         $GLOBALS['terInstances'][$socket]=[
             'ConnectionID'=>0,'InstanceStatus'=>102,
@@ -59,6 +77,19 @@ function IPS_ApplyChanges(int $id):void {
     }
 }
 
+function IPS_ConnectInstance(int $childID,int $socketID):bool {
+    if (empty($GLOBALS['terOwnSocketIDs'][$socketID])
+        || ($GLOBALS['terProps'][$childID]['Role']??'')!=='TERRACE'
+        || (int)($GLOBALS['terInstances'][$childID]['ConnectionID']??0)!==0) {
+        throw new RuntimeException('Unsafe attempt to link foreign P03 socket');
+    }
+    if ($GLOBALS['terFailConnectOnce']) {
+        $GLOBALS['terFailConnectOnce']=false;
+        return false;
+    }
+    $GLOBALS['terInstances'][$childID]['ConnectionID']=$socketID;
+    return true;
+}
 class IPSModule {
     public int $InstanceID=53879;
     public array $properties=[];
@@ -85,7 +116,8 @@ class MockTerraceMain extends JVPresenceP03MultiCamera {
         string $host,int $port,string $username,string $password,
         string $uri,int $timeoutSeconds=6
     ):array {
-        if ($host!=='192.0.2.40' || $username!=='mockuser'
+        if (!in_array($host,['192.0.2.40','192.0.2.41','192.0.2.42'],true)
+            || $username!=='mockuser'
             || $password!=='mockpass'
             || $uri!=='/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule') {
             throw new RuntimeException('Unexpected external camera operation');
