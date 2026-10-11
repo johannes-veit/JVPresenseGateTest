@@ -103,7 +103,7 @@ $nonce=base64_decode('LKqI6G/AikKCQrN0zqZFlg==');
 $token=P03OnvifPullPoint::wsUsernameToken('someone','userpassword',$nonce,$when);
 okOnvif(str_contains($token,'wsse:UsernameToken')
     && str_contains($token,'wsu:Created')
-    && str_contains($token,base64_encode(sha1($nonce.$when.'userpassword',true)))
+    && str_contains($token,'tuOSpGlFlIXsozq4HFNeeGeFLEI=')
     && !str_contains($token,'>userpassword<'),
     'ONVIF UsernameToken uses nonce/UTC/SHA1 digest, never plaintext secret');
 $good='<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body>'
