@@ -225,6 +225,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                     continue;
                 }
                 $summary=P03OnvifEvents::summarize($event);
+                $summary['utcFresh']=P03OnvifEvents::isRecent($event,time(),120);
                 $this->WriteAttributeInteger('OnvifEventCount',
                     $this->ReadAttributeInteger('OnvifEventCount')+1);
                 $recent[]=array_merge([
@@ -232,6 +233,11 @@ class JVPresenceP03AuxObserver extends IPSModule
                 ],$summary);
                 if (count($recent)>15) {
                     $recent=array_slice($recent,-15);
+                }
+                // ONVIF subscriptions may replay old event states. Never
+                // interpret non-recent device UTC as a fresh human proof.
+                if (!$summary['utcFresh']) {
+                    continue;
                 }
                 $positive=P03OnvifCorrelator::ingest($event,$correlation,time());
                 if (!is_array($positive)) {
@@ -243,27 +249,30 @@ class JVPresenceP03AuxObserver extends IPSModule
                     'objectId'=>$positive['objectId'],
                     'utc'=>$positive['utc'],
                     'origin'=>$positive['source']];
-                if (!P03OnvifEvents::isFresh($evidence,$seen,time(),3)) {
+                if (!P03OnvifEvents::isFresh($evidence,$seen,time(),180)) {
                     continue;
                 }
                 $this->WriteAttributeInteger('OnvifHumanStairCount',
                     $this->ReadAttributeInteger('OnvifHumanStairCount')+1);
-                $observation=[
-                    'code'=>'ONVIF_LineDetector_Crossed',
-                    'action'=>'Start',
-                    'classification'=>'Human',
-                    'ruleName'=>$positive['rule'],
-                    'eventId'=>$positive['utc'],
-                    'objectId'=>$positive['objectId']
+                // DIAGNOSTIC ONLY until event-time ordering is integrated
+                // into P03ProofEngine. Existing HOME/LAGER logic currently
+                // orders HumanEventCounter arrival timestamps. Independent
+                // PullPoint polls (15 s) can reverse two real crossings.
+                // Publishing as an ordinary HumanEventCounter now would risk
+                // a WRONG DIRECTION and false HOUSE_EMPTY_CERTIFIED.
+                $recent[]=[
+                    'time'=>date('H:i:s'),
+                    'role'=>$this->ReadPropertyString('Role'),
+                    'decision'=>'ONVIF_HUMAN_STAIR_DIAGNOSTIC_ONLY',
+                    'rule'=>$positive['rule'],
+                    'objectId'=>$positive['objectId'],
+                    'utc'=>$positive['utc'],
+                    'source'=>$positive['source'],
+                    'humanProofPublished'=>false
                 ];
-                $this->publishHumanProof($observation,'ONVIF_HUMAN_STAIR',[
-                    'time'=>date('H:i:s'),'role'=>$this->ReadPropertyString('Role'),
-                    'source'=>'ONVIF_HUMAN_STAIR','code'=>'ONVIF_LineDetector_Crossed',
-                    'ruleName'=>$positive['rule'],'human'=>true,
-                    'humanFromRule'=>true,'classification'=>'Human',
-                    'utc'=>$positive['utc'],'objectId'=>$positive['objectId'],
-                    'evidence'=>$positive['source']
-                ]);
+                if (count($recent)>15) {
+                    $recent=array_slice($recent,-15);
+                }
             }
             $this->WriteAttributeString('OnvifSeenEventKeys',json_encode($seen)?:'{}');
             $this->WriteAttributeString('OnvifCorrelationState',

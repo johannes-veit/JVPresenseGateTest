@@ -46,7 +46,11 @@ final class P03OnvifCorrelator
         ));
         // Different streams must never share an ObjectId unless the camera
         // explicitly identifies them as belonging to the same stream.
-        $key=sha1($stream.'|'.$objectId);
+        // ObjectId is scoped to an analytics configuration, not just
+        // the camera IP. A rule from another analytics engine might reuse
+        // the same identifier on the same visible video.
+        $analytics=trim((string)($source['VideoAnalyticsConfigurationToken']??''));
+        $key=sha1($stream.'|'.$analytics.'|'.$objectId);
         $topic=strtolower(trim((string)($e['topic']??'')));
         $stateFlag=strtolower(trim((string)($data['State']??'true')));
         $op=strtolower(trim((string)($e['operation']??'')));
@@ -72,16 +76,31 @@ final class P03OnvifCorrelator
             if ($cls!=='' && !in_array($cls,['human','person','pedestrian'],true)) {
                 return null;
             }
+            if ($cls==='' && P03OnvifEvents::hasExplicitClassField($data)) {
+                // Multiple/contradictory vehicle+human class annotations
+                // are NOT the same as missing classification. No later
+                // separate Human event may override this explicit conflict.
+                unset($state['crossings'][$key]);
+                return null;
+            }
+            // A separate human class must be linked to a concrete video
+            // source, never by an ObjectId alone. Inline Human is self-contained.
+            if ($stream==='' && $cls==='') {
+                return null;
+            }
             $state['crossings'][$key]=[
-                'seen'=>$now,'utc'=>$stamp,'objectId'=>$objectId,
-                'rule'=>$name,'stream'=>$stream
+                'seen'=>$now,'utc'=>$stamp,'eventUtc'=>$utc,
+                'objectId'=>$objectId,'rule'=>$name,'stream'=>$stream
             ];
             if (in_array($cls,['human','person','pedestrian'],true)) {
-                unset($state['crossings'][$key]);
+                unset($state['crossings'][$key],$state['classes'][$key]);
                 return ['rule'=>$name,'objectId'=>$objectId,'utc'=>$utc,
                     'source'=>'ONVIF_INLINE_HUMAN'];
             }
         } elseif (str_contains($topic,'ruleengine/objectdetection/object')) {
+            if ($stream==='') {
+                return null;
+            }
             $cls=P03OnvifEvents::extractObjectClassification($data);
             if (!in_array($cls,['human','person','pedestrian'],true)) {
                 unset($state['classes'][$key]);
@@ -116,7 +135,7 @@ final class P03OnvifCorrelator
         return [
             'rule'=>(string)$cross['rule'],
             'objectId'=>$objectId,
-            'utc'=>$utc,
+            'utc'=>(string)($cross['eventUtc']??''),
             'source'=>'ONVIF_OBJECTID_CLASS_CORRELATION'
         ];
     }

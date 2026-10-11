@@ -34,13 +34,19 @@ final class P03OnvifEvents
                     continue;
                 }
                 $topic = self::firstNodeText($xp, './*[local-name()="Topic"]', $node);
-                $message = $xp->query('.//*[local-name()="Message"]', $node)->item(0);
+                // ONVIF contains TWO nested Message elements:
+                // wsnt:Message is the transport wrapper; tt:Message holds
+                // UtcTime/PropertyOperation. The old XPath picked the
+                // wrapper, silently losing both values.
+                $message = $xp->query('.//*[local-name()="Message" and @UtcTime]', $node)->item(0);
                 if (!($message instanceof DOMElement)) {
                     continue;
                 }
                 $source = [];
                 $data = [];
-                foreach (['Source'=>'source','Data'=>'data'] as $segment=>$target) {
+                // Standard ONVIF FieldDetector places ObjectId in tt:Key;
+                // do not lose the identity simply because it is not Data.
+                foreach (['Source'=>'source','Key'=>'key','Data'=>'data'] as $segment=>$target) {
                     $items = $xp->query('.//*[local-name()="' . $segment . '"]/*[local-name()="SimpleItem"]', $message);
                     if ($items === false) {
                         continue;
@@ -53,18 +59,30 @@ final class P03OnvifEvents
                         if ($key === '' || strlen($key) > 100) {
                             continue;
                         }
+                        $value = substr($item->getAttribute('Value'), 0, 160);
                         if ($target === 'source') {
-                            $source[$key] = substr($item->getAttribute('Value'), 0, 160);
+                            $source[$key] = $value;
+                        } elseif ($target === 'key') {
+                            // Ambiguous conflicting Key vs Data identity is
+                            // ignored, rather than accidentally correlating.
+                            if (isset($data[$key]) && $data[$key] !== $value) {
+                                $data[$key] = '';
+                            } else {
+                                $data[$key] = $value;
+                            }
                         } else {
-                            $data[$key] = substr($item->getAttribute('Value'), 0, 160);
+                            if (isset($data[$key]) && $data[$key] !== $value) {
+                                $data[$key] = '';
+                            } else {
+                                $data[$key] = $value;
+                            }
                         }
                     }
                 }
-                $msg = $xp->query('.//*[local-name()="Message"]', $node)->item(0);
                 $events[] = [
                     'topic' => $topic,
-                    'utc' => $msg instanceof DOMElement ? $msg->getAttribute('UtcTime') : '',
-                    'operation' => $msg instanceof DOMElement ? $msg->getAttribute('PropertyOperation') : '',
+                    'utc' => $message->getAttribute('UtcTime'),
+                    'operation' => $message->getAttribute('PropertyOperation'),
                     'source' => $source,
                     'data' => $data
                 ];
@@ -165,6 +183,21 @@ final class P03OnvifEvents
         return count($normalized)===1 ? (string)array_key_first($normalized) : '';
     }
 
+    /** @param array<string,mixed> $data */
+    public static function hasExplicitClassField(array $data): bool
+    {
+        foreach ($data as $key=>$value) {
+            if (!is_scalar($value) || trim((string)$value)==='') {
+                continue;
+            }
+            if (in_array(strtolower((string)$key),
+                ['classtypes','objecttype','objectclass','targettype','classtype'],true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Dahua may recycle ObjectId and timestamps, so a previously seen event
      * must never remain permanently blocked. Remove expired keys BEFORE
@@ -175,7 +208,7 @@ final class P03OnvifEvents
      */
     public static function isFresh(array $summary,array &$seen,int $now,int $seconds=3): bool
     {
-        $seconds=max(1,min(10,$seconds));
+        $seconds=max(1,min(300,$seconds));
         foreach ($seen as $id=>$stamp) {
             if (!is_numeric($stamp) || (int)$stamp>$now || $now-(int)$stamp >= $seconds) {
                 unset($seen[$id]);
@@ -191,6 +224,30 @@ final class P03OnvifEvents
             $seen=array_slice($seen,-200,null,true);
         }
         return true;
+    }
+
+    /**
+     * PullMessages can include historical/replayed messages. Time from the
+     * INNER tt:Message must be recent before any human evidence is accepted.
+     * The allowed clock skew is deliberately bounded; inaccurate camera time
+     * produces a diagnostic rejection rather than an invented transfer.
+     *
+     * @param array<string,mixed> $event
+     */
+    public static function isRecent(array $event,int $now,int $maxAge=120): bool
+    {
+        $date=trim((string)($event['utc']??''));
+        // UtcTime is a camera-supplied xsd:dateTime, never an arbitrary
+        // relative strtotime() expression such as "now" or "tomorrow".
+        if ($date==='' || strlen($date)>64
+            || !preg_match('/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+\\-]\\d{2}:\\d{2})$/D',$date)) {
+            return false;
+        }
+        $parsed=strtotime($date);
+        if ($parsed===false) {
+            return false;
+        }
+        return abs($now-(int)$parsed)<=max(1,min(300,$maxAge));
     }
 
     /** Only allow same camera host to prevent ONVIF XAddr SSRF or LAN pivot. */

@@ -200,5 +200,108 @@ $bare['data']['ObjectId']='';
 okOnvif(P03OnvifCorrelator::ingest($bare,$state,110)===null,
     'No human proof without an object ID for delayed correlation');
 
+
+// v0.7.2 real ONVIF nested wsnt:Message / tt:Message structure with
+// ObjectId in tt:Key (not Data) from published ONVIF Core examples.
+$nested='<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"'
+    .' xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2"'
+    .' xmlns:tt="http://www.onvif.org/ver10/schema">'
+    .'<s:Body><wsnt:NotificationMessage>'
+    .'<wsnt:Topic>tns1:RuleEngine/LineDetector/Crossed</wsnt:Topic>'
+    .'<wsnt:Message><tt:Message UtcTime="2026-10-11T13:33:00Z"'
+    .' PropertyOperation="Initialized">'
+    .'<tt:Source><tt:SimpleItem Name="Rule" Value="Überquerung zur Treppe"/>'
+    .'<tt:SimpleItem Name="VideoSourceConfigurationToken" Value="IPC1"/></tt:Source>'
+    .'<tt:Key><tt:SimpleItem Name="ObjectId" Value="35"/></tt:Key>'
+    .'<tt:Data><tt:SimpleItem Name="ClassTypes" Value="Human"/></tt:Data>'
+    .'</tt:Message></wsnt:Message></wsnt:NotificationMessage>'
+    .'</s:Body></s:Envelope>';
+$parsedNested=P03OnvifEvents::parseNotifications($nested);
+okOnvif(count($parsedNested)===1
+    && ($parsedNested[0]['utc']??'')==='2026-10-11T13:33:00Z'
+    && ($parsedNested[0]['operation']??'')==='Initialized'
+    && ($parsedNested[0]['data']['ObjectId']??'')==='35',
+    'Nested tt:Message UTC/operation and tt:Key ObjectId are preserved');
+okOnvif(!P03OnvifEvents::isHumanStairCrossing($parsedNested[0]??[]),
+    'ONVIF Initialized snapshot never counted as a new person crossing');
+$correlationState=[];
+okOnvif(P03OnvifCorrelator::ingest($parsedNested[0],$correlationState,100)===null,
+    'Correlator rejects initialization even with explicit Human classification');
+$changed=str_replace('PropertyOperation="Initialized"','PropertyOperation="Changed"',$nested);
+$parsedChanged=P03OnvifEvents::parseNotifications($changed);
+okOnvif(count($parsedChanged)===1
+    && P03OnvifEvents::isHumanStairCrossing($parsedChanged[0]),
+    'Nested ONVIF Changed with explicit Human is accepted by precise parser');
+
+$baseTime=strtotime('2026-10-11T13:33:00Z');
+okOnvif(P03OnvifEvents::isRecent(
+    ['utc'=>'2026-10-11T13:33:00Z'],$baseTime,120),
+    'Exact camera UTC timestamp is accepted as fresh evidence');
+okOnvif(!P03OnvifEvents::isRecent(
+    ['utc'=>'2026-10-11T12:53:00Z'],$baseTime,120),
+    'Old ONVIF replay is rejected regardless of matching rule and class');
+okOnvif(!P03OnvifEvents::isRecent(
+    ['utc'=>''],$baseTime,120),
+    'Missing camera event time never contributes to Human gate evidence');
+okOnvif(!P03OnvifEvents::isRecent(
+    ['utc'=>'2026-10-11T17:00:00Z'],$baseTime,120),
+    'Future or badly skewed camera clock fails closed');
+$missingStream=$crossEvent;
+unset($missingStream['source']['VideoSourceConfigurationToken']);
+$noClassState=[];
+P03OnvifCorrelator::ingest($classEvent,$noClassState,100);
+okOnvif(P03OnvifCorrelator::ingest($missingStream,$noClassState,101)===null,
+    'Unidentified video source cannot correlate Human class with crossing ObjectId');
+$observerSource=file_get_contents(dirname(__DIR__).'/JVPresenceP03AuxObserver/module.php');
+$from=strpos($observerSource,'public function OnvifPoll(): void');
+$to=strpos($observerSource,'public function GetConfigurationForParent(): string',$from);
+$pollSource=substr($observerSource,$from,$to-$from);
+okOnvif(!str_contains($pollSource,'publishHumanProof(')
+    && !preg_match('/->(?:SetValue|WriteAttributeInteger)\\([\\x27\\x22]HumanEventCounter/', $pollSource),
+    'ONVIF diagnostic candidates cannot bypass event-time sequencing or claim HOME/LAGER transfers');
+
+
+$conflictLine=$crossEvent;
+$conflictLine['data']['ClassTypes']='Human,Vehicle';
+$conflictState=[];
+P03OnvifCorrelator::ingest($conflictLine,$conflictState,100);
+okOnvif(P03OnvifCorrelator::ingest($classEvent,$conflictState,101)===null,
+    'Explicit Human+Vehicle line class cannot be overridden by a later Human event');
+$badClassOnly=$classEvent;
+unset($badClassOnly['data']['ObjectId']);
+$badClassState=[];
+okOnvif(P03OnvifCorrelator::ingest($badClassOnly,$badClassState,100)===null,
+    'Standard ClassTypes-only ObjectDetection (no ObjectId) is diagnostic, not a crossing');
+$realTimeCross=$crossEvent;
+$realTimeCross['utc']='2026-10-11T13:33:03Z';
+$realTimeClass=$classEvent;
+$realTimeClass['utc']='2026-10-11T13:33:01Z';
+$timeState=[];
+P03OnvifCorrelator::ingest($realTimeCross,$timeState,100);
+$matched=P03OnvifCorrelator::ingest($realTimeClass,$timeState,104);
+okOnvif(is_array($matched)
+    && ($matched['utc']??'')==='2026-10-11T13:33:03Z',
+    'Delayed class confirmation preserves original staircase crossing UTC, not class arrival time');
+$retrySeen=[];
+$eventKey=['rule'=>'stairs','objectId'=>'35','utc'=>'2026-10-11T13:33:03Z'];
+okOnvif(P03OnvifEvents::isFresh($eventKey,$retrySeen,100,180),
+    'First unique dated ONVIF crossing accepted');
+okOnvif(!P03OnvifEvents::isFresh($eventKey,$retrySeen,115,180),
+    'PullPoint replay of same dated crossing after 15 seconds is not double counted');
+$newEventKey=$eventKey;
+$newEventKey['utc']='2026-10-11T13:33:07Z';
+okOnvif(P03OnvifEvents::isFresh($newEventKey,$retrySeen,118,180),
+    'Real second crossing with new timestamp counted even if ObjectId reused');
+okOnvif(!P03OnvifEvents::isRecent(['utc'=>'now'],$baseTime,120),
+    'Non ISO8601 relative time strings can never masquerade as camera UTC');
+
+$differentAnalytics=$classEvent;
+$differentAnalytics['source']['VideoAnalyticsConfigurationToken']='ANALYSIS_B';
+$matchingAnalyticsCross=$crossEvent;
+$matchingAnalyticsCross['source']['VideoAnalyticsConfigurationToken']='ANALYSIS_A';
+$analyticsState=[];
+P03OnvifCorrelator::ingest($differentAnalytics,$analyticsState,100);
+okOnvif(P03OnvifCorrelator::ingest($matchingAnalyticsCross,$analyticsState,101)===null,
+    'ObjectId collision across different analytics configurations cannot prove a person');
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
