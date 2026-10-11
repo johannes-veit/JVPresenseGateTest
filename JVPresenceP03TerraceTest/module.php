@@ -3885,6 +3885,43 @@ class JVPresenceP03MultiCamera extends IPSModule
      * reboot sockets, change cameras, or erase already learned mast proofs.
      * User can traverse ONLY the WORK_LEFT street line twice each way.
      */
+    /**
+     * Single field-check of a terrace IN backup after the previous 3/4 run.
+     * Does not restart the cameras, reset proof counts or alter production.
+     */
+    public function StartTerraceInBackupOnly(): void
+    {
+        if ($this->ReadAttributeBoolean('ProductionEnabled')) {
+            $this->setResult('IN-Backup-Einzeltest gesperrt: Produktion zuerst abschalten.');
+            return;
+        }
+        if (!$this->p03AuxStreamsReady() || !$this->p03TerraceInBackupReady()) {
+            $this->setResult('IN-Backup-Einzeltest gesperrt: beide Maststreams und'
+                .' exklusiver Terrassenstream muessen LIVE sein.');
+            return;
+        }
+        $this->WriteAttributeString('P03HumanEvents','[]');
+        $this->WriteAttributeString('P03TerraceInSignals','[]');
+        $this->baselineP03TerraceIVSHistory();
+        $this->baselineP03Counter('AuxJVEventCounterVarID','AuxJVLastSeenHumanCounter');
+        $this->baselineP03Counter('AuxWorkEventCounterVarID','AuxWorkLastSeenHumanCounter');
+        $this->WriteAttributeInteger('P03TerraceInBackupCount',0);
+        $this->SetTimerInterval('P03ProofTimer',0);
+        $this->WriteAttributeBoolean('TestActive',true);
+        $this->SetValue('TestActive',true);
+        $this->SetValue('P03TerraceInBackupStatus',
+            'IN-EINZELTEST AKTIV: nur einen vollstaendigen IN-Weg gehen.'
+            .' WORK_LEFT→Terrasse <=25 s oder JV_LEFT→Terrasse <=6 s.'
+            .' Kein Ruecksetzen frueherer Mastbeweise.');
+        $this->appendProtocol('P03 IN-BACKUP EINZELTEST BEREIT:'
+            .' vorhandene P03VerifiedCount/P03ActionCounts nicht veraendert,'
+            .' keine Kamera neu verbunden, Produktion bleibt AUS.');
+        $this->setResult('IN-BACKUP EINZELTEST: genau einen Weg'
+            .' von der Werkstatt Richtung Haus bis zur Terrasse gehen.'
+            .' Danach Bericht #35115 senden.');
+        $this->DiagnoseP03Connections(true);
+    }
+
     public function StartStreetDirectionOnly(): void
     {
         $work=$this->ReadAttributeInteger('AuxWorkInstanceID');
