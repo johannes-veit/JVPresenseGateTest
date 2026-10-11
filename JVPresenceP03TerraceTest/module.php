@@ -2322,6 +2322,26 @@ class JVPresenceP03MultiCamera extends IPSModule
                         $lines[] = 'IPC5442 Wire-Zähler: Code-Events='
                             . (int) ($wireState['wireCodeCount'] ?? 0)
                             . ', Heartbeats=' . (int) ($wireState['wireHeartbeatCount'] ?? 0);
+                        $observed = json_decode((string)($wireState['observedCodeCounts'] ?? '{}'),true);
+                        if (is_array($observed)) {
+                            arsort($observed, SORT_NUMERIC);
+                            $items=[];
+                            foreach (array_slice($observed,0,15,true) as $name=>$count) {
+                                $items[]=$name.'='.(int)$count;
+                            }
+                            $lines[]='KAMERA-CODES SEIT OBSERVER-START: '
+                                .($items===[] ? 'noch keine geparsten Code-Events' : implode(', ',$items));
+                        }
+                        $lines[]='GENERIC-HUMAN-HINWEISE (kein Beweis): '
+                            .(int)($wireState['genericHumanHintCount'] ?? 0);
+                    }
+                }
+                $humanHintVar=$this->findAuxVariable($id,'HumanHint');
+                if ($humanHintVar>0) {
+                    $hint=trim((string)GetValue($humanHintVar));
+                    if ($hint!=='') {
+                        $lines[]='LETZTER GENERIC-HUMAN-HINWEIS: '.substr($hint,0,500)
+                            .' (kein Zonenbeweis)';
                     }
                 }
                 $auditVar = $this->findAuxVariable($id, 'EventAudit');
