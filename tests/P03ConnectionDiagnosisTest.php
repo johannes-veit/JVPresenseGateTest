@@ -903,7 +903,9 @@ verifyDiag($GLOBALS['writes']===[],
 $ui2=json_decode($instance->GetConfigurationForm(),true);
 verifyDiag(!in_array('JVP03MC_DiagnoseP03Ownership($id);',
     array_column($ui2['actions']??[],'onClick'),true)
-    && count($ui2['actions']??[])===9
+    && count($ui2['actions']??[])===10
+    && in_array('JVP03MC_StartTerraceInBackupOnly($id);',
+        array_column($ui2['actions']??[],'onClick'),true)
     && in_array('JVP03MC_StartStreetDirectionOnly($id);',
         array_column($ui2['actions']??[],'onClick'),true),
     'main UI includes safe street-only learning, preserving existing commands');
