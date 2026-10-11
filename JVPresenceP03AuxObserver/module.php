@@ -58,7 +58,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
         $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
-        $this->RegisterVariableString('LastEvent', 'Letztes Human-IVS-Ereignis', '', 30);
+        $this->RegisterVariableString('LastEvent', 'Letztes Personenerkennungs-Ereignis (SMD/IVS)', '', 30);
         $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
@@ -93,7 +93,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
         $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
-        $this->RegisterVariableString('LastEvent', 'Letztes Human-IVS-Ereignis', '', 30);
+        $this->RegisterVariableString('LastEvent', 'Letztes Personenerkennungs-Ereignis (SMD/IVS)', '', 30);
         $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
@@ -118,6 +118,8 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->WriteAttributeInteger('DigestNC', 0);
         $this->WriteAttributeString('DigestChallenge', '{}');
         $this->WriteAttributeInteger('HumanPulseUntil', 0);
+        $this->WriteAttributeInteger('LastHumanProofAt', 0);
+        $this->WriteAttributeString('LastHumanProofCode', '');
         $this->WriteAttributeString('SeenEventKeys', '{}');
         $this->SetValue('PersonDetected', false);
         $this->SetValue('StreamOK', false);
@@ -651,6 +653,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                     $this->WriteAttributeInteger('SmdHumanProofCount',
                         $this->ReadAttributeInteger('SmdHumanProofCount') + 1);
                     $this->recordEventAudit($event, 'SMD_HUMAN_START_COUNTED');
+                    $this->refreshObserverStatus('SMD HUMAN START empfangen');
                 } else {
                     $this->recordEventAudit($event, 'SMD_CROSS_SOURCE_DUPLICATE');
                 }
@@ -692,6 +695,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             if ($isHumanStart) {
                 if ($this->publishHumanProof($event, 'IVS_CROSSREGION', $summary)) {
                     $this->recordEventAudit($event, 'HUMAN_START_COUNTED');
+                    $this->refreshObserverStatus('IVS HUMAN START empfangen');
                 } else {
                     $this->recordEventAudit($event, 'IVS_CROSS_SOURCE_DUPLICATE');
                 }
