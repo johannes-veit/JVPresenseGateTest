@@ -114,6 +114,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxJVEventCounterVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkEventCounterVarID', 0);
+        $this->RegisterAttributeInteger('AuxJVLastSeenHumanCounter', -1);
+        $this->RegisterAttributeInteger('AuxWorkLastSeenHumanCounter', -1);
         $this->RegisterAttributeInteger('AuxJVStreamVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkStreamVarID', 0);
         $this->RegisterAttributeString('AuxJVModel', '');
@@ -214,6 +216,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->disconnectLegacyParentSocket();
         $this->discoverP03AuxSources(false);
         $this->subscribeP03AuxVariables();
+        // The visible HumanEventCounter is MONOTONIC per observer. Existing
+        // counters are an initial baseline after module reload, NOT new
+        // person events. Otherwise replay/reload can manufacture transfers.
+        $this->baselineP03Counter('AuxJVEventCounterVarID','AuxJVLastSeenHumanCounter');
+        $this->baselineP03Counter('AuxWorkEventCounterVarID','AuxWorkLastSeenHumanCounter');
         $this->refreshP03CameraStatus();
 
         if (!$this->credentialsReady()) {
@@ -395,6 +402,13 @@ class JVPresenceP03MultiCamera extends IPSModule
             $workStreamVar = $this->ReadAttributeInteger('AuxWorkStreamVarID');
 
             if ($sender === $jvStreamVar || $sender === $workStreamVar) {
+                // A broken stream cannot form one half of a 2-camera proof
+                // that later combines with an unrelated fresh event.
+                if (!(bool)GetValue($sender)) {
+                    $this->WriteAttributeString('P03HumanEvents','[]');
+                    $this->SetTimerInterval('P03ProofTimer',0);
+                    $this->SetValue('P03ProofState','BLOCKIERT – Mastkamera-Stream abgebrochen');
+                }
                 $this->refreshProductionState();
                 $this->refreshReadyState();
                 return;
@@ -409,14 +423,19 @@ class JVPresenceP03MultiCamera extends IPSModule
                     $changed = (bool) $Data[1];
                 }
                 if ($changed) {
-                    $source = ($sender === $jvCounter)
+                    $isJV=$sender===$jvCounter;
+                    $source=$isJV
                         ? P03ProofEngine::SRC_JV_LEFT
                         : P03ProofEngine::SRC_WORK_LEFT;
-                    $this->recordP03HumanEvent($source, [
-                        'sender' => $sender,
-                        'counter' => GetValue($sender),
-                        'messageTimestamp' => (int) $TimeStamp
-                    ]);
+                    $counter=(int)GetValue($sender);
+                    $attribute=$isJV?'AuxJVLastSeenHumanCounter':'AuxWorkLastSeenHumanCounter';
+                    if ($this->acceptP03NewCounterValue($attribute,$counter,$source)) {
+                        $this->recordP03HumanEvent($source, [
+                            'sender'=>$sender,
+                            'counter'=>$counter,
+                            'messageTimestamp'=>(int)$TimeStamp
+                        ]);
+                    }
                 }
                 return;
             }
@@ -1212,6 +1231,51 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /** @param array<string,mixed> $meta */
+    /**
+     * Counter snapshot never emits a proof. Last observed counter is only
+     * tracked inside the P03 main instance; avoids replaying existing 3
+     * WORK_LEFT hits as new events after a module update.
+     */
+    private function baselineP03Counter(string $sourceAttribute,string $stateAttribute): void
+    {
+        $id=$this->ReadAttributeInteger($sourceAttribute);
+        if ($id>0 && IPS_VariableExists($id)) {
+            $this->WriteAttributeInteger($stateAttribute,(int)GetValue($id));
+        } else {
+            $this->WriteAttributeInteger($stateAttribute,-1);
+        }
+    }
+
+    /**
+     * Accept ONLY strictly increasing counter values. A reset 9->0,
+     * reconnect, repeated VM_UPDATE or first baseline is NEVER an event.
+     * Counter jumps imply missed notification edges, not N invented events.
+     */
+    private function acceptP03NewCounterValue(string $attribute,int $next,string $source): bool
+    {
+        $previous=$this->ReadAttributeInteger($attribute);
+        $this->WriteAttributeInteger($attribute,$next);
+        if ($previous<0) {
+            $this->appendProtocol('P03 COUNTER BASELINE '.$source.'='.$next.' – kein Event');
+            return false;
+        }
+        if ($next<=$previous) {
+            if ($next<$previous) {
+                $this->WriteAttributeString('P03HumanEvents','[]');
+                $this->SetTimerInterval('P03ProofTimer',0);
+                $this->SetValue('P03ProofState','COUNTER RESET '.$source.' – keine Bewegung');
+                $this->appendProtocol('P03 COUNTER RESET '.$source.' '
+                    .$previous.'→'.$next.' – keine neue Bewegung');
+            }
+            return false;
+        }
+        if ($next-$previous>1) {
+            $this->appendProtocol('P03 COUNTER SPRUNG '.$source.': '
+                .$previous.'→'.$next.' – nur ein neues Signal verarbeitet, keine Events erfunden');
+        }
+        return true;
+    }
+
     private function recordP03HumanEvent(string $source, array $meta = []): void
     {
         if (!$this->ReadAttributeBoolean('TestActive') && !$this->ReadAttributeBoolean('ProductionEnabled')) {
@@ -1226,8 +1290,19 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         $events = $this->getP03HumanEvents();
         $now = microtime(true);
+        $counterId=isset($meta['counter']) ? (int)$meta['counter'] : null;
         $externalId = trim((string) ($meta['eventId'] ?? ''));
-        if ($externalId !== '') {
+        if ($counterId!==null) {
+            // A counter increase represents a real independent Observer
+            // notification. Never drop two positive detections within 1 s
+            // just because the PersonDetected pulse stayed TRUE.
+            $id=$source.':counter:'.$counterId;
+            foreach ($events as $event) {
+                if (($event['id']??'')===$id) {
+                    return;
+                }
+            }
+        } elseif ($externalId !== '') {
             $id = $source . ':event:' . $externalId;
             foreach ($events as $event) {
                 if (($event['id'] ?? '') === $id) {
@@ -2264,6 +2339,11 @@ class JVPresenceP03MultiCamera extends IPSModule
                             . ', RegelAbgewiesen=' . (int) ($audit['ruleRejected'] ?? 0)
                             . ', Duplikate=' . (int) ($audit['dedupeRejected'] ?? 0)
                             . ', Human=' . (int) ($audit['humanCount'] ?? 0);
+                        $lines[] = 'PERSONENQUELLEN: SMD Human roh='
+                            . (int)($observer['smdHumanRawCount']??0)
+                            . ', SMD Human akzeptiert='.(int)($observer['smdHumanProofCount']??0)
+                            . ', letzte Personquelle='.(string)($observer['lastHumanProofCode']??'<noch keine>')
+                            . ' | generische Bewegung ist kein Personennachweis.';
                         $lines[] = 'IVS ID: Regel=' . (string) ($audit['ruleName'] ?? '?')
                             . ', RuleID=' . (string) ($audit['ruleId'] ?? '?')
                             . ', EventID=' . (string) ($audit['eventId'] ?? '?')
