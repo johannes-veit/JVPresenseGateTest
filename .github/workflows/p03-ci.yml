@@ -27,6 +27,8 @@ jobs:
           PY
       - name: P03 proof engine simulations
         run: php tests/P03ProofEngineTest.php
+      - name: Verified LEFT cameras and exclusive P03 observer/socket migration
+        run: php tests/P03LeftCameraMigrationTest.php
       - name: Static P03 module contract
         run: |
           python3 - <<'PY'
@@ -34,8 +36,8 @@ jobs:
           s=Path('JVPresenceP03TerraceTest/module.php').read_text(encoding='utf-8')
           required=[
             "require_once dirname(__DIR__) . '/libs/P03ProofEngine.php';",
-            "private const AUX_JV_DEFAULT_HOST = '192.168.107.96';",
-            "private const AUX_WORK_DEFAULT_HOST = '192.168.107.99';",
+            "private const AUX_JV_DEFAULT_HOST = '192.168.107.95';",
+            "private const AUX_WORK_DEFAULT_HOST = '192.168.107.94';",
             "recordP03HumanEvent",
             "recordP03Crossing",
             "evaluateP03Pending",
