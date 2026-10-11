@@ -34,13 +34,19 @@ final class P03OnvifEvents
                     continue;
                 }
                 $topic = self::firstNodeText($xp, './*[local-name()="Topic"]', $node);
-                $message = $xp->query('.//*[local-name()="Message"]', $node)->item(0);
+                // ONVIF contains TWO nested Message elements:
+                // wsnt:Message is the transport wrapper; tt:Message holds
+                // UtcTime/PropertyOperation. The old XPath picked the
+                // wrapper, silently losing both values.
+                $message = $xp->query('.//*[local-name()="Message" and @UtcTime]', $node)->item(0);
                 if (!($message instanceof DOMElement)) {
                     continue;
                 }
                 $source = [];
                 $data = [];
-                foreach (['Source'=>'source','Data'=>'data'] as $segment=>$target) {
+                // Standard ONVIF FieldDetector places ObjectId in tt:Key;
+                // do not lose the identity simply because it is not Data.
+                foreach (['Source'=>'source','Key'=>'key','Data'=>'data'] as $segment=>$target) {
                     $items = $xp->query('.//*[local-name()="' . $segment . '"]/*[local-name()="SimpleItem"]', $message);
                     if ($items === false) {
                         continue;
@@ -53,18 +59,30 @@ final class P03OnvifEvents
                         if ($key === '' || strlen($key) > 100) {
                             continue;
                         }
+                        $value = substr($item->getAttribute('Value'), 0, 160);
                         if ($target === 'source') {
-                            $source[$key] = substr($item->getAttribute('Value'), 0, 160);
+                            $source[$key] = $value;
+                        } elseif ($target === 'key') {
+                            // Ambiguous conflicting Key vs Data identity is
+                            // ignored, rather than accidentally correlating.
+                            if (isset($data[$key]) && $data[$key] !== $value) {
+                                $data[$key] = '';
+                            } else {
+                                $data[$key] = $value;
+                            }
                         } else {
-                            $data[$key] = substr($item->getAttribute('Value'), 0, 160);
+                            if (isset($data[$key]) && $data[$key] !== $value) {
+                                $data[$key] = '';
+                            } else {
+                                $data[$key] = $value;
+                            }
                         }
                     }
                 }
-                $msg = $xp->query('.//*[local-name()="Message"]', $node)->item(0);
                 $events[] = [
                     'topic' => $topic,
-                    'utc' => $msg instanceof DOMElement ? $msg->getAttribute('UtcTime') : '',
-                    'operation' => $msg instanceof DOMElement ? $msg->getAttribute('PropertyOperation') : '',
+                    'utc' => $message->getAttribute('UtcTime'),
+                    'operation' => $message->getAttribute('PropertyOperation'),
                     'source' => $source,
                     'data' => $data
                 ];
