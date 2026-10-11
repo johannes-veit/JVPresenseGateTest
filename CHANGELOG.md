@@ -1,3 +1,12 @@
+# v0.6.36 (Build 67) – tatsächlichen Dahua Smart-Plan nicht mehr mit Szenentyp verwechseln
+
+- Nach vollständiger Prüfung der beiden Kameraexports vom 11.10.2026: Beide IPC-HFW5442E-ZE haben `VideoAnalyseRule[0][2]` aktiv (`NumberStat1`, `Type=NumberStat`, `Class=NumberStat`, `Enable=true`) und zugleich `VideoAnalyseRule[0][3]` aktiv (`P03_*_HUMAN`, `Type=CrossRegionDetection`, `Class=Normal`, `Enable=true`).
+- Bisheriger **fachlicher Fehler im P03-Audit**: `VideoAnalyseGlobal[0].Scene.Type=Normal` wurde als bestätigte Aktivierung des IVS-Smart-Plans dargestellt. Laut CGI-Spezifikation ist `Scene.Type` aber ein Szenentyp, keine unabhängige Bestätigung des tatsächlich laufenden KI-Smart-Plans. Die falsche Bestätigung wird ersetzt durch `Videoanalyse-Szene=Normal readback | IVS-Smart-Plan-Aktivierung=NICHT VERIFIZIERT`.
+- Kontrollierter P03-Lauftest und lesender IVS-Audit warnen sichtbar vor allen **aktivierten fremden KI-Regeln außerhalb derselben IVS-Klasse** – beispielsweise `NumberStat1 (NumberStat/Class=NumberStat)` – als möglichem KI-Ressourcenkonflikt. Diese Regeln werden durch P03 **weder deaktiviert noch überschrieben**. Die Warnung belegt nicht, dass NumberStat zwingend die IVS-Ausführung blockiert; die tatsächliche Smart-Plan-Aktivierung bleibt gesondert zu verifizieren.
+- Bestehende TCP-Streams, Parser, Personengates, Kamera-Zugänge und fremde Symcon-Module unverändert. Ohne einen von der Kamera erzeugten spezifischen Human-/IVS-Code wird kein Zonenübergang erzeugt.
+- Regressionstests decken aktives fremdes NumberStat, deaktivierte fremde Analysevorlagen und die P03-eigene Regel getrennt ab.
+- Nächste sachliche Prüfung: IVS-Smart-Plan-Aktivierung und mögliche Ressourcenkonkurrenz an der Kamera prüfen, **bevor** ein weiterer physischer Durchgangstest verlangt wird.
+
 # v0.6.35 (Build 66) – P03-Lauftest mit unabhängiger Rohdatenkontrolle
 
 - Wichtiger, reproduzierbarer Diagnosefehler: Das Haupt-Testprotokoll #53524 erhielt ohne echten `HumanEventCounter`-Anstieg keine weiteren Einträge. Ein mehrere Minuten laufender Test mit zwei aktiven Streams und 0 Human-Meldungen sah deswegen aus wie ein eingefrorenes Modul.
