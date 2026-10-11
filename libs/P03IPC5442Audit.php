@@ -94,7 +94,8 @@ final class P03IPC5442Audit
      * credentials or full raw camera responses.
      */
     public static function summarizeRulePriorities(
-        string $body, int $expectedIndex, string $expectedName, int $expectedRuleID
+        string $body, int $expectedIndex, string $expectedName, int $expectedRuleID,
+        string $expectedType = 'CrossRegionDetection'
     ): array {
         $rules = [];
         foreach (preg_split('/\r\n|\n|\r/', $body) ?: [] as $line) {
@@ -117,7 +118,8 @@ final class P03IPC5442Audit
         $out = [
             'IVS REGEL-PRIORITÄT (vollständige Kamera-Antwort, keine abgeschnittenen 48 Felder)',
             'Erwartung aus P03-Audit: RuleIndex=' . $expectedIndex
-                . ', RuleID=' . $expectedRuleID . ', RuleName=' . $expectedName,
+                . ', RuleID=' . $expectedRuleID . ', RuleName=' . $expectedName
+                . ', RuleType=' . $expectedType,
             'Tatsächlich gefundene IVS-Regelindizes: ' . implode(', ', array_keys($rules))
         ];
         if ($rules === []) {
@@ -175,7 +177,7 @@ final class P03IPC5442Audit
         $out[] = 'ABGLEICH: RuleName='
             . ($actualName === $expectedName ? 'PASST' : 'WEICHT_AB')
             . ' | Enable=' . ($actualEnable === 'true' ? 'JA' : ($actualEnable === 'false' ? 'NEIN' : 'UNBEKANNT'))
-            . ' | Type=' . ($actualType === 'CrossRegionDetection' ? 'PASST' : 'WEICHT_AB_ODER_UNBEKANNT');
+            . ' | Type=' . (strcasecmp($actualType, $expectedType) === 0 ? 'PASST' : 'WEICHT_AB_ODER_UNBEKANNT');
         if ($expectedRuleID >= 0) {
             $actualID = $fields['Id'] ?? $fields['ID'] ?? null;
             $out[] = 'ABGLEICH: RuleID=' . ($actualID === null
@@ -201,6 +203,15 @@ final class P03IPC5442Audit
                 $other[$key] = $value;
             }
         }
+        // Rule identity can be valid while Dahua emits no IVS notifications.
+        // This reports the camera setting without writing it or assuming it
+        // alone is enough to explain the missing CrossLine events.
+        $messageEnable = $fields['EventHandler.MessageEnable'] ?? null;
+        $out[] = 'IVS EREIGNISMELDUNG EventHandler.MessageEnable='
+            . ($messageEnable === null ? 'NICHT_GELIEFERT' : $messageEnable)
+            . ($messageEnable !== null && in_array(strtolower((string)$messageEnable), ['false','0'], true)
+                ? ' | WARNUNG: Meldung deaktiviert (moegliche Ursache fehlender CrossLine-Events)'
+                : ' | Empfang muss weiterhin live geprueft werden');
         $out[] = 'Objekt-/Flächen-/Aktionsfilter: ' . count($priority)
             . ' Felder; Zeitplan: ' . count($schedule) . ' Felder';
         if ($priority === []) {
