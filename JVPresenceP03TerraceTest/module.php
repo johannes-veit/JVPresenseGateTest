@@ -146,6 +146,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('AuxJVManagedSocketID', 0);
         $this->RegisterAttributeInteger('AuxWorkManagedSocketID', 0);
         $this->RegisterAttributeString('P03RestoreSummary', 'Noch keine Wiederherstellung ausgeführt.');
+        $this->RegisterAttributeInteger('LastP03AutomaticDiagnosticAt', 0);
 
         $this->RegisterVariableString('PresenceSystemState', 'Presence Systemstatus', '', 1);
         $this->RegisterVariableString('HouseStatus', 'Hausstatus', '', 2);
@@ -193,6 +194,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         // Timer is registered exclusively in Create(), as required by
         // IP-Symcon; only its active interval changes in ApplyChanges.
         $this->SetTimerInterval('P03MastHealthTimer', 15000);
+        $this->WriteAttributeInteger('LastP03AutomaticDiagnosticAt', 0);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
@@ -438,11 +440,22 @@ class JVPresenceP03MultiCamera extends IPSModule
                         : (int)GetValue($sender);
                     $attribute=$isJV?'AuxJVLastSeenHumanCounter':'AuxWorkLastSeenHumanCounter';
                     if ($this->acceptP03NewCounterValue($attribute,$counter,$source)) {
-                        $this->recordP03HumanEvent($source, [
-                            'sender'=>$sender,
-                            'counter'=>$counter,
-                            'messageTimestamp'=>(int)$TimeStamp
-                        ]);
+                        if (!$this->ReadAttributeBoolean('TestActive')
+                            && !$this->ReadAttributeBoolean('ProductionEnabled')) {
+                            // Preserve the true incoming person event in the
+                            // protocol even when a crossing test is not armed.
+                            // Never turn this into a HOME/LAGER transfer.
+                            $this->appendProtocol('P03 HUMAN ROH ' . $source
+                                . ' Zaehler=' . $counter
+                                . ' – Test/Produktion AUS; kein Zonenwechsel');
+                        } else {
+                            $this->recordP03HumanEvent($source, [
+                                'sender'=>$sender,
+                                'counter'=>$counter,
+                                'messageTimestamp'=>(int)$TimeStamp
+                            ]);
+                        }
+                        $this->DiagnoseP03Connections(true);
                     }
                 }
                 return;
@@ -1562,6 +1575,19 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function P03MastHealthTimer(): void
     {
         $this->checkP03MastHealth(false);
+        // Every 30 s: read-only observer snapshots with fresh timestamps;
+        // never restart a healthy stream for lack of person detections.
+        $now = time();
+        $last = $this->ReadAttributeInteger('LastP03AutomaticDiagnosticAt');
+        if ($last <= 0 || $last > $now || $now - $last >= 30) {
+            $this->WriteAttributeInteger('LastP03AutomaticDiagnosticAt', $now);
+            try {
+                $this->DiagnoseP03Connections(true);
+            } catch (Throwable $e) {
+                $this->SendDebug('P03 Live-Diagnose',
+                    'Automatische Diagnose fehlgeschlagen: ' . get_class($e), 0);
+            }
+        }
     }
 
     public function CheckP03MastHealthNow(): void
@@ -2178,12 +2204,21 @@ class JVPresenceP03MultiCamera extends IPSModule
         return $this->genericCameraGet($host,$port,$username,$password,$uri);
     }
 
-    public function DiagnoseP03Connections(): void
+    public function DiagnoseP03Connections(bool $automatic = false): void
     {
+        $armed = $this->ReadAttributeBoolean('TestActive');
+        $production = $this->ReadAttributeBoolean('ProductionEnabled');
         $lines = [
             '=== P03 SOCKET-DIAGNOSE (NUR LESEN) ===',
-            'Zeit: ' . date('Y-m-d H:i:s'),
+            'Zeit: ' . date('Y-m-d H:i:s')
+                . ($automatic ? ' | AUTOMATISCH, alle 30 s + bei Human-Event' : ' | MANUELL'),
             'Hauptinstanz: #' . $this->InstanceID,
+            'TEST: ' . ($armed ? 'AKTIV' : 'AUS')
+                . ' | PRODUKTION: ' . ($production ? 'AKTIV' : 'AUS'),
+            'Hinweis: Human-Zähler laufen unabhängig vom Test. '
+                . (!$armed && !$production
+                    ? 'Ohne gestarteten Lauftest/Produktion wird KEIN Uebergang gebucht.'
+                    : 'Gueltige Zwei-Kamera-Sequenz kann einen Uebergang ausloesen.'),
             'Hinweis: Es werden keine Kameraeinstellungen oder Fremdmodule geändert.'
         ];
         $restore = trim($this->ReadAttributeString('P03RestoreSummary'));
@@ -2342,6 +2377,19 @@ class JVPresenceP03MultiCamera extends IPSModule
                         }
                         $lines[]='GENERIC-HUMAN-HINWEISE (kein Beweis): '
                             .(int)($wireState['genericHumanHintCount'] ?? 0);
+                        $lastProofAt = (int) ($wireState['lastHumanProofAt'] ?? 0);
+                        $lines[] = 'LETZTER ECHTER HUMAN-START: '
+                            . ($lastProofAt > 0
+                                ? date('H:i:s', $lastProofAt)
+                                    . ' (vor ' . max(0,time()-$lastProofAt) . ' s)'
+                                : 'SEIT OBSERVER-START KEINER')
+                            . ' | Quelle: ' . (string)($wireState['lastHumanProofCode'] ?? '');
+                        $humanCodes = (int)($wireState['smdHumanRawCount'] ?? 0)
+                            + (int)($wireState['crossRegionTotal'] ?? 0);
+                        if ($humanCodes === 0 && (int)($wireState['wireHeartbeatCount'] ?? 0) > 0) {
+                            $lines[] = 'STREAM-INHALT: Heartbeats / evtl. generische Bewegung, '
+                                . 'aber NOCH KEIN SMD-/CrossRegion-Code seit Observer-Start.';
+                        }
                     }
                 }
                 $humanHintVar=$this->findAuxVariable($id,'HumanHint');
@@ -2484,7 +2532,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         $lines[] = 'ERGEBNIS: Nur Istzustand erfasst – keine Verbindung neu gestartet.';
         $report = implode("\n", $lines);
         $this->SetValue('P03ConnectionDiagnosis', $report);
-        $this->setResult('P03 Socket-Diagnose erstellt. Bericht im Konfigurationsfenster und in Variable "P03 Socket-Diagnose (kopierbar)".');
+        if (!$automatic) {
+            $this->setResult('P03 Socket-Diagnose erstellt. Bericht im Konfigurationsfenster und in Variable "P03 Socket-Diagnose (kopierbar)".');
+        }
     }
 
     private static function p03DiagBool($value): string
