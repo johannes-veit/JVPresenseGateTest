@@ -2599,6 +2599,21 @@ class JVPresenceP03MultiCamera extends IPSModule
                         $lines[] = 'IPC5442 Wire-Zähler: Code-Events='
                             . (int) ($wireState['wireCodeCount'] ?? 0)
                             . ', Heartbeats=' . (int) ($wireState['wireHeartbeatCount'] ?? 0);
+                        $proofMode = (string)($wireState['proofMode'] ?? 'UNBEKANNT');
+                        $stairRules = $wireState['allowedStairRules'] ?? null;
+                        if (!is_array($stairRules)) {
+                            $stairRules = [];
+                        }
+                        $lines[] = 'TREPPEN-BEWEISMODUS: ' . $proofMode
+                            . ' | erlaubte Treppen-CrossLine-Regeln=' . count($stairRules);
+                        if ($proofMode === 'EXISTING_STAIR_IVS') {
+                            $lines[] = 'PERSONENLOGIK: SMD/SmartMotionHuman ist nur Rohdiagnose; '
+                                . 'CrossRegionDetection ersetzt keine zugeordnete Treppen-CrossLine.';
+                            if ($stairRules === []) {
+                                $lines[] = 'WARNUNG: Keine erlaubte Treppen-CrossLine zugeordnet. '
+                                    . 'Es wird bewusst kein Human-Start gebucht.';
+                            }
+                        }
                         $observed = json_decode((string)($wireState['observedCodeCounts'] ?? '{}'),true);
                         if (is_array($observed)) {
                             arsort($observed, SORT_NUMERIC);
