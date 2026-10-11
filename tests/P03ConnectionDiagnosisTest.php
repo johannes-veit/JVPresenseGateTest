@@ -25,10 +25,17 @@ $GLOBALS['variables'] = [
     26298=>json_encode(['reason'=>'HTTP 200 / Stream aktiv','configReady'=>true,'streaming'=>true,'parentOpen'=>true,'authPending'=>false,'authBlocked'=>false,'restartStage'=>0,'lastHttpRequest'=>time()-3,'lastCameraRx'=>time()-2]),
     56881=>json_encode(['reason'=>'WATCHDOG: HTTP/Digest-Handshake ausstehend','configReady'=>true,'streaming'=>false,'parentOpen'=>false,'authPending'=>true,'authBlocked'=>false,'restartStage'=>1,'lastHttpRequest'=>time()-19,'lastCameraRx'=>0]),
     73111=>json_encode(['time'=>'18:01:22','role'=>'JV_LEFT','decision'=>'RULE_OR_EVENTCODE_REJECTED','code'=>'CrossRegionDetection','action'=>'Start','ruleName'=>'OTHER_RULE','ruleId'=>7,'eventId'=>11,'objectId'=>5,'eventsTotal'=>9,'crossRegionTotal'=>2,'ruleMatches'=>0,'ruleRejected'=>2,'dedupeRejected'=>0,'humanCount'=>0]),
-    73112=>json_encode(['time'=>'18:01:33','role'=>'WORK_LEFT','decision'=>'HUMAN_START_COUNTED','code'=>'CrossRegionDetection','action'=>'Start','ruleName'=>'P03_WORK_LEFT_HUMAN','ruleId'=>4,'eventId'=>17,'objectId'=>3,'eventsTotal'=>40,'crossRegionTotal'=>8,'ruleMatches'=>5,'ruleRejected'=>3,'dedupeRejected'=>2,'humanCount'=>3])
+    73112=>json_encode(['time'=>'18:01:33','role'=>'WORK_LEFT','decision'=>'HUMAN_START_COUNTED','code'=>'CrossRegionDetection','action'=>'Start','ruleName'=>'P03_WORK_LEFT_HUMAN','ruleId'=>4,'eventId'=>17,'objectId'=>3,'eventsTotal'=>40,'crossRegionTotal'=>8,'ruleMatches'=>5,'ruleRejected'=>3,'dedupeRejected'=>2,'humanCount'=>3]),
+    73113=>json_encode([
+        ['time'=>'17:20:01','code'=>'CrossLineDetection','action'=>'Start',
+            'ruleName'=>'Überquerung zur Treppe','cfgRuleId'=>4,'ruleIdUpper'=>3,
+            'streamIndex'=>0,'classification'=>'Human','expectedRuleId'=>4,
+            'decision'=>'STAIR_IVS_NOT_MAPPED_OR_NOT_HUMAN',
+            'rejectionReason'=>'CAMERA_EVENT_RULE_ID_CONFLICT']
+    ],JSON_UNESCAPED_UNICODE)
 ];
 $GLOBALS['byIdent'] = [
-    57215=>['StreamOK'=>54893,'PersonDetected'=>55806,'HumanEventCounter'=>42076,'ObserverStatus'=>26298,'EventAudit'=>73111],
+    57215=>['StreamOK'=>54893,'PersonDetected'=>55806,'HumanEventCounter'=>42076,'ObserverStatus'=>26298,'EventAudit'=>73111,'LastIVSEvent'=>73113],
     27938=>['StreamOK'=>51090,'PersonDetected'=>33071,'HumanEventCounter'=>34838,'ObserverStatus'=>56881,'EventAudit'=>73112]
 ];
 $GLOBALS['writes'] = [];
@@ -180,6 +187,11 @@ verifyDiag(str_contains($report,'Entscheidung=HUMAN_START_COUNTED'),
     'WORK valid Human START explicitly identified');
 verifyDiag(str_contains($report,'RegelAbgewiesen=2'),
     'rule mismatch counter included in one-click diagnostic');
+verifyDiag(str_contains($report,'LETZTE CROSSLINE-EREIGNISSE: 1')
+    && str_contains($report,'CAMERA_EVENT_RULE_ID_CONFLICT')
+    && str_contains($report,'cfgRuleId=4')
+    && str_contains($report,'RuleID=3'),
+    'frozen CrossLine evidence survives later generic EventAudit and explains exact reject reason');
 verifyDiag(str_contains($report,'Duplikate=2'),
     'rejected duplicate counter included in one-click diagnostic');
 verifyDiag(!str_contains($report,'secret-jv') && !str_contains($report,'secret-work'),'credentials not exposed');
