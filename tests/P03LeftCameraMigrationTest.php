@@ -93,6 +93,7 @@ class IPSModule {
     public array $timers=[];
     public function Create():void {}
     public function ApplyChanges():void {}
+    protected function GetIDForIdent(string $ident):int { return 0; }
     protected function ReadPropertyString(string $key):string { return (string)($this->properties[$key]??'');}
     protected function ReadPropertyInteger(string $key):int { return (int)($this->properties[$key]??0);}
     protected function ReadPropertyBoolean(string $key):bool { return (bool)($this->properties[$key]??false);}
