@@ -19,8 +19,10 @@ class JVPresenceP03MultiCamera extends IPSModule
     private const TERRACE_DEFAULT_HOST = '192.168.107.110';
     private const VM_UPDATE_ID = 10603;
     private const IM_CHANGESTATUS_ID = 10505;
-    private const AUX_JV_DEFAULT_HOST = '192.168.107.96';
-    private const AUX_WORK_DEFAULT_HOST = '192.168.107.99';
+    private const AUX_JV_DEFAULT_HOST = '192.168.107.95';
+    private const AUX_JV_OLD_RIGHT_HOST = '192.168.107.96';
+    private const AUX_WORK_DEFAULT_HOST = '192.168.107.94';
+    private const AUX_WORK_OLD_RIGHT_HOST = '192.168.107.99';
     private const AUX_JV_ROLE = 'JV_LEFT';
     private const AUX_WORK_ROLE = 'WORK_LEFT';
     private const RULE_NAME = 'P03_HOME_LAGER';
@@ -1688,6 +1690,202 @@ class JVPresenceP03MultiCamera extends IPSModule
      * reconnect, RPC2, setConfig or updates an unrelated module or camera.
      * The report contains no username, password, HTTP authorization or nonce.
      */
+    /**
+     * v0.7.6 – explicit and idempotent repair of historical WRONG camera
+     * assignments. The old software pointed at the RIGHT camera on each
+     * side although the hand-drawn staircase IVS lines are on LEFT cameras.
+     *
+     * The existing 53879/57215/27938 P03 instances and private 17785/55478
+     * sockets are preserved. There are NO camera configuration writes, no
+     * new sockets and NO changes to a foreign shared Symcon IO.
+     *
+     * No automatic silent migration on module update: current persisted
+     * instance properties must never be altered merely by new defaults.
+     */
+    public function SwitchToVerifiedLeftCameras(): void
+    {
+        $lines=[
+            '=== P03 KORREKTUR KAMERAZUORDNUNG: LINKS (V0.7.6) ===',
+            'Zeit: '.date('Y-m-d H:i:s'),
+            'Soll: JV_LEFT=192.168.107.95; WORK_LEFT=192.168.107.94.',
+            'Bisher irrtuemlich: JV_RIGHT=192.168.107.96; WORK_RIGHT=192.168.107.99.',
+            'Kein Kamera-setConfig, kein IVS-Write, keine Fremdinstanzen.'
+        ];
+        $pair=[
+            ['role'=>self::AUX_JV_ROLE,'prop'=>'AuxJVHost',
+                'before'=>self::AUX_JV_OLD_RIGHT_HOST,'after'=>self::AUX_JV_DEFAULT_HOST,
+                'observer'=>57215,'socket'=>17785,
+                'observerAttr'=>'AuxJVInstanceID','socketAttr'=>'AuxJVManagedSocketID'],
+            ['role'=>self::AUX_WORK_ROLE,'prop'=>'AuxWorkHost',
+                'before'=>self::AUX_WORK_OLD_RIGHT_HOST,'after'=>self::AUX_WORK_DEFAULT_HOST,
+                'observer'=>27938,'socket'=>55478,
+                'observerAttr'=>'AuxWorkInstanceID','socketAttr'=>'AuxWorkManagedSocketID']
+        ];
+        $preflight=[];
+        try {
+            // The known IDs are specific to this single P03 installation.
+            // Clones are NOT permitted to claim or relocate these objects.
+            if ($this->InstanceID!==53879) {
+                throw new RuntimeException('Nur P03 Hauptinstanz #53879 ist fuer diese Migration freigegeben.');
+            }
+            $instanceList=array_map('intval',IPS_GetInstanceList());
+            $port=$this->ReadPropertyInteger('CameraPort');
+            if ($port<1 || $port>65535) {
+                throw new RuntimeException('Kamera-HTTP-Port nicht gueltig.');
+            }
+            foreach ($pair as $entry) {
+                $role=(string)$entry['role'];
+                $before=(string)$entry['before'];
+                $after=(string)$entry['after'];
+                $configured=trim($this->ReadPropertyString((string)$entry['prop']));
+                if ($configured!==$before && $configured!==$after) {
+                    throw new RuntimeException($role.': Hauptinstanz hat abweichenden Host '.$configured
+                        .' – keine automatische Ueberschreibung kundenspezifischer IPs.');
+                }
+                $id=(int)$entry['observer'];
+                $socket=(int)$entry['socket'];
+                if (!IPS_InstanceExists($id) || !IPS_InstanceExists($socket)) {
+                    throw new RuntimeException($role.': Bekannter P03-Observer oder Client Socket fehlt.');
+                }
+                $observer=IPS_GetInstance($id);
+                $parent=IPS_GetInstance($socket);
+                if (strcasecmp((string)($observer['ModuleInfo']['ModuleID']??''),
+                        self::AUX_OBSERVER_MODULE_GUID)!==0
+                    || (int)($observer['ConnectionID']??0)!==$socket
+                    || strcasecmp((string)($parent['ModuleInfo']['ModuleID']??''),
+                        self::CLIENT_SOCKET_GUID)!==0
+                    || (string)IPS_GetProperty($id,'Role')!==$role) {
+                    throw new RuntimeException($role.': Modul-GUID, Rolle oder dedizierter Socket stimmen nicht.');
+                }
+                $observerHost=trim((string)IPS_GetProperty($id,'CameraHost'));
+                $socketHost=trim((string)IPS_GetProperty($socket,'Host'));
+                if (!in_array($observerHost,[$before,$after],true)
+                    || !in_array($socketHost,[$before,$after],true)
+                    || $observerHost!==$socketHost
+                    || (int)IPS_GetProperty($socket,'Port')!==$port) {
+                    throw new RuntimeException($role.': Aktuelle Observer/Socket-Hosts oder Port widerspruechlich.');
+                }
+                foreach ([
+                    ['name'=>'Observer','key'=>$entry['observerAttr'],'expected'=>$id],
+                    ['name'=>'Socket','key'=>$entry['socketAttr'],'expected'=>$socket]
+                ] as $identity) {
+                    $saved=$this->ReadAttributeInteger((string)$identity['key']);
+                    if ($saved>0 && $saved!==(int)$identity['expected']) {
+                        throw new RuntimeException($role.': Gespeicherte '.$identity['name']
+                            .'-ID weicht ab – keine Fremdinstanz anfassen.');
+                    }
+                }
+                $users=[];
+                foreach ($instanceList as $other) {
+                    if ($other>0 && IPS_InstanceExists($other)
+                        && (int)(IPS_GetInstance($other)['ConnectionID']??0)===$socket) {
+                        $users[]=$other;
+                    }
+                }
+                sort($users,SORT_NUMERIC);
+                if ($users!==[$id]) {
+                    throw new RuntimeException($role.': Socket #'.$socket
+                        .' ist geteilt oder nicht ausschliesslich dem P03-Observer zugeordnet.');
+                }
+                $preflight[]=$entry;
+                $lines[]='VORPRUEFUNG OK '.$role.': Observer #'.$id
+                    .' / exklusiver Socket #'.$socket.' / bisher '.$socketHost.'.';
+            }
+        } catch (Throwable $e) {
+            $lines[]='ABBRUCH VOR AENDERUNG: '.$e->getMessage();
+        }
+        if (count($preflight)!==2) {
+            $lines[]='KEINE Hosts, Sockets, Observer oder Kameras geaendert.';
+            $report=implode("\n",$lines);
+            $this->SetValue('P03ConnectionDiagnosis',$report);
+            $this->appendProtocol($report);
+            return;
+        }
+
+        // Old right-camera evidence is invalid for the two LEFT cameras.
+        // Close EVERY production/proof gate BEFORE changing either socket.
+        $this->WriteAttributeBoolean('TestActive',false);
+        $this->WriteAttributeBoolean('ProductionEnabled',false);
+        $this->WriteAttributeBoolean('P03MultiAuditPassed',false);
+        $this->WriteAttributeBoolean('P03SimulationPassed',false);
+        $this->WriteAttributeString('P03HumanEvents','[]');
+        $this->WriteAttributeString('P03PendingCrossings','[]');
+        $this->WriteAttributeString('P03DirectionMap','{}');
+        $this->WriteAttributeInteger('P03VerifiedCount',0);
+        $this->WriteAttributeString('P03ActionCounts',
+            '{"HOME_TO_LAGER":0,"LAGER_TO_HOME":0}');
+        $this->WriteAttributeString('AuxJVAllowedIVSRules','[]');
+        $this->WriteAttributeString('AuxWorkAllowedIVSRules','[]');
+        $this->SetTimerInterval('P03ProofTimer',0);
+        $this->SetValue('TestActive',false);
+        $this->SetValue('P03ProofState','GESPERRT – Wechsel zu linken Kameras, kein Live-Personenbeweis.');
+        $this->SetValue('P03DirectionStatus','NICHT VERIFIZIERT – Kameras neu zugeordnet.');
+        $this->setReady(false);
+
+        $migrationOK=true;
+        foreach ($preflight as $entry) {
+            $role=(string)$entry['role'];
+            $host=(string)$entry['after'];
+            $id=(int)$entry['observer'];
+            $socket=(int)$entry['socket'];
+            try {
+                // Only the pre-verified, exclusively owned Client Socket.
+                if (trim((string)IPS_GetProperty($socket,'Host'))!==$host) {
+                    IPS_SetProperty($socket,'Host',$host);
+                    IPS_ApplyChanges($socket);
+                }
+                IPS_SetProperty($id,'CameraHost',$host);
+                IPS_SetProperty($id,'CameraPort',$port);
+                IPS_SetProperty($id,'RuleIndex',-1);
+                IPS_SetProperty($id,'RuleID',-1);
+                IPS_SetProperty($id,'ProofMode','EXISTING_STAIR_IVS');
+                IPS_SetProperty($id,'AllowedIVSRules','[]');
+                IPS_ApplyChanges($id);
+                if (!IPS_InstanceExists($id)
+                    || (int)(IPS_GetInstance($id)['ConnectionID']??0)!==$socket
+                    || (string)IPS_GetProperty($id,'Role')!==$role
+                    || trim((string)IPS_GetProperty($id,'CameraHost'))!==$host
+                    || trim((string)IPS_GetProperty($socket,'Host'))!==$host) {
+                    throw new RuntimeException('Host oder exklusiver Parent nach ApplyChanges nicht korrekt.');
+                }
+                // Reset only P03-local raw counters from the wrong cameras.
+                // Values #42076/#34838 are bound to current observer object IDs.
+                foreach (['HumanEventCounter'=>0,'PersonDetected'=>false,
+                    'LastEvent'=>'','LastIVSEvent'=>''] as $ident=>$value) {
+                    $variableID=$this->findAuxVariable($id,(string)$ident);
+                    if ($variableID>0) {
+                        SetValue($variableID,$value);
+                    }
+                }
+                $this->WriteAttributeInteger((string)$entry['observerAttr'],$id);
+                $this->WriteAttributeInteger((string)$entry['socketAttr'],$socket);
+                $lines[]='OK '.$role.': Observer #'.$id.' und Client Socket #'.$socket
+                    .' zeigen auf '.$host.'; alter Human-Zaehler zurueckgesetzt.';
+            } catch (Throwable $e) {
+                $migrationOK=false;
+                $lines[]='FEHLER '.$role.': '.get_class($e).' – '.$e->getMessage();
+            }
+        }
+        if ($migrationOK) {
+            // Do not save the new main configuration before both P03
+            // observer+socket pairs passed a second verification.
+            IPS_SetProperty($this->InstanceID,'AuxJVHost',self::AUX_JV_DEFAULT_HOST);
+            IPS_SetProperty($this->InstanceID,'AuxWorkHost',self::AUX_WORK_DEFAULT_HOST);
+            IPS_ApplyChanges($this->InstanceID);
+            $lines[]='HAUPTINSTANZ #'.$this->InstanceID.': neue Hosts uebernommen.';
+            $this->baselineP03Counter('AuxJVEventCounterVarID','AuxJVLastSeenHumanCounter');
+            $this->baselineP03Counter('AuxWorkEventCounterVarID','AuxWorkLastSeenHumanCounter');
+        } else {
+            $lines[]='HAUPTINSTANZ UNVERAENDERT. P03 Test/Produktion bleiben gesperrt;'
+                .' alle P03 Sockets/Observer vor erneutem Versuch pruefen.';
+        }
+        $lines[]='Keine IVS-Kameraregeln, keine rechten Kameras und keine Fremdmodule geaendert.';
+        $lines[]='Naechster Schritt: P03 LIVE-AUDIT NUR LESEN; KEIN Lauftest.';
+        $report=implode("\n",$lines);
+        $this->SetValue('P03ConnectionDiagnosis',$report);
+        $this->appendProtocol($report);
+    }
+
     /**
      * Controlled recovery for the TWO EXISTING P03 mast observer instances.
      * Only those exact historical module IDs + dedicated owned Client Sockets.

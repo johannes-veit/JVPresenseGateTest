@@ -43,7 +43,7 @@
         },
         {
           "type": "Label",
-          "caption": "Standard: JV_LEFT 192.168.107.96, WORK_LEFT 192.168.107.99. P03 besitzt dafür eigene interne Observer und eigene Human-IVS-Regeln. AussenlichtAutomatik2 wird nicht verwendet oder verändert."
+          "caption": "Kameras durch Weboberfläche bestätigt: JV_LEFT=192.168.107.95, WORK_LEFT=192.168.107.94. 192.168.107.96 und .99 sind die RECHTEN Kameras und dürfen NICHT als Mastkameras verwendet werden. Nur bestehende P03-Observer/Sockets; keine Kamera-/IVS-Änderungen."
         }
       ]
     },
@@ -85,12 +85,21 @@
   "actions": [
     {
       "type": "Button",
+      "caption": "P03 KORREKTUR: BEIDE LINKEN KAMERAS ZUORDNEN (einmalig, nur P03)",
+      "onClick": "JVP03MC_SwitchToVerifiedLeftCameras($id);"
+    },
+    {
+      "type": "Label",
+      "caption": "Korrigiert Hauptinstanz #53879 sowie die bestehenden Observer #57215/#27938 und deren exklusive Client-Sockets #17785/#55478 auf JV links 192.168.107.95 und Werkstatt links 192.168.107.94. Zuerst strenge Bestands-/Exklusivitätsprüfung. Kein KamerasetConfig, keine neue Instanz, kein fremder Socket. Alte 0/6-Human-Zähler und Richtungsbeweise werden zurückgesetzt. Ergebnis in P03 Socket-Diagnose, anschließend LIVE-Audit NUR LESEN."
+    },
+    {
+      "type": "Button",
       "caption": "P03 VORHANDENE OBSERVER 57215 + 27938 WIEDERHERSTELLEN (nur P03)",
       "onClick": "JVP03MC_RestoreP03Observers($id);"
     },
     {
       "type": "Label",
-      "caption": "Zweistufige Sicherheitsprüfung: beide P03-Observer und eigene Client-Sockets 17785/55478 müssen vorhanden, exklusiv und mit richtiger Modul-GUID/IP verbunden sein. Erst danach werden ausschließlich die beiden bestehenden Observer mit Host, Rolle und P03-Zugangsdaten neu konfiguriert. Keine neuen Instanzen/Sockets, keine Kamera- oder Fremdmoduländerung. Ergebnis in P03 Socket-Diagnose Variable #35115 und Testprotokoll #53524."
+      "caption": "Zweistufige Sicherheitsprüfung: beide P03-Observer und eigene Client-Sockets 17785/55478 müssen vorhanden, exklusiv und mit richtiger Modul-GUID/IP verbunden sein. Erst danach werden ausschließlich die beiden bestehenden Observer mit Host, Rolle und P03-Zugangsdaten neu konfiguriert. Keine neuen Instanzen/Sockets, keine Kamera- oder Fremdmoduländerung. Ergebnis in P03 Socket-Diagnose Variable #35115 und Testprotokoll #53524. Dieser ältere Wiederherstellungsbutton setzt KEINE Kamera-Socket-IP um; für den links/rechts-Wechsel ausschließlich den neuen Korrekturbutton verwenden."
     },
     {
       "type": "Button",
