@@ -1,3 +1,12 @@
+# v0.6.35 (Build 66) – P03-Lauftest mit unabhängiger Rohdatenkontrolle
+
+- Wichtiger, reproduzierbarer Diagnosefehler: Das Haupt-Testprotokoll #53524 erhielt ohne echten `HumanEventCounter`-Anstieg keine weiteren Einträge. Ein mehrere Minuten laufender Test mit zwei aktiven Streams und 0 Human-Meldungen sah deswegen aus wie ein eingefrorenes Modul.
+- Bei aktiviertem P03-Lauftest schreibt ein 30-s-Timer jetzt einen begrenzten `P03 ROHMONITOR 30s`-Eintrag ins bekannte Hauptprotokoll. Je Kamera: LIVE-Status, neue rohe Dahua-Codes, neue `VideoMotion`, `VideoMotionInfo`, echte `CrossRegionDetection`, echte `SmartMotionHuman` und aktueller HumanEventCounter. Messbasis wird beim Teststart erstellt, vorherige historische sechs WORK-Treffer werden ausdrücklich NICHT als neu ausgegeben.
+- Observer `JVPresenceP03AuxObserver` schreibt bei massenhaften generischen `VideoMotionInfo`-, `VideoMotion`- und `InterVideoAccess`-Events die sichtbaren WireProbe-/EventAudit-Variablen höchstens alle 15 s neu. **Sämtliche Rohzähler laufen weiter**, und echte KI-/Person-Ereignisse werden jederzeit unmittelbar verarbeitet und gemeldet. Damit sinkt die bis dato unnötige Variablen-Update-Flut im SymBox-System.
+- P03-2-Kamera-Beweissicherheit unverändert: Generische Bewegung/Heartbeat/Stand-by erzeugen niemals einen Human-Beweis, einen Transfer oder eine Zonenänderung. Kein Kamera-Write, keine Änderung von P05, AussenlichtAutomatik2 oder Alarmmodulen.
+- Regressionstests für automatische 30-s-Rohberichte, die 30-s-Drosselung, 40 schnelle generische Motion-Ereignisse und direkt danach einen weiterhin akzeptierten echten SMD-Human-Start.
+- Diese Version behebt die fehlende Sichtbarkeit und hohe SymBox-Last. Die Ursache, warum die Kamera-Firmware trotz verifizierter SMD-/IVS-Konfiguration keine neuen KI-Human-Events sendet, bleibt anhand von Live-Kameraereignissen vor Ort zu klären.
+
 # v0.6.34 (Build 65) – ruhige, statische P03-Instanzkonfiguration
 
 - Schwerer Bedienfehler behoben: In `GetConfigurationForm()` waren automatisch aktualisierte Socket-Diagnose, umfangreicher IPC5442-Audit, Observer-Bestandsaudit und dynamischer Teststatus als aufgeklappte/wechselnde Labels eingebaut. Wiederholter Neuaufbau ließ die Symcon-Konfigurationsansicht blinken und an den Anfang springen; Buttons waren kaum erreichbar.
