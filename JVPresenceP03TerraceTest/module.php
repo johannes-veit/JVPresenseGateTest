@@ -2310,6 +2310,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
                 $wireVar = $this->findAuxVariable($id, 'WireProbe');
                 $wireStatus = $this->findAuxVariable($id, 'ObserverStatus');
+                $wireState=[];
                 if ($wireVar > 0) {
                     $lastHeader = trim((string) GetValue($wireVar));
                     $lines[] = 'IPC5442 ROHDATEN VOR PARSER: ' . ($lastHeader !== ''
@@ -2340,9 +2341,9 @@ class JVPresenceP03MultiCamera extends IPSModule
                             . ', Duplikate=' . (int) ($audit['dedupeRejected'] ?? 0)
                             . ', Human=' . (int) ($audit['humanCount'] ?? 0);
                         $lines[] = 'PERSONENQUELLEN: SMD Human roh='
-                            . (int)($observer['smdHumanRawCount']??0)
-                            . ', SMD Human akzeptiert='.(int)($observer['smdHumanProofCount']??0)
-                            . ', letzte Personquelle='.(string)($observer['lastHumanProofCode']??'<noch keine>')
+                            . (int)($wireState['smdHumanRawCount']??0)
+                            . ', SMD Human akzeptiert='.(int)($wireState['smdHumanProofCount']??0)
+                            . ', letzte Personquelle='.(string)($wireState['lastHumanProofCode']??'<noch keine>')
                             . ' | generische Bewegung ist kein Personennachweis.';
                         $lines[] = 'IVS ID: Regel=' . (string) ($audit['ruleName'] ?? '?')
                             . ', RuleID=' . (string) ($audit['ruleId'] ?? '?')
