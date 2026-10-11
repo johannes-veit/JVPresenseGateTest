@@ -60,6 +60,8 @@ jobs:
         run: php tests/P03AuxHumanRuleTest.php
       - name: P03 observer HTTP/Digest/Eventstream integration simulation
         run: php tests/P03AuxObserverStreamTest.php
+      - name: P03 actual left-camera identity and safe existing instance migration
+        run: php tests/P03LeftCameraMigrationTest.php
       - name: P03 one-click read-only socket diagnosis
         run: php tests/P03ConnectionDiagnosisTest.php
       - name: P03 Symcon Create and ApplyChanges registration safety
