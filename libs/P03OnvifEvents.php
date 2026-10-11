@@ -106,9 +106,7 @@ final class P03OnvifEvents
         // ONVIF's standard Crossed notification generally contains only an
         // ObjectId (NO human class). That is INSUFFICIENT because both humans
         // and vehicles are permitted by the user-defined camera rule.
-        $classification = strtolower(trim((string)(
-            $data['ObjectType'] ?? $data['ObjectClass']
-            ?? $data['TargetType'] ?? $data['ClassType'] ?? '')));
+        $classification = self::extractObjectClassification($data);
         if (!in_array($classification, ['human','person','pedestrian'], true)) {
             return false;
         }
@@ -126,20 +124,55 @@ final class P03OnvifEvents
             'utc'=>substr((string)($event['utc']??''),0,40),
             'operation'=>substr((string)($event['operation']??''),0,40),
             'rule'=>substr((string)($source['Rule']??$source['RuleName']??''),0,100),
-            'objectType'=>substr((string)($data['ObjectType']??$data['ObjectClass']??$data['TargetType']??''),0,50),
+            'objectType'=>substr(self::extractObjectClassification($data),0,50),
+            'classRaw'=>substr((string)($data['ClassTypes']??$data['ClassType']??$data['ObjectType']??''),0,80),
             'objectId'=>substr((string)($data['ObjectId']??$data['ObjectID']??''),0,40),
             'humanStairCrossing'=>self::isHumanStairCrossing($event)
         ];
     }
 
+    /**
+     * Real ONVIF Analytics can use ClassTypes (plural), while vendors
+     * sometimes use ObjectType, TargetType, ClassType or ObjectClass.
+     * Reject contradictory/multi-object classifications (Human,Vehicle)
+     * rather than guessing one of several object classes.
+     *
+     * @param array<string,mixed> $data
+     */
+    public static function extractObjectClassification(array $data): string
+    {
+        $normalized=[];
+        foreach (['ClassTypes','ObjectType','ObjectClass','TargetType','ClassType'] as $key) {
+            foreach ($data as $actualKey=>$value) {
+                if (strcasecmp((string)$actualKey,$key)!==0 || !is_scalar($value)) {
+                    continue;
+                }
+                $raw=strtolower(trim((string)$value));
+                if ($raw==='') {
+                    continue;
+                }
+                // Human, Vehicle; Human|Vehicle; whitespace separated,
+                // or XML list typed as "Human". Never accept mixed classes.
+                $types=preg_split('/[\s,;|]+/u',$raw,-1,PREG_SPLIT_NO_EMPTY);
+                if (!is_array($types)) {
+                    return '';
+                }
+                foreach ($types as $type) {
+                    $normalized[$type]=true;
+                }
+            }
+        }
+        return count($normalized)===1 ? (string)array_key_first($normalized) : '';
+    }
+
     /** Only allow same camera host to prevent ONVIF XAddr SSRF or LAN pivot. */
-    public static function verifiedSameHostUrl(string $url, string $host): ?string
+    public static function verifiedSameHostUrl(string $url, string $host, int $port=80): ?string
     {
         $parts = parse_url($url);
         if (!is_array($parts) || strtolower((string)($parts['scheme']??''))!=='http'
             || (string)($parts['host']??'')!==$host
             || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment'])
-            || (int)($parts['port']??80)!==80) {
+            || (int)($parts['port']??80)!==$port) {
             return null;
         }
         $path = (string)($parts['path']??'');
