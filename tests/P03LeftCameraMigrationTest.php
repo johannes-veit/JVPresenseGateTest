@@ -104,6 +104,10 @@ class IPSModule {
     protected function WriteAttributeBoolean(string $key,bool $value):void { $this->attributes[$key]=$value; }
     protected function WriteAttributeString(string $key,string $value):void { $this->attributes[$key]=$value; }
     protected function SetValue(string $key,mixed $value):void { $this->values[$key]=$value; }
+    public array $buffers=[];
+    protected function SetBuffer(string $key,string $value):void {$this->buffers[$key]=$value;}
+    protected function GetBuffer(string $key):string {return (string)($this->buffers[$key]??'');}
+
     protected function GetValue(string $key):mixed {return $this->values[$key]??null;}
     protected function SetTimerInterval(string $key,int $v):void {$this->timers[$key]=$v;}
     protected function SendDebug(string $t,string $d,int $f):void{}
