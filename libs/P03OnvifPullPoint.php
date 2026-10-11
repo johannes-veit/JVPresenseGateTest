@@ -111,7 +111,13 @@ final class P03OnvifPullPoint
             . ' xmlns:tev="http://www.onvif.org/ver10/events/wsdl"'
             . ' xmlns:wsa="http://www.w3.org/2005/08/addressing">'
             . '<s:Header><wsa:Action>' . htmlspecialchars($actionUri,ENT_XML1)
-            . '</wsa:Action><wsa:To>'
+            . '</wsa:Action><wsa:MessageID>urn:uuid:'
+            . substr(bin2hex(random_bytes(16)),0,8).'-'
+            . substr(bin2hex(random_bytes(16)),0,4).'-'
+            . substr(bin2hex(random_bytes(16)),0,4).'-'
+            . substr(bin2hex(random_bytes(16)),0,4).'-'
+            . substr(bin2hex(random_bytes(16)),0,12)
+            . '</wsa:MessageID><wsa:To>'
             . htmlspecialchars($url, ENT_XML1) . '</wsa:To>'
             . self::wsUsernameToken($username,$password)
             . self::referencesSoapHeader($referenceParams) . '</s:Header>'
