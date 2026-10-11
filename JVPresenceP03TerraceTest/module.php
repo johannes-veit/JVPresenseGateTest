@@ -3775,6 +3775,67 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /**
+     * Only after the standard CGI and RPC2 rule reads disagree with the
+     * camera Web UI: inspect independent native Web UI IVS sources.
+     *
+     * Some firmware exposes Web IVS through a separate native analytics
+     * interface. We cannot assume the method/response shape, so probe
+     * read-only get/list operations and report the RAW source identity.
+     * Never turn a probe result into a Human proof without matching an
+     * identifiable concrete tripwire and independently checking its filter.
+     */
+    private function probeP03NativeIvsSourcesReadOnly(
+        string $host, int $port, string $session, string $user, string $pass,
+        string $role
+    ): void {
+        $this->appendProtocol($role . ': WEB-IVS QUELLENSUCHE NUR LESEN: '
+            . 'V0.6.38 hat nur eine einzige Konfigurationsebene ausgewertet; '
+            . 'die Weboberfläche kann eine andere API verwenden.');
+
+        // Native Dahua CGI families (read operations ONLY). Unsupported
+        // endpoints return ERROR/N/A and cannot change configuration.
+        foreach ([
+            'VideoInAnalyse/Rule' => '/cgi-bin/VideoInAnalyse.cgi?action=getRules&Channel=1',
+            'devVideoAnalyse/Rule' => '/cgi-bin/devVideoAnalyse.cgi?action=getRules&channel=1',
+            'devVideoAnalyse/Scene' => '/cgi-bin/devVideoAnalyse.cgi?action=getSceneList',
+            'VideoInAnalyse/Caps' => '/cgi-bin/VideoInAnalyse.cgi?action=getCaps&Channel=1'
+        ] as $label => $path) {
+            $result = $this->genericCameraGet($host, $port, $user, $pass, $path, 5);
+            $body = trim((string)($result['body'] ?? ''));
+            $size = strlen($body);
+            // Only a bounded diagnostic preview. A few firmwares use native
+            // JSON; never persist credentials or authorization headers.
+            $preview = substr($body, 0, 1200);
+            $preview = preg_replace(
+                '/("(?:password|secret|token|credential|key|session)"\\s*:\\s*")[^"]*(")/i',
+                '$1[geschwaerzt]$2', $preview) ?? '[nicht darstellbar]';
+            $this->appendProtocol($role . ': WEB-IVS ' . $label
+                . ' HTTP=' . (int)($result['http'] ?? 0)
+                . ' OK=' . (!empty($result['ok']) ? 'JA' : 'NEIN')
+                . ' LEN=' . $size
+                . ' BEGINN=' . $this->singleLine($preview));
+        }
+
+        // Ask the running firmware which RPC2 methods actually exist.
+        // No dynamic method execution, only method name discovery.
+        $methods = $this->rpc2Call($host, $port, $session, 748,
+            'system.listMethod', null);
+        $raw = json_encode($methods['json'] ?? [], JSON_UNESCAPED_SLASHES) ?: '';
+        preg_match_all('/(?:devVideoAnalyse|VideoInAnalyse)\\.[A-Za-z0-9_]+/',
+            $raw, $matches);
+        $available = array_values(array_unique($matches[0] ?? []));
+        $this->appendProtocol($role . ': RPC2 VERFUEGBARE NATIVE IVS-METHODEN '
+            . 'status=' . (!empty($methods['ok']) ? 'OK' : 'NICHT_VERFUEGBAR')
+            . ' HTTP=' . (int)($methods['http'] ?? 0)
+            . ': ' . json_encode(array_slice($available, 0, 40),
+                JSON_UNESCAPED_SLASHES));
+
+        // No automatically inferred configuration/IDs and no write requests.
+        $this->appendProtocol($role . ': ENDE WEB-IVS QUELLENSUCHE: '
+            . 'keine IVS-Regel geändert; fehlende Treppenlinien bleiben GESPERRT.');
+    }
+
+    /**
      * Camera read-only IVS audit: no setConfig, no template write, no restore.
      * Do not trust a saved P03 RuleIndex/RuleID without camera-side readback.
      *
@@ -3806,7 +3867,6 @@ class JVPresenceP03MultiCamera extends IPSModule
         // config and the native GUI clearly disagreed about manual IVS lines.
         $read = $this->rpc2Call($host, $port, $session, 741,
             'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
-        $this->rpc2Call($host, $port, $session, 749, 'global.logout', null);
         $cgi = $this->genericCameraGet($host, $port,
             (string)$cfg['username'], (string)$cfg['password'],
             '/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
@@ -3819,11 +3879,25 @@ class JVPresenceP03MultiCamera extends IPSModule
             ? P03ExistingIvsLines::fromCgi((string)($cgi['body'] ?? '')) : [];
         $cgiSelection = P03ExistingIvsLines::select($cgiRules);
         $mapped = P03ExistingIvsLines::sameSelectedStair($rpcSelection, $cgiSelection);
-        $this->appendProtocol($role . ': VIDEOANALYSE-VERGLEICH RPC2: '
-            . json_encode($rpcSelection['all'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        $this->appendProtocol($role . ': VIDEOANALYSE-VERGLEICH CGI (HTTP '
-            . (int)($cgi['http'] ?? 0) . '): '
-            . json_encode($cgiSelection['all'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        // Expose the unfiltered camera inventory. [] was a BUG in former
+        // reports: it concealed NumberStat/P03/etc. and looked like empty API
+        // responses, though we silently threw away every non-CrossLine rule.
+        $this->appendProtocol($role . ': RPC2 ALLE REGELN (ungefiltert, '
+            . count($rules) . '): ' . json_encode(
+                P03ExistingIvsLines::inventory($rules),
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $this->appendProtocol($role . ': RPC2 TRANSPORT: '
+            . json_encode(P03ExistingIvsLines::wireReadSummary($read),
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $this->appendProtocol($role . ': CGI ALLE REGELN (ungefiltert, '
+            . count($cgiRules) . ', HTTP ' . (int)($cgi['http'] ?? 0)
+            . '): ' . json_encode(
+                P03ExistingIvsLines::inventory($cgiRules),
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $this->appendProtocol($role . ': TREPPENFILTER RPC2='
+            . json_encode($rpcSelection['all'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            . ' | CGI=' . json_encode($cgiSelection['all'],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         $this->appendProtocol($role . ': TREPPENLINIE '
             . ($mapped ? 'IN CGI UND RPC2 EINDEUTIG – ' : 'NICHT VERIFIZIERT – ')
             . ($mapped ? 'Name, RuleID und Objektfilter stimmen überein'
@@ -3832,6 +3906,15 @@ class JVPresenceP03MultiCamera extends IPSModule
                     . '; IDENTITAET NICHT ABGESICHERT')
             . '. Straße und P03-Rechteck sind keine Übertrittsbeweise.');
         $selection = $rpcSelection;
+        if (!$mapped) {
+            // Probe the independent Web UI / native analytics interfaces only
+            // in a failed read-only audit, not periodically. No set/write/kill.
+            $this->probeP03NativeIvsSourcesReadOnly(
+                $host, $port, $session, (string)$cfg['username'],
+                (string)$cfg['password'], $role
+            );
+        }
+        $this->rpc2Call($host, $port, $session, 749, 'global.logout', null);
         if ($mapped) {
             $this->WriteAttributeString($attr, json_encode($selection['allowed'],
                 JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]');
