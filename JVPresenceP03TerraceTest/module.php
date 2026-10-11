@@ -3094,6 +3094,20 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
 
         $lines[] = '';
+        $lines[] = '--- WORK_LEFT STRASSENLINIE – ARBEIT ↔ AUSSERHALB ---';
+        $streetID=$this->ReadAttributeInteger('AuxWorkStreetIVSVarID');
+        $lines[]='IVS-Quelle: WORK_LEFT Observer #'
+            .$this->ReadAttributeInteger('AuxWorkInstanceID')
+            .' | vorhandene Regel "Überquerung zur Straße" RuleID5'
+            .' | Verlaufsvariable '.($streetID>0?'#'.$streetID:'FEHLT')
+            .' | Treppen-Human-Zaehler bleibt UNVERAENDERT.';
+        $lines[]='STRASSE LERNSTATUS: '.(string)$this->GetValue('P03StreetDirectionStatus');
+        $lines[]='ARBEIT-GRENZSTATUS: '.(string)$this->GetValue('P03WorkBoundaryStatus');
+        $lines[]='WICHTIG: einzelner Straßenübertritt ist KEIN Nachweis, dass das'
+            .' Haus oder Grundstück personenleer ist.';
+        $lines[]='P03-Richtungstest: OUT → IN → OUT → IN'
+            .' (jeweils Treppe UND Straße), kein zusätzlicher Kamera-Test nötig.';
+        $lines[] = '';
         $lines[] = 'ERGEBNIS: Nur Istzustand erfasst – keine Verbindung neu gestartet.';
         $report = implode("\n", $lines);
         $this->SetValue('P03ConnectionDiagnosis', $report);
