@@ -1,3 +1,11 @@
+# v0.6.34 (Build 65) – ruhige, statische P03-Instanzkonfiguration
+
+- Schwerer Bedienfehler behoben: In `GetConfigurationForm()` waren automatisch aktualisierte Socket-Diagnose, umfangreicher IPC5442-Audit, Observer-Bestandsaudit und dynamischer Teststatus als aufgeklappte/wechselnde Labels eingebaut. Wiederholter Neuaufbau ließ die Symcon-Konfigurationsansicht blinken und an den Anfang springen; Buttons waren kaum erreichbar.
+- Die Konfiguration lädt jetzt **nur die unveränderte statische form.json**. Sämtliche Diagnoseberichte, Logs und aktueller Status bleiben in den bekannten **Variablen** der Hauptinstanz #53879, werden aber NICHT mehr in das Konfigurationsfenster eingeblendet.
+- `ReloadForm()` wurde vollständig aus den automatischen sowie manuellen Diagnose- und Result-Pfaden entfernt. Auch schnell wechselnde Zähler/Heartbeat-Updates können die Konfiguration nicht mehr neu aufbauen. Diagnose- und Testbuttons in form.json bleiben vollständig erhalten.
+- Regressionen prüfen: Statischer Inhalt bleibt bei Tausenden sich ändernden Diagnose-/Audit-/Protokollzeilen byte-identisch; Berichte sind weiterhin variablenseitig verfügbar; keine Fremdmodul-, Kamera- oder Socket-Konfigurationsänderung.
+- Diese Änderung ist **nur für Symcon-UI-Stabilität** und stellt noch keine erfolgreiche reale P03-Human-Erkennung sicher.
+
 # v0.6.33 (Build 64) – kurze Personendurchgänge im P03-IVS-Detektor
 
 - Konkreter Fehler in den vollständigen Konfigurationsdumps **beider** IPC-HFW5442E-ZE (11.10.2026): `VideoAnalyseRule[0][3].Config.MinDuration=6` Sekunden und `Config.Sensitivity=5`, vom Kameratemplate unbeabsichtigt in die P03-eigene Regel übernommen. Bei kurzen Durchgängen kann die 6-Sekunden-Schwelle verhindern, dass die Kamera einen Human-Alarm auslöst.

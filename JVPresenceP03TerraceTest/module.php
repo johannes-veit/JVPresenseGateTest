@@ -235,69 +235,12 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     public function GetConfigurationForm(): string
     {
-        $raw = @file_get_contents(__DIR__ . '/form.json');
-        $form = json_decode((string) $raw, true);
-        if (!is_array($form)) {
-            return (string) $raw;
-        }
-
-        $jvHost = trim($this->ReadPropertyString('AuxJVHost'));
-        $workHost = trim($this->ReadPropertyString('AuxWorkHost'));
-        $sourceCaption = 'P03 Primär: JV_LEFT ' . ($jvHost !== '' ? $jvHost : '<IP fehlt>')
-            . ' ↔ WORK_LEFT ' . ($workHost !== '' ? $workHost : '<IP fehlt>')
-            . ' – Terrasse nur optional';
-
-        $result = '';
-        $resultID = $this->GetIDForIdent('Result');
-        if ($resultID > 0 && IPS_VariableExists($resultID)) {
-            $result = (string) GetValue($resultID);
-        }
-        if ($result === '') {
-            $result = 'Noch kein Test gestartet.';
-        }
-
-        $live = [
-            ['type' => 'Label', 'caption' => $sourceCaption],
-            ['type' => 'Label', 'caption' => 'Aktueller Teststatus: ' . $result]
-        ];
-        $diagID = $this->GetIDForIdent('P03ConnectionDiagnosis');
-        if ($diagID > 0 && IPS_VariableExists($diagID)) {
-            $report = trim((string) GetValue($diagID));
-            if ($report !== '') {
-                $live[] = [
-                    'type' => 'ExpansionPanel',
-                    'caption' => 'P03 Socket-Diagnose – Bericht (auch als Variable kopierbar)',
-                    'expanded' => true,
-                    'items' => [['type' => 'Label', 'caption' => $report]]
-                ];
-            }
-        }
-        $modelAuditID = $this->GetIDForIdent('P03IPC5442Audit');
-        if ($modelAuditID > 0 && IPS_VariableExists($modelAuditID)) {
-            $report = trim((string) GetValue($modelAuditID));
-            if ($report !== '') {
-                $live[] = [
-                    'type' => 'ExpansionPanel',
-                    'caption' => 'IPC-HFW5442E-ZE – KI/IVS-Konfiguration (nur lesen, kopierbar)',
-                    'expanded' => true,
-                    'items' => [['type' => 'Label', 'caption' => $report]]
-                ];
-            }
-        }
-        $ownershipVar = $this->GetIDForIdent('P03OwnershipAudit');
-        if ($ownershipVar > 0 && IPS_VariableExists($ownershipVar)) {
-            $report = trim((string) GetValue($ownershipVar));
-            if ($report !== '') {
-                $live[] = [
-                    'type' => 'ExpansionPanel',
-                    'caption' => 'P03 Observer und Sockets – Bestandsprüfung (nur lesen)',
-                    'expanded' => true,
-                    'items' => [['type' => 'Label', 'caption' => $report]]
-                ];
-            }
-        }
-        array_splice($form['elements'], 1, 0, $live);
-        return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        // STATIC FORM ONLY: never embed changing camera diagnostics, audit
+        // reports, test results or protocol text in the configuration UI.
+        // Frequent IPC/heartbeat updates otherwise rebuild expanded panels,
+        // jump the scroll position to the top and make buttons unclickable.
+        // All full reports remain available in P03 instance variables.
+        return (string) @file_get_contents(__DIR__ . '/form.json');
     }
 
     public function GetConfigurationForParent(): string
@@ -1919,7 +1862,6 @@ class JVPresenceP03MultiCamera extends IPSModule
         $lines[] = 'ERGEBNIS: Nur Objektbestand und zugewiesene Eigenschaften ausgelesen.';
         $lines[] = 'Nichts neu angelegt, verbunden, gelöscht, synchronisiert oder an Kameras geschrieben.';
         $this->SetValue('P03OwnershipAudit', implode("\n",$lines));
-        $this->ReloadForm();
     }
 
     /**
@@ -2014,7 +1956,6 @@ class JVPresenceP03MultiCamera extends IPSModule
         $lines[]='GESAMTSTATUS: Bitte die zwei Dokument-IDs und alle tatsächlichen Werte vergleichen.';
         $lines[]='Die vorhandene Variable #35115 enthält nur die Übersicht und Dokument-IDs.';
         $this->SetValue('P03ConnectionDiagnosis',implode("\n",$lines));
-        $this->ReloadForm();
     }
 
     /**
@@ -2190,7 +2131,6 @@ class JVPresenceP03MultiCamera extends IPSModule
         // The standard socket-diagnosis button will overwrite it again with
         // live socket data when pressed; no camera or socket action occurs.
         $this->SetValue('P03ConnectionDiagnosis', $report);
-        $this->ReloadForm();
     }
 
     /**
@@ -2533,7 +2473,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $report = implode("\n", $lines);
         $this->SetValue('P03ConnectionDiagnosis', $report);
         if (!$automatic) {
-            $this->setResult('P03 Socket-Diagnose erstellt. Bericht im Konfigurationsfenster und in Variable "P03 Socket-Diagnose (kopierbar)".');
+            $this->setResult('P03 Socket-Diagnose erstellt. Bericht in der Instanzvariable "P03 Socket-Diagnose (kopierbar)".');
         }
     }
 
@@ -5719,12 +5659,9 @@ class JVPresenceP03MultiCamera extends IPSModule
 
     private function setResult(string $text): void
     {
+        // Result is a persistent P03 variable. Updating it must NEVER
+        // trigger ReloadForm or disrupt a user pressing a configuration button.
         $this->SetValue('Result', $text);
-        try {
-            $this->ReloadForm();
-        } catch (Throwable $e) {
-            // Die Ergebnisvariable bleibt auch dann korrekt gesetzt.
-        }
     }
 
     private function appendProtocol(string $line): void
