@@ -1,3 +1,11 @@
+# v0.6.33 (Build 64) – kurze Personendurchgänge im P03-IVS-Detektor
+
+- Konkreter Fehler in den vollständigen Konfigurationsdumps **beider** IPC-HFW5442E-ZE (11.10.2026): `VideoAnalyseRule[0][3].Config.MinDuration=6` Sekunden und `Config.Sensitivity=5`, vom Kameratemplate unbeabsichtigt in die P03-eigene Regel übernommen. Bei kurzen Durchgängen kann die 6-Sekunden-Schwelle verhindern, dass die Kamera einen Human-Alarm auslöst.
+- Nur in P03-eigenen Human-`CrossRegionDetection`-Regeln setzen wir künftig `MinDuration=1` und `Sensitivity=8`. Regelname, Human-Objektfilter, breite Erfassungsfläche, Event-Messaging und 2-Kamera-Sicherheit bleiben bestehen. Keine SMD-, Motion-, Fremdregel-, ALA2- oder Alarmeinstellungen verändert.
+- Bereits angelegte P03-Regeln mit 6 s / 5 bestehen die Live-Validierung nicht mehr und werden **erst beim ausdrücklich gestarteten P03-Lauftest** nach Eigentümerprüfung, vollständigem Backup, NO-OP-Vorprüfung und Kamera-Readback kontrolliert repariert. Bei abweichendem Namen, fehlendem Backup oder nicht bestätigtem Readback kein blindes Überschreiben.
+- Der lesende Kamera-Audit benennt MinDuration und Sensitivity ausdrücklich; neue Regressionstests prüfen alte und neue Parameter einzeln.
+- Hinweis: Die beiden IP-Kameras senden über bestehende TCP-Streams generische VideoMotion-Ereignisse, aber keine neuen CrossRegion- oder SmartMotionHuman-Ereignisse. Diese Änderung behebt die erkannte langsame P03-Regel, beweist noch nicht die echte Erkennung. Für endgültige Abnahme ist weiterhin ein einzelner kurzer Lauftest nötig.
+
 # v0.6.32 (Build 63) – P03 IVS-Ereignismeldung der eigenen Kamera-Regeln
 
 - Konkreter Software-Konfigurationsfehler aus den vollständigen IPC-HFW5442E-ZE-Dumps vom 11.10.2026: Beide P03-eigenen `VideoAnalyseRule[0][3].EventHandler.MessageEnable=false`. Die frühere `P03AuxHumanRule::disableSideEffects()`-Funktion hat dies ausdrücklich deaktiviert, obwohl P03 die dahua-seitige Ereignismeldung für `eventManager.cgi` benötigt. Diese falsche Deaktivierung entfällt.

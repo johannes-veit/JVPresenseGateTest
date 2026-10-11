@@ -3557,7 +3557,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->rpc2Call($host, $port, $session, 299, 'global.logout', null);
         $this->appendProtocol(
             $role . ': P03 Human-IVS aktiv – ' . $meta['name']
-                . ', CrossRegionDetection, ObjectTypes=Human, MessageEnable=JA (Ereignismeldung), Index=' . $verifiedIndex . ', Id=' . $verifiedId . ', Region='
+                . ', CrossRegionDetection, ObjectTypes=Human, MessageEnable=JA, MinDuration=1s, Sensitivity=8, Index=' . $verifiedIndex . ', Id=' . $verifiedId . ', Region='
                 . json_encode(P03AuxHumanRule::REGION, JSON_UNESCAPED_SLASHES)
         );
         $this->reconnectP03AuxObserver($instanceID, $role);
@@ -3733,11 +3733,19 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
             if (!P03AuxHumanRule::matches($rule, $name) || !isset($rule['Id']) || !is_numeric($rule['Id'])) {
                 $noMessage = ($rule['EventHandler']['MessageEnable'] ?? null) === false;
-                return ['ok' => false, 'error' => $role
-                    . ($noMessage
-                        ? ': P03 Human-IVS-Regel MessageEnable=false – kein sicherer Meldungspfad; '
-                            . 'kontrollierte Reparatur über P03 Lauftest erforderlich'
-                        : ': eigene Human-IVS-Regel nicht vollständig gültig')];
+                $duration = $rule['Config']['MinDuration'] ?? null;
+                $sensitivity = $rule['Config']['Sensitivity'] ?? null;
+                $slow = is_numeric($duration) && (int)$duration > 1;
+                $weak = is_numeric($sensitivity) && (int)$sensitivity < 8;
+                $problem = $noMessage
+                    ? 'MessageEnable=false (Meldungen deaktiviert)'
+                    : ($slow || $weak
+                        ? 'MinDuration=' . (is_scalar($duration) ? (string)$duration : '?')
+                            . 's; Sensitivity=' . (is_scalar($sensitivity) ? (string)$sensitivity : '?')
+                            . ' (P03 benötigt 1s / 8)'
+                        : 'Human-IVS-Regel nicht vollständig gültig');
+                return ['ok' => false, 'error' => $role . ': P03 IVS ' . $problem
+                    . ' – kontrollierte Reparatur über P03 Lauftest erforderlich'];
             }
             return [
                 'ok' => true, 'error' => '',
