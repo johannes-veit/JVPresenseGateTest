@@ -50,11 +50,15 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('LastHealthTick', 0);
         $this->RegisterAttributeString('LastHealthAction', 'UNTESTED');
         $this->RegisterAttributeInteger('LastStaleRx', 0);
+        $this->RegisterAttributeInteger('SmdHumanRawCount', 0);
+        $this->RegisterAttributeInteger('SmdHumanProofCount', 0);
+        $this->RegisterAttributeInteger('LastHumanProofAt', 0);
+        $this->RegisterAttributeString('LastHumanProofCode', '');
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
         $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
-        $this->RegisterVariableString('LastEvent', 'Letztes Human-IVS-Ereignis', '', 30);
+        $this->RegisterVariableString('LastEvent', 'Letztes Personenerkennungs-Ereignis (SMD/IVS)', '', 30);
         $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
@@ -89,7 +93,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
         $this->RegisterVariableInteger('HumanEventCounter', 'Human-Ereignisse', '', 25);
-        $this->RegisterVariableString('LastEvent', 'Letztes Human-IVS-Ereignis', '', 30);
+        $this->RegisterVariableString('LastEvent', 'Letztes Personenerkennungs-Ereignis (SMD/IVS)', '', 30);
         $this->RegisterVariableString('LastIVSEvent', 'Letztes CrossRegion-Ereignis roh', '', 40);
         $this->RegisterVariableString('ObserverStatus', 'Observer Diagnose', '', 50);
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
@@ -114,6 +118,8 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->WriteAttributeInteger('DigestNC', 0);
         $this->WriteAttributeString('DigestChallenge', '{}');
         $this->WriteAttributeInteger('HumanPulseUntil', 0);
+        $this->WriteAttributeInteger('LastHumanProofAt', 0);
+        $this->WriteAttributeString('LastHumanProofCode', '');
         $this->WriteAttributeString('SeenEventKeys', '{}');
         $this->SetValue('PersonDetected', false);
         $this->SetValue('StreamOK', false);
@@ -352,6 +358,12 @@ class JVPresenceP03AuxObserver extends IPSModule
     {
         $now = time();
         $this->WriteAttributeInteger('LastHealthTick', $now);
+        // Timer callbacks can be delayed during Symcon load. A healthy
+        // heartbeat must not keep PersonDetected stuck at TRUE forever.
+        if ($this->ReadAttributeInteger('HumanPulseUntil')>0
+            && $this->ReadAttributeInteger('HumanPulseUntil')<=$now) {
+            $this->clearPersonPulse();
+        }
 
         if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()) {
             $this->WriteAttributeString('LastHealthAction', 'DISABLED_OR_UNCONFIGURED');
@@ -360,6 +372,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         }
         if ($this->ReadAttributeBoolean('AuthBlocked')) {
             $this->SetValue('StreamOK', false);
+            $this->clearPersonPulse();
             $this->WriteAttributeString('LastHealthAction', 'AUTH_BLOCKED');
             $this->refreshObserverStatus('HEALTH: Digest-Anmeldung gesperrt');
             return 'AUTH_BLOCKED';
@@ -368,6 +381,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $parentID = $this->getParentID();
         if ($parentID <= 0 || !IPS_InstanceExists($parentID)) {
             $this->SetValue('StreamOK', false);
+            $this->clearPersonPulse();
             $this->WriteAttributeString('LastHealthAction', 'NO_PARENT');
             $this->refreshObserverStatus('HEALTH: P03 Client Socket fehlt');
             return 'NO_PARENT';
@@ -377,6 +391,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             || strcasecmp((string) ($parent['ModuleInfo']['ModuleID'] ?? ''),
                 self::CLIENT_SOCKET_GUID) !== 0) {
             $this->SetValue('StreamOK', false);
+            $this->clearPersonPulse();
             $this->WriteAttributeString('LastHealthAction', 'UNSAFE_PARENT');
             $this->refreshObserverStatus('HEALTH: Socket geteilt oder falscher Modultyp');
             return 'UNSAFE_PARENT';
@@ -619,6 +634,32 @@ class JVPresenceP03AuxObserver extends IPSModule
                     $this->ReadAttributeInteger('CrossRegionEventCount') + 1);
             }
 
+            // Direct IPC5442 SMD Human events are camera-verified positive
+            // person observations. This channel was mistakenly excluded by
+            // the old CrossRegion-only parser, despite SMD Human being enabled
+            // on BOTH cameras. Generic VideoMotion/Heartbeat NEVER qualifies.
+            if (P03AuxObserverLogic::isSpecificSmdHumanEvent($event)) {
+                $this->WriteAttributeInteger('SmdHumanRawCount',
+                    $this->ReadAttributeInteger('SmdHumanRawCount') + 1);
+                if (!P03AuxObserverLogic::isSmdHumanProofStart($event)) {
+                    $this->recordEventAudit($event, 'SMD_NOT_HUMAN_START');
+                    continue;
+                }
+                if (!$this->isUniquePersonDelivery($event)) {
+                    $this->recordEventAudit($event, 'SMD_DUPLICATE');
+                    continue;
+                }
+                if ($this->publishHumanProof($event, 'SMD_HUMAN')) {
+                    $this->WriteAttributeInteger('SmdHumanProofCount',
+                        $this->ReadAttributeInteger('SmdHumanProofCount') + 1);
+                    $this->recordEventAudit($event, 'SMD_HUMAN_START_COUNTED');
+                    $this->refreshObserverStatus('SMD HUMAN START empfangen');
+                } else {
+                    $this->recordEventAudit($event, 'SMD_CROSS_SOURCE_DUPLICATE');
+                }
+                continue;
+            }
+
             if (!P03AuxObserverLogic::isMatchingRuleEvent($event, $wantedName, $wantedIndex, $wantedId)) {
                 $this->WriteAttributeInteger('RuleRejectCount',
                     $this->ReadAttributeInteger('RuleRejectCount') + 1);
@@ -628,18 +669,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->WriteAttributeInteger('RuleMatchEventCount',
                 $this->ReadAttributeInteger('RuleMatchEventCount') + 1);
 
-            $seen = json_decode($this->ReadAttributeString('SeenEventKeys'), true);
-            if (!is_array($seen)) {
-                $seen = [];
-            }
-            // Never treat a reused Dahua EventID as permanently consumed.
-            // A delivery repeated in 3 seconds is a duplicate; the same
-            // event identity from a later genuine detection may be counted.
-            $fresh = P03AuxObserverLogic::isFreshDelivery($event, $seen, time(), 3);
-            $this->WriteAttributeString('SeenEventKeys', json_encode($seen));
-            if (!$fresh) {
-                $this->WriteAttributeInteger('DedupeRejectCount',
-                    $this->ReadAttributeInteger('DedupeRejectCount') + 1);
+            if (!$this->isUniquePersonDelivery($event)) {
                 $this->recordEventAudit($event, 'DUPLICATE_WITHIN_3_SECONDS');
                 continue;
             }
@@ -663,20 +693,12 @@ class JVPresenceP03AuxObserver extends IPSModule
                 'objectId' => $event['objectId'] ?? null
             ];
             if ($isHumanStart) {
-                // "Letztes Human-IVS-Ereignis" must never be overwritten by
-                // a STOP, a vehicle, or an event that did not count.
-                $this->SetValue('LastEvent', json_encode($summary,
-                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-                $counterID = $this->GetIDForIdent('HumanEventCounter');
-                if ($counterID > 0 && IPS_VariableExists($counterID)) {
-                    $this->SetValue('HumanEventCounter', ((int) GetValue($counterID)) + 1);
+                if ($this->publishHumanProof($event, 'IVS_CROSSREGION', $summary)) {
+                    $this->recordEventAudit($event, 'HUMAN_START_COUNTED');
+                    $this->refreshObserverStatus('IVS HUMAN START empfangen');
+                } else {
+                    $this->recordEventAudit($event, 'IVS_CROSS_SOURCE_DUPLICATE');
                 }
-
-                $until = time() + 5;
-                $this->WriteAttributeInteger('HumanPulseUntil', $until);
-                $this->SetValue('PersonDetected', true);
-                $this->SetTimerInterval('PersonPulseTimer', 5000);
-                $this->recordEventAudit($event, 'HUMAN_START_COUNTED');
                 continue;
             }
             $this->recordEventAudit($event, in_array($action, ['stop', 'off'], true)
@@ -688,6 +710,68 @@ class JVPresenceP03AuxObserver extends IPSModule
                 $this->clearPersonPulse();
             }
         }
+    }
+
+    /**
+     * Deduplicates the same HTTP event delivery, not all human activity:
+     * independently detected events with different EventID/ObjectID are
+     * retained even when the visible PersonDetected Boolean is still true.
+     */
+    private function isUniquePersonDelivery(array $event): bool
+    {
+        $seen=json_decode($this->ReadAttributeString('SeenEventKeys'),true);
+        if (!is_array($seen)) {
+            $seen=[];
+        }
+        $fresh=P03AuxObserverLogic::isFreshDelivery($event,$seen,time(),3);
+        $this->WriteAttributeString('SeenEventKeys',json_encode($seen) ?: '{}');
+        if (!$fresh) {
+            $this->WriteAttributeInteger('DedupeRejectCount',
+                $this->ReadAttributeInteger('DedupeRejectCount')+1);
+        }
+        return $fresh;
+    }
+
+    /**
+     * One trusted positive PERSON Start increments exactly ONE monotonic
+     * counter; STOP/Vehicle/generic Motion do not increment it.
+     * Dedupe simultaneous SMD + IVS notifications for the same physical
+     * person, without collapsing two independent same-source event IDs.
+     *
+     * @param array<string,mixed>|null $summary
+     */
+    private function publishHumanProof(array $event,string $source,?array $summary=null): bool
+    {
+        $now=time();
+        $previous=$this->ReadAttributeString('LastHumanProofCode');
+        $last=$this->ReadAttributeInteger('LastHumanProofAt');
+        if ($previous!=='' && $previous!==$source && $last>0
+            && $now-$last<=2) {
+            return false;
+        }
+        $this->WriteAttributeString('LastHumanProofCode',$source);
+        $this->WriteAttributeInteger('LastHumanProofAt',$now);
+        if ($summary===null) {
+            $summary=[
+                'time'=>date('H:i:s'),'role'=>$this->ReadPropertyString('Role'),
+                'code'=>$event['code']??'','action'=>$event['action']??'',
+                'human'=>true,'humanFromRule'=>false,
+                'source'=>$source,'classification'=>$event['classification']??null,
+                'eventId'=>$event['eventId']??null,'objectId'=>$event['objectId']??null
+            ];
+        } else {
+            $summary['source']=$source;
+        }
+        $this->SetValue('LastEvent',json_encode($summary,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+        $id=$this->GetIDForIdent('HumanEventCounter');
+        if ($id>0 && IPS_VariableExists($id)) {
+            $this->SetValue('HumanEventCounter',(int)GetValue($id)+1);
+        }
+        $this->WriteAttributeInteger('HumanPulseUntil',$now+5);
+        $this->SetValue('PersonDetected',true);
+        $this->SetTimerInterval('PersonPulseTimer',5000);
+        return true;
     }
 
     /**
@@ -909,7 +993,10 @@ class JVPresenceP03AuxObserver extends IPSModule
             'crossRegionTotal' => $this->ReadAttributeInteger('CrossRegionEventCount'),
             'ruleMatches' => $this->ReadAttributeInteger('RuleMatchEventCount'),
             'ruleRejected' => $this->ReadAttributeInteger('RuleRejectCount'),
-            'dedupeRejected' => $this->ReadAttributeInteger('DedupeRejectCount')
+            'dedupeRejected' => $this->ReadAttributeInteger('DedupeRejectCount'),
+            'smdHumanRawCount' => $this->ReadAttributeInteger('SmdHumanRawCount'),
+            'smdHumanProofCount' => $this->ReadAttributeInteger('SmdHumanProofCount'),
+            'lastHumanProofCode' => $this->ReadAttributeString('LastHumanProofCode')
         ];
         $json = json_encode($status, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $this->SetValue('ObserverStatus', $json === false ? '' : $json);

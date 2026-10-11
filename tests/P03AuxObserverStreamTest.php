@@ -399,9 +399,10 @@ $direct->Watchdog();
 checkP03($direct->attributes['LastHealthAction']==='RECONNECT_GET_SENT',
     'Old observer Watchdog method delegates to guarded HealthTick');
 
-// IPC-HFW5442E-ZE may emit SMD Human events even when an IVS-only
-// gate correctly refuses to treat them as a direction proof. Wire monitor
-// MUST still capture them, independently of P03 event matching.
+// P03 previously ignored every native SMD Human positive event, even
+// though both IPC5442 cameras have SMD Human enabled. Keep only human-coded
+// events as positive observation (still requires TWO different cameras).
+// Generic VideoMotion and Vehicle events must never create a proof.
 $wire = new JVPresenceP03AuxObserver();
 $wire->Create();
 $wire->properties['Enabled'] = true;
@@ -425,16 +426,63 @@ checkP03(($wire->attributes['WireCodeCount'] ?? -1)===1,
     'Raw wire probe independently captures fragmented SmartMotionHuman event');
 checkP03(str_contains((string)($wire->values['WireProbe']??''),'Code=SmartMotionHuman'),
     'Wire probe exposes exact SMD event code on 5442');
-checkP03(($wire->values['HumanEventCounter']??0)===0,
-    'SMD human raw evidence never silently creates unauthorized IVS direction proof');
+checkP03(($wire->values['HumanEventCounter']??0)===1,
+    'native SMD Human START increments exactly one camera-native human observation');
+checkP03(($wire->attributes['SmdHumanRawCount']??0)===1
+    && ($wire->attributes['SmdHumanProofCount']??0)===1,
+    'separate SMD raw/accepted counters show real positive Human source');
+checkP03(($wire->values['PersonDetected']??false)===true,
+    'visible PersonDetected pulse reacts immediately to real SMD Human START');
+checkP03(str_contains((string)($wire->values['LastEvent']??''),'SMD_HUMAN'),
+    'LastEvent reports accepted Human source without pretending to have IVS direction');
+rxP03($wire, "Code=SmartMotionVehicle;action=Start;index=0;data={\"ObjectType\":\"Vehicle\"}\r\n");
+rxP03($wire, "Code=VideoMotion;action=Start;index=0\r\n");
+rxP03($wire, "Code=VideoMotionInfo;action=State;index=0\r\n");
+checkP03(($wire->values['HumanEventCounter']??0)===1,
+    'Vehicle, VideoMotion and VideoMotionInfo never increment human proof');
+$wire->attributes['LastHumanProofAt']=time()-3;
 checkP03(($wire->attributes['WireHeartbeatCount']??0)>=1,
     'Wire probe distinguishes repeated Dahua heartbeats from actual code events');
 
 rxP03($wire, "Code=CrossRegionDetection;action=Start;index=0;data="
     . "{\"Name\":\"P03_JV_LEFT_HUMAN\",\"CfgRuleId\":4,\"EventID\":701,"
     . "\"Object\":{\"ObjectType\":\"Human\",\"ObjectID\":77}}\r\n");
-checkP03(($wire->attributes['WireCodeCount'] ?? -1)===2,
-    'Raw wire independently records subsequent IVS CrossRegionDetection event');
-checkP03(($wire->values['HumanEventCounter']??-1)===1,
-    'Matching IVS human event still increments existing proof counter');
+checkP03(($wire->attributes['WireCodeCount'] ?? -1)===5,
+    'Raw wire captures IVS as fifth code including rejected Vehicle/Motion events');
+checkP03(($wire->values['HumanEventCounter']??-1)===2,
+    'separate valid IVS Human START increments same monotonic counter');
+checkP03(($wire->attributes['SmdHumanProofCount']??0)===1,
+    'IVS proof does not masquerade as a second SMD Human proof');
+checkP03(($wire->attributes['LastHumanProofCode']??'')==='IVS_CROSSREGION',
+    'latest proof source indicates IVS only when IVS really fired');
+// Identical recycled IVS delivery is de-duplicated.
+rxP03($wire,"Code=CrossRegionDetection;action=Start;index=0;data="
+    . "{\"Name\":\"P03_JV_LEFT_HUMAN\",\"CfgRuleId\":4,\"EventID\":701,"
+    . "\"Object\":{\"ObjectType\":\"Human\",\"ObjectID\":77}}\r\n");
+checkP03(($wire->values['HumanEventCounter']??-1)===2,
+    'same raw IVS event ID cannot be counted twice immediately');
+rxP03($wire,"Code=SmartMotionHuman;action=Stop;index=0\r\n");
+checkP03(($wire->values['HumanEventCounter']??-1)===2,
+    'SMD STOP does not increment counter');
+$wire->attributes['HumanPulseUntil']=time()-2;
+$wire->values['PersonDetected']=true;
+$wire->HealthTick();
+checkP03(($wire->values['PersonDetected']??true)===false,
+    'health watchdog clears stale PersonDetected even when pulse timer did not execute');
+// Fresh SMD+IVS can arrive within the same second; it must produce exactly
+// one positive observation rather than double-count one physical person.
+$wire->attributes['Streaming']=true;
+$wire->attributes['LastHumanProofAt']=time()-4;
+rxP03($wire,"Code=SmartMotionHuman;action=Start;index=0;data={\"EventID\":720}\r\n");
+$counter=(int)$wire->values['HumanEventCounter'];
+rxP03($wire,"Code=CrossRegionDetection;action=Start;index=0;data="
+    . "{\"Name\":\"P03_JV_LEFT_HUMAN\",\"CfgRuleId\":4,\"EventID\":721}\r\n");
+checkP03((int)$wire->values['HumanEventCounter']===$counter,
+    'simultaneous SMD+IVS modes from same camera do not double-count');
+// Explicitly nonhuman object classification must never create SMD proof.
+rxP03($wire,"Code=SmartMotionHuman;action=Start;index=0;data="
+    . "{\"EventID\":722,\"ObjectType\":\"Vehicle\"}\r\n");
+checkP03((int)$wire->values['HumanEventCounter']===$counter,
+    'explicit SMD Vehicle classification fails closed');
+
 echo "P03 OBSERVER INTEGRATION SIMULATION PASSED ({$tests} assertions)\n";

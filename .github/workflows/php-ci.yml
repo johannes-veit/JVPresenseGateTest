@@ -188,6 +188,28 @@ jobs:
               raise SystemExit('Observer WireHeartbeatCount must be registered ONCE, in Create only')
           if main.count("RegisterTimer('P03MastHealthTimer'") != 1:
               raise SystemExit('Main P03 health timer must be registered ONCE, in Create only')
+          # P03 0.6.29 regression: do not return to CrossRegion-only
+          # counting or VM_UPDATE without monotonic counter baselines.
+          for token in [
+              "P03AuxObserverLogic::isSpecificSmdHumanEvent(",
+              "P03AuxObserverLogic::isSmdHumanProofStart(",
+              "SmdHumanRawCount",
+              "SmdHumanProofCount",
+              "private function publishHumanProof(",
+              "HumanPulseUntil')<=$now"
+          ]:
+              if token not in observer:
+                  raise SystemExit('P03 v0.6.29 SMD/pulse fix missing: '+token)
+          for token in [
+              "AuxJVLastSeenHumanCounter",
+              "AuxWorkLastSeenHumanCounter",
+              "private function baselineP03Counter(",
+              "private function acceptP03NewCounterValue(",
+              "if ($counterId!==null)",
+              "P03HumanEvents','[]'"
+          ]:
+              if token not in main:
+                  raise SystemExit('P03 v0.6.29 counter replay/reset fix missing: '+token)
           # Full IPC5442 dump must be genuinely complete, in P03-owned
           # document media, and must advertise media IDs via known #35115.
           for token in [
