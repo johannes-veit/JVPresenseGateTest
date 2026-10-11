@@ -200,5 +200,37 @@ $bare['data']['ObjectId']='';
 okOnvif(P03OnvifCorrelator::ingest($bare,$state,110)===null,
     'No human proof without an object ID for delayed correlation');
 
+
+// v0.7.2 real ONVIF nested wsnt:Message / tt:Message structure with
+// ObjectId in tt:Key (not Data) from published ONVIF Core examples.
+$nested='<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"'
+    .' xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2"'
+    .' xmlns:tt="http://www.onvif.org/ver10/schema">'
+    .'<s:Body><wsnt:NotificationMessage>'
+    .'<wsnt:Topic>tns1:RuleEngine/LineDetector/Crossed</wsnt:Topic>'
+    .'<wsnt:Message><tt:Message UtcTime="2026-10-11T13:33:00Z"'
+    .' PropertyOperation="Initialized">'
+    .'<tt:Source><tt:SimpleItem Name="Rule" Value="Überquerung zur Treppe"/>'
+    .'<tt:SimpleItem Name="VideoSourceConfigurationToken" Value="IPC1"/></tt:Source>'
+    .'<tt:Key><tt:SimpleItem Name="ObjectId" Value="35"/></tt:Key>'
+    .'<tt:Data><tt:SimpleItem Name="ClassTypes" Value="Human"/></tt:Data>'
+    .'</tt:Message></wsnt:Message></wsnt:NotificationMessage>'
+    .'</s:Body></s:Envelope>';
+$parsedNested=P03OnvifEvents::parseNotifications($nested);
+okOnvif(count($parsedNested)===1
+    && ($parsedNested[0]['utc']??'')==='2026-10-11T13:33:00Z'
+    && ($parsedNested[0]['operation']??'')==='Initialized'
+    && ($parsedNested[0]['data']['ObjectId']??'')==='35',
+    'Nested tt:Message UTC/operation and tt:Key ObjectId are preserved');
+okOnvif(!P03OnvifEvents::isHumanStairCrossing($parsedNested[0]??[]),
+    'ONVIF Initialized snapshot never counted as a new person crossing');
+$correlationState=[];
+okOnvif(P03OnvifCorrelator::ingest($parsedNested[0],$correlationState,100)===null,
+    'Correlator rejects initialization even with explicit Human classification');
+$changed=str_replace('PropertyOperation="Initialized"','PropertyOperation="Changed"',$nested);
+$parsedChanged=P03OnvifEvents::parseNotifications($changed);
+okOnvif(count($parsedChanged)===1
+    && P03OnvifEvents::isHumanStairCrossing($parsedChanged[0]),
+    'Nested ONVIF Changed with explicit Human is accepted by precise parser');
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
