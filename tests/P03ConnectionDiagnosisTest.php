@@ -833,11 +833,11 @@ verifyDiag(count(json_decode($inBackup->attributes['P03TerraceInSignals'],true))
 $ts=microtime(true);
 $inBackup->attributes['P03HumanEvents']=json_encode([[
  'id'=>'WORK_LEFT:counter:13','source'=>'WORK_LEFT',
- 'ts'=>$ts-27,'used'=>false
+ 'ts'=>$ts-31,'used'=>false
 ]]);
 $inBackup->attributes['P03TerraceInSignals']=json_encode([[
  'id'=>'person:20:06:23','kind'=>'PERSON','direction'=>null,
- 'ts'=>$ts-6,'used'=>false
+ 'ts'=>$ts-10,'used'=>false
 ]]);
 $evaluate=new ReflectionMethod(JVPresenceP03MultiCamera::class,'evaluateP03MastSequence');
 $evaluate->invoke($inBackup);
