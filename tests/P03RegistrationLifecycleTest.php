@@ -71,14 +71,14 @@ lifecycleAssert(!str_contains($onvif,'publishHumanProof(')
     && !str_contains($onvif,"SetValue('HumanEventCounter'"),
     'ONVIF passive diagnosis cannot inject unverified person counters or zone transfers');
 
-// Cleanup safety: obsolete UI/report diagnostics are hidden, NEVER deleted;
-// existing Symcon variable object IDs can still be referenced externally.
+// Limited Symcon licenses: genuinely unregister obsolete status variables,
+// retaining only the essential diagnostic/protocol and live transport IDs.
 $main=file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/module.php');
 foreach ([$main,$observer] as $source) {
-    lifecycleAssert(str_contains((string)$source,'IPS_SetHidden(')
+    lifecycleAssert(str_contains((string)$source,'UnregisterVariable(')
         && !str_contains((string)$source,'IPS_DeleteVariable(')
         && !str_contains((string)$source,'IPS_DeleteObject('),
-        'cleaned P03 hides internal diagnostics without deleting unknown external references');
+        'obsolete status variables are removed only by own-module UnregisterVariable');
 }
 $form=json_decode(file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/form.json'),true);
 lifecycleAssert(is_array($form) && count($form['actions']??[])===10,
