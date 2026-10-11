@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once dirname(__DIR__).'/libs/P03OnvifEvents.php';
 require_once dirname(__DIR__).'/libs/P03OnvifPullPoint.php';
+require_once dirname(__DIR__).'/libs/P03OnvifCorrelator.php';
 
 $errors=0;
 function okOnvif(bool $good,string $why): void {
@@ -74,6 +75,130 @@ $parameters=P03OnvifPullPoint::referenceParameters($refEnvelope);
 okOnvif(count($parameters)===1 && $parameters[0]['name']==='SubscriptionId'
     && $parameters[0]['value']==='42' && $parameters[0]['namespace']==='urn:dahua:onvif:subscription',
     'ONVIF subscription reference parameters parsed for subsequent PullMessages');
+
+// v0.7.1: official ONVIF ClassTypes is plural. Never accidentally
+// accept a Human/Vehicle mixture in one notification.
+$classed=$events[0];
+unset($classed['data']['ObjectType']);
+$classed['data']['ClassTypes']='Human';
+okOnvif(P03OnvifEvents::isHumanStairCrossing($classed),
+    'Real ONVIF ClassTypes=Human counts on staircase');
+$classed['data']['ClassTypes']='Human,Vehicle';
+okOnvif(!P03OnvifEvents::isHumanStairCrossing($classed),
+    'Mixed ClassTypes=Human,Vehicle does not fabricate a person');
+$classed['data']['ClassTypes']='Vehicle';
+okOnvif(!P03OnvifEvents::isHumanStairCrossing($classed),
+    'Vehicle-only classification does not count as Human');
+$classed['data']['ClassTypes']='Human';
+$classed['data']['ObjectClass']='MotorVehicle';
+okOnvif(!P03OnvifEvents::isHumanStairCrossing($classed),
+    'Contradictory ONVIF object class fields fail closed');
+okOnvif(P03OnvifEvents::verifiedSameHostUrl(
+    'http://192.168.107.96:8899/onvif/events','192.168.107.96',8899)!==null,
+    'Camera-configured nonstandard ONVIF port is supported safely');
+okOnvif(P03OnvifEvents::verifiedSameHostUrl(
+    'http://192.168.107.96:8899/onvif/events','192.168.107.96')===null,
+    'Unexpected port denied without explicit configured value');
+$when='2010-09-16T07:50:45Z';
+$nonce=base64_decode('LKqI6G/AikKCQrN0zqZFlg==');
+$token=P03OnvifPullPoint::wsUsernameToken('someone','userpassword',$nonce,$when);
+okOnvif(str_contains($token,'wsse:UsernameToken')
+    && str_contains($token,'wsu:Created')
+    && str_contains($token,'tuOSpGlFlIXsozq4HFNeeGeFLEI=')
+    && !str_contains($token,'>userpassword<'),
+    'ONVIF UsernameToken uses nonce/UTC/SHA1 digest, never plaintext secret');
+$good='<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body>'
+    .'<x:PullMessagesResponse xmlns:x="http://www.onvif.org/ver10/events/wsdl"/>'
+    .'</s:Body></s:Envelope>';
+$fault='<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body>'
+    .'<s:Fault><s:Code><s:Value>s:Sender</s:Value></s:Code></s:Fault>'
+    .'</s:Body></s:Envelope>';
+okOnvif(P03OnvifPullPoint::isValidSoapResponse($good,'PullMessagesResponse'),
+    'Proper ONVIF SOAP success response verified');
+okOnvif(!P03OnvifPullPoint::isValidSoapResponse($fault,'PullMessagesResponse'),
+    'SOAP Fault over HTTP 200 must never mean a live event stream');
+okOnvif(!P03OnvifPullPoint::isValidSoapResponse('<html>error</html>','PullMessagesResponse'),
+    'HTTP 200 HTML/error is rejected as ONVIF events');
+
+$seen=[];
+$e=['topic'=>'tns1:RuleEngine/LineDetector/Crossed','utc'=>'2026-10-11T09:00:00Z',
+    'rule'=>'Überquerung zur Treppe','objectId'=>'41'];
+okOnvif(P03OnvifEvents::isFresh($e,$seen,100,3),
+    'First unique ONVIF person is accepted');
+okOnvif(!P03OnvifEvents::isFresh($e,$seen,101,3),
+    'Same wire event delivered again within 3 s is ignored');
+okOnvif(P03OnvifEvents::isFresh($e,$seen,103,3),
+    'Reused camera identifier after 3 s is accepted again');
+$seen['invalidTimestamp']=9999;
+okOnvif(P03OnvifEvents::isFresh(['objectId'=>'42'],$seen,105,3)
+    && !isset($seen['invalidTimestamp']),
+    'Future/broken dedupe entries are removed before matching');
+okOnvif(P03OnvifEvents::verifiedSameHostUrl(
+    'http://192.168.107.96/Subscription?Idx=0','192.168.107.96')!==null,
+    'Standard ONVIF subscription endpoint from the official specification is accepted');
+okOnvif(P03OnvifEvents::verifiedSameHostUrl(
+    'http://192.168.107.96/cgi-bin/configManager.cgi?action=setConfig',
+    '192.168.107.96')===null,
+    'ONVIF endpoint validation rejects any CGI configuration path');
+// Standard ONVIF LineDetector events commonly carry ObjectId only.
+// Human classification can arrive as a separate ObjectDetection event.
+$classEvent=[
+    'topic'=>'tns1:RuleEngine/ObjectDetection/Object',
+    'utc'=>'2026-10-11T13:33:01Z',
+    'source'=>['VideoSourceConfigurationToken'=>'IPC1'],
+    'data'=>['ObjectId'=>'77','ClassTypes'=>'Human']
+];
+$crossEvent=[
+    'topic'=>'tns1:RuleEngine/LineDetector/Crossed',
+    'utc'=>'2026-10-11T13:33:03Z',
+    'source'=>['VideoSourceConfigurationToken'=>'IPC1',
+        'Rule'=>'Überquerung zur Treppe'],
+    'data'=>['ObjectId'=>'77']
+];
+$state=[];
+okOnvif(P03OnvifCorrelator::ingest($crossEvent,$state,100)===null,
+    'Bare line crossing with object ID is not automatically human');
+$proof=P03OnvifCorrelator::ingest($classEvent,$state,115);
+okOnvif(is_array($proof)&&$proof['objectId']==='77'
+    && $proof['source']==='ONVIF_OBJECTID_CLASS_CORRELATION',
+    'Human ObjectDetection joins stair LineDetector by same ObjectId across polls');
+okOnvif(P03OnvifCorrelator::ingest($classEvent,$state,116)===null,
+    'One completed correlation cannot emit two proofs');
+$state=[];
+okOnvif(P03OnvifCorrelator::ingest($classEvent,$state,100)===null,
+    'Human class alone is not a crossing');
+$proof=P03OnvifCorrelator::ingest($crossEvent,$state,115);
+okOnvif(is_array($proof)&&$proof['objectId']==='77',
+    'Crossing after classification works in reverse order');
+$state=[];
+$wrongStream=$classEvent;
+$wrongStream['source']['VideoSourceConfigurationToken']='OTHER';
+P03OnvifCorrelator::ingest($wrongStream,$state,100);
+okOnvif(P03OnvifCorrelator::ingest($crossEvent,$state,101)===null,
+    'ObjectId may not be correlated between different video sources');
+$state=[];
+$vehicle=$classEvent;
+$vehicle['data']['ClassTypes']='Vehicle';
+P03OnvifCorrelator::ingest($vehicle,$state,100);
+okOnvif(P03OnvifCorrelator::ingest($crossEvent,$state,101)===null,
+    'Vehicle on staircase never becomes a person by object ID alone');
+$state=[];
+$road=$crossEvent;
+$road['source']['Rule']='Überquerung zur Straße';
+P03OnvifCorrelator::ingest($classEvent,$state,100);
+okOnvif(P03OnvifCorrelator::ingest($road,$state,101)===null,
+    'Street line is excluded even if Human classifier detects same object');
+$state=[];
+$stale=$classEvent;
+$stale['utc']='2026-10-11T13:31:01Z';
+P03OnvifCorrelator::ingest($stale,$state,100);
+okOnvif(P03OnvifCorrelator::ingest($crossEvent,$state,115)===null,
+    'ObjectId with stale class timestamp is never combined with a later crossing');
+$state=[];
+$bare=$crossEvent;
+$bare['data']['ObjectId']='';
+okOnvif(P03OnvifCorrelator::ingest($bare,$state,110)===null,
+    'No human proof without an object ID for delayed correlation');
 
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);

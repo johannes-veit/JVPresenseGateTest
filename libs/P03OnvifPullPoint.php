@@ -26,7 +26,7 @@ final class P03OnvifPullPoint
             return $out;
         }
         $base='http://' . $host . ':' . $port;
-        $clientUrl = P03OnvifEvents::verifiedSameHostUrl($subscriptionUrl,$host);
+        $clientUrl = P03OnvifEvents::verifiedSameHostUrl($subscriptionUrl,$host,$port);
         if ($clientUrl === null || $validUntil <= time()+10) {
             $cap = self::soap($base . '/onvif/device_service',
                 $username,$password,'GetCapabilities',
@@ -38,7 +38,7 @@ final class P03OnvifPullPoint
             }
             $eventService=self::findXmlValue($cap['body'],
                 '//*[local-name()="Capabilities"]/*[local-name()="Events"]/*[local-name()="XAddr"]');
-            $eventUrl=P03OnvifEvents::verifiedSameHostUrl($eventService,$host);
+            $eventUrl=P03OnvifEvents::verifiedSameHostUrl($eventService,$host,$port);
             if ($eventUrl === null) {
                 $out['status']='ONVIF Events XAddr nicht vorhanden oder Fremdadresse';
                 return $out;
@@ -54,7 +54,7 @@ final class P03OnvifPullPoint
             }
             $address=self::findXmlValue($subscription['body'],
                 '//*[local-name()="SubscriptionReference"]/*[local-name()="Address"]');
-            $clientUrl=P03OnvifEvents::verifiedSameHostUrl($address,$host);
+            $clientUrl=P03OnvifEvents::verifiedSameHostUrl($address,$host,$port);
             if ($clientUrl===null) {
                 $out['status']='ONVIF SubscriptionReference ohne verifizierte Kamera-Adresse';
                 return $out;
@@ -81,6 +81,10 @@ final class P03OnvifPullPoint
         $out['url']=$clientUrl;
         $out['until']=$validUntil;
         $out['reference']=json_encode($refs, JSON_UNESCAPED_SLASHES)?:'[]';
+        if (!self::isValidSoapResponse($pull['body'], 'PullMessagesResponse')) {
+            $out['status']='ONVIF HTTP 200 ohne gueltige PullMessagesResponse';
+            return $out;
+        }
         $out['status']='ONVIF PullPoint LIVE, HTTP 200';
         $out['events']=P03OnvifEvents::parseNotifications($pull['body']);
         return $out;
@@ -107,8 +111,15 @@ final class P03OnvifPullPoint
             . ' xmlns:tev="http://www.onvif.org/ver10/events/wsdl"'
             . ' xmlns:wsa="http://www.w3.org/2005/08/addressing">'
             . '<s:Header><wsa:Action>' . htmlspecialchars($actionUri,ENT_XML1)
-            . '</wsa:Action><wsa:To>'
+            . '</wsa:Action><wsa:MessageID>urn:uuid:'
+            . substr(bin2hex(random_bytes(16)),0,8).'-'
+            . substr(bin2hex(random_bytes(16)),0,4).'-'
+            . substr(bin2hex(random_bytes(16)),0,4).'-'
+            . substr(bin2hex(random_bytes(16)),0,4).'-'
+            . substr(bin2hex(random_bytes(16)),0,12)
+            . '</wsa:MessageID><wsa:To>'
             . htmlspecialchars($url, ENT_XML1) . '</wsa:To>'
+            . self::wsUsernameToken($username,$password)
             . self::referencesSoapHeader($referenceParams) . '</s:Header>'
             . '<s:Body>' . $body . '</s:Body></s:Envelope>';
         $ch=curl_init($url);
@@ -145,6 +156,10 @@ final class P03OnvifPullPoint
         }
         if (strlen($answer)>1024*1024) {
             return ['ok'=>false,'body'=>'','status'=>'SOAP Body zu groß'];
+        }
+        if (!self::isValidSoapResponse($answer,$action.'Response')) {
+            return ['ok'=>false,'body'=>'','status'=>'HTTP 200, aber keine '
+                .$action.'Response (SOAP Fault/ungueltige XML-Antwort)'];
         }
         return ['ok'=>true,'body'=>$answer,'status'=>'HTTP 200'];
     }
@@ -211,6 +226,56 @@ final class P03OnvifPullPoint
                 .'</'.$q.':'.$name.'>';
         }
         return $out;
+    }
+
+    /**
+     * Never call an arbitrary 200-OK HTML/error response a valid event stream.
+     * Reject all namespace variants of SOAP Fault and malformed XML.
+     */
+    public static function isValidSoapResponse(string $xml,string $operation): bool
+    {
+        if (!class_exists('DOMDocument') || strlen($xml)>1024*1024) {
+            return false;
+        }
+        $document=new DOMDocument();
+        $previous=libxml_use_internal_errors(true);
+        try {
+            if (!@$document->loadXML($xml,LIBXML_NONET|LIBXML_NOBLANKS)) {
+                return false;
+            }
+            $xpath=new DOMXPath($document);
+            $faults=$xpath->query('//*[local-name()="Body"]/*[local-name()="Fault"]');
+            if ($faults!==false && $faults->length>0) {
+                return false;
+            }
+            if (!preg_match('/^[A-Za-z]+Response$/D',$operation)) {
+                return false;
+            }
+            $items=$xpath->query('//*[local-name()="Body"]/*[local-name()="'.$operation.'"]');
+            return $items!==false && $items->length===1;
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+    }
+
+    /** ONVIF WS-Security nonce-based UsernameToken digest. */
+    public static function wsUsernameToken(string $user,string $secret,?string $nonce=null,?string $when=null): string
+    {
+        $nonce=$nonce??random_bytes(16);
+        $when=$when??gmdate('Y-m-d\TH:i:s\Z');
+        $digest=base64_encode(sha1($nonce.$when.$secret,true));
+        $base='http://docs.oasis-open.org/wss/2004/01/';
+        return '<wsse:Security xmlns:wsse="'.$base.'oasis-200401-wss-wssecurity-secext-1.0.xsd"'
+            .' xmlns:wsu="'.$base.'oasis-200401-wss-wssecurity-utility-1.0.xsd"'
+            .' s:mustUnderstand="1"><wsse:UsernameToken>'
+            .'<wsse:Username>'.htmlspecialchars($user,ENT_XML1|ENT_QUOTES).'</wsse:Username>'
+            .'<wsse:Password Type="'.$base.'oasis-200401-wss-username-token-profile-1.0#PasswordDigest">'
+            .$digest.'</wsse:Password>'
+            .'<wsse:Nonce EncodingType="'.$base.'oasis-200401-wss-soap-message-security-1.0#Base64Binary">'
+            .base64_encode($nonce).'</wsse:Nonce>'
+            .'<wsu:Created>'.htmlspecialchars($when,ENT_XML1|ENT_QUOTES).'</wsu:Created>'
+            .'</wsse:UsernameToken></wsse:Security>';
     }
 
     private static function findXmlValue(string $xml,string $path): string

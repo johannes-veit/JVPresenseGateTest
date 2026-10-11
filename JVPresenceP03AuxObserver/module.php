@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/P03AuxObserverLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ExistingIvsLines.php';
 require_once dirname(__DIR__) . '/libs/P03OnvifPullPoint.php';
+require_once dirname(__DIR__) . '/libs/P03OnvifCorrelator.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03AuxObserver extends IPSModule
@@ -68,9 +69,11 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('OnvifEventCount', 0);
         $this->RegisterAttributeInteger('OnvifHumanStairCount', 0);
         $this->RegisterAttributeString('OnvifSeenEventKeys', '{}');
+        $this->RegisterAttributeString('OnvifCorrelationState', '{"classes":{},"crossings":{}}');
         $this->RegisterAttributeString('OnvifRecentEvents', '[]');
         $this->RegisterAttributeString('OnvifLastStatus', 'Noch nicht abgefragt');
         $this->RegisterAttributeInteger('OnvifNextAttemptAt', 0);
+        $this->RegisterAttributeInteger('OnvifPollBusyUntil', 0);
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
@@ -171,9 +174,13 @@ class JVPresenceP03AuxObserver extends IPSModule
     public function OnvifPoll(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()
-            || time() < $this->ReadAttributeInteger('OnvifNextAttemptAt')) {
+            || time() < $this->ReadAttributeInteger('OnvifNextAttemptAt')
+            || time() < $this->ReadAttributeInteger('OnvifPollBusyUntil')) {
             return;
         }
+        // Initial device + Events + Pull requests may take longer than one
+        // 15-s timer tick. Never overlap two polling rounds.
+        $this->WriteAttributeInteger('OnvifPollBusyUntil',time()+25);
         try {
             $result=P03OnvifPullPoint::poll(
                 trim($this->ReadPropertyString('CameraHost')),
@@ -209,6 +216,10 @@ class JVPresenceP03AuxObserver extends IPSModule
             if (!is_array($seen)) {
                 $seen=[];
             }
+            $correlation=json_decode($this->ReadAttributeString('OnvifCorrelationState'),true);
+            if (!is_array($correlation)) {
+                $correlation=['classes'=>[],'crossings'=>[]];
+            }
             foreach ($events as $event) {
                 if (!is_array($event)) {
                     continue;
@@ -222,22 +233,18 @@ class JVPresenceP03AuxObserver extends IPSModule
                 if (count($recent)>15) {
                     $recent=array_slice($recent,-15);
                 }
-                if (!P03OnvifEvents::isHumanStairCrossing($event)) {
+                $positive=P03OnvifCorrelator::ingest($event,$correlation,time());
+                if (!is_array($positive)) {
                     continue;
                 }
-                $key=sha1(json_encode($summary,JSON_UNESCAPED_UNICODE)?:'');
-                if (isset($seen[$key])) {
+                // De-duplication is based on the actual qualifying CROSSING,
+                // not an unrelated ObjectDetection message.
+                $evidence=['rule'=>$positive['rule'],
+                    'objectId'=>$positive['objectId'],
+                    'utc'=>$positive['utc'],
+                    'origin'=>$positive['source']];
+                if (!P03OnvifEvents::isFresh($evidence,$seen,time(),3)) {
                     continue;
-                }
-                $seen[$key]=time();
-                foreach ($seen as $entry=>$stamp) {
-                    if (!is_numeric($stamp) || time()-(int)$stamp>90) {
-                        unset($seen[$entry]);
-                    }
-                }
-                if (count($seen)>200) {
-                    asort($seen,SORT_NUMERIC);
-                    $seen=array_slice($seen,-200,null,true);
                 }
                 $this->WriteAttributeInteger('OnvifHumanStairCount',
                     $this->ReadAttributeInteger('OnvifHumanStairCount')+1);
@@ -245,19 +252,22 @@ class JVPresenceP03AuxObserver extends IPSModule
                     'code'=>'ONVIF_LineDetector_Crossed',
                     'action'=>'Start',
                     'classification'=>'Human',
-                    'ruleName'=>$summary['rule'],
-                    'eventId'=>$summary['utc'],
-                    'objectId'=>$summary['objectId']
+                    'ruleName'=>$positive['rule'],
+                    'eventId'=>$positive['utc'],
+                    'objectId'=>$positive['objectId']
                 ];
                 $this->publishHumanProof($observation,'ONVIF_HUMAN_STAIR',[
                     'time'=>date('H:i:s'),'role'=>$this->ReadPropertyString('Role'),
                     'source'=>'ONVIF_HUMAN_STAIR','code'=>'ONVIF_LineDetector_Crossed',
-                    'ruleName'=>$summary['rule'],'human'=>true,
+                    'ruleName'=>$positive['rule'],'human'=>true,
                     'humanFromRule'=>true,'classification'=>'Human',
-                    'utc'=>$summary['utc'],'objectId'=>$summary['objectId']
+                    'utc'=>$positive['utc'],'objectId'=>$positive['objectId'],
+                    'evidence'=>$positive['source']
                 ]);
             }
             $this->WriteAttributeString('OnvifSeenEventKeys',json_encode($seen)?:'{}');
+            $this->WriteAttributeString('OnvifCorrelationState',
+                json_encode($correlation,JSON_UNESCAPED_UNICODE)?:'{"classes":{},"crossings":{}}');
             $encoded=json_encode($recent,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'[]';
             $this->WriteAttributeString('OnvifRecentEvents',$encoded);
             $this->SetValue('OnvifRecentEvents',$encoded);
@@ -268,6 +278,8 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->SetValue('OnvifStatus',date('Y-m-d H:i:s')
                 .' ONVIF Ausnahme '.get_class($e).' – '.
                 substr((string)$e->getMessage(),0,120));
+        } finally {
+            $this->WriteAttributeInteger('OnvifPollBusyUntil',0);
         }
     }
 
