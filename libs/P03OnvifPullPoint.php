@@ -113,6 +113,7 @@ final class P03OnvifPullPoint
             . '<s:Header><wsa:Action>' . htmlspecialchars($actionUri,ENT_XML1)
             . '</wsa:Action><wsa:To>'
             . htmlspecialchars($url, ENT_XML1) . '</wsa:To>'
+            . self::wsUsernameToken($username,$password)
             . self::referencesSoapHeader($referenceParams) . '</s:Header>'
             . '<s:Body>' . $body . '</s:Body></s:Envelope>';
         $ch=curl_init($url);
