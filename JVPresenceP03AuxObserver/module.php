@@ -909,6 +909,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                         $this->WriteAttributeInteger('LastSmdHumanStartAt', time());
                         $this->pulsePersonDetected();
                         $this->recordEventAudit($event, 'SMD_PERSON_STATUS_ONLY_NO_STAIR_PROOF');
+                        $this->refreshObserverStatus('SMD Person erkannt – nur Status, kein Treppenbeweis');
                     } else {
                         $this->recordEventAudit($event, 'SMD_NON_START_OR_NONHUMAN_NO_PROOF');
                     }
