@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03 HOME↔ARBEIT: bewährter Mast-Nachweis bleibt maßgeblich. Neuer IN-Ersatz im kontrollierten TEST: WORK_LEFT Treppe → Terrasse Person binnen 50 s oder JV_LEFT Treppe → Terrasse binnen 15 s. Terrassen-IVS RightToLeft kann ergänzen, ist aber keine Pflicht. OUT wird nicht zu IN umgedeutet. Testbestätigungen bleiben von Produktionsbuchung und Anwesenheitsstatus getrennt."
+      "caption": "P03: Drei Kameras, getrennte IVS-Linien und gerichtete Personenerkennung. Primär: JV_LEFT→WORK_LEFT = HOME→ARBEIT (OUT), WORK_LEFT→JV_LEFT = ARBEIT→HOME (IN). Ergänzend ausschließlich im kontrollierten TEST: Terrasse LeftToRight-IVS→JV/WORK = OUT; WORK/JV-Treppen-IVS→Terrasse Human = IN (RightToLeft-IVS optional). Regulärer Zweimastnachweis hat immer Vorrang; Straßen-IVS RuleID5 ist separate ARBEIT↔AUSSERHALB-Grenze, nicht Treppennachweis."
     },
     {
       "type": "CheckBox",
@@ -57,7 +57,7 @@
         },
         {
           "type": "Label",
-          "caption": "JV Terrasse wird aufgrund der Nahbereichserkennung ausschließlich als potenzielle OUT-Quelle geführt. Vorläufig gilt LeftToRight als OUT-Kandidat (noch zu bestätigen). IN bleibt ausschließlich WORK_LEFT → JV_LEFT. Die Terrasse meldet OUT-Kandidaten in #35115, darf aktuell jedoch keine Übergänge buchen."
+          "caption": "Terrasse unterstützt OUT (gültiges Human-IVS LeftToRight) und IN (verzögerte Personenerkennung oder RightToLeft-IVS) nur im kontrollierten Test und jeweils mit einem echten Treppen-IVS Human der Mastkameras. OUT: Terrasse→JV max.15s oder →WORK max.50s. IN: WORK→Terrasse max.50s oder JV→Terrasse max.15s. Ein fehlendes Terrassen-IVS sperrt IN nicht. Im Produktivbetrieb bleibt das Drei-Kamera-Backup gesperrt."
         },
         {
           "type": "Label",
@@ -99,7 +99,7 @@
     },
     {
       "type": "Button",
-      "caption": "IN-Backup einzeln testen (1 Weg, bisherige Beweise behalten)",
+      "caption": "3-Kamera-Backup einzeln testen (ein IN- oder OUT-Weg)",
       "onClick": "JVP03MC_StartTerraceInBackupOnly($id);"
     },
     {
