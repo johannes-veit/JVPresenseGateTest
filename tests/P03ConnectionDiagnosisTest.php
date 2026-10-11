@@ -131,6 +131,9 @@ class IPSModule
     protected function ReadPropertyString(string $name):string { return (string)($this->properties[$name]??''); }
     protected function WriteAttributeBoolean(string $name,bool $value):void { $this->attributes[$name]=$value; }
     protected function GetIDForIdent(string $ident):int {return ['P03ConnectionDiagnosis'=>20001,'Result'=>20002,'P03IPC5442Audit'=>20003,'P03OwnershipAudit'=>20004][$ident]??0;}
+    public array $buffers=[];
+    protected function SetBuffer(string $key,string $value):void {$this->buffers[$key]=$value;}
+    protected function GetBuffer(string $key):string {return (string)($this->buffers[$key]??'');}
     protected function GetValue(string $ident):mixed { return $this->values[$ident]??null; }
     protected function SetValue(string $ident,mixed $value):void {
         $this->values[$ident]=$value;
