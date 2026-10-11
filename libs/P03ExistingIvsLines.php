@@ -163,6 +163,57 @@ final class P03ExistingIvsLines
     }
 
     /**
+     * Optional TERRACE IVS monitor: select one and only one already-enabled
+     * CrossLine rule whose configured object classes include Human.
+     * When more than one candidate exists, require an exact camera rule name.
+     * Never write VideoAnalyseRule or infer a rule from an event channel.
+     *
+     * @param array<int,array<string,mixed>> $rules
+     * @return array{mapped:bool,allowed:array<int,array<string,mixed>>,reason:string,candidates:array<int,array<string,mixed>>}
+     */
+    public static function selectTerrace(array $rules, string $requiredName = ''): array
+    {
+        $candidate = [];
+        $nameFilter = trim($requiredName);
+        foreach ($rules as $index => $rule) {
+            if (!is_array($rule)
+                || strcasecmp((string)($rule['Type'] ?? ''), 'CrossLineDetection') !== 0
+                || !in_array(strtolower((string)($rule['Enable'] ?? '')), ['true', '1'], true)) {
+                continue;
+            }
+            $id = $rule['Id'] ?? null;
+            $name = trim((string)($rule['Name'] ?? ''));
+            $types = array_values(array_map('strtolower', array_map('strval',
+                is_array($rule['ObjectTypes'] ?? null) ? $rule['ObjectTypes'] : [])));
+            if ($name === '' || !is_numeric($id) || (int)$id < 0
+                || !in_array('human', $types, true)) {
+                continue;
+            }
+            $candidate[] = [
+                'name' => $name, 'id' => (int)$id, 'tableIndex' => (int)$index,
+                'humanOnly' => count($types) === 1 && $types[0] === 'human',
+                'objects' => $types
+            ];
+        }
+
+        $filtered = $nameFilter === '' ? $candidate : array_values(array_filter(
+            $candidate,
+            static fn(array $c): bool => strcasecmp((string)$c['name'], $nameFilter) === 0
+        ));
+        if (count($filtered) !== 1) {
+            return [
+                'mapped' => false, 'allowed' => [],
+                'reason' => count($filtered) === 0
+                    ? 'KEINE aktivierte Human-CrossLine mit passendem Namen eindeutig lesbar'
+                    : 'MEHRERE geeignete Human-CrossLine-Regeln; bitte exakten Regelname angeben',
+                'candidates' => $candidate
+            ];
+        }
+        return ['mapped' => true, 'allowed' => $filtered,
+            'reason' => 'Eine aktive Human-CrossLine exakt zugeordnet', 'candidates' => $candidate];
+    }
+
+    /**
      * Some IPC-HFW5442E-ZE streams report a camera-configured UTF-8 rule
      * name as mojibake: "Überquerung" becomes "Ã<0x9c>berquerung".
      *
