@@ -260,5 +260,40 @@ okOnvif(!str_contains($pollSource,'publishHumanProof(')
     && !str_contains($pollSource,'HumanEventCounter'),
     'ONVIF diagnostic candidates cannot bypass event-time sequencing or claim HOME/LAGER transfers');
 
+
+$conflictLine=$crossEvent;
+$conflictLine['data']['ClassTypes']='Human,Vehicle';
+$conflictState=[];
+P03OnvifCorrelator::ingest($conflictLine,$conflictState,100);
+okOnvif(P03OnvifCorrelator::ingest($classEvent,$conflictState,101)===null,
+    'Explicit Human+Vehicle line class cannot be overridden by a later Human event');
+$badClassOnly=$classEvent;
+unset($badClassOnly['data']['ObjectId']);
+$badClassState=[];
+okOnvif(P03OnvifCorrelator::ingest($badClassOnly,$badClassState,100)===null,
+    'Standard ClassTypes-only ObjectDetection (no ObjectId) is diagnostic, not a crossing');
+$realTimeCross=$crossEvent;
+$realTimeCross['utc']='2026-10-11T13:33:03Z';
+$realTimeClass=$classEvent;
+$realTimeClass['utc']='2026-10-11T13:33:01Z';
+$timeState=[];
+P03OnvifCorrelator::ingest($realTimeCross,$timeState,100);
+$matched=P03OnvifCorrelator::ingest($realTimeClass,$timeState,104);
+okOnvif(is_array($matched)
+    && ($matched['utc']??'')==='2026-10-11T13:33:03Z',
+    'Delayed class confirmation preserves original staircase crossing UTC, not class arrival time');
+$retrySeen=[];
+$eventKey=['rule'=>'stairs','objectId'=>'35','utc'=>'2026-10-11T13:33:03Z'];
+okOnvif(P03OnvifEvents::isFresh($eventKey,$retrySeen,100,180),
+    'First unique dated ONVIF crossing accepted');
+okOnvif(!P03OnvifEvents::isFresh($eventKey,$retrySeen,115,180),
+    'PullPoint replay of same dated crossing after 15 seconds is not double counted');
+$newEventKey=$eventKey;
+$newEventKey['utc']='2026-10-11T13:33:07Z';
+okOnvif(P03OnvifEvents::isFresh($newEventKey,$retrySeen,118,180),
+    'Real second crossing with new timestamp counted even if ObjectId reused');
+okOnvif(!P03OnvifEvents::isRecent(['utc'=>'now'],$baseTime,120),
+    'Non ISO8601 relative time strings can never masquerade as camera UTC');
+
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
