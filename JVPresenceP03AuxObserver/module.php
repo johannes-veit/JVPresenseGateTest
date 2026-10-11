@@ -63,6 +63,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('LastHumanProofAt', 0);
         $this->RegisterAttributeString('LastHumanProofCode', '');
         $this->RegisterAttributeString('OnvifSubscriptionURL', '');
+        $this->RegisterAttributeString('OnvifSubscriptionReference', '[]');
         $this->RegisterAttributeInteger('OnvifSubscriptionUntil', 0);
         $this->RegisterAttributeInteger('OnvifEventCount', 0);
         $this->RegisterAttributeInteger('OnvifHumanStairCount', 0);
@@ -180,7 +181,8 @@ class JVPresenceP03AuxObserver extends IPSModule
                 $this->ReadPropertyString('Username'),
                 $this->ReadPropertyString('Password'),
                 $this->ReadAttributeString('OnvifSubscriptionURL'),
-                $this->ReadAttributeInteger('OnvifSubscriptionUntil')
+                $this->ReadAttributeInteger('OnvifSubscriptionUntil'),
+                $this->ReadAttributeString('OnvifSubscriptionReference')
             );
             $status=(string)($result['status']??'UNKNOWN');
             $this->WriteAttributeString('OnvifLastStatus',$status);
@@ -194,6 +196,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->WriteAttributeInteger('OnvifNextAttemptAt',0);
             $this->WriteAttributeString('OnvifSubscriptionURL',(string)$result['url']);
             $this->WriteAttributeInteger('OnvifSubscriptionUntil',(int)$result['until']);
+            $this->WriteAttributeString('OnvifSubscriptionReference',(string)($result['reference']??'[]'));
             $events=is_array($result['events']??null)?$result['events']:[];
             if ($events===[]) {
                 return;
