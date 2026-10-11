@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03 HOME ↔ LAGER: bewährtes 2-Mast-Verfahren bleibt unverändert. Terrasse nur optional und abschaltbar. Neue Richtungspolitik: Terrasse ausschließlich für OUT, niemals IN. Bis zur Richtungsabnahme nur OUT-Schattenanalyse, keine Terrassen-Zonenbuchung."
+      "caption": "P03: HOME↔ARBEIT wird weiterhin über die beiden Mastkameras ermittelt; JV Terrasse ist nur OUT-Kandidat. Zusätzlich wird an WORK_LEFT die eigenständige Straßenlinie RuleID 5 ausgewertet, um ARBEIT↔AUSSERHALB unterscheiden zu können. Für beide Laufwege genügt ein gemeinsamer Test: OUT–IN–OUT–IN, jedes Mal über Treppe und Straße. Haus/Grundstück leer wird daraus noch nicht automatisch bestätigt."
     },
     {
       "type": "CheckBox",
@@ -26,6 +26,10 @@
           "caption": "Kameras durch Weboberfläche bestätigt: JV_LEFT=192.168.107.95, WORK_LEFT=192.168.107.94. 192.168.107.96 und .99 sind die RECHTEN Kameras und dürfen NICHT als Mastkameras verwendet werden. Nur bestehende P03-Observer/Sockets; keine Kamera-/IVS-Änderungen."
         }
       ]
+    },
+    {
+      "type": "Label",
+      "caption": "Straßenlinie: WORK_LEFT „Überquerung zur Straße“, RuleID 5. Beim regulären Gehtest werden zwei Straßen-OUT- und zwei Straßen-IN-Überquerungen automatisch gelernt. Kein neuer Kamera-Observer und keine Kameraeinstellungen zu ändern."
     },
     {
       "type": "ExpansionPanel",
@@ -90,7 +94,7 @@
     },
     {
       "type": "Button",
-      "caption": "5. Kontrollierten Gehtest starten",
+      "caption": "5. OUT–IN–OUT–IN lernen (Treppe + Straße)",
       "onClick": "JVP03MC_PrepareAndStartTest($id);"
     },
     {
