@@ -794,6 +794,84 @@ unset($GLOBALS['instances'][33107],$GLOBALS['instances'][51876],
     $GLOBALS['props'][33107],$GLOBALS['props'][51876]);
 $instance->properties['TerraceDiagnosticsEnabled']=false;
 
+// Regression for real 2026-10-11 20:02:28 failed street learning:
+// an initial WORK_LEFT StreamOK=false during the audit socket restart
+// must WAIT instead of instantly aborting OUT-IN-OUT-IN training.
+unset($GLOBALS['instances'][77777]); // end of foreign-socket-sharing test fixture
+$GLOBALS['instances'][57215]['ConnectionID']=9001;
+$GLOBALS['instances'][27938]['ConnectionID']=9002;
+$GLOBALS['instances'][9001]['InstanceStatus']=102;
+$GLOBALS['instances'][9002]['InstanceStatus']=102;
+$GLOBALS['props'][9001]=['Host'=>'192.168.107.96','Open'=>true,'Port'=>80];
+$GLOBALS['props'][9002]=['Host'=>'192.168.107.99','Open'=>true,'Port'=>80];
+$GLOBALS['props'][57215]['Role']='JV_LEFT';
+$GLOBALS['props'][27938]['Role']='WORK_LEFT';
+$GLOBALS['props'][27938]['CameraHost']='192.168.107.99';
+$GLOBALS['variables'][48490]='[]';
+$GLOBALS['byIdent'][27938]['LastIVSEvent']=48490;
+$GLOBALS['variables'][51090]=false;
+$GLOBALS['variables'][54893]=true;
+$streetMain=new JVPresenceP03MultiCamera();
+$streetMain->attributes['AuxJVInstanceID']=57215;
+$streetMain->attributes['AuxJVManagedSocketID']=9001;
+$streetMain->attributes['AuxJVStreamVarID']=54893;
+$streetMain->attributes['AuxWorkInstanceID']=27938;
+$streetMain->attributes['AuxWorkManagedSocketID']=9002;
+$streetMain->attributes['AuxWorkStreamVarID']=51090;
+$streetMain->attributes['AuxWorkStreetIVSVarID']=48490;
+$streetMain->attributes['P03VerifiedCount']=3;
+$streetMain->attributes['P03HumanEvents']='[{"id":"already-seen"}]';
+$beginStreet=new ReflectionMethod(JVPresenceP03MultiCamera::class,
+    'startP03StreetLearning');
+$beginStreet->invoke($streetMain);
+verifyDiag($streetMain->attributes['P03StreetLearningActive']===true
+    && $streetMain->attributes['P03StreetLearningStreamWasLive']===false
+    && str_contains((string)$streetMain->values['P03StreetDirectionStatus'],
+        'WARTE AUF WORK_LEFT-LIVE'),
+    '20:02 street training waits while audit reopens WORK_LEFT TCP');
+$streetMain->MessageSink(time(),51090,10603,[false,true]);
+verifyDiag($streetMain->attributes['P03StreetLearningActive']===true
+    && !str_contains((string)$streetMain->values['P03StreetDirectionStatus'],'ABGEBROCHEN'),
+    'initial false StreamOK cannot cancel four-walk street training');
+$GLOBALS['variables'][51090]=true;
+$streetMain->MessageSink(time(),51090,10603,[true,true]);
+verifyDiag($streetMain->attributes['P03StreetLearningStreamWasLive']===true
+    && str_contains((string)$streetMain->values['P03StreetDirectionStatus'],'LERNEN 0/4'),
+    'once live WORK_LEFT stream arms street learning without resetting proof');
+$streetEvent=[
+ 'time'=>'20:05:20','code'=>'CrossLineDetection','action'=>'Start',
+ 'ruleName'=>'Überquerung zur Straße','ruleIdUpper'=>5,
+ 'classification'=>'Human','direction'=>'LeftToRight','eventId'=>1011
+];
+$GLOBALS['variables'][48490]=json_encode([$streetEvent],JSON_UNESCAPED_UNICODE);
+$streetMain->MessageSink(time(),48490,10603,[$GLOBALS['variables'][48490],true]);
+verifyDiag(str_contains((string)$streetMain->values['P03StreetDirectionStatus'],'LERNEN 1/4')
+    && str_contains((string)$streetMain->values['P03WorkBoundaryStatus'],'LeftToRight')
+    && (int)$streetMain->attributes['P03StreetRawCount']===1,
+    'real street Human RuleID5 records learning 1/4 and visible raw direction');
+$streetMain->MessageSink(time(),48490,10603,[$GLOBALS['variables'][48490],true]);
+verifyDiag((int)$streetMain->attributes['P03StreetRawCount']===1,
+    'duplicate last-eight WORK street history cannot replay Human');
+$GLOBALS['variables'][54893]=false;
+$streetMain->MessageSink(time(),54893,10603,[false,true]);
+verifyDiag($streetMain->attributes['P03StreetLearningActive']===true,
+    'JV_LEFT stream interruption cannot abort independent WORK street learning');
+$GLOBALS['variables'][51090]=false;
+$streetMain->MessageSink(time(),51090,10603,[false,true]);
+verifyDiag($streetMain->attributes['P03StreetLearningActive']===false
+    && str_contains((string)$streetMain->values['P03StreetDirectionStatus'],'ABGEBROCHEN'),
+    'true WORK_LEFT loss AFTER stream was live aborts incomplete street learning');
+$GLOBALS['variables'][51090]=true;
+$GLOBALS['variables'][54893]=true;
+$streetMain->StartStreetDirectionOnly();
+verifyDiag($streetMain->attributes['P03StreetLearningActive']===true
+    && $streetMain->attributes['P03StreetLearningStreamWasLive']===true
+    && $streetMain->attributes['P03VerifiedCount']===3
+    && $streetMain->attributes['P03HumanEvents']==='[{"id":"already-seen"}]',
+    'standalone WORK street training preserves historical mast proof and reboots no socket');
+verifyDiag(str_contains((string)$streetMain->values['P03StreetDirectionStatus'],'LERNEN 0/4'),
+    'street-only button bases history without claiming previous crossing as new');
+
 // After a module unload/deletion, never turn an old known Observer ID into
 // 0, never create a new observer or trust leftover StreamOK Boolean.
 unset($GLOBALS['instances'][57215],$GLOBALS['instances'][27938]);
@@ -819,7 +897,9 @@ verifyDiag($GLOBALS['writes']===[],
 $ui2=json_decode($instance->GetConfigurationForm(),true);
 verifyDiag(!in_array('JVP03MC_DiagnoseP03Ownership($id);',
     array_column($ui2['actions']??[],'onClick'),true)
-    && count($ui2['actions']??[])===8,
-    'legacy ownership button removed; main UI exposes eight essential commands with optional terrace');
+    && count($ui2['actions']??[])===9
+    && in_array('JVP03MC_StartStreetDirectionOnly($id);',
+        array_column($ui2['actions']??[],'onClick'),true),
+    'main UI includes safe street-only learning, preserving existing commands');
 
 echo "P03 READ-ONLY CONNECTION DIAGNOSIS TEST PASSED\n";
