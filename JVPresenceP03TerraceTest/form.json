@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03 HOME ↔ Lagerplatz: Der Grenzübertritt wird ausschließlich aus der Reihenfolge der beiden Lagerplatzkameras bestimmt. Das P03-Hauptmodul benötigt keine übergeordnete Schnittstelle."
+      "caption": "P03 HOME ↔ LAGER: JV links + Werkstatt links. Person erkannt = SMD-Status (5 Sekunden); nur bestätigte Treppen-CrossLine-Human-Ereignisse zählen als Übertritt. TEST/PRODUKTION nur nach sicherem Gehtest."
     },
     {
       "type": "CheckBox",
@@ -11,7 +11,7 @@
     },
     {
       "type": "ExpansionPanel",
-      "caption": "P03 Mastkameras – Primärsensoren",
+      "caption": "P03 Übertrittslogik",
       "expanded": true,
       "items": [
         {
@@ -22,62 +22,8 @@
           "maximum": 65535
         },
         {
-          "type": "ValidationTextBox",
-          "name": "Username",
-          "caption": "Dahua Benutzername"
-        },
-        {
-          "type": "PasswordTextBox",
-          "name": "Password",
-          "caption": "Dahua Passwort"
-        },
-        {
-          "type": "ValidationTextBox",
-          "name": "AuxJVHost",
-          "caption": "JV_LEFT – Lagerplatz JV links"
-        },
-        {
-          "type": "ValidationTextBox",
-          "name": "AuxWorkHost",
-          "caption": "WORK_LEFT – Lagerplatz Werkstatt links"
-        },
-        {
           "type": "Label",
           "caption": "Kameras durch Weboberfläche bestätigt: JV_LEFT=192.168.107.95, WORK_LEFT=192.168.107.94. 192.168.107.96 und .99 sind die RECHTEN Kameras und dürfen NICHT als Mastkameras verwendet werden. Nur bestehende P03-Observer/Sockets; keine Kamera-/IVS-Änderungen."
-        }
-      ]
-    },
-    {
-      "type": "ExpansionPanel",
-      "caption": "P03 Beweislogik",
-      "expanded": true,
-      "items": [
-        {
-          "type": "NumberSpinner",
-          "name": "NearProofWindowSeconds",
-          "caption": "Max. Zeit zwischen beiden Mastkameras (s)",
-          "minimum": 5,
-          "maximum": 120
-        },
-        {
-          "type": "Label",
-          "caption": "JV_LEFT → WORK_LEFT innerhalb des Zeitfensters = HOME→LAGER."
-        },
-        {
-          "type": "Label",
-          "caption": "WORK_LEFT → JV_LEFT innerhalb des Zeitfensters = LAGER→HOME."
-        },
-        {
-          "type": "Label",
-          "caption": "Nur eine Kamera, dieselbe Kamera mehrfach, unklare Gegenrichtung oder zu großer Zeitabstand = kein Übergang."
-        },
-        {
-          "type": "Label",
-          "caption": "Intern wird jeder Human-IVS-Treffer über einen Ereigniszähler erfasst; der sichtbare Boolean „Person erkannt“ ist nur Diagnose."
-        },
-        {
-          "type": "Label",
-          "caption": "Produktfreigabe erst nach mindestens 2× HOME→LAGER und 2× LAGER→HOME."
         }
       ]
     }
@@ -85,128 +31,38 @@
   "actions": [
     {
       "type": "Button",
-      "caption": "P03 KORREKTUR: BEIDE LINKEN KAMERAS ZUORDNEN (einmalig, nur P03)",
-      "onClick": "JVP03MC_SwitchToVerifiedLeftCameras($id);"
-    },
-    {
-      "type": "Label",
-      "caption": "Korrigiert Hauptinstanz #53879 sowie die bestehenden Observer #57215/#27938 und deren exklusive Client-Sockets #17785/#55478 auf JV links 192.168.107.95 und Werkstatt links 192.168.107.94. Zuerst strenge Bestands-/Exklusivitätsprüfung. Kein KamerasetConfig, keine neue Instanz, kein fremder Socket. Alte 0/6-Human-Zähler und Richtungsbeweise werden zurückgesetzt. Ergebnis in P03 Socket-Diagnose, anschließend LIVE-Audit NUR LESEN."
-    },
-    {
-      "type": "Button",
-      "caption": "P03 VORHANDENE OBSERVER 57215 + 27938 WIEDERHERSTELLEN (nur P03)",
-      "onClick": "JVP03MC_RestoreP03Observers($id);"
-    },
-    {
-      "type": "Label",
-      "caption": "Zweistufige Sicherheitsprüfung: beide P03-Observer und eigene Client-Sockets 17785/55478 müssen vorhanden, exklusiv und mit richtiger Modul-GUID/IP verbunden sein. Erst danach werden ausschließlich die beiden bestehenden Observer mit Host, Rolle und P03-Zugangsdaten neu konfiguriert. Keine neuen Instanzen/Sockets, keine Kamera- oder Fremdmoduländerung. Ergebnis in P03 Socket-Diagnose Variable #35115 und Testprotokoll #53524. Dieser ältere Wiederherstellungsbutton setzt KEINE Kamera-Socket-IP um; für den links/rechts-Wechsel ausschließlich den neuen Korrekturbutton verwenden."
-    },
-    {
-      "type": "Button",
-      "caption": "P03 OBSERVER/SOCKETS BESTAND PRÜFEN (nur lesen, keine Reparatur)",
-      "onClick": "JVP03MC_DiagnoseP03Ownership($id);"
-    },
-    {
-      "type": "Label",
-      "caption": "Untersucht nach dem Update unabhängig von der P03-Instanzsuche die alten IDs 57215/27938 und Client-Sockets 17785/55478, die gespeicherten IDs, die tatsächlichen Modul-GUIDs, die Host-/Rollenwerte und den gesamten Symcon-Instanzbaum. Es wird NICHT neu verbunden, erstellt oder gelöscht. Bitte den Bericht vollständig senden."
-    },
-    {
-      "type": "Button",
-      "caption": "P03 BEIDE IPC – ALLE KONFIGURATIONSWERTE VOLLSTÄNDIG ALS TXT (nur lesen)",
-      "onClick": "JVP03MC_DiagnoseIPC5442AllValues($id);"
-    },
-    {
-      "type": "Label",
-      "caption": "Liest über SymBox die GESAMTE Dahua-Konfiguration (getConfig&name=All; ggf. Config.backup?action=All), ohne Filter auf vermeintlich relevante KI-Werte und ohne 48/80-Felderbegrenzung. Je IPC entsteht ein vollständiges TXT-Dokument direkt unter Hauptinstanz #53879; nur sensible Werte geschwärzt. Die jeweiligen DOKUMENT-IDs und Felderzahlen stehen in der bekannten Variable #35115. Keine Kamera- oder Fremdmoduländerung."
-    },
-    {
-      "type": "Button",
-      "caption": "P03 IPC-HFW5442E-ZE KONFIGURATION PRÜFEN (nur lesen, beide Kameras)",
-      "onClick": "JVP03MC_DiagnoseIPC5442Configuration($id);"
-    },
-    {
-      "type": "Label",
-      "caption": "Liest direkt aus beiden IPC-HFW5442E-ZE die Firmware, MotionDetect-Erfassungsflächen/Zeitpläne, SMD 3.0 Human-Filter sowie IVS Smart Plan/Regeln. Keine Kameraeinstellungen ändern. Ergänzend zeigt der bestehende Verbindungsdiagnose-Button die Dahua-Code-Rohmeldungen VOR dem Parser."
-    },
-    {
-      "type": "Button",
-      "caption": "P03 HEARTBEAT JETZT PRÜFEN / VERALTETEN STREAM REPARIEREN",
-      "onClick": "JVP03MC_CheckP03MastHealthNow($id);"
-    },
-    {
-      "type": "Label",
-      "caption": "Prüft den letzten echten Datenempfang der beiden Mastkameras. Ein alter HTTP-200-Status reicht nicht mehr. Veraltete Streams werden auf AUS gesetzt und nur die eigenen P03-Sockets mit frischem TCP neu verbunden. Ergebnis im anschließenden Diagnosebericht. Kameras und Fremdmodule werden nicht umkonfiguriert."
-    },
-    {
-      "type": "Button",
-      "caption": "P03 EIGENE EVENTSTREAMS JETZT STARTEN (ohne Timer-Wartezeit)",
-      "onClick": "JVP03MC_StartP03EventstreamsNow($id);"
-    },
-    {
-      "type": "Label",
-      "caption": "Startet ausschließlich die zwei bereits verbundenen P03-Client-Sockets unmittelbar und sendet das erste Dahua-HTTP-GET. Keine Änderungen an Kameraeinstellungen, Außenlichtautomatik oder anderen Modulen. Der Diagnosebericht zeigt anschließend Socket, HTTP-Anfrage und Timerstatus."
-    },
-    {
-      "type": "Button",
-      "caption": "P03 FEHLENDE CLIENT-SOCKETS REPARIEREN (nur P03)",
-      "onClick": "JVP03MC_RepairP03ClientSockets($id);"
-    },
-    {
-      "type": "Label",
-      "caption": "Legt für P03-Observer ohne Client-Socket je eine eigene TCP-Verbindung an und verbindet sie. Bereits verbundene Observer, Außenlichtautomatik, Alarmanlage und Kameraeinstellungen werden nicht verändert. Anschließend wird automatisch die Diagnose angezeigt."
-    },
-    {
-      "type": "Button",
-      "caption": "P03 Verbindungen diagnostizieren (nur lesen – beide Observer/Sockets)",
+      "caption": "1. Verbindungen und Personenerkennung prüfen (Bericht #35115)",
       "onClick": "JVP03MC_DiagnoseP03Connections($id);"
     },
     {
-      "type": "Label",
-      "caption": "Zeigt Client-Socket-IDs, Status, Host/Port, Eventstream, Human-Zähler, Auth-/Watchdog-Zustand und Fremdnutzung. Kein Neustart, keine Kamera-/Fremdmoduländerung. Ergebnis ausschließlich als kopierbare Instanzvariable #35115; das Konfigurationsfenster bleibt statisch."
+      "type": "Button",
+      "caption": "2. Kamera-IVS-Konfiguration nur lesen (Bericht #35115)",
+      "onClick": "JVP03MC_DiagnoseIPC5442Configuration($id);"
     },
     {
       "type": "Button",
-      "caption": "P03 Mastkamera-LIVE-Audit – Kamera nur lesen (kein Lauftest)",
+      "caption": "3. Treppen-CrossLine-Zuordnung neu prüfen (nur lesen)",
       "onClick": "JVP03MC_AuditCameraConfiguration($id);"
     },
     {
       "type": "Button",
-      "caption": "Interne P03 2-Kamera-Simulation ausführen",
+      "caption": "4. Interne 2-Kamera-Simulation",
       "onClick": "JVP03MC_RunP03Simulation($id);"
     },
     {
       "type": "Button",
-      "caption": "P03-Observer neu verbinden (nur P03, keine Kameraänderung)",
-      "onClick": "JVP03MC_P03AuxRescan($id);"
-    },
-    {
-      "type": "Label",
-      "caption": "WICHTIG: P03 ermittelt Treppenlinien nur aus dem tatsächlich lesbaren VideoAnalyseRule-API. Die Straßenlinie, Fahrzeugereignisse, SMD im ganzen Bild und alte P03-Rechteckregeln sind KEIN Grenzübertritt. Fehlen die Linien trotz Kameraoberfläche im API, bleibt die Auswertung absichtlich gesperrt. Es werden keine Kameraeinstellungen geschrieben."
-    },
-    {
-      "type": "Button",
-      "caption": "P03 2-KAMERA-TEST / ROHMONITOR STARTEN (KAMERAS NUR LESEN)",
+      "caption": "5. Kontrollierten Gehtest starten",
       "onClick": "JVP03MC_PrepareAndStartTest($id);"
     },
     {
       "type": "Button",
-      "caption": "P03 Produktivbetrieb aktivieren (nur bei verifizierter Treppenlinie)",
+      "caption": "6. Produktion aktivieren (nur bei vollständigem Nachweis)",
       "onClick": "JVP03MC_EnableProductionP03($id);"
     },
     {
       "type": "Button",
-      "caption": "P03 Test/Produktion beenden (Kameras unverändert)",
+      "caption": "Test / Produktion stoppen",
       "onClick": "JVP03MC_DisableProductionP03($id);"
-    },
-    {
-      "type": "Button",
-      "caption": "Testzustand zurücksetzen",
-      "onClick": "JVP03MC_ResetTest($id);"
-    },
-    {
-      "type": "Button",
-      "caption": "Zustand ins Debug schreiben",
-      "onClick": "JVP03MC_DumpState($id);"
     }
   ]
 }

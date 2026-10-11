@@ -1,3 +1,14 @@
+# v0.8.1 (Build 82) – Schlanker P03-Status und klare Trennung SMD/Übertritt
+
+- Live-Ursache: SMD/SmartMotionHuman Start (bereits auf JV_LEFT empfangen) wurde im vorhandenen Treppen-IVS-Modus nur protokolliert; die sichtbare Boolean-Variable PersonDetected blieb AUS, bis ein von den Kameras nicht gelieferter/verifizierter Human-CrossLine-Übertritt angenommen wurde.
+- Korrektur: Ausschließlich echte SMD Human Start/On/Pulse setzen PersonDetected für fünf Sekunden auf AN, auf JV_LEFT #55806 und WORK_LEFT #33071. Das Folge-Stop, generische Bewegung, Fahrzeuge und Heartbeats setzen keine Personenerkennung. Der vorhandene Pulse-Timer und der Health-Watchdog setzen den Status sicher wieder AUS.
+- Der SMD-Status erhöht **nie** HumanEventCounter (#42076/#34838) im Modus EXISTING_STAIR_IVS, erzeugt keine Übertrittsbeweise und führt keinen HOME/LAGER-Wechsel aus. Dafür bleibt die verifizierte Treppen-CrossLine RuleID4 mit Human-Objektklasse und zwei getrennten Kameras zwingend.
+- ObserverStatus hält die letzte SMD Human Start Uhrzeit als internes Attribut; die bereits bekannte #35115 meldet sie. Keine neue sichtbare Statusvariable oder Fremdmodul-Kopplung.
+- Symcon-Konfigurationsoberfläche von 27 Aktionen/Labels auf sieben eindeutig benannte Hauptaktionen bereinigt. Überflüssige Buttons zur bereits vollendeten links/rechts-Korrektur, Rohdump, Socket-Einzelreparatur, Doppel-Neuverbindung und Debug entfernt. Sichere bestehende interne Methoden bleiben für Kompatibilität und Notfall-Recovery aufrufbar.
+- Überflüssige Diagnosevariablen des Hauptmoduls und acht Observer-Forensikvariablen werden ausgeblendet, nicht irreversibel gelöscht: so bleiben vorhandene Objekt-IDs, #35115, #53524, Archivreferenzen und externe Symcon-Verknüpfungen intakt. Die sichtbaren Observer-Variablen sind PersonDetected, StreamOK, HumanEventCounter.
+- TEST und PRODUKTION werden wie bisher bei Update deaktiviert. Keine Kamera-Konfigänderungen, keine neue Verbindung und keine Änderung an Außenlichtautomatik, Alarmanlage oder PresenceCore.
+- Regressionen prüfen mehrfach SMD Human/Vehicle/Stop, Status-Pulse-Timeout, strikte Nichtzählung und reguläre klassifizierte IVS Human-Beweise, dazu UI-Befehlsreduktion und alle vorherigen Connect-/Security-Tests.
+
 # v0.8.0 (Build 81) – Vier reale Treppen-CrossLine-Ereignisse erhalten und Ablehnungsursache sichtbar machen
 
 - Gehtest 11.10.2026 17:20: JV_LEFT 192.168.107.95 hat jetzt 4 echte Code=CrossLineDetection-Ereignisse (bei 0 Human-Counter), WORK_LEFT 192.168.107.94 weiterhin 0 CrossLine. Beide Eventstreams 102/LIVE. Damit ist ein pauschales MessageEnable=false verhindert jeden IVS-Stream zumindest auf JV_LEFT widerlegt.

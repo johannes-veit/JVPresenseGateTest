@@ -198,6 +198,21 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('P03MastHealth', 'P03 Mastkamera-Heartbeat-Überwachung', '', 76);
         $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
         $this->RegisterVariableString('P03OwnershipAudit', 'P03 Instanz-/Observer-Bestandsprüfung (nur lesen)', '', 78);
+        // Simplify the visible Symcon instance tree without destroying
+        // existing object IDs, links, archival history, or plugin consumers.
+        // The essential #35115/#53524 diagnostic IDs remain visible.
+        if (function_exists('IPS_SetHidden')) {
+            foreach ([
+                'PresenceLastEvent', 'P03LastProof', 'LastEvent',
+                'StreamOK', 'P03MastHealth', 'P03IPC5442Audit',
+                'P03OwnershipAudit'
+            ] as $internalIdent) {
+                $objectId = $this->GetIDForIdent($internalIdent);
+                if ($objectId > 0) {
+                    IPS_SetHidden($objectId, true);
+                }
+            }
+        }
         // Timer is registered exclusively in Create(), as required by
         // IP-Symcon; only its active interval changes in ApplyChanges.
         $this->SetTimerInterval('P03MastHealthTimer', 15000);
@@ -2667,6 +2682,15 @@ class JVPresenceP03MultiCamera extends IPSModule
                             $lines[]='KAMERA-CODES SEIT OBSERVER-START: '
                                 .($items===[] ? 'noch keine geparsten Code-Events' : implode(', ',$items));
                         }
+                        $lastSmdStart=(int)($wireState['lastSmdHumanStartAt']??0);
+                        $lines[]='SMD PERSON ERKANNT (STATUS, KEIN UEBERTRITT): '
+                            . ($lastSmdStart>0
+                                ? 'letzter Human-START '.date('H:i:s',$lastSmdStart)
+                                    .' (vor '.max(0,time()-$lastSmdStart).' s)'
+                                : 'noch kein Human-START seit Observer-Neustart')
+                            . ' | Variable '
+                            . ($name === self::AUX_JV_ROLE ? '#55806' : '#33071')
+                            . ' schaltet fuer 5 Sekunden auf AN.';
                         $lines[]='GENERIC-HUMAN-HINWEISE (kein Beweis): '
                             .(int)($wireState['genericHumanHintCount'] ?? 0);
                         $lastProofAt = (int) ($wireState['lastHumanProofAt'] ?? 0);

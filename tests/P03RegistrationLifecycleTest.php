@@ -70,4 +70,37 @@ lifecycleAssert(str_contains($onvif,'OnvifPollBusyUntil')
 lifecycleAssert(!str_contains($onvif,'publishHumanProof(')
     && !str_contains($onvif,"SetValue('HumanEventCounter'"),
     'ONVIF passive diagnosis cannot inject unverified person counters or zone transfers');
+
+// Cleanup safety: obsolete UI/report diagnostics are hidden, NEVER deleted;
+// existing Symcon variable object IDs can still be referenced externally.
+$main=file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/module.php');
+foreach ([$main,$observer] as $source) {
+    lifecycleAssert(str_contains((string)$source,'IPS_SetHidden(')
+        && !str_contains((string)$source,'IPS_DeleteVariable(')
+        && !str_contains((string)$source,'IPS_DeleteObject('),
+        'cleaned P03 hides internal diagnostics without deleting unknown external references');
+}
+$form=json_decode(file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/form.json'),true);
+lifecycleAssert(is_array($form) && count($form['actions']??[])===7,
+    'Symcon user form has only seven essential buttons');
+$commands=array_column($form['actions'],'onClick');
+foreach ([
+    'JVP03MC_DiagnoseP03Connections($id);',
+    'JVP03MC_DiagnoseIPC5442Configuration($id);',
+    'JVP03MC_AuditCameraConfiguration($id);',
+    'JVP03MC_RunP03Simulation($id);',
+    'JVP03MC_PrepareAndStartTest($id);',
+    'JVP03MC_EnableProductionP03($id);',
+    'JVP03MC_DisableProductionP03($id);'
+] as $command) {
+    lifecycleAssert(in_array($command,$commands,true),
+        'essential P03 test/production safety command remains visible: '.$command);
+}
+lifecycleAssert(!in_array('JVP03MC_SwitchToVerifiedLeftCameras($id);',$commands,true)
+    && !in_array('JVP03MC_RepairP03ClientSockets($id);',$commands,true),
+    'completed migrations and repetitive emergency repair buttons removed from live UI');
+lifecycleAssert(str_contains((string)$observer, 'pulsePersonDetected()')
+    && str_contains((string)$observer, 'SMD_PERSON_STATUS_ONLY_NO_STAIR_PROOF'),
+    'SMD person status is independent of strict staircase transfer proof');
+
 echo "P03 CREATE/APPLYCHANGES REGISTRATION CONTRACT PASSED\n";

@@ -206,7 +206,8 @@ $form=json_decode(file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/
 checkLeft(str_contains($src,"AUX_JV_DEFAULT_HOST = '192.168.107.95'")
     && str_contains($src,"AUX_WORK_DEFAULT_HOST = '192.168.107.94'"),
     'New installation defaults point to JV LEFT and WORK LEFT, not right cameras');
-checkLeft(in_array('JVP03MC_SwitchToVerifiedLeftCameras($id);',
-    array_column($form['actions']??[],'onClick'),true),
-    'Existing-instance migration button is wired to actual module method');
+checkLeft(!in_array('JVP03MC_SwitchToVerifiedLeftCameras($id);',
+    array_column($form['actions']??[],'onClick'),true)
+    && str_contains($src, 'public function SwitchToVerifiedLeftCameras(): void'),
+    'already completed left-camera migration no longer clutters UI; guarded backend recovery remains');
 echo "P03 LEFT CAMERA IDENTITY/MIGRATION: $passed scenarios passed\n";
