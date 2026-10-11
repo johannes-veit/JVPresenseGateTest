@@ -118,6 +118,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('AuxJVInstanceID', 0);
         $this->RegisterAttributeInteger('AuxWorkInstanceID', 0);
         $this->RegisterAttributeInteger('TerraceObserverInstanceID', 0);
+        $this->RegisterAttributeInteger('TerraceManagedSocketID', 0);
         $this->RegisterAttributeString('TerraceAllowedIVSRules', '[]');
         $this->RegisterAttributeInteger('AuxJVPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
@@ -3048,9 +3049,14 @@ class JVPresenceP03MultiCamera extends IPSModule
         if ($this->matchesTrustedP03Observer($observerID, $host, self::TERRACE_ROLE)) {
             $this->WriteAttributeInteger('TerraceObserverInstanceID', $observerID);
         }
-        if (!$this->terraceObserverSocketExclusive($observerID)) {
+        // IP-Symcon 9 can create a valid P03 observer with ConnectionID=0.
+        // The two proven mast cameras required explicit IPS_ConnectInstance.
+        // Apply the same guarded repair ONLY to this verified terrace role.
+        $socketState = $this->ensureExclusiveTerraceSocket($observerID,$host);
+        if (!$socketState['ok']) {
             $this->SetValue('P03TerraceMonitor',
-                'GESPERRT – Terrassen-Socket nicht sicher exklusiv; keine Aenderung');
+                'GESPERRT – Observer #'.$observerID
+                .' | '.$socketState['reason']);
             return;
         }
         $rules = json_encode($selection['allowed'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
@@ -3083,6 +3089,103 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->SetValue('P03TerraceMonitor',
                 'GESPERRT – P03-Terrassen-Observer konnte nicht sicher aktiviert werden ('
                 .get_class($e).')');
+        }
+    }
+
+    /**
+     * IP-Symcon 9 does not automatically connect every newly created
+     * RequireParent() device. Connect only an already verified P03-TERRACE
+     * observer with ConnectionID=0 to a freshly created or previously
+     * registered, UNUSED dedicated P03 Client Socket.
+     *
+     * Never detach/reconnect an observer that already has a parent, even if
+     * that parent is foreign/shared. Persist socket ID before connecting, so
+     * retries after an interrupted IPS_ConnectInstance cannot leak sockets.
+     *
+     * @return array{ok:bool,reason:string}
+     */
+    private function ensureExclusiveTerraceSocket(int $observerID, string $host): array
+    {
+        if (!$this->matchesTrustedP03Observer($observerID,$host,self::TERRACE_ROLE)) {
+            return ['ok'=>false,'reason'=>'Observer-Identitaet (Modul, Rolle oder IP) nicht bestaetigt'];
+        }
+        try {
+            $state = IPS_GetInstance($observerID);
+            $parentID = (int)($state['ConnectionID']??0);
+            if ($parentID > 0) {
+                if (!$this->terraceObserverSocketExclusive($observerID)) {
+                    return ['ok'=>false,'reason'=>'Parent #'.$parentID
+                        .' ist kein exklusiver P03 Client Socket; fremde/geteilte Verbindung unveraendert'];
+                }
+                return ['ok'=>true,'reason'=>'Bereits eigener exklusiver Parent #'.$parentID];
+            }
+            $port = $this->ReadPropertyInteger('CameraPort');
+            if ($host === '' || $port < 1 || $port > 65535) {
+                return ['ok'=>false,'reason'=>'Host/Port ungueltig; kein Socket angelegt'];
+            }
+            $socketID = $this->ReadAttributeInteger('TerraceManagedSocketID');
+            if ($socketID > 0 && IPS_InstanceExists($socketID)) {
+                $socket = IPS_GetInstance($socketID);
+                if (strcasecmp((string)($socket['ModuleInfo']['ModuleID']??''),
+                    self::CLIENT_SOCKET_GUID) !== 0) {
+                    return ['ok'=>false,'reason'=>'Gemerktes Socket #'.$socketID
+                        .' ist kein Client Socket; keine Uebernahme'];
+                }
+                foreach (IPS_GetInstanceList() as $otherID) {
+                    $otherID = (int)$otherID;
+                    if ($otherID > 0 && IPS_InstanceExists($otherID)
+                        && (int)(IPS_GetInstance($otherID)['ConnectionID']??0)===$socketID) {
+                        return ['ok'=>false,'reason'=>'Gemerktes Socket #'.$socketID
+                            .' ist bereits mit Instanz #'.$otherID.' verbunden; nicht angefasst'];
+                    }
+                }
+                if (trim((string)IPS_GetProperty($socketID,'Host'))!==$host
+                    || (int)IPS_GetProperty($socketID,'Port')!==$port) {
+                    return ['ok'=>false,'reason'=>'Gemerktes Socket #'.$socketID
+                        .' hat anderen Host/Port; keine Aenderung'];
+                }
+            } else {
+                $socketID = IPS_CreateInstance(self::CLIENT_SOCKET_GUID);
+                if ($socketID <= 0) {
+                    return ['ok'=>false,'reason'=>'Neuen exklusiven Client Socket nicht angelegt'];
+                }
+                // Store at once, before any later operation can fail. Never
+                // create a second socket for the same pending connection.
+                $this->WriteAttributeInteger('TerraceManagedSocketID',$socketID);
+                IPS_SetName($socketID,'P03 TERRACE Client Socket');
+                IPS_SetProperty($socketID,'Host',$host);
+                IPS_SetProperty($socketID,'Port',$port);
+                IPS_SetProperty($socketID,'Open',false);
+                IPS_ApplyChanges($socketID);
+            }
+            // Before connecting, independently recheck ownership in case
+            // another instance was attached while socket setup completed.
+            if ((int)(IPS_GetInstance($observerID)['ConnectionID']??0)!==0) {
+                return ['ok'=>false,'reason'=>'Parent hat sich zwischenzeitlich geaendert; bitte erneut pruefen'];
+            }
+            foreach (IPS_GetInstanceList() as $otherID) {
+                $otherID = (int)$otherID;
+                if ($otherID>0 && IPS_InstanceExists($otherID)
+                    && (int)(IPS_GetInstance($otherID)['ConnectionID']??0)===$socketID) {
+                    return ['ok'=>false,'reason'=>'Socket #'.$socketID
+                        .' waehrend Aufbau von Instanz #'.$otherID.' belegt; nicht verbunden'];
+                }
+            }
+            if (IPS_ConnectInstance($observerID,$socketID)===false) {
+                return ['ok'=>false,'reason'=>'Verbinden mit P03 Client Socket #'
+                    .$socketID.' fehlgeschlagen (ID fuer erneuten Versuch gespeichert)'];
+            }
+            IPS_ApplyChanges($observerID);
+            if ((int)(IPS_GetInstance($observerID)['ConnectionID']??0)!==$socketID
+                || !$this->terraceObserverSocketExclusive($observerID)) {
+                return ['ok'=>false,'reason'=>'Parent-Verbindung nach ApplyChanges noch nicht sicher bestaetigt'
+                    .' | Observer #'.$observerID.' | Soll-Socket #'.$socketID];
+            }
+            return ['ok'=>true,'reason'=>'P03 TERRACE #'.$observerID
+                .' mit exklusivem Socket #'.$socketID.' verbunden'];
+        } catch (Throwable $e) {
+            return ['ok'=>false,'reason'=>'Socket-Reparatur fehlgeschlagen: '
+                .get_class($e).' | bitte Diagnose pruefen'];
         }
     }
 
