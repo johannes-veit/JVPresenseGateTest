@@ -2689,7 +2689,7 @@ class JVPresenceP03MultiCamera extends IPSModule
                                     .' (vor '.max(0,time()-$lastSmdStart).' s)'
                                 : 'noch kein Human-START seit Observer-Neustart')
                             . ' | Variable '
-                            . ($role === self::AUX_JV_ROLE ? '#55806' : '#33071')
+                            . ($name === self::AUX_JV_ROLE ? '#55806' : '#33071')
                             . ' schaltet fuer 5 Sekunden auf AN.';
                         $lines[]='GENERIC-HUMAN-HINWEISE (kein Beweis): '
                             .(int)($wireState['genericHumanHintCount'] ?? 0);
