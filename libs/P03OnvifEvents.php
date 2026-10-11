@@ -208,7 +208,7 @@ final class P03OnvifEvents
      */
     public static function isFresh(array $summary,array &$seen,int $now,int $seconds=3): bool
     {
-        $seconds=max(1,min(10,$seconds));
+        $seconds=max(1,min(300,$seconds));
         foreach ($seen as $id=>$stamp) {
             if (!is_numeric($stamp) || (int)$stamp>$now || $now-(int)$stamp >= $seconds) {
                 unset($seen[$id]);
