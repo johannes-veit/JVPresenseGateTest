@@ -17,6 +17,16 @@ final class P03WorkStreetLearning
     /** @param array<string,mixed> $e */
     public static function validStreetStart(array $e): bool
     {
+        // Even when the exact street name is present, a Dahua event must
+        // carry RuleID=5; stream index or UI labels alone are insufficient.
+        $hasVerifiedID=false;
+        foreach (['cfgRuleId','ruleIdUpper','ruleIdLower','ruleId'] as $field) {
+            $value=$e[$field]??null;
+            if ($value===null || $value==='') continue;
+            if (!is_numeric($value) || (int)$value!==self::STREET_ID) return false;
+            $hasVerifiedID=true;
+        }
+        if (!$hasVerifiedID) return false;
         if (!P03ExistingIvsLines::matchingHumanStart([
             'code' => $e['code'] ?? null,
             'action' => $e['action'] ?? null,
