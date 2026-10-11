@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/libs/DahuaDigest.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/P03AuxObserverLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ExistingIvsLines.php';
+require_once dirname(__DIR__) . '/libs/GateTestLogic.php';
 require_once dirname(__DIR__) . '/libs/P03OnvifPullPoint.php';
 require_once dirname(__DIR__) . '/libs/P03OnvifCorrelator.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
@@ -1207,6 +1208,7 @@ class JVPresenceP03AuxObserver extends IPSModule
                 'ruleIdLower' => $event['ruleIdLower'] ?? null,
                 'ruleId' => $event['ruleId'] ?? null,
                 'classification' => $event['classification'] ?? null,
+                'direction' => GateTestLogic::directionFromEvent($event),
                 'payloadHuman' => (bool)($event['human'] ?? false),
                 'eventId' => $event['eventId'] ?? null,
                 'expectedRuleName' => $selected['name'] ?? null,
