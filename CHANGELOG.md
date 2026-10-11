@@ -1,3 +1,14 @@
+# v0.8.9 (Build 90) – Optionaler verzögerter Terrasse-IN-Ersatz im kontrollierten Test
+
+- Feldlauf 11.10.2026: WORK_LEFT Treppen-Human-START 20:06:02, JV_LEFT nur SMD Human um 20:06:22 (kein IVS Treppe), JV Terrasse Human-START `IVS-1` RuleID5 `RightToLeft` um 20:06:23. Die vorherige 2-Mast-Bedingung konnte diesen **vierten IN nicht bestätigen**, obwohl die Terrasse eine unabhängige reale Personenerkennung und einen IVS-IN-Kandidaten lieferte.
+- Neuer IN-Ersatztest A: `WORK_LEFT` echte Human-Treppen-CrossLine (RuleID4) vor JV-Terrasse Person erkannt binnen **25 Sekunden**; 21 Sekunden im realen Protokoll würden nicht in ein starres 20-Sekunden-Fenster passen.
+- IN-Ersatztest B: `JV_LEFT` echte Human-Treppen-CrossLine (RuleID4) → Terrasse Person erkannt binnen **6 Sekunden**. Der abweichende zeitliche Weg ist für den fehlenden WORK_LEFT-Treppenauslöser gedacht.
+- Die Terrasse wird über die bereits vorhandenen `PersonDetected` Boolean-Pulse (#20965) und `LastIVSEvent` Forensik (#22341) empfangen; Human-Terrassen-IVS (`RightToLeft`) ist **optional**, aber nicht erforderlich. `LeftToRight` wird für IN gesperrt. Der bestehende `TerraceObserver #33107` und exklusive Socket #51876 bleiben unangetastet.
+- Beide Backup-Fälle prüfen ihre Einzelsignale unabhängig, verwenden keine generische Mast-Bewegung statt Treppen-IVS, führen 5 Sekunden Plausibilitätswartezeit durch, schließen widersprechende/neue zweite Mast-Beweise aus und markieren die verwendeten Mast-/Terrassenmeldungen, damit dasselbe Ereignis nicht doppelt gezählt wird. Reguläre zwei-Mast-IN/OUT-Beweise bleiben stets vorrangig.
+- Die alternative Bestätigung wird **zunächst ausschließlich in kontrollierten P03-Lauftests** in `P03TerraceInBackupStatus` samt unabhängiger Zählung gespeichert und im kopierbaren Bericht #35115 gezeigt. Kein Terrassen-SMD/IVS kann im Produktivbetrieb allein den HOME/ARBEIT-Zonenstatus oder Haus-/Grundstück-leer-Zertifikate ändern. Für eine produktive Freigabe sind Feldprüfung und bewusste separate Entscheidung erforderlich.
+- Neue Tests: realer vierter IN mit 21 Sekunden, WORK→Terrasse >25 Sekunden abgewiesen, JV→Terrasse 4 Sekunden akzeptiert und 7 Sekunden abgewiesen, links/rechts IVS-Gegenrichtung, fehlender zweiter Sensor, ungültige/ungeklärte Klassifikation, doppelte/verbrauchte Signale und gleichzeitig vorhandene Gegenmast-Signale.
+- Bestehendes Street RuleID5 Richtungslernen, Kamera-Sockets und die bewährte v0.8.2-Baseline bleiben unverändert; keine Kamera-/Fremdmodul-Schreibzugriffe.
+
 # v0.8.8 (Build 89) – Straßen-Richtungslernen nicht beim Kamerastart abbrechen; 4 Straßenüberquerungen separat
 
 - Echter Feldlauf 11.10.2026 20:02–20:08: Zwei-Mast-Nachweise HOME→LAGER 20:03:34, LAGER→HOME 20:04:34, HOME→LAGER 20:05:14 waren korrekt. Vierter IN fehlte, weil JV_LEFT nach WORK_LEFT 20:06:02 nur noch SMD Human, aber keinen Treppen-CrossLine-START erfasste. Kein erfundener IN-Beweis.
