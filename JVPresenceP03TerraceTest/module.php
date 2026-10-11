@@ -2322,6 +2322,26 @@ class JVPresenceP03MultiCamera extends IPSModule
                         $lines[] = 'IPC5442 Wire-Zähler: Code-Events='
                             . (int) ($wireState['wireCodeCount'] ?? 0)
                             . ', Heartbeats=' . (int) ($wireState['wireHeartbeatCount'] ?? 0);
+                        $observed = json_decode((string)($wireState['observedCodeCounts'] ?? '{}'),true);
+                        if (is_array($observed)) {
+                            arsort($observed, SORT_NUMERIC);
+                            $items=[];
+                            foreach (array_slice($observed,0,15,true) as $name=>$count) {
+                                $items[]=$name.'='.(int)$count;
+                            }
+                            $lines[]='KAMERA-CODES SEIT OBSERVER-START: '
+                                .($items===[] ? 'noch keine geparsten Code-Events' : implode(', ',$items));
+                        }
+                        $lines[]='GENERIC-HUMAN-HINWEISE (kein Beweis): '
+                            .(int)($wireState['genericHumanHintCount'] ?? 0);
+                    }
+                }
+                $humanHintVar=$this->findAuxVariable($id,'HumanHint');
+                if ($humanHintVar>0) {
+                    $hint=trim((string)GetValue($humanHintVar));
+                    if ($hint!=='') {
+                        $lines[]='LETZTER GENERIC-HUMAN-HINWEIS: '.substr($hint,0,500)
+                            .' (kein Zonenbeweis)';
                     }
                 }
                 $auditVar = $this->findAuxVariable($id, 'EventAudit');
@@ -2502,6 +2522,9 @@ class JVPresenceP03MultiCamera extends IPSModule
     private function evaluateP03MastSequence(): void
     {
         if (!$this->ReadAttributeBoolean('TestActive') && !$this->ReadAttributeBoolean('ProductionEnabled')) {
+            // A previously scheduled 500-ms settle timer MUST NOT spin forever
+            // after commissioning is stopped or production is disabled.
+            $this->SetTimerInterval('P03ProofTimer', 0);
             return;
         }
 
@@ -2521,6 +2544,11 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
+        // PENDING is the ONLY state that needs a repeating 500-ms check.
+        // Prior versions left that timer active on UNKNOWN/CONTRADICTION
+        // or VERIFIED, a real SymBox busy-loop/hang hazard.
+        $this->SetTimerInterval('P03ProofTimer', 0);
+
         if ($state === P03ProofEngine::STATE_VERIFIED) {
             $proofId = '2cam:' . sprintf('%.6f', microtime(true));
             $pseudoCross = ['id' => $proofId, 'direction' => null, 'ts' => microtime(true)];
@@ -2533,7 +2561,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         if ($state === P03ProofEngine::STATE_CONTRADICTION) {
             $this->SetValue('P03ProofState', 'CONTRADICTION – überlappende Gegenrichtung; kein Übergang');
             $this->appendProtocol('P03 2CAM CONTRADICTION – keine Zonenänderung.');
+            return;
         }
+        // A stale PENDING message must never outlive its two-camera evidence.
+        // If only one sensor fired, display the truthful incomplete state.
+        $this->SetValue('P03ProofState', 'UNVOLLSTÄNDIG – keine bestätigte Zwei-Kamera-Sequenz');
     }
 
     /**
