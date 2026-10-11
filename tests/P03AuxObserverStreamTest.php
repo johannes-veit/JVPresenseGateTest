@@ -902,3 +902,32 @@ foreach([$brokenLatin1,$brokenCp1252] as $brokenName) {
         array_replace($event,['action'=>'Stop']),$actualRule),
         'Stop does not qualify as a Human Start');
 }
+
+$evidence=new JVPresenceP03AuxObserver();
+$evidence->Create();
+$evidence->properties['Enabled']=true;
+$evidence->properties['CameraHost']='192.0.2.20';
+$evidence->properties['Username']='mock';
+$evidence->properties['Password']='mock';
+$evidence->properties['Role']='JV_LEFT';
+$evidence->properties['ProofMode']='EXISTING_STAIR_IVS';
+$evidence->properties['AllowedIVSRules']=json_encode($actualRule,JSON_UNESCAPED_UNICODE);
+$evidence->ApplyChanges();
+$evidence->attributes['Streaming']=true;
+$evidence->values['StreamOK']=true;
+$httpHeader="HTTP/1.1 200 OK".chr(13).chr(10).chr(13).chr(10);
+rxP03($evidence,$httpHeader);
+$eventJson=json_encode(['Name'=>$brokenLatin1,'RuleID'=>4,'EventID'=>924001,
+    'Object'=>['ObjectType'=>'Human','ObjectID'=>2]],JSON_UNESCAPED_UNICODE);
+$wireHeader="Code=CrossLineDetection;action=Start;index=0;data=";
+rxP03($evidence,$wireHeader.$eventJson.chr(13).chr(10));
+checkP03((int)($evidence->values['HumanEventCounter']??0)===1
+    && ($evidence->values['PersonDetected']??false)===true,
+    'full Dahua parser and P03 observer count encoded Treppe RuleID4 Human exactly once');
+$evidenceHistory=json_decode((string)($evidence->values['LastIVSEvent']??''),true);
+checkP03(count($evidenceHistory)===1
+    && ($evidenceHistory[0]['decision']??'')==='STAIR_HUMAN_START_COUNTED',
+    'accepted encoded CrossLine Human has correct audit decision');
+rxP03($evidence,"Code=CrossLineDetection;action=Stop;index=0;data=".$eventJson.chr(13).chr(10));
+checkP03((int)($evidence->values['HumanEventCounter']??0)===1,
+    'encoded STOP never creates a second Human proof');
