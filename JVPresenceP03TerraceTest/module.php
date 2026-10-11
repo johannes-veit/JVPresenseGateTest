@@ -3954,14 +3954,14 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeBoolean('TestActive',true);
         $this->SetValue('TestActive',true);
         $this->SetValue('P03TerraceInBackupStatus',
-            'IN-EINZELTEST AKTIV: nur einen vollstaendigen IN-Weg gehen.'
-            .' WORK_LEFT→Terrasse <=50 s oder JV_LEFT→Terrasse <=15 s.'
+            '3CAM-EINZELTEST AKTIV: EINEN vollstaendigen IN- oder OUT-Weg gehen.'
+            .' IN WORK→Terrasse <=50 s / JV→Terrasse <=15 s; OUT nur Terrasse-IVS LeftToRight.'
             .' Kein Ruecksetzen frueherer Mastbeweise.');
-        $this->appendProtocol('P03 IN-BACKUP EINZELTEST BEREIT:'
+        $this->appendProtocol('P03 3CAM IN/OUT-BACKUP EINZELTEST BEREIT:'
             .' vorhandene P03VerifiedCount/P03ActionCounts nicht veraendert,'
             .' keine Kamera neu verbunden, Produktion bleibt AUS.');
-        $this->setResult('IN-BACKUP EINZELTEST: genau einen Weg'
-            .' von der Werkstatt Richtung Haus bis zur Terrasse gehen.'
+        $this->setResult('3CAM IN/OUT-BACKUP EINZELTEST: einen Weg'
+            .' entweder HOME→LAGER oder LAGER→HOME gehen.'
             .' Danach Bericht #35115 senden.');
         $this->DiagnoseP03Connections(true);
     }
