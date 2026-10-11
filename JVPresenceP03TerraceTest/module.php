@@ -3614,6 +3614,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $proofId = '2cam:' . sprintf('%.6f', microtime(true));
             $pseudoCross = ['id' => $proofId, 'direction' => null, 'ts' => microtime(true)];
             $events = $this->commitP03VerifiedResult($events, $pseudoCross, $result, $proofId);
+            $this->markP03TerraceSignalSupportingPrimary($events,$result);
             $this->setP03HumanEvents($events);
             $this->checkP03CommissioningComplete();
             return;
@@ -4142,6 +4143,61 @@ class JVPresenceP03MultiCamera extends IPSModule
             static fn($s)=>$ts-(float)($s['ts']??0.0)<=110.0));
         $this->WriteAttributeString('P03TerraceInSignals',
             json_encode(array_slice($signals,-24),JSON_UNESCAPED_UNICODE)?:'[]');
+    }
+
+    /**
+     * A normal 2-mast crossing is stronger evidence than any optional
+     * terrace observation. Display the third camera's supporting Human SMD
+     * or directional IVS if recorded near the JV side, and consume that
+     * OPTIONAL signal so another single mast hit cannot reuse it for a
+     * spurious second transfer. No zone/counter mutation here.
+     *
+     * @param array<int,array<string,mixed>> $events
+     * @param array<string,mixed> $proof
+     */
+    private function markP03TerraceSignalSupportingPrimary(
+        array $events,array $proof
+    ):void {
+        if (!$this->ReadAttributeBoolean('TestActive')
+            || $this->ReadAttributeBoolean('ProductionEnabled')) return;
+        $used=$proof['usedEventIds']??[];
+        $used=is_array($used)?$used:[];
+        $jvAt=null;
+        foreach($events as $e) {
+            if (($e['source']??'')==='JV_LEFT'
+                && in_array((string)($e['id']??''),$used,true)) {
+                $jvAt=(float)($e['ts']??0.0);
+                break;
+            }
+        }
+        if ($jvAt===null||$jvAt<=0.0) return;
+        $signals=json_decode($this->ReadAttributeString('P03TerraceInSignals'),true);
+        if (!is_array($signals)) return;
+        $expected=($proof['action']??'')===P03ProofEngine::ACTION_HOME_TO_LAGER
+            ? 'LeftToRight':'RightToLeft';
+        $label=$expected==='LeftToRight'?'OUT':'IN';
+        $seen=[];
+        foreach($signals as &$signal) {
+            if (!is_array($signal) || !empty($signal['used'])
+                || abs((float)($signal['ts']??0.0)-$jvAt)>15.0) continue;
+            $direction=$signal['direction']??null;
+            $seen[]=$direction===null
+                ? 'SMD Human ohne Richtungsangabe'
+                : ($direction===$expected
+                    ? 'IVS '.(string)$direction.' passt zu '.$label
+                    : 'WARNUNG: IVS '.(string)$direction.' widerspricht '.$label);
+            $signal['used']=true;
+            $signal['usedBy']='2CAM_PRIMARY_SUPPORT';
+        }
+        unset($signal);
+        if ($seen!==[]) {
+            $this->WriteAttributeString('P03TerraceInSignals',
+                json_encode($signals,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'[]');
+        }
+        $this->WriteAttributeString('P03ThreeCameraLastDecision',
+            '2CAM PRIMARY '.$label.' BESTAETIGT | Terrasse: '
+            .($seen===[]?'kein zeitnahes Zusatzsignal':implode(' / ',$seen))
+            .' | Terrasse hat keinen Einfluss auf die Primaerbuchung');
     }
 
     /**
