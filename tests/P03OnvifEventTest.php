@@ -303,5 +303,22 @@ $analyticsState=[];
 P03OnvifCorrelator::ingest($differentAnalytics,$analyticsState,100);
 okOnvif(P03OnvifCorrelator::ingest($matchingAnalyticsCross,$analyticsState,101)===null,
     'ObjectId collision across different analytics configurations cannot prove a person');
+// Long-running noisy camera: several thousand different object IDs during a
+// short window must not make persistent Symcon Attributes grow indefinitely.
+$stressState=[];
+for($i=0;$i<4000;$i++){
+    $e=[
+        'topic'=>'tns1:RuleEngine/ObjectDetection/Object',
+        'utc'=>'2026-10-11T13:33:00Z',
+        'source'=>['VideoSourceConfigurationToken'=>'IPC1',
+            'VideoAnalyticsConfigurationToken'=>'An1'],
+        'data'=>['ObjectId'=>'obj'.$i,'ClassTypes'=>'Human']
+    ];
+    P03OnvifCorrelator::ingest($e,$stressState,5000);
+}
+okOnvif(count($stressState['classes']??[])<=128
+    && count($stressState['crossings']??[])<=128,
+    '4000 synthetic ONVIF objects do not produce unbounded persistent correlation memory');
+
 echo "ONVIF test total errors: $errors\n";
 exit($errors>0?1:0);
