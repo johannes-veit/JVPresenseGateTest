@@ -599,3 +599,53 @@ rxP03($manual,"Code=CrossLineDetection;action=Start;index=0;data={\"Name\":\"Üb
 checkP03((int)($manual->values['HumanEventCounter']??0)===1,
     'missing camera API mapping keeps existing-line proof strictly disabled');
 
+
+
+/**
+ * Camera firmware v2.840 may serialize VideoAnalyseRule differently over
+ * JSON-RPC and CGI. Never count a staircase crossing merely because one
+ * transport contains an unrelated ID or stale NVR-like rule.
+ */
+$cameraCgi = implode("\r\n", [
+    'table.VideoAnalyseRule[0][0].Name=Überquerung zur Treppe',
+    'table.VideoAnalyseRule[0][0].Type=CrossLineDetection',
+    'table.VideoAnalyseRule[0][0].Enable=true',
+    'table.VideoAnalyseRule[0][0].Id=17',
+    'table.VideoAnalyseRule[0][0].ObjectTypes[0]=Human',
+    'table.VideoAnalyseRule[0][0].ObjectTypes[1]=MotorVehicle',
+    'table.VideoAnalyseRule[0][1].Name=Überquerung zur Straße',
+    'table.VideoAnalyseRule[0][1].Type=CrossLineDetection',
+    'table.VideoAnalyseRule[0][1].Enable=true',
+    'table.VideoAnalyseRule[0][1].Id=18',
+    'table.VideoAnalyseRule[0][1].ObjectTypes[0]=Human',
+    'table.VideoAnalyseRule[0][1].ObjectTypes[1]=MotorVehicle',
+    'table.VideoAnalyseRule[1][0].Name=Überquerung zur Treppe zweiter Kanal',
+    'table.VideoAnalyseRule[1][0].Type=CrossLineDetection',
+    'table.VideoAnalyseRule[1][0].Enable=true',
+    'table.VideoAnalyseRule[1][0].Id=99'
+]);
+$cgiList=P03ExistingIvsLines::fromCgi($cameraCgi);
+$rpcList=[
+    ['Name'=>'Überquerung zur Treppe','Type'=>'CrossLineDetection',
+        'Enable'=>true,'Id'=>17,'ObjectTypes'=>['Human','MotorVehicle']],
+    ['Name'=>'Überquerung zur Straße','Type'=>'CrossLineDetection',
+        'Enable'=>true,'Id'=>18,'ObjectTypes'=>['Human','MotorVehicle']]
+];
+$cg=P03ExistingIvsLines::select($cgiList);
+$rp=P03ExistingIvsLines::select($rpcList);
+checkP03(count($cgiList)===2
+    && P03ExistingIvsLines::sameSelectedStair($rp,$cg),
+    'Direct Dahua CGI agrees with RPC2 on exactly one existing staircase rule, ignoring channel 1');
+$rpcList[0]['Id']=19;
+checkP03(!P03ExistingIvsLines::sameSelectedStair(P03ExistingIvsLines::select($rpcList),$cg),
+    'Different RPC2 vs CGI rule IDs must not be accepted as existing staircase evidence');
+$rpcList[0]['Id']=17;
+$rpcList[0]['ObjectTypes']=['Human'];
+checkP03(!P03ExistingIvsLines::sameSelectedStair(P03ExistingIvsLines::select($rpcList),$cg),
+    'Different object class filters between RPC2 and CGI fail closed');
+checkP03(!P03ExistingIvsLines::sameSelectedStair(
+    P03ExistingIvsLines::select([]),$cg),
+    'Old v0.6.37 camera with zero RPC2 CrossLine cannot become verified from UI/CGI alone');
+checkP03(P03ExistingIvsLines::fromCgi('table.VideoAnalyseRule[0][0].Name=Unknown')!==[],
+    'Dahua CGI one-line rules read without requiring hardcoded field order');
+
