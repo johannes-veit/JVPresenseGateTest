@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/libs/DahuaDigest.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/P03AuxObserverLogic.php';
+require_once dirname(__DIR__) . '/libs/P03ExistingIvsLines.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03AuxObserver extends IPSModule
@@ -24,7 +25,9 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterPropertyString('Password', '');
         $this->RegisterPropertyString('Role', '');
         $this->RegisterPropertyInteger('RuleIndex', -1); // Diagnose/Fallback
-        $this->RegisterPropertyInteger('RuleID', -1);    // Diagnose/Fallback
+        $this->RegisterPropertyInteger('RuleID', -1);    // Legacy-Diagnose/Fallback
+        $this->RegisterPropertyString('ProofMode', 'EXISTING_STAIR_IVS');
+        $this->RegisterPropertyString('AllowedIVSRules', '[]');
 
         $this->RegisterAttributeBoolean('Streaming', false);
         $this->RegisterAttributeInteger('LastCameraRx', 0);
@@ -605,7 +608,12 @@ class JVPresenceP03AuxObserver extends IPSModule
         $wantedName = $this->expectedRuleName();
         $wantedIndex = $this->ReadPropertyInteger('RuleIndex');
         $wantedId = $this->ReadPropertyInteger('RuleID');
-        if ($wantedName === '' && $wantedIndex < 0 && $wantedId < 0) {
+        $existingMode = $this->ReadPropertyString('ProofMode') !== 'LEGACY_OWNED';
+        $allowedRules = json_decode($this->ReadPropertyString('AllowedIVSRules'), true);
+        if (!is_array($allowedRules)) {
+            $allowedRules = [];
+        }
+        if (!$existingMode && $wantedName === '' && $wantedIndex < 0 && $wantedId < 0) {
             return;
         }
 
@@ -648,7 +656,8 @@ class JVPresenceP03AuxObserver extends IPSModule
                 }
             }
 
-            if (strcasecmp($code, 'CrossRegionDetection') === 0) {
+            if (strcasecmp($code, 'CrossRegionDetection') === 0
+                || strcasecmp($code, 'CrossLineDetection') === 0) {
                 $rawSummary = [
                     'time' => date('H:i:s'),
                     'role' => $this->ReadPropertyString('Role'),
@@ -682,6 +691,13 @@ class JVPresenceP03AuxObserver extends IPSModule
             if (P03AuxObserverLogic::isSpecificSmdHumanEvent($event)) {
                 $this->WriteAttributeInteger('SmdHumanRawCount',
                     $this->ReadAttributeInteger('SmdHumanRawCount') + 1);
+                if ($existingMode) {
+                    // SMD reports detection anywhere in the image; it does
+                    // NOT prove the user-defined staircase boundary. Preserve
+                    // raw evidence but never trigger a HOME/LAGER transfer.
+                    $this->recordEventAudit($event, 'SMD_ONLY_DIAGNOSTIC_NOT_STAIR_CROSSING');
+                    continue;
+                }
                 if (!P03AuxObserverLogic::isSmdHumanProofStart($event)) {
                     $this->recordEventAudit($event, 'SMD_NOT_HUMAN_START');
                     continue;
@@ -698,6 +714,40 @@ class JVPresenceP03AuxObserver extends IPSModule
                 } else {
                     $this->recordEventAudit($event, 'SMD_CROSS_SOURCE_DUPLICATE');
                 }
+                continue;
+            }
+
+            if ($existingMode) {
+                if (!P03ExistingIvsLines::matchingHumanStart($event, $allowedRules)) {
+                    $this->WriteAttributeInteger('RuleRejectCount',
+                        $this->ReadAttributeInteger('RuleRejectCount') + 1);
+                    $this->recordEventAudit($event,
+                        strcasecmp($code, 'CrossLineDetection') === 0
+                            ? 'STAIR_IVS_NOT_MAPPED_OR_NOT_HUMAN'
+                            : 'RULE_OR_EVENTCODE_REJECTED');
+                    continue;
+                }
+                $this->WriteAttributeInteger('RuleMatchEventCount',
+                    $this->ReadAttributeInteger('RuleMatchEventCount') + 1);
+                if (!$this->isUniquePersonDelivery($event)) {
+                    $this->recordEventAudit($event, 'DUPLICATE_WITHIN_3_SECONDS');
+                    continue;
+                }
+                $summary = [
+                    'time' => date('H:i:s'),
+                    'role' => $this->ReadPropertyString('Role'),
+                    'code' => $code,
+                    'action' => $event['action'] ?? '',
+                    'ruleName' => $event['ruleName'] ?? null,
+                    'human' => true,
+                    'humanFromRule' => true,
+                    'classification' => $event['classification'] ?? null,
+                    'eventId' => $event['eventId'] ?? null,
+                    'objectId' => $event['objectId'] ?? null
+                ];
+                $this->publishHumanProof($event, 'IVS_EXISTING_STAIR_LINE', $summary);
+                $this->recordEventAudit($event, 'STAIR_HUMAN_START_COUNTED');
+                $this->refreshObserverStatus('Bestehende Treppen-IVS HUMAN START');
                 continue;
             }
 
@@ -1059,6 +1109,8 @@ class JVPresenceP03AuxObserver extends IPSModule
             'ruleMatches' => $this->ReadAttributeInteger('RuleMatchEventCount'),
             'ruleRejected' => $this->ReadAttributeInteger('RuleRejectCount'),
             'dedupeRejected' => $this->ReadAttributeInteger('DedupeRejectCount'),
+            'proofMode' => $this->ReadPropertyString('ProofMode'),
+            'allowedStairRules' => json_decode($this->ReadPropertyString('AllowedIVSRules'), true),
             'smdHumanRawCount' => $this->ReadAttributeInteger('SmdHumanRawCount'),
             'smdHumanProofCount' => $this->ReadAttributeInteger('SmdHumanProofCount'),
             'lastHumanProofAt' => $this->ReadAttributeInteger('LastHumanProofAt'),
