@@ -3142,6 +3142,17 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
 
         $lines[] = '';
+        $lines[] = '--- TERRASSE IN-BACKUP (AKTUELL NUR TEST) ---';
+        $lines[] = 'IN-BACKUP Zeitfenster: WORK_LEFT Treppe→TERRASSE Person <=25 s;'
+            .' JV_LEFT Treppe→TERRASSE Person <=6 s. Terrassen-IVS RightToLeft'
+            .' optional, LeftToRight kein IN.';
+        $lines[] = 'IN-BACKUP TESTBESTAETIGUNGEN: '
+            .$this->ReadAttributeInteger('P03TerraceInBackupCount');
+        $lines[] = 'IN-BACKUP LETZTES ERGEBNIS: '
+            .(string)$this->GetValue('P03TerraceInBackupStatus');
+        $lines[] = 'IN-BACKUP ist von Produktionsbuchungen und'
+            .' normalem Zwei-Mast-Proof-Count getrennt.';
+        $lines[] = '';
         $lines[] = '--- WORK_LEFT STRASSENLINIE – ARBEIT ↔ AUSSERHALB ---';
         $streetID=$this->ReadAttributeInteger('AuxWorkStreetIVSVarID');
         $lines[]='IVS-Quelle: WORK_LEFT Observer #'
@@ -4083,6 +4094,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             json_encode(array_slice($terrace,-24),JSON_UNESCAPED_UNICODE)?:'[]');
         $count=$this->ReadAttributeInteger('P03TerraceInBackupCount')+1;
         $this->WriteAttributeInteger('P03TerraceInBackupCount',$count);
+        $this->SetValue('P03ProofState','IN-BACKUP NUR TEST BESTAETIGT – kein Zonenwechsel');
         $message='IN-BACKUP TEST BESTAETIGT #'.$count.': '
             .(string)$result['path'].' | Kameraabstand '
             .(string)$result['gap'].' s | TERRASSEN-IVS OPTIONAL; '
