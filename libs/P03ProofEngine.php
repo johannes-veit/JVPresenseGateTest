@@ -31,6 +31,78 @@ final class P03ProofEngine
     public const STATE_CONTRADICTION = 'CONTRADICTION';
 
     /**
+     * Strict diagnostic-only evaluation of an optional TERRACE IVS event.
+     *
+     * The user's proven near-field camera event at 19:35:50 carried
+     * LeftToRight, RuleID=5 and Human; physical OUT mapping is still pending
+     * a controlled live test. RightToLeft is explicitly NOT an IN proof.
+     *
+     * No transfer may be booked by this function. All caller state remains
+     * unchanged. Only named, independently verified IVS rule identities
+     * and already-counted observer Human starts qualify.
+     *
+     * @param array<string,mixed> $event
+     * @param array<string,mixed> $expectedRule
+     * @return array{status:string,direction:string,action:?string,reason:string}
+     */
+    public static function terraceOutOnlyShadow(
+        array $event, array $expectedRule
+    ): array {
+        $direction = trim((string)($event['direction'] ?? ''));
+        $rejected = static fn(string $reason): array => [
+            'status'=>'IGNORED','direction'=>$direction,'action'=>null,'reason'=>$reason
+        ];
+        if (strcasecmp((string)($event['code'] ?? ''),'CrossLineDetection') !== 0) {
+            return $rejected('NOT_CROSSLINE');
+        }
+        if (!in_array(strtolower(trim((string)($event['action']??''))),
+            ['start','on','pulse'],true)) {
+            return $rejected('NOT_START');
+        }
+        if ((string)($event['decision']??'') !== 'STAIR_HUMAN_START_COUNTED'
+            || (string)($event['rejectionReason']??'') !== 'MATCHED_FILTER') {
+            return $rejected('NOT_ACCEPTED_OBSERVER_HUMAN');
+        }
+        $expectedName=trim((string)($expectedRule['name']??''));
+        $expectedID=$expectedRule['id']??null;
+        if ($expectedName==='' || !is_numeric($expectedID) || (int)$expectedID<0
+            || trim((string)($event['ruleName']??''))!==$expectedName) {
+            return $rejected('RULE_NAME_OR_EXPECTED_ID_MISMATCH');
+        }
+        $hasID=false;
+        foreach (['cfgRuleId','ruleIdUpper','ruleIdLower','ruleId'] as $field) {
+            $actualID=$event[$field]??null;
+            if ($actualID===null || $actualID==='') continue;
+            if (!is_numeric($actualID) || (int)$actualID!==(int)$expectedID) {
+                return $rejected('CAMERA_RULE_ID_CONFLICT');
+            }
+            $hasID=true;
+        }
+        if (!$hasID) {
+            return $rejected('MISSING_CAMERA_RULE_ID');
+        }
+        $classification=strtolower(trim((string)($event['classification']??'')));
+        if ($classification!==''
+            && !in_array($classification,['human','person','pedestrian'],true)) {
+            return $rejected('NOT_HUMAN');
+        }
+        if ($classification==='' && empty($expectedRule['humanOnly'])) {
+            return $rejected('MIXED_CLASS_NO_HUMAN_IDENTITY');
+        }
+        if ($direction!=='LeftToRight') {
+            return $rejected($direction==='RightToLeft'
+                ? 'OPPOSITE_DIRECTION_NEVER_IN'
+                : 'UNKNOWN_DIRECTION_NEVER_PROOF');
+        }
+        return [
+            'status'=>'OUT_CANDIDATE_ONLY',
+            'direction'=>'LeftToRight',
+            'action'=>self::ACTION_HOME_TO_LAGER,
+            'reason'=>'SHADOW_ONLY_OUT_NEEDS_LIVE_DIRECTION_VERIFICATION'
+        ];
+    }
+
+    /**
      * @param array<string,mixed> $cross
      * @param array<int,array<string,mixed>> $events
      * @return array<string,mixed>

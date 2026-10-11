@@ -775,16 +775,20 @@ verifyDiag(str_contains($terraceReport,'TERRACE Person erkannt: AUS | Variable #
     && str_contains($terraceReport,'Nach Kamera-IVS-Aenderungen erneut'),
     'real 18:37 terrace SMD vs missing IVS and stale rule filter are explicit in #35115');
 $GLOBALS['variables'][22341]=json_encode([[
- 'time'=>'18:51:01','action'=>'Start','ruleName'=>'IVS-1',
+ 'time'=>'18:51:01','code'=>'CrossLineDetection','action'=>'Start','ruleName'=>'IVS-1',
  'ruleIdUpper'=>5,'classification'=>'Human',
- 'direction'=>'LeftToRight','decision'=>'STAIR_HUMAN_START_COUNTED'
+ 'direction'=>'LeftToRight','decision'=>'STAIR_HUMAN_START_COUNTED',
+ 'rejectionReason'=>'MATCHED_FILTER'
 ]],JSON_UNESCAPED_UNICODE);
 $GLOBALS['variables'][47497]=1;
 $instance->DiagnoseP03Connections(true);
 $terraceReport=(string)$instance->values['P03ConnectionDiagnosis'];
 verifyDiag(str_contains($terraceReport,'TERRACE Human-CrossLine-Zaehler: 1')
     && str_contains($terraceReport,'TERRACE IVS 18:51:01')
-    && str_contains($terraceReport,'Richtung=LeftToRight'),
+    && str_contains($terraceReport,'Richtung=LeftToRight')
+    && str_contains($terraceReport,'TERRACE OUT-SHADOW: 1 OUT-Kandidat(en)')
+    && str_contains($terraceReport,'OUT-Schatten=OUT_CANDIDATE_ONLY')
+    && str_contains($terraceReport,'IN) ausschliesslich WORK_LEFT'),
     'actual main report reads accepted terrace IVS, counter and direction after update');
 unset($GLOBALS['instances'][33107],$GLOBALS['instances'][51876],
     $GLOBALS['props'][33107],$GLOBALS['props'][51876]);

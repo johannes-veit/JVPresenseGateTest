@@ -1,3 +1,13 @@
+# v0.8.6 (Build 87) – JV Terrasse ausschließlich OUT, IN niemals von der Terrasse (Schattenmodus)
+
+- Entscheidung aus realen Tests 11.10.2026: Terrassenkamera erkennt Menschen vor der Treppe hauptsächlich im Nahbereich zuverlässig. Sie lieferte 19:35:50 genau ein anerkanntes Human-CrossLine `IVS-1` RuleID5 mit Direction `LeftToRight`; auf IN-Weg fehlten weitere CrossLine-Events trotz SMD-Personenerkennung. Deshalb wird die Kamera **niemals als IN-Beweisquelle** verwendet.
+- Dauerhafte Richtungspolitik: OUT (HOME→LAGER) soll später `TERRASSE OUT ODER JV_LEFT→WORK_LEFT` erlauben; IN (LAGER→HOME) bleibt **ausschließlich WORK_LEFT→JV_LEFT**. Eine Kamerameldung in Gegenrichtung wird niemals für IN verwendet oder als Ersatz einer Mastkamera interpretiert.
+- Die physische Zuordnung `LeftToRight` zu OUT beruht auf der ersten Nahbereichsbeobachtung und muss noch durch einen gezielten zweiten echten OUT-Gehtest bestätigt werden. Daher bleibt die neue Terrassenalternative **Schattenmodus**: zählt in #35115 nur valide OUT-Kandidaten der letzten acht IVS-Ereignisse, löst keine Übergänge aus und aktiviert weder TEST noch PRODUKTION.
+- Neue pure `P03ProofEngine::terraceOutOnlyShadow()` verweigert falsche/fehlende Regel-IDs, anderen Namen als bereits bestätigte Regel, Fahrzeuge, STOP, SMD ohne IVS, nicht akzeptierte/abgewiesene Ereignisse, unbekannte Richtung oder `RightToLeft`. Ein sauberer `LeftToRight`-Human-START liefert nur `OUT_CANDIDATE_ONLY`, niemals eine Buchung.
+- #35115 zeigt den OUT-Schattenmodus samt Anzahl, exakter Ablehnung der Gegenrichtung und Hinweis auf unveränderten IN-Mastnachweis. Die Terrassen-Checkbox bleibt nutzbar; bei AUS wird die Kamera ignoriert.
+- Bestehendes bewährtes Mast-Paar, Produktionsfreigaben, Beweiszählung, Web-/IVS-Kamerakonfiguration, Sockets, Außenlichtautomatik und Symcon-IDs werden nicht verändert. Produktionsbetrieb weiterhin AUS.
+- Regressionen prüfen OUT-Kandidat, Gegenrichtung und keine IN-Zulassung, eindeutige Objekt-/Regelklassifikation, STOP/Fahrzeuge/Duplikatstatus und unabhängiges Zwei-Mast-IN. Die fest gesicherte Baseline v0.8.2 bleibt unangetastet.
+
 # v0.8.5 (Build 86) – JV Terrasse: Ereignisweg/Variablen und Live-Diagnose Ende-zu-Ende absichern
 
 - Review des kompletten realen Datenwegs: exklusiver P03 Terrace Socket #51876 und Observer #33107 abonnieren Dahua eventManager.cgi; `JVP03DahuaEventParser::feed` setzt Code/Action/Name/RuleID/Klasse/Direction um. Die lokale `P03ExistingIvsLines::matchingHumanStart` akzeptiert nur genau die konfigurierte Human-CrossLine (zuletzt `IVS-1`, RuleID 5).

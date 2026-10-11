@@ -3021,10 +3021,32 @@ class JVPresenceP03MultiCamera extends IPSModule
                 $lines[]='TERRACE Human-CrossLine-Zaehler: '
                     .($counterID>0 ? (int)GetValue($counterID) : 'FEHLT')
                     .' | NUR TERRASSEN-DIAGNOSE';
+                $lines[]='TERRACE RICHTUNGSPOLITIK: nur HOME→LAGER (OUT) als kuenftige Alternative;'
+                    .' LAGER→HOME (IN) ausschliesslich WORK_LEFT→JV_LEFT.'
+                    .' LeftToRight ist vorlaeufig OUT, noch kein zertifizierter Richtungsnachweis.'
+                    .' TEST/PRODUKTION: Terrasse ausschliesslich SHADOW/DIAGNOSE.';
                 $ivId=$this->findAuxVariable($terraceID,'LastIVSEvent');
                 if ($ivId>0) {
                     $last=json_decode((string)GetValue($ivId),true);
                     if (is_array($last) && array_is_list($last)) {
+                        $expectedRule=(isset($state['allowedStairRules'])
+                            && is_array($state['allowedStairRules'])
+                            && count($state['allowedStairRules'])===1
+                            && is_array($state['allowedStairRules'][0]))
+                            ? $state['allowedStairRules'][0] : [];
+                        $outCandidates=0;
+                        foreach (array_slice($last,-8) as $candidateEvent) {
+                            if (!is_array($candidateEvent)) continue;
+                            $candidate=P03ProofEngine::terraceOutOnlyShadow(
+                                $candidateEvent,$expectedRule);
+                            if ($candidate['status']==='OUT_CANDIDATE_ONLY') {
+                                $outCandidates++;
+                            }
+                        }
+                        $lines[]='TERRACE OUT-SHADOW: '.$outCandidates
+                            .' OUT-Kandidat(en) unter den letzten '
+                            .min(8,count($last)).' Linienereignissen;'
+                            .' nur Diagnose, niemals automatischer Uebergang.';
                         foreach (array_slice($last,-4) as $entry) {
                             if (!is_array($entry)) continue;
                             $lines[]='  TERRACE IVS '.(string)($entry['time']??'?')
@@ -3034,7 +3056,9 @@ class JVPresenceP03MultiCamera extends IPSModule
                                     ??$entry['cfgRuleId']??'?')
                                 .' | Klasse='.(string)($entry['classification']??'?')
                                 .' | Richtung='.(string)($entry['direction']??'FEHLT')
-                                .' | Entscheidung='.(string)($entry['decision']??'?');
+                                .' | Entscheidung='.(string)($entry['decision']??'?')
+                                .' | OUT-Schatten='.(string)(P03ProofEngine::terraceOutOnlyShadow(
+                                    $entry,$expectedRule)['status']);
                         }
                     }
                 }

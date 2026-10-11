@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03 HOME ↔ LAGER: Zwei Mastkameras liefern derzeit den verifizierten Grenzübertritt. JV Terrasse kann separat als dritter IVS-Zusatzsensor (AN/AUS) eingelesen werden, ohne die bisherigen Übertritte zu ändern. Spätere Alternative TERRASSE ODER beide Mastkameras erst nach eigenem Richtungs-Abnahmetest."
+      "caption": "P03 HOME ↔ LAGER: bewährtes 2-Mast-Verfahren bleibt unverändert. Terrasse nur optional und abschaltbar. Neue Richtungspolitik: Terrasse ausschließlich für OUT, niemals IN. Bis zur Richtungsabnahme nur OUT-Schattenanalyse, keine Terrassen-Zonenbuchung."
     },
     {
       "type": "CheckBox",
@@ -53,7 +53,7 @@
         },
         {
           "type": "Label",
-          "caption": "Der optionale Terrassen-Observer erfasst die eigene CrossLine und Richtung für spätere Auswertung. Vorerst Diagnosemodus: bestehender HOME↔LAGER-Nachweis bleibt strikt JV_LEFT + WORK_LEFT. Terrasse allein löst KEINEN Statuswechsel aus."
+          "caption": "JV Terrasse wird aufgrund der Nahbereichserkennung ausschließlich als potenzielle OUT-Quelle geführt. Vorläufig gilt LeftToRight als OUT-Kandidat (noch zu bestätigen). IN bleibt ausschließlich WORK_LEFT → JV_LEFT. Die Terrasse meldet OUT-Kandidaten in #35115, darf aktuell jedoch keine Übergänge buchen."
         },
         {
           "type": "Label",
