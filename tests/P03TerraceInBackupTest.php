@@ -25,6 +25,12 @@ bOk(P03TerraceInBackup::evaluate([$work],[array_replace($person,['direction'=>'R
     'optional terrace Human IVS IN direction strengthens but is NOT mandatory');
 bOk(P03TerraceInBackup::evaluate([$work],[array_replace($person,['direction'=>'LeftToRight'])],1026.0)['status']==='UNKNOWN',
     'terrace physical OUT IVS direction never qualifies as IN backup');
+bOk(P03TerraceInBackup::evaluate([$work],[
+    $person,
+    ['id'=>'later-out-ivs','kind'=>'IVS','direction'=>'LeftToRight',
+     'ts'=>1024.0,'used'=>false]
+],1029.0)['status']==='UNKNOWN',
+    'terrace SMD near contradictory LeftToRight IVS cannot confirm IN even without pulse-merge');
 bOk(P03TerraceInBackup::evaluate([$work],[],1026.0)['status']==='UNKNOWN',
     'a single mast camera alone never proves IN');
 bOk(P03TerraceInBackup::evaluate([],[array_replace($person,['direction'=>'RightToLeft'])],1026.0)['status']==='UNKNOWN',
