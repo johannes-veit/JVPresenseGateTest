@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03: bewährte HOME↔ARBEIT-Mastkameras bleiben unverändert, Terrasse nur OUT-Schatten. WORK_LEFT Straßenlinie RuleID5 erkennt ARBEIT↔AUSSERHALB separat. Neu: Straßenrichtung allein durch 4 Überquerungen der WORK_LEFT-Straßenlinie OUT–IN–OUT–IN einlernen, ohne Haus-/Treppenrundgang, Mast-Testreset oder Kamera-Neustart."
+      "caption": "P03 HOME↔ARBEIT: bewährter Mast-Nachweis bleibt maßgeblich. Neuer IN-Ersatz im kontrollierten TEST: WORK_LEFT Treppe → Terrasse Person binnen 25 s oder JV_LEFT Treppe → Terrasse binnen 6 s. Terrassen-IVS RightToLeft kann ergänzen, ist aber keine Pflicht. OUT wird nicht zu IN umgedeutet. Testbestätigungen bleiben von Produktionsbuchung und Anwesenheitsstatus getrennt."
     },
     {
       "type": "CheckBox",
