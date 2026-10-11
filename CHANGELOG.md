@@ -1,3 +1,14 @@
+# v0.7.9 (Build 80) – Ursache fehlender echter Treppen-CrossLine-Events gezielt lesen
+
+- Gehtest 11.10.2026 16:59:45 beweist frische Personenerkennung auf beiden LEFT-Kameras (JV 4× SmartMotionHuman; WORK 2× SmartMotionHuman), funktionierende Sockets und gültige Treppen-CrossLine-Freigabe. Trotzdem 0× Code=CrossLineDetection an beiden Kameras und 0 neue Human-Zähler. SMD im gesamten Bild ist kein gerichteter Treppenübertritt.
+- Bisheriger Button "P03 IPC-HFW5442E-ZE KONFIGURATION PRÜFEN" untersuchte irrtümlich alte P03_JV_LEFT_HUMAN/P03_WORK_LEFT_HUMAN CrossRegion-Rechteckregeln; nach Umstellung auf die vom Nutzer gezeichneten aktiven Treppenlinien war das falsche Ziel.
+- Die Spezialdiagnose nutzt jetzt die unabhängig per RPC2/CGI bestätigte Einzel-Treppenlinie je Observer (Name "Überquerung zur Treppe", RuleID 4, Index 3, Typ CrossLineDetection). Sie gleicht live per CGI deren Name, ID, Index und Objektfilter erneut ab und liest Linienkoordinaten, IVS-Zeitplan und insbesondere EventHandler.MessageEnable.
+- WORK_LEFT: Mixed Human/Vehicle; ein CrossLine-Ereignis benötigt pro Ereignis eine Human-Klassifizierung. "Überquerung zur Straße" RuleID 5 bleibt nur im Kamera-Inventar sichtbar und niemals ein erlaubter HOME/LAGER-Nachweis.
+- Kamera-EventHandler.MessageEnable=false wird als mögliche Ursache fehlender EventManager-CrossLine-Meldungen kenntlich gemacht; der Effekt ist kamera-/firmwareabhängig und wird erst nach realer Live-Prüfung als Ursache bestätigt. Keine automatische Kamera- oder KI-Konfigurationsänderung.
+- Das Spezialdiagnoseergebnis steht wie bisher unter der bekannten Socket-Diagnose #35115 (durch 30-s-Automatik später überschreibbar) und zugleich in der dedizierten P03 IPC-Konfigurations-Audit-Variable.
+- Simulation nutzt zwei echte 16:59 Kamerakonfigurationen mit ID 4 Treppe / ID 5 Straße / Human+Vehicle-Filtern und erzwungen gemischten EventHandler-Einstellungen. Reines GET, keine Kamera-, Socket- oder Fremdmodul-Schreibzugriffe.
+- TEST und PRODUKTION bleiben AUS, bis echte klassifizierte Linienereignisse beider Seiten live nachgewiesen sind.
+
 # v0.7.8 (Build 79) – Treppen-Freigabe separat von CrossLine-Inventar anzeigen
 
 - Feldprotokoll 11.10.2026 16:50: JV_LEFT 192.168.107.95 und WORK_LEFT 192.168.107.94 besitzen jeweils genau eine durch CGI + RPC2 bestätigte Treppenlinie ("Überquerung zur Treppe", RuleID 4, Tabellenindex 3).
