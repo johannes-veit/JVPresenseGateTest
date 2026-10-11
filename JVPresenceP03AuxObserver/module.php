@@ -127,6 +127,21 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableString('OnvifStatus', 'ONVIF PullPoint – eigener Ereignisweg', '', 67);
         $this->RegisterVariableString('OnvifRecentEvents', 'ONVIF letzte Ereignisse (Metadaten)', '', 68);
 
+        // Keep actual diagnostics intact for #35115 while hiding
+        // redundant observer variables in the Symcon object tree.
+        // Do not delete IDs, which may be referenced by existing automation.
+        if (function_exists('IPS_SetHidden')) {
+            foreach ([
+                'LastEvent', 'LastIVSEvent', 'ObserverStatus',
+                'EventAudit', 'WireProbe', 'HumanHint',
+                'OnvifStatus', 'OnvifRecentEvents'
+            ] as $internalIdent) {
+                $objectId = $this->GetIDForIdent($internalIdent);
+                if ($objectId > 0) {
+                    IPS_SetHidden($objectId, true);
+                }
+            }
+        }
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
         $this->SetTimerInterval('PersonPulseTimer', 0);
