@@ -133,7 +133,7 @@ checkLeft($main->properties['AuxJVHost']==='192.168.107.95'
     'Existing main instance host properties persisted');
 checkLeft(($GLOBALS['props'][60000]['Host']??'')==='192.168.107.250'
     && $GLOBALS['created']===0
-    && array_unique(array_column($GLOBALS['setProps'],0))
+    && array_values(array_unique(array_column($GLOBALS['setProps'],0)))
         ===[17785,57215,55478,27938,53879],
     'No new observer/socket, no foreign module/socket mutation');
 checkLeft($GLOBALS['vars'][42076]===0 && $GLOBALS['vars'][34838]===0
@@ -152,8 +152,10 @@ checkLeft(str_contains($main->values['P03ConnectionDiagnosis'],'192.168.107.95')
     'Successful configuration and socket migration visible in diagnosis');
 $prior=count($GLOBALS['setProps']);
 $main->SwitchToVerifiedLeftCameras();
-checkLeft(count($GLOBALS['setProps'])===$prior+8,
-    'Re-running safe migration is idempotent and keeps sockets/observers unchanged');
+checkLeft(count($GLOBALS['setProps'])===$prior+14
+    && $GLOBALS['props'][17785]['Host']==='192.168.107.95'
+    && $GLOBALS['props'][55478]['Host']==='192.168.107.94',
+    'Re-running safe migration remains idempotent without moving the dedicated sockets');
 
 $main=newLeftFixture();
 $GLOBALS['instances'][60000]['ConnectionID']=55478;
