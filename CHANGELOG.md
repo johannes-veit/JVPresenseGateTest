@@ -1,3 +1,13 @@
+# v0.7.8 (Build 79) – Treppen-Freigabe separat von CrossLine-Inventar anzeigen
+
+- Feldprotokoll 11.10.2026 16:50: JV_LEFT 192.168.107.95 und WORK_LEFT 192.168.107.94 besitzen jeweils genau eine durch CGI + RPC2 bestätigte Treppenlinie ("Überquerung zur Treppe", RuleID 4, Tabellenindex 3).
+- WORK_LEFT besitzt zusätzlich eine Straßenlinie ("Überquerung zur Straße", RuleID 5). Die frühere, missverständlich "TREPPENFILTER" genannte Diagnose listete *alle* CrossLine-Regeln, also auch die ausdrücklich NICHT freigegebene Straße. Die tatsächliche Observer-Freigabe hatte korrekt nur ID 4.
+- Audit nennt nun getrennt "CROSSLINE-INVENTAR (KEINE FREIGABE)" und "FREIGEGEBENE TREPPEN-CROSSLINE" (nur wenn beide Kamera-Lesewege zustimmen). Keine Änderung der Regelwahl oder Zählerfreigabe.
+- WORK_LEFT Treppenregel ist gemischt Human/Vehicle: Ein tatsächliches CrossLine-Ereignis muss ausdrücklich Human/Person klassifizieren. Fahrzeuge und unklassifizierte Übertritte dürfen keinen Human-Zähler erhöhen.
+- Nach dem lesenden Audit baut der Observer seinen Stream neu auf. Deshalb wird ein unmittelbar danach noch FALSE gemeldetes StreamLive nicht mehr als allgemeiner Regel-/Modulfehler dargestellt, sondern als "STREAM NACH AUDIT-RECONNECT NOCH NICHT BESTÄTIGT". Die nachfolgende LIVE-Diagnose bleibt maßgeblich.
+- Regressionen nutzen die konkrete 16:50-RPC2-Regeltabelle; Straßenlinie und unklassifizierte Fahrzeug-/Mensch-Regel bleiben gesperrt. TEST und PRODUKTION bleiben AUS.
+- Es wurden keine Kameraeinstellungen, IVS-Regeln, Sockets, Identitäten oder Fremdmodule geändert. Echte Personen-Linienereignisse auf beiden linken Kameras stehen weiterhin als praktischer Nachweis aus.
+
 # v0.7.7 (Build 78) – P03 Kamera-Epochen trennen, Human-Diagnose korrekt erklären
 
 - Feldbefund vom 11.10.2026 16:36: P03-Observer und exklusive Sockets sind LIVE auf JV_LEFT 192.168.107.95 und WORK_LEFT 192.168.107.94. Die im Status sichtbaren WORK_LEFT-AI-Ereignisse (28× SmartMotionHuman, 57× CrossRegionDetection, 6 alte Human-Proofs) stammen möglicherweise noch aus der vorherigen rechtsseitigen Kameraepoche: das letzte protokollierte WORK_LEFT-Kameraereignis ist 16:22:10, vor der Migration, während der aktuelle HumanEventCounter bereits auf 0 gesetzt wurde.
