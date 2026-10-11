@@ -776,3 +776,68 @@ checkP03(is_string($mainText)
     && str_contains($mainText,'FREIGEGEBENE TREPPEN-CROSSLINE')
     && str_contains($mainText,'$mapped ? $rpcSelection[\'allowed\'] : []'),
     'read-only audit reports actual allowlist separately from all CrossLine inventory');
+
+
+// v0.8.0 real field: JV_LEFT 17:20 had four CrossLineDetection
+// but 0 authorized Human. Keep rejected per-line evidence even after
+// ordinary motion messages; never relax fail-closed rule matching.
+$forensic=new JVPresenceP03AuxObserver();
+$forensic->Create();
+$forensic->properties['Enabled']=true;
+$forensic->properties['CameraHost']='192.0.2.11';
+$forensic->properties['Username']='fake-user';
+$forensic->properties['Password']='fake-password';
+$forensic->properties['Role']='JV_LEFT';
+$forensic->properties['ProofMode']='EXISTING_STAIR_IVS';
+$forensic->properties['AllowedIVSRules']=json_encode([
+    ['name'=>'Überquerung zur Treppe','id'=>4,'tableIndex'=>3,
+        'humanOnly'=>true,'objects'=>['human']]
+],JSON_UNESCAPED_UNICODE);
+$forensic->ApplyChanges();
+$forensic->attributes['Streaming']=true;
+$forensic->values['StreamOK']=true;
+rxP03($forensic,"HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace\r\n\r\n");
+rxP03($forensic,"Code=CrossLineDetection;action=Start;index=0;data="
+    ."{\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":4,\"RuleID\":3,\"EventID\":2001,\"ObjectType\":\"Human\"}\r\n");
+rxP03($forensic,"Code=CrossLineDetection;action=Stop;index=0;data="
+    ."{\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":4,\"EventID\":2001}\r\n");
+rxP03($forensic,"Code=CrossLineDetection;action=Start;index=0;data="
+    ."{\"Name\":\"Überquerung zur Straße\",\"CfgRuleId\":5,\"EventID\":2002,\"ObjectType\":\"Human\"}\r\n");
+rxP03($forensic,"Code=VideoMotion;action=Stop;index=0\r\n");
+$recent=json_decode((string)($forensic->values['LastIVSEvent']??''),true);
+checkP03(is_array($recent) && count($recent)===3
+    && $recent[0]['rejectionReason']==='CAMERA_EVENT_RULE_ID_CONFLICT'
+    && $recent[1]['rejectionReason']==='NOT_START_OR_PULSE'
+    && $recent[2]['rejectionReason']==='EVENT_RULE_NAME_NOT_STAIR',
+    'real CrossLine conflict, Stop and excluded street each retain their reason beyond VideoMotion');
+checkP03((int)($forensic->values['HumanEventCounter']??0)===0
+    && ($recent[0]['cfgRuleId']??null)===4
+    && ($recent[0]['ruleIdUpper']??null)===3,
+    'conflicting CfgRuleId vs RuleID is exposed but never counted as Human');
+checkP03(P03ExistingIvsLines::explainRejection([
+    'code'=>'CrossLineDetection','action'=>'Start',
+    'ruleName'=>'Überquerung zur Treppe','cfgRuleId'=>4
+], [['name'=>'Überquerung zur Treppe','id'=>4,'humanOnly'=>false]])
+    ==='MIXED_HUMAN_VEHICLE_REQUIRES_CLASSIFICATION',
+    'mixed Person/Vehicle CrossLine event without class remains rejected');
+rxP03($forensic,"Code=CrossLineDetection;action=Start;index=0;data="
+    ."{\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":4,\"EventID\":2003,\"ObjectType\":\"Human\"}\r\n");
+$recent=json_decode((string)($forensic->values['LastIVSEvent']??''),true);
+checkP03(count($recent)===4
+    && $recent[3]['decision']==='STAIR_HUMAN_START_COUNTED'
+    && $recent[3]['rejectionReason']==='MATCHED_FILTER'
+    && (int)($forensic->values['HumanEventCounter']??0)===1,
+    'valid explicit Human START still counts, recent IVS history includes acceptance');
+for($i=0;$i<12;$i++) {
+    rxP03($forensic,"Code=CrossLineDetection;action=Stop;index=0;data="
+        ."{\"Name\":\"Überquerung zur Treppe\",\"CfgRuleId\":4,\"EventID\":".(3000+$i)."}\r\n");
+}
+$recent=json_decode((string)($forensic->values['LastIVSEvent']??''),true);
+checkP03(count($recent)===8 && ($recent[7]['eventId']??null)===3011
+    && (int)($forensic->values['HumanEventCounter']??0)===1,
+    'CrossLine evidence trail bounded to last eight; Stop never increments counter');
+$mainModuleSource=file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/module.php');
+checkP03(str_contains((string)$mainModuleSource, 'LETZTE CROSSLINE-EREIGNISSE:')
+    && str_contains((string)$mainModuleSource, 'Ablehnungsgrund')===false
+    && str_contains((string)$mainModuleSource, "['rejectionReason']"),
+    'known P03 diagnostic includes parser-independent last-eight IVS reasons');
