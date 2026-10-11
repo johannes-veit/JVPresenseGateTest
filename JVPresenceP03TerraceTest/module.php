@@ -204,6 +204,13 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
         $this->SetTimerInterval('P03ProofTimer', 0);
+        // An upgraded instance may inherit TestActive=true from v0.6.37
+        // even while neither camera has a mapped stair line. Disarm it
+        // before any observer events arrive; field test needs fresh audit.
+        $this->WriteAttributeBoolean('TestActive', false);
+        $this->SetValue('TestActive', false);
+        $this->WriteAttributeBoolean('ProductionEnabled', false);
+        $this->WriteAttributeBoolean('P03MultiAuditPassed', false);
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
         $this->WriteAttributeString('P03HumanEvents', '[]');
