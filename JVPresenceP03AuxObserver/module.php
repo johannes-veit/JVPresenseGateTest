@@ -51,6 +51,8 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeString('LastHealthAction', 'UNTESTED');
         $this->RegisterAttributeInteger('LastStaleRx', 0);
         $this->RegisterAttributeString('ObservedCodeCounts', '{}');
+        $this->RegisterAttributeInteger('LastGenericWireProbeAt', 0);
+        $this->RegisterAttributeInteger('LastGenericEventAuditAt', 0);
         $this->RegisterAttributeInteger('GenericHumanHintCount', 0);
         $this->RegisterAttributeInteger('SmdHumanRawCount', 0);
         $this->RegisterAttributeInteger('SmdHumanProofCount', 0);
@@ -851,8 +853,20 @@ class JVPresenceP03AuxObserver extends IPSModule
                 $index = (string) $matches[3][$i][0];
                 $safeHeader = P03IPC5442Audit::wireHeader($name, $action, $index, $count);
                 if ($safeHeader !== '') {
-                    $this->SetValue('WireProbe', date('H:i:s') . ' ' . $safeHeader
-                        . ' | Heartbeats=' . $this->ReadAttributeInteger('WireHeartbeatCount'));
+                    $generic = in_array(strtolower($name),
+                        ['videomotion', 'videomotioninfo', 'intervideoaccess'], true);
+                    $now = time();
+                    $lastGeneric = $this->ReadAttributeInteger('LastGenericWireProbeAt');
+                    if (!$generic || $lastGeneric <= 0 || $now - $lastGeneric >= 15) {
+                        // These 5442 cameras send up to 10 VideoMotionInfo
+                        // messages PER SECOND, even without Human detection.
+                        // No need to rewrite Symcon's WireProbe each time.
+                        $this->SetValue('WireProbe', date('H:i:s') . ' ' . $safeHeader
+                            . ' | Heartbeats=' . $this->ReadAttributeInteger('WireHeartbeatCount'));
+                        if ($generic) {
+                            $this->WriteAttributeInteger('LastGenericWireProbeAt', $now);
+                        }
+                    }
                 }
             }
         }
@@ -864,6 +878,16 @@ class JVPresenceP03AuxObserver extends IPSModule
 
     private function recordEventAudit(array $event, string $decision): void
     {
+        $code = strtolower((string)($event['code'] ?? ''));
+        if ($decision === 'RULE_OR_EVENTCODE_REJECTED'
+            && in_array($code, ['videomotion', 'videomotioninfo', 'intervideoaccess'], true)) {
+            $now = time();
+            $last = $this->ReadAttributeInteger('LastGenericEventAuditAt');
+            if ($last > 0 && $now - $last < 15) {
+                return;
+            }
+            $this->WriteAttributeInteger('LastGenericEventAuditAt', $now);
+        }
         $summary = [
             'time' => date('H:i:s'),
             'role' => $this->ReadPropertyString('Role'),
