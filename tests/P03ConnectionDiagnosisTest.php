@@ -307,6 +307,78 @@ $buttons=array_column($ipcUI['actions']??[],'onClick');
 verifyDiag(in_array('JVP03MC_DiagnoseIPC5442Configuration($id);',$buttons,true),
     'one-click model-specific read-only button correctly wired');
 
+// v0.7.9: live 16:59 field test shows SMD Human on both cameras but
+// ZERO CrossLine events. Inspect the REAL staircase IVS, not the deprecated
+// P03 CrossRegion rectangle; surface notification settings without writes.
+$savedJvHost=$GLOBALS['props'][57215]['CameraHost'];
+$savedWorkHost=$GLOBALS['props'][27938]['CameraHost'];
+$GLOBALS['props'][57215]['CameraHost']='192.168.107.95';
+$GLOBALS['props'][27938]['CameraHost']='192.168.107.94';
+$liveStairAudit=new class extends SimulatedIPC5442Main {
+    protected function readIPC5442Camera(
+        string $host,int $port,string $username,string $password,string $uri
+    ):array {
+        if (str_contains($uri,'name=VideoAnalyseRule')) {
+            $this->uris[]=$host.' '.$uri;
+            $lines=[
+                'table.VideoAnalyseRule[0][0].Name=HeatMap1',
+                'table.VideoAnalyseRule[0][0].Type=HeatMap',
+                'table.VideoAnalyseRule[0][0].Enable=false',
+                'table.VideoAnalyseRule[0][3].Name=Überquerung zur Treppe',
+                'table.VideoAnalyseRule[0][3].Type=CrossLineDetection',
+                'table.VideoAnalyseRule[0][3].Class=Normal',
+                'table.VideoAnalyseRule[0][3].Enable=true',
+                'table.VideoAnalyseRule[0][3].Id=4',
+                'table.VideoAnalyseRule[0][3].ObjectTypes[0]=Human',
+                'table.VideoAnalyseRule[0][3].EventHandler.MessageEnable='
+                    .($host==='192.168.107.95'?'false':'true'),
+                'table.VideoAnalyseRule[0][3].Config.DetectLine[0][0]=1000',
+                'table.VideoAnalyseRule[0][3].Config.DetectLine[0][1]=2000',
+                'table.VideoAnalyseRule[0][3].EventHandler.TimeSection[0][0]=1 00:00:00-23:59:59',
+            ];
+            if ($host==='192.168.107.94') {
+                $lines[]='table.VideoAnalyseRule[0][3].ObjectTypes[1]=Vehicle';
+                $lines[]='table.VideoAnalyseRule[0][4].Name=Überquerung zur Straße';
+                $lines[]='table.VideoAnalyseRule[0][4].Type=CrossLineDetection';
+                $lines[]='table.VideoAnalyseRule[0][4].Enable=true';
+                $lines[]='table.VideoAnalyseRule[0][4].Id=5';
+                $lines[]='table.VideoAnalyseRule[0][4].ObjectTypes[0]=Human';
+            }
+            return ['ok'=>true,'http'=>200,'body'=>implode("\r\n",$lines)."\r\n",'error'=>''];
+        }
+        return parent::readIPC5442Camera($host,$port,$username,$password,$uri);
+    }
+};
+$liveStairAudit->properties['AuxJVHost']='192.168.107.95';
+$liveStairAudit->properties['AuxWorkHost']='192.168.107.94';
+$liveStairAudit->attributes['AuxJVAllowedIVSRules']=json_encode([
+    ['name'=>'Überquerung zur Treppe','id'=>4,'tableIndex'=>3,
+        'humanOnly'=>true,'objects'=>['human']]
+],JSON_UNESCAPED_UNICODE);
+$liveStairAudit->attributes['AuxWorkAllowedIVSRules']=json_encode([
+    ['name'=>'Überquerung zur Treppe','id'=>4,'tableIndex'=>3,
+        'humanOnly'=>false,'objects'=>['human','vehicle']]
+],JSON_UNESCAPED_UNICODE);
+$liveStairAudit->DiagnoseIPC5442Configuration();
+$stairReport=(string)$liveStairAudit->values['P03IPC5442Audit'];
+verifyDiag(substr_count($stairReport,'P03 AKTUELLES TREPPEN-PRUEFZIEL: Überquerung zur Treppe')===2
+    && substr_count($stairReport,'P03 AKTUELLER CGI-GEGENCHECK: IDENTISCH')===2
+    && substr_count($stairReport,'ABGLEICH: RuleName=PASST | Enable=JA | Type=PASST')===2,
+    'actual 16:59 left-camera stair CrossLine rule ID4 verified on both, never obsolete rectangle');
+verifyDiag(substr_count($stairReport,'IVS EREIGNISMELDUNG EventHandler.MessageEnable=')===2
+    && str_contains($stairReport,'EventHandler.MessageEnable=false | WARNUNG:')
+    && str_contains($stairReport,'EventHandler.MessageEnable=true'),
+    'read-only camera audit reveals possible disabled IVS event notification on the correct rule');
+verifyDiag(str_contains($stairReport,'Mensch/Fahrzeug-Treppenlinie')
+    && str_contains($stairReport,'Überquerung zur Straße')
+    && !str_contains($stairReport,'P03_WORK_LEFT_HUMAN'),
+    'mixed Human/Vehicle stair evidence flagged and street remains non-target');
+verifyDiag((string)$liveStairAudit->values['P03ConnectionDiagnosis']===$stairReport
+    && count($liveStairAudit->uris)===16 && $GLOBALS['writes']===[],
+    'corrected diagnostic still uses exactly eight camera GETs per camera and no write APIs');
+$GLOBALS['props'][57215]['CameraHost']=$savedJvHost;
+$GLOBALS['props'][27938]['CameraHost']=$savedWorkHost;
+
 // Explicit user demand: ALL original camera config values, no relevance
 // whitelist and no first-48/80-line truncation. Store FULL redacted texts in
 // two Symcon DOCUMENT objects under P03 #53879; known #35115 gives IDs.
