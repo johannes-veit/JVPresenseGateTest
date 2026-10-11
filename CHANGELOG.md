@@ -1,3 +1,13 @@
+# v0.6.38 (Build 69) – fehlende IVS-Treppenlinien jetzt echter Testabbruch; unabhängiger CGI/RPC2-Abgleich
+
+- Befund Test 11.10.2026 13:25: Die beiden IPC-HFW5442E-ZE haben funktionierende Eventstreams, aber im RPC2 `VideoAnalyseRule` keine einzige aktive `CrossLineDetection`. Vorher meldete P03 trotzdem `P03 AUX AUDIT ... -> OK`, zeigte eine erfolgreiche Simulation und startete die Testuhr. Das war falsch.
+- Audit verlangt ab sofort je IPC eine eindeutige aktive Treppenlinie, die in ZWEI voneinander unabhängig gelesenen Kamerakonfigurationen dieselbe **Regel-ID, denselben Regelnamen und denselben Mensch-Objektfilter** besitzt: RPC2 `configManager.getConfig(VideoAnalyseRule)` und Dahua HTTP-Digest CGI `getConfig&name=VideoAnalyseRule`. Ist die Zuordnung nicht möglich, lautet der Audit `FEHLER` statt `OK`, und der Test startet NICHT. Es wird kein hypothetischer Zonenwechsel ausgelöst.
+- Neuer Parser `P03ExistingIvsLines::fromCgi` liest direkt die Kamera-CGI-Regeltabelle `table.VideoAnalyseRule[0][N].*` unabhängig von Reihenfolge oder gespeicherten Eventnamen. `sameSelectedStair` vergleicht ausschließlich bestätigte CrossLine-Treppenregeln. Kamera-Kanal 1 und Straßenlinien bleiben ausgeschlossen.
+- Hauptprotokoll enthält künftig getrennte RPC2- und CGI-Kurzlisten mit den tatsächlich gefundenen aktiven Linien, CGI-HTTP-Code und einer konkreten Differenzmeldung, falls die Weboberfläche andere Linien zeigt. Bereits automatisch ausgelesene Komplettkonfigurationen vom 12:27 Uhr enthielten keine Treppen-CrossLine; diese Version kann sie nicht herbeizaubern.
+- Alle bisherigen Schreibsperren bleiben: keine Kameraänderung, keine neuen P03-Rechtecke, kein vollständiger Kamera-Restore, keine Modifikation fremder Dahua-IVS-, Alarm- oder Lichtmodule.
+- Tests simulieren gültige Treppen- und Straßenlinien, abweichende CGI/RPC2-IDs, unterschiedliche Objektfilter und Kamera-Kanal 1.
+- Solange die eigentliche Kamera-Firmware keine eindeutige Treppenlinie über die dokumentierten APIs meldet, bleibt der HOME↔LAGER-Beweis absichtlich gesperrt.
+
 # v0.6.37 (Build 68) – vorhandene Treppen-IVS nur lesend, keine Kameraregeln schreiben
 
 - Kameraoberfläche beider IPC-HFW5442E-ZE bestätigt IVS-Plan 24/7, die vom Nutzer angelegten Treppenlinien (JV_LEFT, WORK_LEFT) sowie eine zusätzliche Straßenlinie (nur WORK_LEFT). Die vollständigen, von der SymBox gelesenen VideoAnalyseRule-Tabellen vom 11.10.2026, 12:27 zeigen jedoch ausschließlich aktive NumberStat1 und P03_*_HUMAN-Rechteckregeln. **Der Widerspruch wird nicht mit erfundenen IDs übergangen.**

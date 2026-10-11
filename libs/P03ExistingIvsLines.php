@@ -8,6 +8,64 @@ declare(strict_types=1);
  */
 final class P03ExistingIvsLines
 {
+    /**
+     * Parse only a single, verified channel's IVS rule identity from Dahua's
+     * standard CGI getConfig&name=VideoAnalyseRule response. No writing.
+     * Different firmware may serialize nested fields in any order.
+     * Fail closed if the response has no channel-0 rules.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public static function fromCgi(string $body): array
+    {
+        $rules = [];
+        foreach (preg_split('/\\r?\\n/', $body) ?: [] as $line) {
+            if (!preg_match('/^table\\.VideoAnalyseRule\\[0\\]\\[(\\d+)\\]\\.(Name|Type|Class|Enable|Id|ObjectTypes\\[(\\d+)\\])=(.*)$/D', trim($line), $match)) {
+                continue;
+            }
+            $index = (int)$match[1];
+            if ($index < 0 || $index > 128) {
+                continue;
+            }
+            $field = $match[2];
+            $value = trim($match[4]);
+            if ($field === 'Enable') {
+                $rules[$index]['Enable'] = strcasecmp($value, 'true') === 0;
+            } elseif ($field === 'Id') {
+                $rules[$index]['Id'] = ctype_digit($value) ? (int)$value : -1;
+            } elseif (str_starts_with($field, 'ObjectTypes[')) {
+                $objectIndex = (int)$match[3];
+                if ($objectIndex >= 0 && $objectIndex < 32) {
+                    $rules[$index]['ObjectTypes'][$objectIndex] = $value;
+                }
+            } else {
+                $rules[$index][$field] = $value;
+            }
+        }
+        ksort($rules, SORT_NUMERIC);
+        return $rules;
+    }
+
+    /** @param array<string,mixed> $one
+     *  @param array<string,mixed> $two
+     */
+    public static function sameSelectedStair(array $one, array $two): bool
+    {
+        if (empty($one['mapped']) || empty($two['mapped'])) {
+            return false;
+        }
+        $a = $one['allowed'][0] ?? [];
+        $b = $two['allowed'][0] ?? [];
+        if (!is_array($a) || !is_array($b)) {
+            return false;
+        }
+        return trim((string)($a['name'] ?? '')) !== ''
+            && strcasecmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')) === 0
+            && (int)($a['id'] ?? -1) >= 0
+            && (int)($a['id'] ?? -1) === (int)($b['id'] ?? -2)
+            && (bool)($a['humanOnly'] ?? false) === (bool)($b['humanOnly'] ?? true);
+    }
+
     /** @param array<int,mixed> $rules */
     public static function select(array $rules): array
     {
