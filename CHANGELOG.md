@@ -1,3 +1,12 @@
+# v0.7.5 (Build 76) – ONVIF Transportdiagnose
+
+- OnvifStatus meldet nun HTTP-Status, cURL-Fehlernummer und Verbindungslaufzeiten bei fehlgeschlagener GetCapabilities-Anfrage.
+- Kompatibilitätsoptionen für Embedded-HTTP/1.1: direkte Verbindung, explizites Connection-Close und keine Expect-100-Anforderung.
+- Bei Transportabbruch erfolgt eine einmalige kurze lesende Prüfung der HTTP-Erreichbarkeit am konfigurierten Port und an Port 8899 derselben Kamera. Der Status zeigt die jeweiligen HTTP-/cURL-Codes.
+- Passive Diagnose bleibt unverändert: keine Kamera-Konfigurationsänderungen und keine HOME/LAGER-Übertritte auf Basis unbestätigter ONVIF-Ereignisse.
+- Zusätzlicher Regressionstest reproduziert die konkrete Fehlerart HTTP 0 und prüft die sichere Fehlerbehandlung.
+- Der tatsächliche ONVIF-Zugriff muss weiterhin auf der SymBox bestätigt werden.
+
 # v0.7.5 (Build 76) – Diagnose für ONVIF HTTP 0 / Empty reply from server
 
 - Realer Befund SymBox 11.10.2026 15:55:32: JV_LEFT Observer #57215, ONVIF-Statusvariable #13012 meldet `ONVIF Device/GetCapabilities HTTP 0 / Empty reply from server`. `OnvifRecentEvents` #19099 = `[]`; legacy Dahua Eventstream #54893 ist weiterhin LIVE, HumanCounter #42076 bleibt 0. WORK_LEFT Observer #27938 Statusvar #43245 und ONVIF-Ereignisse #27091; dessen vollständiger Status muss separat geprüft werden, nicht aus der abgeschnittenen Spalte geraten werden.
