@@ -37,7 +37,7 @@ final class P03OnvifPullPoint
             $cap = $send($base . '/onvif/device_service',
                 $username,$password,'GetCapabilities',
                 '<tds:GetCapabilities><tds:Category>Events</tds:Category></tds:GetCapabilities>',
-                'device');
+                'device', []);
             if (!$cap['ok']) {
                 $out['status']='ONVIF Device/GetCapabilities ' . $cap['status'];
                 return $out;
@@ -53,7 +53,7 @@ final class P03OnvifPullPoint
                 'CreatePullPointSubscription',
                 '<tev:CreatePullPointSubscription>'
                 . '<tev:InitialTerminationTime>PT10M</tev:InitialTerminationTime>'
-                . '</tev:CreatePullPointSubscription>', 'events');
+                . '</tev:CreatePullPointSubscription>', 'events', []);
             if (!$subscription['ok']) {
                 $out['status']='ONVIF CreatePullPointSubscription ' . $subscription['status'];
                 return $out;
