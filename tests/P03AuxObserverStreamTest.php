@@ -931,3 +931,59 @@ checkP03(count($evidenceHistory)===1
 rxP03($evidence,"Code=CrossLineDetection;action=Stop;index=0;data=".$eventJson.chr(13).chr(10));
 checkP03((int)($evidence->values['HumanEventCounter']??0)===1,
     'encoded STOP never creates a second Human proof');
+
+
+// Optional terrace read-only selection: no automatic right/mast or street
+// inference, and never a 2-camera transfer on a terrace-only event.
+$terraceTable=[
+  0=>['Enable'=>false,'Type'=>'CrossLineDetection','Name'=>'Old disabled','Id'=>1,'ObjectTypes'=>['Human']],
+  1=>['Enable'=>true,'Type'=>'CrossLineDetection','Name'=>'Terrasse Tor','Id'=>8,'ObjectTypes'=>['Human']]
+];
+$terrace=P03ExistingIvsLines::selectTerrace($terraceTable);
+checkP03($terrace['mapped'] && count($terrace['allowed'])===1
+    && $terrace['allowed'][0]['id']===8
+    && $terrace['allowed'][0]['humanOnly'],
+    'optional TERRACE accepts one active configured Human IVS line');
+$terraceTable[2]=['Enable'=>true,'Type'=>'CrossLineDetection',
+  'Name'=>'Terrasse Parkplatz','Id'=>9,'ObjectTypes'=>['Human','Vehicle']];
+checkP03(!P03ExistingIvsLines::selectTerrace($terraceTable)['mapped'],
+    'two terrace IVS lines without a chosen name fail closed');
+$namedTerrace=P03ExistingIvsLines::selectTerrace($terraceTable,'Terrasse Tor');
+checkP03($namedTerrace['mapped']
+    && $namedTerrace['allowed'][0]['id']===8,
+    'explicit exact terrace rule name safely resolves multiple lines');
+checkP03(!P03ExistingIvsLines::selectTerrace($terraceTable,'Terrasse Falsch')['mapped'],
+    'missing requested terrace line cannot fall back to another IVS');
+$terraceTable[1]['ObjectTypes']=['Vehicle'];
+checkP03(!P03ExistingIvsLines::selectTerrace($terraceTable,'Terrasse Tor')['mapped'],
+    'vehicle-only terrace IVS must never be a Human trigger');
+$allowedTerrace=$namedTerrace['allowed'];
+checkP03(P03ExistingIvsLines::matchingHumanStart([
+    'code'=>'CrossLineDetection','action'=>'Start','ruleName'=>'Terrasse Tor',
+    'ruleIdUpper'=>8,'classification'=>'Human'
+],$allowedTerrace),'correctly mapped optional terrace may count its own Human line');
+checkP03(!P03ExistingIvsLines::matchingHumanStart([
+    'code'=>'CrossLineDetection','action'=>'Start','ruleName'=>'Terrasse Parkplatz',
+    'ruleIdUpper'=>9,'classification'=>'Human'
+],$allowedTerrace),'other terrace IVS rule is rejected');
+$terraceSensor=new JVPresenceP03AuxObserver();
+$terraceSensor->Create();
+$terraceSensor->properties['Enabled']=true;
+$terraceSensor->properties['CameraHost']='192.0.2.30';
+$terraceSensor->properties['Username']='test';
+$terraceSensor->properties['Password']='test';
+$terraceSensor->properties['Role']='TERRACE';
+$terraceSensor->properties['ProofMode']='EXISTING_STAIR_IVS';
+$terraceSensor->properties['AllowedIVSRules']=json_encode($allowedTerrace,JSON_UNESCAPED_UNICODE);
+$terraceSensor->ApplyChanges();
+$terraceSensor->attributes['Streaming']=true;
+$terraceSensor->values['StreamOK']=true;
+$eol=chr(13).chr(10);
+rxP03($terraceSensor,"HTTP/1.1 200 OK".$eol.$eol);
+$body=json_encode(['Name'=>'Terrasse Tor','RuleID'=>8,'EventID'=>8001,
+    'Direction'=>'LeftToRight','ObjectType'=>'Human'],JSON_UNESCAPED_UNICODE);
+rxP03($terraceSensor,"Code=CrossLineDetection;action=Start;index=0;data=".$body.$eol);
+$events=json_decode((string)($terraceSensor->values['LastIVSEvent']??''),true);
+checkP03((int)$terraceSensor->values['HumanEventCounter']===1
+    && count($events)===1 && $events[0]['direction']==='LeftToRight',
+    'optional terrace observer records its own Human crossing with native direction');
