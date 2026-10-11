@@ -39,7 +39,13 @@ final class P03OnvifPullPoint
                 '<tds:GetCapabilities><tds:Category>Events</tds:Category></tds:GetCapabilities>',
                 'device', []);
             if (!$cap['ok']) {
-                $out['status']='ONVIF Device/GetCapabilities ' . $cap['status'];
+                $detail=(string)($cap['status']??'UNBEKANNT');
+                // Diagnostic GETs ONLY after a real cURL error 52. No login
+                // retries, no guessed IVS changes and no config writes.
+                if ($transport===null && preg_match('/CURL (?:52|56)\\b/', $detail)) {
+                    $detail.='; ' . self::probeReadOnlyEndpoints($host,$port);
+                }
+                $out['status']='ONVIF Device/GetCapabilities ' . substr($detail,0,500);
                 return $out;
             }
             $eventService=self::findXmlValue($cap['body'],
@@ -148,10 +154,16 @@ final class P03OnvifPullPoint
             CURLOPT_POSTFIELDS=>$xml,
             CURLOPT_HTTPHEADER=>[
                 'Content-Type: application/soap+xml; charset=utf-8; action="' . $actionUri . '"',
-                'Accept: application/soap+xml'
+                'Accept: application/soap+xml',
+                // Avoid legacy embedded-camera quirks around persistent POST
+                // bodies and HTTP/1.1 Expect negotiation.
+                'Expect:',
+                'Connection: close'
             ],
             CURLOPT_HTTPAUTH=>CURLAUTH_DIGEST,
             CURLOPT_USERPWD=>$username . ':' . $password,
+            CURLOPT_HTTP_VERSION=>CURL_HTTP_VERSION_1_1,
+            CURLOPT_NOPROXY=>'*',
             CURLOPT_CONNECTTIMEOUT=>2,
             CURLOPT_TIMEOUT=>6,
             CURLOPT_NOSIGNAL=>true,
@@ -160,10 +172,17 @@ final class P03OnvifPullPoint
         $answer=curl_exec($ch);
         $status=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);
         $error=curl_error($ch);
+        $errno=(int)curl_errno($ch);
+        $connectMs=(int)round(1000*(float)curl_getinfo($ch,CURLINFO_CONNECT_TIME));
+        $ttfbMs=(int)round(1000*(float)curl_getinfo($ch,CURLINFO_STARTTRANSFER_TIME));
         curl_close($ch);
         if (!is_string($answer) || $status<200 || $status>=300) {
+            // Distinguish TCP established / zero HTTP reply (CURL 52) from
+            // timeout 28, refused connection 7, and actual HTTP 401/404.
             return ['ok'=>false,'body'=>'',
-                'status'=>'HTTP ' . $status . ($error!=='' ? ' / ' . substr($error,0,180) : '')];
+                'status'=>'HTTP ' . $status . ' / CURL ' . $errno
+                    . ' / TCP=' . $connectMs . 'ms / HTTP-Wartezeit=' . $ttfbMs . 'ms'
+                    . ($error!=='' ? ' / ' . substr($error,0,100) : '')];
         }
         if (stripos($answer,'<s:Fault')!==false
             || stripos($answer,'<env:Fault')!==false
@@ -180,6 +199,45 @@ final class P03OnvifPullPoint
         return ['ok'=>true,'body'=>$answer,'status'=>'HTTP 200'];
     }
 
+
+    /**
+     * Targeted read-only network classification after a zero-reply ONVIF
+     * SOAP POST. Probe only the configured HTTP port and Dahua's optional
+     * alternate ONVIF port 8899 on the SAME fixed camera host. No creds.
+     * GET is for reachability, NOT proof of ONVIF service capabilities.
+     */
+    public static function probeReadOnlyEndpoints(string $host,int $port): string
+    {
+        if (filter_var($host,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)===false
+            || $port<1 || $port>65535) {
+            return 'Endpoint-Test ausgelassen: ungueltiger Host/Port';
+        }
+        $result=[];
+        foreach (array_unique([$port,8899]) as $targetPort) {
+            $ch=curl_init('http://'.$host.':'.$targetPort.'/onvif/device_service');
+            if ($ch===false) {
+                $result[]=$targetPort.': cURL nicht verfuegbar';
+                continue;
+            }
+            curl_setopt_array($ch,[
+                CURLOPT_RETURNTRANSFER=>true,
+                CURLOPT_HTTPGET=>true,
+                CURLOPT_FOLLOWLOCATION=>false,
+                CURLOPT_HTTP_VERSION=>CURL_HTTP_VERSION_1_1,
+                CURLOPT_NOPROXY=>'*',
+                CURLOPT_CONNECTTIMEOUT=>1,
+                CURLOPT_TIMEOUT=>2,
+                CURLOPT_NOSIGNAL=>true
+            ]);
+            curl_exec($ch);
+            $http=(int)curl_getinfo($ch,CURLINFO_HTTP_CODE);
+            $err=(int)curl_errno($ch);
+            curl_close($ch);
+            $result[]=$targetPort.'/ONVIF-GET: HTTP='.$http.',CURL='.$err;
+        }
+        return 'READONLY-Portprobe ['.implode(' | ',$result).']'
+            .' (GET-Status ist kein ONVIF-Funktionsbeweis)';
+    }
 
     /**
      * Camera-granted ONVIF subscription lifetime, measured in CAMERA time,
