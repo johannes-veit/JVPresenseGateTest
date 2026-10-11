@@ -3794,21 +3794,37 @@ class JVPresenceP03MultiCamera extends IPSModule
         $host = (string)$cfg['host'];
         $port = (int)$cfg['port'];
         $session = (string)($login['session'] ?? '');
+        // Two *independent* official read paths for the same camera table.
+        // The previous audit trusted only RPC2 while the old exported All
+        // config and the native GUI clearly disagreed about manual IVS lines.
         $read = $this->rpc2Call($host, $port, $session, 741,
             'configManager.getConfig', ['name' => 'VideoAnalyseRule']);
         $this->rpc2Call($host, $port, $session, 749, 'global.logout', null);
+        $cgi = $this->genericCameraGet($host, $port,
+            (string)$cfg['username'], (string)$cfg['password'],
+            '/cgi-bin/configManager.cgi?action=getConfig&name=VideoAnalyseRule');
         $rules = $read['json']['params']['table'][0] ?? null;
         if (!($read['ok'] ?? false) || !is_array($rules)) {
-            return ['ok' => false, 'error' => $role . ': VideoAnalyseRule NICHT lesbar'];
+            return ['ok' => false, 'error' => $role . ': VideoAnalyseRule RPC2 NICHT lesbar'];
         }
-        $selection = P03ExistingIvsLines::select($rules);
-        $mapped = (bool)$selection['mapped'];
-        $this->appendProtocol($role . ': VORHANDENE IVS-LINIEN (nur lesen): '
-            . json_encode($selection['all'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $rpcSelection = P03ExistingIvsLines::select($rules);
+        $cgiRules = ($cgi['ok'] ?? false)
+            ? P03ExistingIvsLines::fromCgi((string)($cgi['body'] ?? '')) : [];
+        $cgiSelection = P03ExistingIvsLines::select($cgiRules);
+        $mapped = P03ExistingIvsLines::sameSelectedStair($rpcSelection, $cgiSelection);
+        $this->appendProtocol($role . ': VIDEOANALYSE-VERGLEICH RPC2: '
+            . json_encode($rpcSelection['all'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $this->appendProtocol($role . ': VIDEOANALYSE-VERGLEICH CGI (HTTP '
+            . (int)($cgi['http'] ?? 0) . '): '
+            . json_encode($cgiSelection['all'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         $this->appendProtocol($role . ': TREPPENLINIE '
-            . ($mapped ? 'EINDEUTIG – ' : 'NICHT ZUGEORDNET – ')
-            . (string)$selection['reason']
-            . '. Straßenlinie und P03-Rechteck werden niemals als Übergang verwendet.');
+            . ($mapped ? 'IN CGI UND RPC2 EINDEUTIG – ' : 'NICHT VERIFIZIERT – ')
+            . ($mapped ? 'Name, RuleID und Objektfilter stimmen überein'
+                : 'RPC2=' . (string)$rpcSelection['reason']
+                    . '; CGI=' . (string)$cgiSelection['reason']
+                    . '; IDENTITAET NICHT ABGESICHERT')
+            . '. Straße und P03-Rechteck sind keine Übertrittsbeweise.');
+        $selection = $rpcSelection;
         if ($mapped) {
             $this->WriteAttributeString($attr, json_encode($selection['allowed'],
                 JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]');
@@ -3821,7 +3837,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
         $rule = $mapped ? $selection['allowed'][0] : [];
         return [
-            'ok' => true, 'error' => '', 'mapped' => $mapped,
+            'ok' => $mapped,
+            'error' => $mapped ? '' : $role . ': Keine identische aktive Treppen-CrossLine '
+                . 'mit Name, RuleID und Menschfilter in beiden Kamera-API-Lesewegen '
+                . '(CGI und RPC2). Bitte Kamera-GUI-Regeln nicht überschreiben.',
+            'mapped' => $mapped,
             'index' => (int)($rule['tableIndex'] ?? -1),
             'id' => (int)($rule['id'] ?? -1),
             'actions' => [],
@@ -3893,7 +3913,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $counterVar = $this->findAuxVariable($instanceID, 'HumanEventCounter');
         $streamVar = $this->findAuxVariable($instanceID, 'StreamOK');
         $streamLive = $streamVar > 0 && IPS_VariableExists($streamVar) && (bool) GetValue($streamVar);
-        $ok = ($ivs['ok'] ?? false) && $personVar > 0 && $counterVar > 0
+        $ok = ($ivs['ok'] ?? false) && !empty($ivs['mapped'])
+            && $personVar > 0 && $counterVar > 0
             && $streamVar > 0 && (!$readOnly || $streamLive);
 
         $this->appendProtocol(
@@ -3905,11 +3926,11 @@ class JVPresenceP03MultiCamera extends IPSModule
                 . ', SMD-Human=' . ($human === null ? '<nur Diagnose/nicht gemeldet>' : (string) $human)
                 . ', Sensitivity=' . ($sensitivity !== '' ? $sensitivity : '<nicht gemeldet>')
                 . ', MotionDetect=' . ($motionEnable !== '' ? $motionEnable : '<nicht gemeldet>')
-                . ', Videoanalyse-Szene=' . (($ivs['ok'] ?? false) ? 'Normal readback' : 'NICHT VERIFIZIERT')
+                . ', Videoanalyse-Szene=Normal (Szene/Smartplan separat zu prüfen)'
                 . ', IVS-Smart-Plan-Aktivierung=NICHT VERIFIZIERT'
                 . ', Andere-AI-Regeln=' . (string) ($ivs['foreignAI'] ?? 'siehe P03 Konfigwarnung')
                 . ', Bestehende-Treppenlinie=' . (!empty($ivs['mapped']) ? 'VERIFIZIERT' : 'NICHT IM API ZUGEORDNET')
-                . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'LESE-AUDIT OK' : 'FEHLER')
+                . ', IVS-Human=' . (($ivs['ok'] ?? false) ? 'LINIENZUORDNUNG OK' : 'NICHT VERIFIZIERT')
                 . ', IVS-RuleIndex=' . (string) ($ivs['index'] ?? -1)
                 . ', IVS-RuleID=' . (string) ($ivs['id'] ?? -1)
                 . ', IVS-Actions=' . json_encode($ivs['actions'] ?? null, JSON_UNESCAPED_SLASHES)
