@@ -143,6 +143,26 @@ function verifyDiag(bool $passed,string $what):void
     if (!$passed) throw new RuntimeException('FAIL: '.$what);
     echo 'OK: '.$what."\n";
 }
+// Real 5442 configuration dumps have an enabled foreign people counting
+// NumberStat1 rule in BOTH cameras alongside the owned P03 IVS rule.
+// The normal SCENE TYPE is not proof of IVS Smart-Plan activation.
+$planInspector=new ReflectionMethod(JVPresenceP03MultiCamera::class,'p03ForeignAIPlans');
+$observedRules=[
+    ['Name'=>'HeatMap1','Type'=>'HeatMap','Class'=>'HeatMap','Enable'=>false],
+    ['Name'=>'FaceDetection','Type'=>'FaceDetection','Class'=>'FaceDetection','Enable'=>false],
+    ['Name'=>'NumberStat1','Type'=>'NumberStat','Class'=>'NumberStat','Enable'=>true],
+    ['Name'=>'P03_JV_LEFT_HUMAN','Type'=>'CrossRegionDetection','Class'=>'Normal','Enable'=>true],
+];
+$foreign=$planInspector->invoke(null,$observedRules,'P03_JV_LEFT_HUMAN');
+verifyDiag(str_contains($foreign,'NumberStat1 (NumberStat/Class=NumberStat)'),
+    'enabled foreign NumberStat people counting is flagged as competing AI-plan candidate');
+verifyDiag(!str_contains($foreign,'P03_JV_LEFT_HUMAN')
+    && !str_contains($foreign,'FaceDetection') && !str_contains($foreign,'HeatMap1'),
+    'owned IVS rule and inactive camera templates are never misreported as foreign active AI');
+$observedRules[2]['Enable']=false;
+verifyDiag($planInspector->invoke(null,$observedRules,'P03_JV_LEFT_HUMAN')==='KEINE',
+    'disabled foreign NumberStat does not generate a false AI-resource warning');
+
 $instance=new JVPresenceP03MultiCamera();
 $instance->DiagnoseP03Connections();
 $report=(string) $instance->values['P03ConnectionDiagnosis'];
