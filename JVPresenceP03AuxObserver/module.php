@@ -60,6 +60,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('LastGenericEventAuditAt', 0);
         $this->RegisterAttributeInteger('GenericHumanHintCount', 0);
         $this->RegisterAttributeInteger('SmdHumanRawCount', 0);
+        $this->RegisterAttributeInteger('LastSmdHumanStartAt', 0);
         $this->RegisterAttributeInteger('SmdHumanProofCount', 0);
         $this->RegisterAttributeInteger('LastHumanProofAt', 0);
         $this->RegisterAttributeString('LastHumanProofCode', '');
@@ -164,7 +165,8 @@ class JVPresenceP03AuxObserver extends IPSModule
             'RuleMatchEventCount', 'DedupeRejectCount', 'RuleRejectCount',
             'WireCodeCount', 'WireHeartbeatCount',
             'LastGenericWireProbeAt', 'LastGenericEventAuditAt',
-            'GenericHumanHintCount', 'SmdHumanRawCount', 'SmdHumanProofCount'
+            'GenericHumanHintCount', 'SmdHumanRawCount', 'SmdHumanProofCount',
+            'LastSmdHumanStartAt'
         ] as $diagnosticCounter) {
             $this->WriteAttributeInteger($diagnosticCounter, 0);
         }
@@ -884,10 +886,17 @@ class JVPresenceP03AuxObserver extends IPSModule
                 $this->WriteAttributeInteger('SmdHumanRawCount',
                     $this->ReadAttributeInteger('SmdHumanRawCount') + 1);
                 if ($existingMode) {
-                    // SMD reports detection anywhere in the image; it does
-                    // NOT prove the user-defined staircase boundary. Preserve
-                    // raw evidence but never trigger a HOME/LAGER transfer.
-                    $this->recordEventAudit($event, 'SMD_ONLY_DIAGNOSTIC_NOT_STAIR_CROSSING');
+                    // Camera SMD is a genuine PERSON-OBSERVATION and should
+                    // drive the separate Boolean "Person erkannt" output.
+                    // It is NOT a staircase-crossing proof: only the verified
+                    // CrossLine event may increment HumanEventCounter.
+                    if (P03AuxObserverLogic::isSmdHumanProofStart($event)) {
+                        $this->WriteAttributeInteger('LastSmdHumanStartAt', time());
+                        $this->pulsePersonDetected();
+                        $this->recordEventAudit($event, 'SMD_PERSON_STATUS_ONLY_NO_STAIR_PROOF');
+                    } else {
+                        $this->recordEventAudit($event, 'SMD_NON_START_OR_NONHUMAN_NO_PROOF');
+                    }
                     continue;
                 }
                 if (!P03AuxObserverLogic::isSmdHumanProofStart($event)) {
@@ -1051,10 +1060,20 @@ class JVPresenceP03AuxObserver extends IPSModule
         if ($id>0 && IPS_VariableExists($id)) {
             $this->SetValue('HumanEventCounter',(int)GetValue($id)+1);
         }
-        $this->WriteAttributeInteger('HumanPulseUntil',$now+5);
-        $this->SetValue('PersonDetected',true);
-        $this->SetTimerInterval('PersonPulseTimer',5000);
+        $this->pulsePersonDetected();
         return true;
+    }
+
+    /**
+     * Visible live person presence pulse. Also triggered by strict SMD Human
+     * Start, separately from the monotonic staircase-crossing proof counter.
+     * No foreign module, camera setting or parent socket is modified.
+     */
+    private function pulsePersonDetected(): void
+    {
+        $this->WriteAttributeInteger('HumanPulseUntil', time() + 5);
+        $this->SetValue('PersonDetected', true);
+        $this->SetTimerInterval('PersonPulseTimer', 5000);
     }
 
     /**
@@ -1345,6 +1364,7 @@ class JVPresenceP03AuxObserver extends IPSModule
             'proofMode' => $this->ReadPropertyString('ProofMode'),
             'allowedStairRules' => json_decode($this->ReadPropertyString('AllowedIVSRules'), true),
             'smdHumanRawCount' => $this->ReadAttributeInteger('SmdHumanRawCount'),
+            'lastSmdHumanStartAt' => $this->ReadAttributeInteger('LastSmdHumanStartAt'),
             'smdHumanProofCount' => $this->ReadAttributeInteger('SmdHumanProofCount'),
             'lastHumanProofAt' => $this->ReadAttributeInteger('LastHumanProofAt'),
             'lastHumanProofCode' => $this->ReadAttributeString('LastHumanProofCode')
