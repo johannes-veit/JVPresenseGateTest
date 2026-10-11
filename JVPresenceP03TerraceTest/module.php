@@ -3775,12 +3775,10 @@ class JVPresenceP03MultiCamera extends IPSModule
      */
     private function inspectP03AuxHumanRuleReadOnly(int $instanceID, string $role): array
     {
-        // Fail closed first, including when RPC2 login/config reading fails:
-        // historical P03 rectangle rules must not survive a failed audit.
+        // The caller closes old proof gates BEFORE all camera checks, even
+        // when the model/HTTP/SMD preflight fails and this method is skipped.
         $attr = $role === self::AUX_JV_ROLE
             ? 'AuxJVAllowedIVSRules' : 'AuxWorkAllowedIVSRules';
-        $this->WriteAttributeString($attr, '[]');
-        $this->reconnectP03AuxObserver($instanceID, $role);
         $cfg = $this->p03AuxCameraConfiguration($instanceID);
         if (($cfg['host'] ?? '') === '' || ($cfg['username'] ?? '') === ''
             || ($cfg['password'] ?? '') === '') {
@@ -3836,6 +3834,12 @@ class JVPresenceP03MultiCamera extends IPSModule
     /** @return array{ok:bool,error:string,model:string,firmware:string,sensitivity:string} */
     private function auditP03AuxCamera(int $instanceID, string $role, bool $readOnly = false): array
     {
+        // Fail CLOSED even if the camera cannot be reached: disable any
+        // previously stored allowed rule before reading model/SMD/RPC tables.
+        $allowedAttr = $role === self::AUX_JV_ROLE
+            ? 'AuxJVAllowedIVSRules' : 'AuxWorkAllowedIVSRules';
+        $this->WriteAttributeString($allowedAttr, '[]');
+        $this->reconnectP03AuxObserver($instanceID, $role);
         if ($instanceID <= 0 || !IPS_InstanceExists($instanceID)) {
             return ['ok' => false, 'error' => $role . ': Instanz fehlt', 'model' => '', 'firmware' => '', 'sensitivity' => ''];
         }
