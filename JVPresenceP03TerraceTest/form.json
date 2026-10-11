@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "P03: HOME↔ARBEIT wird weiterhin über die beiden Mastkameras ermittelt; JV Terrasse ist nur OUT-Kandidat. Zusätzlich wird an WORK_LEFT die eigenständige Straßenlinie RuleID 5 ausgewertet, um ARBEIT↔AUSSERHALB unterscheiden zu können. Für beide Laufwege genügt ein gemeinsamer Test: OUT–IN–OUT–IN, jedes Mal über Treppe und Straße. Haus/Grundstück leer wird daraus noch nicht automatisch bestätigt."
+      "caption": "P03: bewährte HOME↔ARBEIT-Mastkameras bleiben unverändert, Terrasse nur OUT-Schatten. WORK_LEFT Straßenlinie RuleID5 erkennt ARBEIT↔AUSSERHALB separat. Neu: Straßenrichtung allein durch 4 Überquerungen der WORK_LEFT-Straßenlinie OUT–IN–OUT–IN einlernen, ohne Haus-/Treppenrundgang, Mast-Testreset oder Kamera-Neustart."
     },
     {
       "type": "CheckBox",
@@ -96,6 +96,11 @@
       "type": "Button",
       "caption": "5. OUT–IN–OUT–IN lernen (Treppe + Straße)",
       "onClick": "JVP03MC_PrepareAndStartTest($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Straße separat lernen – nur 4 Linienquerungen (ohne Mast-Test)",
+      "onClick": "JVP03MC_StartStreetDirectionOnly($id);"
     },
     {
       "type": "Button",
