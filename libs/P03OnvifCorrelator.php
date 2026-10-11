@@ -46,7 +46,11 @@ final class P03OnvifCorrelator
         ));
         // Different streams must never share an ObjectId unless the camera
         // explicitly identifies them as belonging to the same stream.
-        $key=sha1($stream.'|'.$objectId);
+        // ObjectId is scoped to an analytics configuration, not just
+        // the camera IP. A rule from another analytics engine might reuse
+        // the same identifier on the same visible video.
+        $analytics=trim((string)($source['VideoAnalyticsConfigurationToken']??''));
+        $key=sha1($stream.'|'.$analytics.'|'.$objectId);
         $topic=strtolower(trim((string)($e['topic']??'')));
         $stateFlag=strtolower(trim((string)($data['State']??'true')));
         $op=strtolower(trim((string)($e['operation']??'')));
