@@ -173,6 +173,7 @@ function rxP03(JVPresenceP03AuxObserver $observer, string $payload): void
 
 $x = new JVPresenceP03AuxObserver();
 $x->Create();
+$x->properties['ProofMode'] = 'LEGACY_OWNED';
 $x->properties['CameraHost'] = '192.0.2.5';
 $x->properties['CameraPort'] = 80;
 $x->properties['Username'] = 'sim-user';
@@ -314,6 +315,7 @@ $GLOBALS['mockSocket'][99001]['InstanceStatus'] = 104;
 $GLOBALS['mockSocket'][99001]['properties']['Open'] = false;
 $direct = new JVPresenceP03AuxObserver();
 $direct->Create();
+$direct->properties['ProofMode'] = 'LEGACY_OWNED';
 $direct->properties['CameraHost'] = '192.0.2.5';
 $direct->properties['Username'] = 'sim-user';
 $direct->properties['Password'] = 'sim-password';
@@ -405,6 +407,7 @@ checkP03($direct->attributes['LastHealthAction']==='RECONNECT_GET_SENT',
 // Generic VideoMotion and Vehicle events must never create a proof.
 $wire = new JVPresenceP03AuxObserver();
 $wire->Create();
+$wire->properties['ProofMode'] = 'LEGACY_OWNED';
 $wire->properties['Enabled'] = true;
 $wire->properties['Role'] = 'JV_LEFT';
 $wire->properties['CameraHost'] = '192.0.2.5';
