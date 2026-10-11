@@ -120,6 +120,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('TerraceObserverInstanceID', 0);
         $this->RegisterAttributeInteger('TerraceManagedSocketID', 0);
         $this->RegisterAttributeString('TerraceAllowedIVSRules', '[]');
+        $this->RegisterAttributeInteger('TerraceRuleReadAt', 0);
+        $this->RegisterAttributeInteger('TerracePersonVarID', 0);
+        $this->RegisterAttributeInteger('TerraceHumanCounterVarID', 0);
+        $this->RegisterAttributeInteger('TerraceStreamVarID', 0);
+        $this->RegisterAttributeInteger('TerraceLastIVSVarID', 0);
         $this->RegisterAttributeInteger('AuxJVPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxJVEventCounterVarID', 0);
@@ -256,6 +261,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->disconnectLegacyParentSocket();
         $this->discoverP03AuxSources(false);
         $this->subscribeP03AuxVariables();
+        // Terrace subscriptions are refreshed after safe read-only rule audit
+        // below, so a stale earlier observer can never influence proof.
+        $this->syncP03TerraceSubscriptions(0);
         // The visible HumanEventCounter is MONOTONIC per observer. Existing
         // counters are an initial baseline after module reload, NOT new
         // person events. Otherwise replay/reload can manufacture transfers.
@@ -392,6 +400,30 @@ class JVPresenceP03MultiCamera extends IPSModule
             $workCounter = $this->ReadAttributeInteger('AuxWorkEventCounterVarID');
             $jvStreamVar = $this->ReadAttributeInteger('AuxJVStreamVarID');
             $workStreamVar = $this->ReadAttributeInteger('AuxWorkStreamVarID');
+
+            // Optional terrace events refresh the report immediately. They
+            // NEVER enter the two-mast proof engine or change a zone.
+            $terraceSources = [
+                $this->ReadAttributeInteger('TerracePersonVarID'),
+                $this->ReadAttributeInteger('TerraceHumanCounterVarID'),
+                $this->ReadAttributeInteger('TerraceStreamVarID'),
+                $this->ReadAttributeInteger('TerraceLastIVSVarID')
+            ];
+            if ($sender > 0 && in_array($sender, $terraceSources, true)) {
+                $terraceId=$this->ReadAttributeInteger('TerraceObserverInstanceID');
+                if ($this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+                    && $this->matchesTrustedP03Observer(
+                        $terraceId, trim($this->ReadPropertyString('TerraceHost')), self::TERRACE_ROLE)
+                    && $this->terraceObserverSocketExclusive($terraceId)) {
+                    try {
+                        $this->DiagnoseP03Connections(true);
+                    } catch (Throwable $e) {
+                        $this->SendDebug('P03 TERRACE Diagnose',
+                            'Ereignis-Diagnose fehlgeschlagen: '.get_class($e),0);
+                    }
+                }
+                return;
+            }
 
             if ($sender === $jvStreamVar || $sender === $workStreamVar) {
                 // A broken stream cannot form one half of a 2-camera proof
@@ -3100,6 +3132,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             IPS_ApplyChanges($observerID);
             $this->WriteAttributeInteger('TerraceObserverInstanceID',$observerID);
             $this->WriteAttributeString('TerraceAllowedIVSRules',$rules);
+            $this->WriteAttributeInteger('TerraceRuleReadAt',time());
+            $this->syncP03TerraceSubscriptions($observerID);
             $chosen = $selection['allowed'][0];
             $this->SetValue('P03TerraceMonitor',
                 'AKTIV – NUR DIAGNOSE | Observer #'.$observerID
@@ -3242,8 +3276,31 @@ class JVPresenceP03MultiCamera extends IPSModule
         }
     }
 
+    /**
+     * Subscribe only to variables owned by the verified third observer.
+     * A disabled or unsafe optional observer has its diagnostic subscriptions
+     * removed without touching any camera, socket or mast proof logic.
+     */
+    private function syncP03TerraceSubscriptions(int $observerID=0): void
+    {
+        $valid=$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')
+            && $this->matchesTrustedP03Observer(
+                $observerID,trim($this->ReadPropertyString('TerraceHost')),self::TERRACE_ROLE)
+            && $this->terraceObserverSocketExclusive($observerID);
+        foreach ([
+            'TerracePersonVarID'=>'PersonDetected',
+            'TerraceHumanCounterVarID'=>'HumanEventCounter',
+            'TerraceStreamVarID'=>'StreamOK',
+            'TerraceLastIVSVarID'=>'LastIVSEvent'
+        ] as $attribute=>$ident) {
+            $this->updateP03AuxSubscription($attribute,
+                $valid ? $this->findAuxVariable($observerID,$ident) : 0);
+        }
+    }
+
     private function disableTerraceMonitor(): void
     {
+        $this->syncP03TerraceSubscriptions(0);
         $observerID=$this->ReadAttributeInteger('TerraceObserverInstanceID');
         if (!$this->terraceObserverSocketExclusive($observerID)) {
             return;
