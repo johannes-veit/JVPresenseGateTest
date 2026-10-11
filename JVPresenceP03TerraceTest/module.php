@@ -2905,6 +2905,58 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
 
+        // Third camera is 100% optional; it has no subscription in the
+        // main HOME/LAGER proof path and cannot block the two mast streams.
+        $lines[] = '';
+        if (!$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')) {
+            $lines[] = '--- JV TERRASSE: AUS / IGNORIERT – kein Einfluss auf HOME/LAGER ---';
+        } else {
+            $terraceID = $this->ReadAttributeInteger('TerraceObserverInstanceID');
+            $terraceHost = trim($this->ReadPropertyString('TerraceHost'));
+            $lines[] = '--- JV TERRASSE (OPTIONAL, NUR DIAGNOSE) ---';
+            $lines[] = 'Zusatzstatus: '.(string)$this->GetValue('P03TerraceMonitor');
+            if ($this->matchesTrustedP03Observer($terraceID,$terraceHost,self::TERRACE_ROLE)
+                && $this->terraceObserverSocketExclusive($terraceID)) {
+                $lines[] = 'TERRACE Observer-ID: #'.$terraceID.' | Host: '.$terraceHost
+                    .' | eigener Socket: EXKLUSIV';
+                $stateID=$this->findAuxVariable($terraceID,'ObserverStatus');
+                if ($stateID>0) {
+                    $state=json_decode((string)GetValue($stateID),true);
+                    if (is_array($state)) {
+                        $lines[]='TERRACE Stream: '
+                            .(!empty($state['streamOK'])?'LIVE':'NOCH NICHT LIVE')
+                            .' | CrossLine-Events='
+                            .(int)(json_decode((string)($state['observedCodeCounts']??'{}'),true)
+                                ['CrossLineDetection']??0);
+                    }
+                }
+                $counterID=$this->findAuxVariable($terraceID,'HumanEventCounter');
+                $lines[]='TERRACE Human-CrossLine-Zaehler: '
+                    .($counterID>0 ? (int)GetValue($counterID) : 'FEHLT')
+                    .' | NUR TERRASSEN-DIAGNOSE';
+                $ivId=$this->findAuxVariable($terraceID,'LastIVSEvent');
+                if ($ivId>0) {
+                    $last=json_decode((string)GetValue($ivId),true);
+                    if (is_array($last) && array_is_list($last)) {
+                        foreach (array_slice($last,-4) as $entry) {
+                            if (!is_array($entry)) continue;
+                            $lines[]='  TERRACE IVS '.(string)($entry['time']??'?')
+                                .' | Aktion='.(string)($entry['action']??'?')
+                                .' | Regel='.(string)($entry['ruleName']??'?')
+                                .' | RuleID='.(string)($entry['ruleIdUpper']
+                                    ??$entry['cfgRuleId']??'?')
+                                .' | Klasse='.(string)($entry['classification']??'?')
+                                .' | Richtung='.(string)($entry['direction']??'FEHLT')
+                                .' | Entscheidung='.(string)($entry['decision']??'?');
+                        }
+                    }
+                }
+            } else {
+                $lines[]='TERRACE Observer: noch nicht sicher eingerichtet oder Socket geteilt.';
+            }
+            $lines[]='TERRACE darf weder JV_LEFT noch WORK_LEFT fuer Zonenbeweise ersetzen.';
+        }
+
         $lines[] = '';
         $lines[] = 'ERGEBNIS: Nur Istzustand erfasst – keine Verbindung neu gestartet.';
         $report = implode("\n", $lines);
@@ -2990,6 +3042,11 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->SetValue('P03TerraceMonitor',
                 'GESPERRT – separater P03-Terrassen-Observer konnte nicht erstellt werden');
             return;
+        }
+        // Save a newly created, role-verified observer before socket
+        // readiness checks: a transient socket setup must not orphan it.
+        if ($this->matchesTrustedP03Observer($observerID, $host, self::TERRACE_ROLE)) {
+            $this->WriteAttributeInteger('TerraceObserverInstanceID', $observerID);
         }
         if (!$this->terraceObserverSocketExclusive($observerID)) {
             $this->SetValue('P03TerraceMonitor',
