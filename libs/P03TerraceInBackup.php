@@ -29,7 +29,7 @@ final class P03TerraceInBackup
      * @return array{status:string,mastId:?string,terraceId:?string,path:string,gap:float,reason:string}
      */
     public static function evaluate(
-        array $mast,array $terrace,float $now
+        array $mast,array $terrace,float $now,float $primaryWindow=30.0
     ):array {
         $empty=static fn(string $state,string $reason):array=>[
             'status'=>$state,'mastId'=>null,'terraceId'=>null,
@@ -92,7 +92,11 @@ final class P03TerraceInBackup
                 }
                 if ($ambiguous) continue;
                 $viable[]=[
-                    'status'=>$now<$t+self::SETTLE_SEC?'PENDING':'VERIFIED',
+                    // Wait for the ENTIRE primary two-mast window before a
+                    // fallback can consume the first mast IVS. Otherwise
+                    // an ordinary late second mast would be suppressed.
+                    'status'=>$now<max($t+self::SETTLE_SEC,
+                        $m+max(0.0,$primaryWindow))?'PENDING':'VERIFIED',
                     'mastId'=>(string)$mastEvent['id'],
                     'terraceId'=>(string)$signal['id'],
                     'path'=>$src==='WORK_LEFT'
