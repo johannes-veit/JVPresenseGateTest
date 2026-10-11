@@ -100,6 +100,9 @@ class IPSModule
     protected function WriteAttributeInteger(string $name,int $value):void {
         $this->attributes[$name]=$value;
     }
+    protected function ReadPropertyBoolean(string $name):bool {
+        return (bool)($this->properties[$name]??false);
+    }
     protected function ReadPropertyInteger(string $name):int {
         return (int)($this->properties[$name]??0);
     }
