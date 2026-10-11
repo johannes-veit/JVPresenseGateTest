@@ -225,16 +225,21 @@ class JVPresenceP03AuxObserver extends IPSModule
                 if (!P03OnvifEvents::isHumanStairCrossing($event)) {
                     continue;
                 }
+                // A camera may reuse EventID/ObjectId/UTC. Delete aged
+                // evidence BEFORE matching, otherwise a real later crossing
+                // with identical identifiers is rejected forever.
+                $now=time();
+                foreach ($seen as $entry=>$stamp) {
+                    if (!is_numeric($stamp) || (int)$stamp > $now
+                        || $now-(int)$stamp>=3) {
+                        unset($seen[$entry]);
+                    }
+                }
                 $key=sha1(json_encode($summary,JSON_UNESCAPED_UNICODE)?:'');
                 if (isset($seen[$key])) {
                     continue;
                 }
-                $seen[$key]=time();
-                foreach ($seen as $entry=>$stamp) {
-                    if (!is_numeric($stamp) || time()-(int)$stamp>90) {
-                        unset($seen[$entry]);
-                    }
-                }
+                $seen[$key]=$now;
                 if (count($seen)>200) {
                     asort($seen,SORT_NUMERIC);
                     $seen=array_slice($seen,-200,null,true);
