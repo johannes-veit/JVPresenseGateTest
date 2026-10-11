@@ -160,6 +160,109 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->refreshObserverStatus('ApplyChanges / Neustart angefordert');
     }
 
+
+    /**
+     * Passive independent ONVIF PullPoint, without camera configuration writes.
+     * Human proof is allowed ONLY with both a named stair-crossing and
+     * explicit Human classification. Generic ONVIF crossings are diagnostics.
+     */
+    public function OnvifPoll(): void
+    {
+        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()) {
+            return;
+        }
+        try {
+            $result=P03OnvifPullPoint::poll(
+                trim($this->ReadPropertyString('CameraHost')),
+                $this->ReadPropertyInteger('CameraPort'),
+                $this->ReadPropertyString('Username'),
+                $this->ReadPropertyString('Password'),
+                $this->ReadAttributeString('OnvifSubscriptionURL'),
+                $this->ReadAttributeInteger('OnvifSubscriptionUntil')
+            );
+            $status=(string)($result['status']??'UNKNOWN');
+            $this->WriteAttributeString('OnvifLastStatus',$status);
+            $this->SetValue('OnvifStatus',date('Y-m-d H:i:s').' '.$status);
+            if (empty($result['ok'])) {
+                $this->WriteAttributeString('OnvifSubscriptionURL','');
+                $this->WriteAttributeInteger('OnvifSubscriptionUntil',0);
+                return;
+            }
+            $this->WriteAttributeString('OnvifSubscriptionURL',(string)$result['url']);
+            $this->WriteAttributeInteger('OnvifSubscriptionUntil',(int)$result['until']);
+            $events=is_array($result['events']??null)?$result['events']:[];
+            if ($events===[]) {
+                return;
+            }
+            $recent=json_decode($this->ReadAttributeString('OnvifRecentEvents'),true);
+            $seen=json_decode($this->ReadAttributeString('OnvifSeenEventKeys'),true);
+            if (!is_array($recent)) {
+                $recent=[];
+            }
+            if (!is_array($seen)) {
+                $seen=[];
+            }
+            foreach ($events as $event) {
+                if (!is_array($event)) {
+                    continue;
+                }
+                $summary=P03OnvifEvents::summarize($event);
+                $this->WriteAttributeInteger('OnvifEventCount',
+                    $this->ReadAttributeInteger('OnvifEventCount')+1);
+                $recent[]=array_merge([
+                    'time'=>date('H:i:s'),'role'=>$this->ReadPropertyString('Role')
+                ],$summary);
+                if (count($recent)>15) {
+                    $recent=array_slice($recent,-15);
+                }
+                if (!P03OnvifEvents::isHumanStairCrossing($event)) {
+                    continue;
+                }
+                $key=sha1(json_encode($summary,JSON_UNESCAPED_UNICODE)?:'');
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key]=time();
+                foreach ($seen as $entry=>$stamp) {
+                    if (!is_numeric($stamp) || time()-(int)$stamp>90) {
+                        unset($seen[$entry]);
+                    }
+                }
+                if (count($seen)>200) {
+                    asort($seen,SORT_NUMERIC);
+                    $seen=array_slice($seen,-200,null,true);
+                }
+                $this->WriteAttributeInteger('OnvifHumanStairCount',
+                    $this->ReadAttributeInteger('OnvifHumanStairCount')+1);
+                $observation=[
+                    'code'=>'ONVIF_LineDetector_Crossed',
+                    'action'=>'Start',
+                    'classification'=>'Human',
+                    'ruleName'=>$summary['rule'],
+                    'eventId'=>$summary['utc'],
+                    'objectId'=>$summary['objectId']
+                ];
+                $this->publishHumanProof($observation,'ONVIF_HUMAN_STAIR',[
+                    'time'=>date('H:i:s'),'role'=>$this->ReadPropertyString('Role'),
+                    'source'=>'ONVIF_HUMAN_STAIR','code'=>'ONVIF_LineDetector_Crossed',
+                    'ruleName'=>$summary['rule'],'human'=>true,
+                    'humanFromRule'=>true,'classification'=>'Human',
+                    'utc'=>$summary['utc'],'objectId'=>$summary['objectId']
+                ]);
+            }
+            $this->WriteAttributeString('OnvifSeenEventKeys',json_encode($seen)?:'{}');
+            $encoded=json_encode($recent,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'[]';
+            $this->WriteAttributeString('OnvifRecentEvents',$encoded);
+            $this->SetValue('OnvifRecentEvents',$encoded);
+        } catch (Throwable $e) {
+            $this->WriteAttributeString('OnvifSubscriptionURL','');
+            $this->WriteAttributeInteger('OnvifSubscriptionUntil',0);
+            $this->SetValue('OnvifStatus',date('Y-m-d H:i:s')
+                .' ONVIF Ausnahme '.get_class($e).' – '.
+                substr((string)$e->getMessage(),0,120));
+        }
+    }
+
     public function GetConfigurationForParent(): string
     {
         $parentID = $this->getParentID();
