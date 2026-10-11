@@ -81,8 +81,8 @@ foreach ([$main,$observer] as $source) {
         'cleaned P03 hides internal diagnostics without deleting unknown external references');
 }
 $form=json_decode(file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/form.json'),true);
-lifecycleAssert(is_array($form) && count($form['actions']??[])===9,
-    'Symcon user form has nine focused buttons including standalone street training');
+lifecycleAssert(is_array($form) && count($form['actions']??[])===10,
+    'Symcon user form has ten focused buttons including single-IN and street-only training');
 $commands=array_column($form['actions'],'onClick');
 foreach ([
     'JVP03MC_ConfigureTerraceMonitor($id);',
@@ -92,6 +92,7 @@ foreach ([
     'JVP03MC_RunP03Simulation($id);',
     'JVP03MC_PrepareAndStartTest($id);',
     'JVP03MC_StartStreetDirectionOnly($id);',
+    'JVP03MC_StartTerraceInBackupOnly($id);',
     'JVP03MC_EnableProductionP03($id);',
     'JVP03MC_DisableProductionP03($id);'
 ] as $command) {

@@ -130,6 +130,7 @@ class IPSModule {
     protected function ReadPropertyInteger(string $key):int {return (int)($this->properties[$key]??0);}
     protected function ReadPropertyBoolean(string $key):bool {return (bool)($this->properties[$key]??false);}
     protected function ReadAttributeInteger(string $key):int {return (int)($this->attributes[$key]??0);}
+    protected function ReadAttributeBoolean(string $key):bool {return (bool)($this->attributes[$key]??false);}
     protected function ReadAttributeString(string $key):string {return (string)($this->attributes[$key]??'');}
     protected function WriteAttributeInteger(string $key,int $value):void {$this->attributes[$key]=$value;}
     protected function WriteAttributeString(string $key,string $value):void {$this->attributes[$key]=$value;}
