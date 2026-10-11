@@ -195,6 +195,7 @@ jobs:
               "public function DiagnoseIPC5442Configuration(): void",
               "protected function writeP03PrivateDocument(",
               "IPS_CreateMedia(5)",
+              "IPS_GetChildrenIDs($this->InstanceID)",
               "IPS_SetMediaContent($id,base64_encode($content))",
               "getConfig&name=All",
               "Config.backup?action=All",
@@ -202,6 +203,12 @@ jobs:
           ]:
               if token not in main:
                   raise SystemExit('P03 full device config export contract missing: '+token)
+          # IP-Symcon emits a WARNING on negative IPS_GetObjectIDByIdent.
+          # On first-time document creation, enumerate actual children instead.
+          full_export=main[main.index("protected function writeP03PrivateDocument("):
+                           main.index("public function DiagnoseIPC5442Configuration(): void")]
+          if "IPS_GetObjectIDByIdent(" in full_export:
+              raise SystemExit('P03 first-time document export uses warning-producing negative ident lookup')
           model_audit=Path('libs/P03IPC5442Audit.php').read_text()
           for token in [
               "public static function exportAllValues(",
