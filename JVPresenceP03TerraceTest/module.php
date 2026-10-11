@@ -3644,7 +3644,7 @@ class JVPresenceP03MultiCamera extends IPSModule
     }
 
     /** @return array{ok:bool,error:string,http:int,body:string} */
-    private function genericCameraGet(string $host, int $port, string $username, string $password, string $uri, int $timeoutSeconds = 6): array
+    protected function genericCameraGet(string $host, int $port, string $username, string $password, string $uri, int $timeoutSeconds = 6): array
     {
         if ($host === '' || $username === '' || $password === '') {
             return ['ok' => false, 'error' => 'Konfiguration unvollständig', 'http' => 0, 'body' => ''];
