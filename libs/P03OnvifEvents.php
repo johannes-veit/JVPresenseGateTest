@@ -165,6 +165,34 @@ final class P03OnvifEvents
         return count($normalized)===1 ? (string)array_key_first($normalized) : '';
     }
 
+    /**
+     * Dahua may recycle ObjectId and timestamps, so a previously seen event
+     * must never remain permanently blocked. Remove expired keys BEFORE
+     * checking the new notification.
+     *
+     * @param array<string,mixed> $summary
+     * @param array<string,int> $seen
+     */
+    public static function isFresh(array $summary,array &$seen,int $now,int $seconds=3): bool
+    {
+        $seconds=max(1,min(10,$seconds));
+        foreach ($seen as $id=>$stamp) {
+            if (!is_numeric($stamp) || (int)$stamp>$now || $now-(int)$stamp >= $seconds) {
+                unset($seen[$id]);
+            }
+        }
+        $key=sha1(json_encode($summary,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'');
+        if (isset($seen[$key])) {
+            return false;
+        }
+        $seen[$key]=$now;
+        if (count($seen)>200) {
+            asort($seen,SORT_NUMERIC);
+            $seen=array_slice($seen,-200,null,true);
+        }
+        return true;
+    }
+
     /** Only allow same camera host to prevent ONVIF XAddr SSRF or LAN pivot. */
     public static function verifiedSameHostUrl(string $url, string $host, int $port=80): ?string
     {
