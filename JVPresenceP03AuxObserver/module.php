@@ -69,6 +69,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeString('OnvifSeenEventKeys', '{}');
         $this->RegisterAttributeString('OnvifRecentEvents', '[]');
         $this->RegisterAttributeString('OnvifLastStatus', 'Noch nicht abgefragt');
+        $this->RegisterAttributeInteger('OnvifNextAttemptAt', 0);
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
@@ -168,7 +169,8 @@ class JVPresenceP03AuxObserver extends IPSModule
      */
     public function OnvifPoll(): void
     {
-        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()) {
+        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()
+            || time() < $this->ReadAttributeInteger('OnvifNextAttemptAt')) {
             return;
         }
         try {
@@ -186,8 +188,10 @@ class JVPresenceP03AuxObserver extends IPSModule
             if (empty($result['ok'])) {
                 $this->WriteAttributeString('OnvifSubscriptionURL','');
                 $this->WriteAttributeInteger('OnvifSubscriptionUntil',0);
+                $this->WriteAttributeInteger('OnvifNextAttemptAt',time()+180);
                 return;
             }
+            $this->WriteAttributeInteger('OnvifNextAttemptAt',0);
             $this->WriteAttributeString('OnvifSubscriptionURL',(string)$result['url']);
             $this->WriteAttributeInteger('OnvifSubscriptionUntil',(int)$result['until']);
             $events=is_array($result['events']??null)?$result['events']:[];
@@ -257,6 +261,7 @@ class JVPresenceP03AuxObserver extends IPSModule
         } catch (Throwable $e) {
             $this->WriteAttributeString('OnvifSubscriptionURL','');
             $this->WriteAttributeInteger('OnvifSubscriptionUntil',0);
+            $this->WriteAttributeInteger('OnvifNextAttemptAt',time()+180);
             $this->SetValue('OnvifStatus',date('Y-m-d H:i:s')
                 .' ONVIF Ausnahme '.get_class($e).' – '.
                 substr((string)$e->getMessage(),0,120));
