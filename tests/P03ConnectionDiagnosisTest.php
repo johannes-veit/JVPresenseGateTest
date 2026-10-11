@@ -373,6 +373,56 @@ verifyDiag(in_array('JVP03MC_DiagnoseIPC5442AllValues($id);',
     array_column(json_decode($full->GetConfigurationForm(),true)['actions']??[],'onClick'),true),
     'one-click full export is available in P03 main instance form');
 
+// A read-only 30-second wire trace must update the test protocol even if no
+// new Human event arrives, showing distinguishable camera-level motion traffic.
+$trace = new JVPresenceP03MultiCamera();
+$trace->attributes['TestActive']=true;
+$trace->attributes['AuxJVInstanceID']=57215;
+$trace->attributes['AuxWorkInstanceID']=27938;
+$trace->attributes['AuxJVEventCounterVarID']=42076;
+$trace->attributes['AuxWorkEventCounterVarID']=34838;
+$trace->values['Protocol']='';
+$oldJvObserverStatus=$GLOBALS['variables'][26298];
+$oldWorkObserverStatus=$GLOBALS['variables'][56881];
+$GLOBALS['variables'][26298]=json_encode([
+    'streaming'=>true,'streamOK'=>true,'wireCodeCount'=>100,
+    'observedCodeCounts'=>json_encode(['VideoMotionInfo'=>70,'VideoMotion'=>10]),
+    'crossRegionTotal'=>0,'smdHumanRawCount'=>0
+]);
+$GLOBALS['variables'][56881]=json_encode([
+    'streaming'=>true,'streamOK'=>true,'wireCodeCount'=>30,
+    'observedCodeCounts'=>json_encode(['VideoMotion'=>3]),
+    'crossRegionTotal'=>6,'smdHumanRawCount'=>0
+]);
+$readTrace=new ReflectionMethod(JVPresenceP03MultiCamera::class,'readP03TestWireSnapshot');
+$appendTrace=new ReflectionMethod(JVPresenceP03MultiCamera::class,'appendP03TestWireTraceIfDue');
+$trace->attributes['P03TestWireTraceBaseline']=json_encode($readTrace->invoke($trace));
+$trace->attributes['P03TestWireTraceAt']=time()-31;
+$GLOBALS['variables'][26298]=json_encode([
+    'streaming'=>true,'streamOK'=>true,'wireCodeCount'=>110,
+    'observedCodeCounts'=>json_encode(['VideoMotionInfo'=>78,'VideoMotion'=>12]),
+    'crossRegionTotal'=>0,'smdHumanRawCount'=>0
+]);
+$appendTrace->invoke($trace);
+$liveReport=(string)($trace->values['Protocol']??'');
+verifyDiag(str_contains($liveReport,'P03 ROHMONITOR 30s')
+    && str_contains($liveReport,'JV_LEFT Stream=LIVE, Wire+=10, Motion+=2, MotionInfo+=8, CrossRegion+=0, SMDHuman+=0, HumanCounter=7'),
+    'silent real-world test now logs live motion activity but correctly reports ZERO positive AI events');
+verifyDiag(str_contains($liveReport,'WORK_LEFT Stream=LIVE, Wire+=0, Motion+=0'),
+    'no motion traffic from second camera is explicitly visible, not hidden');
+$appendTrace->invoke($trace);
+verifyDiag($trace->values['Protocol']===$liveReport,
+    '30-second throttle prevents SymBox flood when no new evidence arrived');
+verifyDiag(($trace->attributes['P03HumanEvents']??'[]')==='[]',
+    'passive wire monitor cannot invent a human proof or zone transition');
+$trace->attributes['TestActive']=false;
+$trace->attributes['P03TestWireTraceAt']=time()-31;
+$appendTrace->invoke($trace);
+verifyDiag($trace->values['Protocol']===$liveReport,
+    'wire monitor stops when commissioning test is no longer armed');
+$GLOBALS['variables'][26298]=$oldJvObserverStatus;
+$GLOBALS['variables'][56881]=$oldWorkObserverStatus;
+
 // Counter reset/replayed VM_UPDATE handling: the input is a monotonically
 // increasing P03-aux variable (HumanEventCounter) and existing nonzero
 // values after Symcon module reload are NOT new people.
