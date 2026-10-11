@@ -81,10 +81,11 @@ foreach ([$main,$observer] as $source) {
         'cleaned P03 hides internal diagnostics without deleting unknown external references');
 }
 $form=json_decode(file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/form.json'),true);
-lifecycleAssert(is_array($form) && count($form['actions']??[])===7,
-    'Symcon user form has only seven essential buttons');
+lifecycleAssert(is_array($form) && count($form['actions']??[])===8,
+    'Symcon user form has eight essential buttons (including optional terrace)');
 $commands=array_column($form['actions'],'onClick');
 foreach ([
+    'JVP03MC_ConfigureTerraceMonitor($id);',
     'JVP03MC_DiagnoseP03Connections($id);',
     'JVP03MC_DiagnoseIPC5442Configuration($id);',
     'JVP03MC_AuditCameraConfiguration($id);',
@@ -99,6 +100,14 @@ foreach ([
 lifecycleAssert(!in_array('JVP03MC_SwitchToVerifiedLeftCameras($id);',$commands,true)
     && !in_array('JVP03MC_RepairP03ClientSockets($id);',$commands,true),
     'completed migrations and repetitive emergency repair buttons removed from live UI');
+lifecycleAssert(str_contains((string)$main, "RegisterPropertyBoolean('TerraceDiagnosticsEnabled', false)")
+    && str_contains((string)$main, 'public function ConfigureTerraceMonitor(): void')
+    && str_contains((string)$main, 'private function terraceObserverSocketExclusive(')
+    && str_contains((string)$main, 'P03ExistingIvsLines::selectTerrace('),
+    'optional terrace is OFF by default, read-only and guarded by exclusive socket ownership');
+lifecycleAssert(str_contains((string)$main, 'TERRACE darf weder JV_LEFT noch WORK_LEFT')
+    && str_contains((string)$main, "TERRACE_ROLE = 'TERRACE'"),
+    'third-camera source stays outside the two-mast transfer proof path');
 lifecycleAssert(str_contains((string)$observer, 'pulsePersonDetected()')
     && str_contains((string)$observer, 'SMD_PERSON_STATUS_ONLY_NO_STAIR_PROOF'),
     'SMD person status is independent of strict staircase transfer proof');
