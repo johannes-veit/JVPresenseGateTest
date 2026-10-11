@@ -76,6 +76,40 @@ final class P03AuxObserverLogic
     }
 
     /**
+     * SMD 3.0 is camera-native person detection, and is valid as an
+     * independent human observation from ONE of the two mast cameras.
+     * It is not a directional IVS rule; the main 2-camera engine still
+     * needs one genuine observation from EACH camera in the right order.
+     * Ordinary VideoMotion/VideoMotionInfo, SmartMotionVehicle and Heartbeat
+     * are NEVER human proof.
+     *
+     * @param array<string,mixed> $event
+     */
+    public static function isSpecificSmdHumanEvent(array $event): bool
+    {
+        return in_array(strtolower(trim((string)($event['code']??''))),[
+            'smartmotionhuman','humandetection','humanbodydetection'
+        ],true);
+    }
+
+    /** @param array<string,mixed> $event */
+    public static function isSmdHumanProofStart(array $event): bool
+    {
+        if (!self::isSpecificSmdHumanEvent($event)
+            || !in_array(strtolower(trim((string)($event['action']??''))),
+                ['start','on','pulse'],true)) {
+            return false;
+        }
+        $cls=strtolower(trim((string)($event['classification']??'')));
+        // Explicit camera classification overrides the code. A nonhuman
+        // target in a SmartMotion stream cannot create a human transfer.
+        if ($cls!=='' && !in_array($cls,['human','person','pedestrian'],true)) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * Dahua EventID is not a permanent globally unique transaction ID.
      * Some 5442 firmware uses stable/recycled identifiers across detections.
      *
