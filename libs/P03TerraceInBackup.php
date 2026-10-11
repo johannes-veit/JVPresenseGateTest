@@ -55,6 +55,18 @@ final class P03TerraceInBackup
             // A physical OUT crossing must never be used as an IN fallback.
             if (($signal['direction']??null)==='LeftToRight') continue;
             $t=(float)$signal['ts'];
+            // Even if the camera emits SMD immediately and IVS a few
+            // seconds later, an opposite-direction IVS VETOES the SMD
+            // fallback. Never ignore contradictory available direction.
+            $opposite=false;
+            foreach($signals as $otherSignal) {
+                if (($otherSignal['direction']??null)==='LeftToRight'
+                    && abs((float)$otherSignal['ts']-$t)<=5.0) {
+                    $opposite=true;
+                    break;
+                }
+            }
+            if ($opposite) continue;
             foreach($masts as $mastEvent) {
                 $src=(string)$mastEvent['source'];
                 $m=(float)$mastEvent['ts'];
