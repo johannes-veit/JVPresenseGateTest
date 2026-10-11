@@ -54,6 +54,8 @@ jobs:
         run: php tests/P03OnvifEventTest.php
       - name: Full ONVIF connection, subscription, renewal, failure and no-event integration tests
         run: php tests/P03OnvifProtocolIntegrationTest.php
+      - name: P03 both-camera live-like human recognition simulation
+        run: php tests/P03RealisticHumanRecognitionSimulationTest.php
       - name: P03 auxiliary Human IVS rule tests
         run: php tests/P03AuxHumanRuleTest.php
       - name: P03 observer HTTP/Digest/Eventstream integration simulation

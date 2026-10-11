@@ -56,6 +56,10 @@ final class P03OnvifCorrelator
         $op=strtolower(trim((string)($e['operation']??'')));
         if ($op==='initialized' || $op==='deleted'
             || in_array($stateFlag,['false','0','off','stop'],true)) {
+            // A STOP/Deleted from the same camera object terminates any
+            // pending crossing-class correlation. Otherwise a late human
+            // classification could turn a stopped crossing into a NEW proof.
+            unset($state['classes'][$key],$state['crossings'][$key]);
             return null;
         }
         $utc=(string)($e['utc']??'');
@@ -71,16 +75,18 @@ final class P03OnvifCorrelator
             }
             $cls=P03OnvifEvents::extractObjectClassification($data);
             if (in_array($cls,['vehicle','motorvehicle','motor_vehicle'],true)) {
+                unset($state['classes'][$key],$state['crossings'][$key]);
                 return null;
             }
             if ($cls!=='' && !in_array($cls,['human','person','pedestrian'],true)) {
+                unset($state['classes'][$key],$state['crossings'][$key]);
                 return null;
             }
             if ($cls==='' && P03OnvifEvents::hasExplicitClassField($data)) {
                 // Multiple/contradictory vehicle+human class annotations
                 // are NOT the same as missing classification. No later
                 // separate Human event may override this explicit conflict.
-                unset($state['crossings'][$key]);
+                unset($state['classes'][$key],$state['crossings'][$key]);
                 return null;
             }
             // A separate human class must be linked to a concrete video
