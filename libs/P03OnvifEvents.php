@@ -204,7 +204,10 @@ final class P03OnvifEvents
             return null;
         }
         $path = (string)($parts['path']??'');
-        if (!str_starts_with($path, '/onvif/')) {
+        // ONVIF's official PullPoint example returns /Subscription?Idx=0
+        // instead of /onvif/Subscription. Both remain on the verified IPC.
+        if (!str_starts_with(strtolower($path), '/onvif/')
+            && strcasecmp($path, '/Subscription') !== 0) {
             return null;
         }
         return $url;
