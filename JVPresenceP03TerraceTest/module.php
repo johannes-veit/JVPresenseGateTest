@@ -1926,11 +1926,22 @@ class JVPresenceP03MultiCamera extends IPSModule
     protected function writeP03PrivateDocument(
         string $ident,string $title,string $filename,string $content
     ): int {
+        // IPS_GetObjectIDByIdent emits an IP-Symcon WARNING when an ident
+        // does not exist. That is the NORMAL situation on the very first
+        // export, and try/catch does not suppress a PHP warning.
+        // Enumerate existing children instead: no negative lookup/warning,
+        // and never claim or overwrite media outside this P03 instance.
         $id=0;
-        try {
-            $id=IPS_GetObjectIDByIdent($ident,$this->InstanceID);
-        } catch (Throwable $e) {
-            $id=0;
+        foreach (IPS_GetChildrenIDs($this->InstanceID) as $childID) {
+            $childID=(int)$childID;
+            $obj=IPS_GetObject($childID);
+            if ((string)($obj['ObjectIdent']??'') !== $ident) {
+                continue;
+            }
+            if ($id>0) {
+                throw new RuntimeException('Doppelte P03-Dokumentkennung unter der Hauptinstanz – keine Änderung');
+            }
+            $id=$childID;
         }
         if ($id>0) {
             if (!IPS_MediaExists($id)
