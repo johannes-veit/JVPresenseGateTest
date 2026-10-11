@@ -13,9 +13,15 @@ final class P03OnvifPullPoint
     /** @return array{ok:bool,url:string,until:int,status:string,events:array} */
     public static function poll(
         string $host, int $port, string $username, string $password,
-        string $subscriptionUrl, int $validUntil, string $referenceJson = '[]'
+        string $subscriptionUrl, int $validUntil, string $referenceJson = '[]',
+        ?callable $transport = null, ?int $now = null
     ): array {
-        $out = ['ok'=>false,'url'=>'','until'=>0,'status'=>'','events'=>[], 'reference'=>'[]'];
+        // Production uses the real cURL transport. The explicit injected
+        // transport is only for deterministic full protocol integration tests.
+        $send = $transport ?? [self::class, 'soap'];
+        $now = $now ?? time();
+        $out = ['ok'=>false,'url'=>'','until'=>0,'status'=>'','events'=>[],
+            'reference'=>'[]', 'subscribed'=>false, 'eventCount'=>0];
         $refs = json_decode($referenceJson,true);
         if (!is_array($refs)) {
             $refs=[];
@@ -27,11 +33,11 @@ final class P03OnvifPullPoint
         }
         $base='http://' . $host . ':' . $port;
         $clientUrl = P03OnvifEvents::verifiedSameHostUrl($subscriptionUrl,$host,$port);
-        if ($clientUrl === null || $validUntil <= time()+10) {
-            $cap = self::soap($base . '/onvif/device_service',
+        if ($clientUrl === null || $validUntil <= $now+10) {
+            $cap = $send($base . '/onvif/device_service',
                 $username,$password,'GetCapabilities',
                 '<tds:GetCapabilities><tds:Category>Events</tds:Category></tds:GetCapabilities>',
-                'device');
+                'device', []);
             if (!$cap['ok']) {
                 $out['status']='ONVIF Device/GetCapabilities ' . $cap['status'];
                 return $out;
@@ -43,11 +49,11 @@ final class P03OnvifPullPoint
                 $out['status']='ONVIF Events XAddr nicht vorhanden oder Fremdadresse';
                 return $out;
             }
-            $subscription=self::soap($eventUrl,$username,$password,
+            $subscription=$send($eventUrl,$username,$password,
                 'CreatePullPointSubscription',
                 '<tev:CreatePullPointSubscription>'
                 . '<tev:InitialTerminationTime>PT10M</tev:InitialTerminationTime>'
-                . '</tev:CreatePullPointSubscription>', 'events');
+                . '</tev:CreatePullPointSubscription>', 'events', []);
             if (!$subscription['ok']) {
                 $out['status']='ONVIF CreatePullPointSubscription ' . $subscription['status'];
                 return $out;
@@ -62,11 +68,18 @@ final class P03OnvifPullPoint
             // Some Dahua firmwares return an ONVIF ReferenceParameters
             // SubscriptionId instead of an identity-bearing unique URL.
             $refs=self::referenceParameters($subscription['body']);
-            // Soft expiry before ONVIF's requested PT10M hard expiration.
-            $validUntil=time()+8*60;
+            // Do not presume the camera granted all requested PT10M!
+            // ONVIF returns CurrentTime and TerminationTime; use their
+            // difference to tolerate a camera clock offset versus SymBox.
+            $granted=self::subscriptionLifetime($subscription['body']);
+            if ($granted <= 15) {
+                $out['status']='ONVIF Subscription ohne ausreichend gueltige Laufzeit';
+                return $out;
+            }
+            $validUntil=$now+max(1,min(480,$granted-15));
         }
 
-        $pull=self::soap($clientUrl,$username,$password,'PullMessages',
+        $pull=$send($clientUrl,$username,$password,'PullMessages',
             '<tev:PullMessages>'
             . '<tev:Timeout>PT1S</tev:Timeout>'
             . '<tev:MessageLimit>24</tev:MessageLimit>'
@@ -77,16 +90,19 @@ final class P03OnvifPullPoint
             $out['status']='ONVIF PullMessages ' . $pull['status'];
             return $out;
         }
-        $out['ok']=true;
-        $out['url']=$clientUrl;
-        $out['until']=$validUntil;
-        $out['reference']=json_encode($refs, JSON_UNESCAPED_SLASHES)?:'[]';
         if (!self::isValidSoapResponse($pull['body'], 'PullMessagesResponse')) {
             $out['status']='ONVIF HTTP 200 ohne gueltige PullMessagesResponse';
             return $out;
         }
-        $out['status']='ONVIF PullPoint LIVE, HTTP 200';
-        $out['events']=P03OnvifEvents::parseNotifications($pull['body']);
+        $events=P03OnvifEvents::parseNotifications($pull['body']);
+        $out['ok']=true;
+        $out['url']=$clientUrl;
+        $out['until']=$validUntil;
+        $out['reference']=json_encode($refs, JSON_UNESCAPED_SLASHES)?:'[]';
+        $out['subscribed']=true;
+        $out['eventCount']=count($events);
+        $out['status']='ONVIF PullPoint abonniert / Abruf OK / Ereignisse=' . count($events);
+        $out['events']=$events;
         return $out;
     }
 
@@ -164,6 +180,25 @@ final class P03OnvifPullPoint
         return ['ok'=>true,'body'=>$answer,'status'=>'HTTP 200'];
     }
 
+
+    /**
+     * Camera-granted ONVIF subscription lifetime, measured in CAMERA time,
+     * not local SymBox wall time. Short leases are respected.
+     */
+    public static function subscriptionLifetime(string $xml): int
+    {
+        $current=self::findXmlValue($xml,
+            '//*[local-name()="CreatePullPointSubscriptionResponse"]/*[local-name()="CurrentTime"]');
+        $until=self::findXmlValue($xml,
+            '//*[local-name()="CreatePullPointSubscriptionResponse"]/*[local-name()="TerminationTime"]');
+        $a=$current!=='' ? strtotime($current) : false;
+        $b=$until!=='' ? strtotime($until) : false;
+        if ($a===false || $b===false || $b<=$a) {
+            // Unknown camera lease is never assumed to be 10 minutes.
+            return 60;
+        }
+        return max(0,min(3600,$b-$a));
+    }
 
     /** Extract ONVIF SubscriptionReference/ReferenceParameters safely as data. */
     public static function referenceParameters(string $xml): array

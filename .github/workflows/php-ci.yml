@@ -52,6 +52,8 @@ jobs:
         run: php tests/P03ProofEngineTest.php
       - name: Independent ONVIF PullPoint event parser and safety tests
         run: php tests/P03OnvifEventTest.php
+      - name: Full ONVIF connection, subscription, renewal, failure and no-event integration tests
+        run: php tests/P03OnvifProtocolIntegrationTest.php
       - name: P03 auxiliary Human IVS rule tests
         run: php tests/P03AuxHumanRuleTest.php
       - name: P03 observer HTTP/Digest/Eventstream integration simulation

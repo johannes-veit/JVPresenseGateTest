@@ -113,6 +113,16 @@ final class P03OnvifCorrelator
             return null;
         }
 
+        // A noisy ONVIF stream must not grow persistent Symcon attributes
+        // without bound. Keep only the latest 128 pending per evidence type.
+        foreach (['classes','crossings'] as $kind) {
+            if (count($state[$kind]) > 128) {
+                uasort($state[$kind], static fn(array $a,array $b): int =>
+                    (int)($a['seen']??0) <=> (int)($b['seen']??0));
+                $state[$kind]=array_slice($state[$kind], -128, null, true);
+            }
+        }
+
         $cross=$state['crossings'][$key]??null;
         $class=$state['classes'][$key]??null;
         if (!is_array($cross) || !is_array($class)) {

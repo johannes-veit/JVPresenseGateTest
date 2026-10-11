@@ -51,4 +51,23 @@ foreach ([
     lifecycleAssert(str_contains($apply,'parent::ApplyChanges()'),
         $path . ': base ApplyChanges preserved');
 }
+$observer=file_get_contents(dirname(__DIR__).'/JVPresenceP03AuxObserver/module.php');
+$prefix=json_decode(file_get_contents(dirname(__DIR__).'/JVPresenceP03AuxObserver/module.json'),true);
+lifecycleAssert(($prefix['prefix']??'')==='JVP03AUX'
+    && str_contains($observer,"JVP03AUX_OnvifPoll("),
+    'ONVIF event polling timer uses the module actual registered function prefix');
+lifecycleAssert(str_contains($observer,"RegisterTimer('OnvifPullTimer'")
+    && str_contains($observer,"SetTimerInterval('OnvifPullTimer'")
+    && str_contains($observer,"public function OnvifPoll(): void"),
+    'ONVIF registration, ApplyChanges activation and method callback are connected');
+$start=strpos($observer,'    public function OnvifPoll(): void');
+$end=strpos($observer,'    public function GetConfigurationForParent(): string',$start);
+$onvif=substr($observer,$start,$end-$start);
+lifecycleAssert(str_contains($onvif,'OnvifPollBusyUntil')
+    && str_contains($onvif,'OnvifNextAttemptAt')
+    && str_contains($onvif,'finally'),
+    'ONVIF poll serialized; error/backoff and lock release are present');
+lifecycleAssert(!str_contains($onvif,'publishHumanProof(')
+    && !str_contains($onvif,"SetValue('HumanEventCounter'"),
+    'ONVIF passive diagnosis cannot inject unverified person counters or zone transfers');
 echo "P03 CREATE/APPLYCHANGES REGISTRATION CONTRACT PASSED\n";
