@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/libs/DahuaDigest.php';
 require_once dirname(__DIR__) . '/libs/DahuaEventParser.php';
 require_once dirname(__DIR__) . '/libs/P03AuxObserverLogic.php';
 require_once dirname(__DIR__) . '/libs/P03ExistingIvsLines.php';
+require_once dirname(__DIR__) . '/libs/P03OnvifPullPoint.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03AuxObserver extends IPSModule
@@ -61,6 +62,15 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterAttributeInteger('SmdHumanProofCount', 0);
         $this->RegisterAttributeInteger('LastHumanProofAt', 0);
         $this->RegisterAttributeString('LastHumanProofCode', '');
+        $this->RegisterAttributeString('OnvifSubscriptionURL', '');
+        $this->RegisterAttributeString('OnvifSubscriptionReference', '[]');
+        $this->RegisterAttributeInteger('OnvifSubscriptionUntil', 0);
+        $this->RegisterAttributeInteger('OnvifEventCount', 0);
+        $this->RegisterAttributeInteger('OnvifHumanStairCount', 0);
+        $this->RegisterAttributeString('OnvifSeenEventKeys', '{}');
+        $this->RegisterAttributeString('OnvifRecentEvents', '[]');
+        $this->RegisterAttributeString('OnvifLastStatus', 'Noch nicht abgefragt');
+        $this->RegisterAttributeInteger('OnvifNextAttemptAt', 0);
 
         $this->RegisterVariableBoolean('PersonDetected', 'Person erkannt', '~Switch', 10);
         $this->RegisterVariableBoolean('StreamOK', 'Dahua Eventstream OK', '~Switch', 20);
@@ -71,11 +81,14 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
         $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
         $this->RegisterVariableString('HumanHint', 'P03 Personhinweis in anderem Dahua-Ereignis (nur Diagnose)', '', 66);
+        $this->RegisterVariableString('OnvifStatus', 'ONVIF PullPoint – eigener Ereignisweg', '', 67);
+        $this->RegisterVariableString('OnvifRecentEvents', 'ONVIF letzte Ereignisse (Metadaten)', '', 68);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03AUX_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03AUX_SocketRestartTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('Watchdog', 15000, 'JVP03AUX_Watchdog($_IPS["TARGET"]);');
         $this->RegisterTimer('PersonPulseTimer', 0, 'JVP03AUX_PersonPulseTimer($_IPS["TARGET"]);');
+        $this->RegisterTimer('OnvifPullTimer', 15000, 'JVP03AUX_OnvifPoll($_IPS["TARGET"]);');
 
         $this->RequireParent(self::CLIENT_SOCKET_GUID);
     }
@@ -107,11 +120,15 @@ class JVPresenceP03AuxObserver extends IPSModule
         $this->RegisterVariableString('EventAudit', 'P03 IVS-Ereignisdiagnose', '', 60);
         $this->RegisterVariableString('WireProbe', 'IPC5442 Wire-Rohereignisse vor Parser', '', 65);
         $this->RegisterVariableString('HumanHint', 'P03 Personhinweis in anderem Dahua-Ereignis (nur Diagnose)', '', 66);
+        $this->RegisterVariableString('OnvifStatus', 'ONVIF PullPoint – eigener Ereignisweg', '', 67);
+        $this->RegisterVariableString('OnvifRecentEvents', 'ONVIF letzte Ereignisse (Metadaten)', '', 68);
 
         $this->SetTimerInterval('HandshakeTimer', 0);
         $this->SetTimerInterval('SocketRestartTimer', 0);
         $this->SetTimerInterval('PersonPulseTimer', 0);
         $this->SetTimerInterval('Watchdog', 15000);
+        $this->SetTimerInterval('OnvifPullTimer',
+            $this->ReadPropertyBoolean('Enabled') && $this->cameraConfigurationReady() ? 15000 : 0);
         $this->SetBuffer('HttpBuffer', '');
         $this->SetBuffer('EventCarry', '');
         $this->SetBuffer('WireProbeTail', '');
@@ -143,6 +160,115 @@ class JVPresenceP03AuxObserver extends IPSModule
             $this->scheduleSocketRestart(500);
         }
         $this->refreshObserverStatus('ApplyChanges / Neustart angefordert');
+    }
+
+
+    /**
+     * Passive independent ONVIF PullPoint, without camera configuration writes.
+     * Human proof is allowed ONLY with both a named stair-crossing and
+     * explicit Human classification. Generic ONVIF crossings are diagnostics.
+     */
+    public function OnvifPoll(): void
+    {
+        if (!$this->ReadPropertyBoolean('Enabled') || !$this->cameraConfigurationReady()
+            || time() < $this->ReadAttributeInteger('OnvifNextAttemptAt')) {
+            return;
+        }
+        try {
+            $result=P03OnvifPullPoint::poll(
+                trim($this->ReadPropertyString('CameraHost')),
+                $this->ReadPropertyInteger('CameraPort'),
+                $this->ReadPropertyString('Username'),
+                $this->ReadPropertyString('Password'),
+                $this->ReadAttributeString('OnvifSubscriptionURL'),
+                $this->ReadAttributeInteger('OnvifSubscriptionUntil'),
+                $this->ReadAttributeString('OnvifSubscriptionReference')
+            );
+            $status=(string)($result['status']??'UNKNOWN');
+            $this->WriteAttributeString('OnvifLastStatus',$status);
+            $this->SetValue('OnvifStatus',date('Y-m-d H:i:s').' '.$status);
+            if (empty($result['ok'])) {
+                $this->WriteAttributeString('OnvifSubscriptionURL','');
+                $this->WriteAttributeInteger('OnvifSubscriptionUntil',0);
+                $this->WriteAttributeInteger('OnvifNextAttemptAt',time()+180);
+                return;
+            }
+            $this->WriteAttributeInteger('OnvifNextAttemptAt',0);
+            $this->WriteAttributeString('OnvifSubscriptionURL',(string)$result['url']);
+            $this->WriteAttributeInteger('OnvifSubscriptionUntil',(int)$result['until']);
+            $this->WriteAttributeString('OnvifSubscriptionReference',(string)($result['reference']??'[]'));
+            $events=is_array($result['events']??null)?$result['events']:[];
+            if ($events===[]) {
+                return;
+            }
+            $recent=json_decode($this->ReadAttributeString('OnvifRecentEvents'),true);
+            $seen=json_decode($this->ReadAttributeString('OnvifSeenEventKeys'),true);
+            if (!is_array($recent)) {
+                $recent=[];
+            }
+            if (!is_array($seen)) {
+                $seen=[];
+            }
+            foreach ($events as $event) {
+                if (!is_array($event)) {
+                    continue;
+                }
+                $summary=P03OnvifEvents::summarize($event);
+                $this->WriteAttributeInteger('OnvifEventCount',
+                    $this->ReadAttributeInteger('OnvifEventCount')+1);
+                $recent[]=array_merge([
+                    'time'=>date('H:i:s'),'role'=>$this->ReadPropertyString('Role')
+                ],$summary);
+                if (count($recent)>15) {
+                    $recent=array_slice($recent,-15);
+                }
+                if (!P03OnvifEvents::isHumanStairCrossing($event)) {
+                    continue;
+                }
+                $key=sha1(json_encode($summary,JSON_UNESCAPED_UNICODE)?:'');
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key]=time();
+                foreach ($seen as $entry=>$stamp) {
+                    if (!is_numeric($stamp) || time()-(int)$stamp>90) {
+                        unset($seen[$entry]);
+                    }
+                }
+                if (count($seen)>200) {
+                    asort($seen,SORT_NUMERIC);
+                    $seen=array_slice($seen,-200,null,true);
+                }
+                $this->WriteAttributeInteger('OnvifHumanStairCount',
+                    $this->ReadAttributeInteger('OnvifHumanStairCount')+1);
+                $observation=[
+                    'code'=>'ONVIF_LineDetector_Crossed',
+                    'action'=>'Start',
+                    'classification'=>'Human',
+                    'ruleName'=>$summary['rule'],
+                    'eventId'=>$summary['utc'],
+                    'objectId'=>$summary['objectId']
+                ];
+                $this->publishHumanProof($observation,'ONVIF_HUMAN_STAIR',[
+                    'time'=>date('H:i:s'),'role'=>$this->ReadPropertyString('Role'),
+                    'source'=>'ONVIF_HUMAN_STAIR','code'=>'ONVIF_LineDetector_Crossed',
+                    'ruleName'=>$summary['rule'],'human'=>true,
+                    'humanFromRule'=>true,'classification'=>'Human',
+                    'utc'=>$summary['utc'],'objectId'=>$summary['objectId']
+                ]);
+            }
+            $this->WriteAttributeString('OnvifSeenEventKeys',json_encode($seen)?:'{}');
+            $encoded=json_encode($recent,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'[]';
+            $this->WriteAttributeString('OnvifRecentEvents',$encoded);
+            $this->SetValue('OnvifRecentEvents',$encoded);
+        } catch (Throwable $e) {
+            $this->WriteAttributeString('OnvifSubscriptionURL','');
+            $this->WriteAttributeInteger('OnvifSubscriptionUntil',0);
+            $this->WriteAttributeInteger('OnvifNextAttemptAt',time()+180);
+            $this->SetValue('OnvifStatus',date('Y-m-d H:i:s')
+                .' ONVIF Ausnahme '.get_class($e).' – '.
+                substr((string)$e->getMessage(),0,120));
+        }
     }
 
     public function GetConfigurationForParent(): string

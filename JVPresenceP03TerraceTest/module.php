@@ -4007,6 +4007,18 @@ class JVPresenceP03MultiCamera extends IPSModule
             && $personVar > 0 && $counterVar > 0
             && $streamVar > 0 && (!$readOnly || $streamLive);
 
+        $onvifStatusVar = $this->findAuxVariable($instanceID,'OnvifStatus');
+        $onvifEventsVar = $this->findAuxVariable($instanceID,'OnvifRecentEvents');
+        $onvifStatus = $onvifStatusVar > 0 && IPS_VariableExists($onvifStatusVar)
+            ? substr((string)GetValue($onvifStatusVar),0,260)
+            : 'ONVIF neuer Observer nicht verfügbar';
+        $onvifEvents = $onvifEventsVar > 0 && IPS_VariableExists($onvifEventsVar)
+            ? substr((string)GetValue($onvifEventsVar),0,1500)
+            : '[]';
+        $this->appendProtocol($role . ': ONVIF UNABHAENGIGER EREIGNISWEG: ' . $onvifStatus);
+        $this->appendProtocol($role . ': ONVIF LETZTE METADATEN: ' . $onvifEvents);
+        // ONVIF observations are independent of CGI VideoAnalyseRule and do
+        // not imply successful legacy IVS rule mapping.
         $this->appendProtocol(
             'P03 AUX AUDIT ' . $role
                 . ': host=' . $host
