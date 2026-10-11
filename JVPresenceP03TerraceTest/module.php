@@ -10,6 +10,7 @@ require_once dirname(__DIR__) . '/libs/P03DahuaTemplate.php';
 require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
 require_once dirname(__DIR__) . '/libs/P03ExistingIvsLines.php';
 require_once dirname(__DIR__) . '/libs/P03WorkStreetLearning.php';
+require_once dirname(__DIR__) . '/libs/P03TerraceInBackup.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03MultiCamera extends IPSModule
@@ -126,6 +127,9 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('TerraceHumanCounterVarID', 0);
         $this->RegisterAttributeInteger('TerraceStreamVarID', 0);
         $this->RegisterAttributeInteger('TerraceLastIVSVarID', 0);
+        $this->RegisterAttributeString('P03TerraceInSignals', '[]');
+        $this->RegisterAttributeString('P03TerraceInSeenIVS', '[]');
+        $this->RegisterAttributeInteger('P03TerraceInBackupCount', 0);
         $this->RegisterAttributeInteger('AuxJVPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkPersonVarID', 0);
         $this->RegisterAttributeInteger('AuxJVEventCounterVarID', 0);
@@ -200,6 +204,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('P03TerraceMonitor', 'P03 Terrasse: IVS-Zusatzsensor', '', 79);
         $this->RegisterVariableString('P03StreetDirectionStatus', 'P03 Straße: Richtungslernen', '', 80);
         $this->RegisterVariableString('P03WorkBoundaryStatus', 'P03 Arbeit / außerhalb – letzter Straßenübertritt', '', 81);
+        $this->RegisterVariableString('P03TerraceInBackupStatus', 'P03 Terrasse – IN-Backup (TEST)', '', 82);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03MC_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03MC_SocketRestartTimer($_IPS["TARGET"]);');
@@ -428,6 +433,12 @@ class JVPresenceP03MultiCamera extends IPSModule
                     && $this->matchesTrustedP03Observer(
                         $terraceId, trim($this->ReadPropertyString('TerraceHost')), self::TERRACE_ROLE)
                     && $this->terraceObserverSocketExclusive($terraceId)) {
+                    if ($this->ReadAttributeBoolean('TestActive')
+                        && ($sender===$this->ReadAttributeInteger('TerracePersonVarID')
+                            || $sender===$this->ReadAttributeInteger('TerraceLastIVSVarID'))) {
+                        $this->captureP03TerraceInSignal($sender,$Data);
+                        $this->evaluateP03MastSequence();
+                    }
                     try {
                         $this->DiagnoseP03Connections(true);
                     } catch (Throwable $e) {
@@ -786,6 +797,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeString('P03HumanEvents', '[]');
         $this->WriteAttributeString('P03PendingCrossings', '[]');
         $this->SetTimerInterval('P03ProofTimer', 0);
+        $this->WriteAttributeString('P03TerraceInSignals', '[]');
+        $this->baselineP03TerraceIVSHistory();
+        $this->WriteAttributeInteger('P03TerraceInBackupCount', 0);
+        $this->SetValue('P03TerraceInBackupStatus',
+            'TEST BEREIT: WORK_LEFT→TERRASSE bis 25 s, JV_LEFT→TERRASSE bis 6 s; IVS optional');
         $this->WriteAttributeBoolean('TestActive', true);
         $this->SetValue('TestActive', true);
         // Baseline belongs to the fresh test, not old persistent observer
@@ -933,6 +949,10 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeString('Crossings', '[]');
         $this->WriteAttributeString('P03HumanEvents', '[]');
         $this->WriteAttributeString('P03PendingCrossings', '[]');
+        $this->WriteAttributeString('P03TerraceInSignals', '[]');
+        $this->WriteAttributeString('P03TerraceInSeenIVS', '[]');
+        $this->WriteAttributeInteger('P03TerraceInBackupCount', 0);
+        $this->SetValue('P03TerraceInBackupStatus','IN-BACKUP AUS – neuen Gehtest starten');
         $this->WriteAttributeString('P03DirectionMap', '{}');
         $this->WriteAttributeInteger('P03VerifiedCount', 0);
         $this->WriteAttributeString('P03ActionCounts', '{"HOME_TO_LAGER":0,"LAGER_TO_HOME":0}');
@@ -3503,6 +3523,34 @@ class JVPresenceP03MultiCamera extends IPSModule
             return;
         }
 
+        // The existing two-mast proof always takes priority. When it is
+        // incomplete, a short delayed terrace PERSON/IVS may corroborate a
+        // single mast stair-IVS as IN, but ONLY in a controlled test. It
+        // cannot increase standard P03 transfers or enable production.
+        if ($state===P03ProofEngine::STATE_UNKNOWN
+            && $this->ReadAttributeBoolean('TestActive')
+            && $this->p03TerraceInBackupReady()) {
+            $signals=json_decode($this->ReadAttributeString('P03TerraceInSignals'),true);
+            $candidate=P03TerraceInBackup::evaluate(
+                $events,is_array($signals)?$signals:[],microtime(true));
+            if ($candidate['status']==='PENDING') {
+                $this->SetValue('P03TerraceInBackupStatus',
+                    'PENDING IN-Backup: '.$candidate['path']
+                    .' | Abstand '.$candidate['gap'].' s | wartet 5 s auf Mast-Gegenbeweis');
+                $this->SetTimerInterval('P03ProofTimer',500);
+                return;
+            }
+            if ($candidate['status']==='VERIFIED') {
+                $this->recordP03TerraceInBackupTest($candidate,$events,$signals);
+                $this->SetTimerInterval('P03ProofTimer',0);
+                return;
+            }
+            if ($candidate['status']==='CONTRADICTION') {
+                $this->SetValue('P03TerraceInBackupStatus',
+                    'WIDERSPRUCH: mehrere mögliche Mast-Zuordnungen – kein IN-Beweis');
+            }
+        }
+
         // PENDING is the ONLY state that needs a repeating 500-ms check.
         // Prior versions left that timer active on UNKNOWN/CONTRADICTION
         // or VERIFIED, a real SymBox busy-loop/hang hazard.
@@ -3889,6 +3937,158 @@ class JVPresenceP03MultiCamera extends IPSModule
             return false;
         }
         return true;
+    }
+
+    /**
+     * Prevent old terrace IVS history from being turned into new detections
+     * after module update or a new test. No camera changes or socket resets.
+     */
+    private function baselineP03TerraceIVSHistory(): void
+    {
+        $id=$this->ReadAttributeInteger('TerraceLastIVSVarID');
+        $history=$id>0 && IPS_VariableExists($id)
+            ? json_decode((string)GetValue($id),true) : [];
+        $seen=[];
+        if (is_array($history)) foreach($history as $entry) {
+            if (is_array($entry)) $seen[]=$this->p03TerraceIVSKey($entry);
+        }
+        $this->WriteAttributeString('P03TerraceInSeenIVS',
+            json_encode(array_slice($seen,-32))?:'[]');
+    }
+
+    /** @param array<string,mixed> $entry */
+    private function p03TerraceIVSKey(array $entry): string
+    {
+        return hash('sha256',json_encode([
+            $entry['time']??null,$entry['action']??null,
+            $entry['ruleName']??null,$entry['ruleIdUpper']??null,
+            $entry['cfgRuleId']??null,$entry['eventId']??null,
+            $entry['direction']??null,$entry['decision']??null
+        ],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'');
+    }
+
+    /**
+     * Match actual P03 third observer, open exclusive socket and its live
+     * independent stream. JV/WORK are checked individually by the evaluator.
+     */
+    private function p03TerraceInBackupReady(): bool
+    {
+        if (!$this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')) return false;
+        $id=$this->ReadAttributeInteger('TerraceObserverInstanceID');
+        $host=trim($this->ReadPropertyString('TerraceHost'));
+        $stream=$this->ReadAttributeInteger('TerraceStreamVarID');
+        return $this->matchesTrustedP03Observer($id,$host,self::TERRACE_ROLE)
+            && $this->terraceObserverSocketExclusive($id)
+            && $stream>0 && IPS_VariableExists($stream) && (bool)GetValue($stream);
+    }
+
+    /** @param array<int,mixed> $data */
+    private function captureP03TerraceInSignal(int $sender,array $data): void
+    {
+        if (!$this->p03TerraceInBackupReady()) return;
+        $ts=microtime(true);
+        $kind='PERSON';
+        $direction=null;
+        $id='';
+        if ($sender===$this->ReadAttributeInteger('TerracePersonVarID')) {
+            // Boolean TRUE is the rising 5-second Human pulse. FALSE and
+            // retriggering are not independent detections.
+            $value=array_key_exists(0,$data)?(bool)$data[0]:(bool)GetValue($sender);
+            if (!$value || (array_key_exists(1,$data) && !$data[1])) return;
+            $id='person:'.sprintf('%.6f',$ts);
+        } elseif ($sender===$this->ReadAttributeInteger('TerraceLastIVSVarID')) {
+            $raw=json_decode((string)GetValue($sender),true);
+            if (!is_array($raw) || !array_is_list($raw)) return;
+            $seen=json_decode($this->ReadAttributeString('P03TerraceInSeenIVS'),true);
+            $seen=is_array($seen)?$seen:[];
+            $rules=json_decode($this->ReadAttributeString('TerraceAllowedIVSRules'),true);
+            if (!is_array($rules)||count($rules)!==1) return;
+            $fresh=[];
+            foreach($raw as $entry) {
+                if (!is_array($entry)) continue;
+                $key=$this->p03TerraceIVSKey($entry);
+                if (in_array($key,$seen,true)) continue;
+                $seen[]=$key;
+                $d=P03TerraceInBackup::qualifiedTerraceIvs($entry,$rules[0]);
+                if ($d!==null) $fresh[]=['direction'=>$d,'key'=>$key];
+            }
+            $this->WriteAttributeString('P03TerraceInSeenIVS',
+                json_encode(array_slice($seen,-48))?:'[]');
+            if (!$fresh) return;
+            $last=end($fresh);
+            $kind='IVS';
+            $direction=$last['direction'];
+            $id='ivs:'.$last['key'];
+        } else {
+            return;
+        }
+
+        $signals=json_decode($this->ReadAttributeString('P03TerraceInSignals'),true);
+        $signals=is_array($signals)?$signals:[];
+        // SMD pulse and accepted IVS START for the same human often arrive
+        // within one second. Represent them as ONE combined observation.
+        foreach($signals as &$existing) {
+            if (!empty($existing['used'])) continue;
+            if (abs($ts-(float)($existing['ts']??0.0))>2.0) continue;
+            if ($kind==='IVS') {
+                $existing['direction']=$direction;
+                $existing['kind']='IVS';
+                $existing['evidence']='IVS_HUMAN_OR_PERSON';
+            }
+            // A new status TRUE close to a trustworthy IVS already represents
+            // that same person; never append a duplicate.
+            unset($existing);
+            $this->WriteAttributeString('P03TerraceInSignals',
+                json_encode(array_slice($signals,-24),JSON_UNESCAPED_UNICODE)?:'[]');
+            return;
+        }
+        unset($existing);
+        $signals[]=[
+            'id'=>$id,'kind'=>$kind,'direction'=>$direction,
+            'ts'=>$ts,'used'=>false
+        ];
+        $signals=array_values(array_filter($signals,
+            static fn($s)=>$ts-(float)($s['ts']??0.0)<=70.0));
+        $this->WriteAttributeString('P03TerraceInSignals',
+            json_encode(array_slice($signals,-24),JSON_UNESCAPED_UNICODE)?:'[]');
+    }
+
+    /**
+     * Only the optional TEST confirmation is recorded. Main mast proof
+     * counters, production eligibility and occupancy remain untouched.
+     * Both contributing pieces of evidence are marked USED once.
+     *
+     * @param array<string,mixed> $result
+     * @param array<int,array<string,mixed>> $mast
+     * @param array<int,array<string,mixed>> $terrace
+     */
+    private function recordP03TerraceInBackupTest(
+        array $result,array $mast,array $terrace
+    ): void {
+        if (!$this->ReadAttributeBoolean('TestActive')
+            || $this->ReadAttributeBoolean('ProductionEnabled')) return;
+        $mastId=(string)($result['mastId']??'');
+        $terraceId=(string)($result['terraceId']??'');
+        if ($mastId===''||$terraceId==='') return;
+        $mast=$this->markP03HumanEventsUsed($mast,[$mastId],'terrace-in:test');
+        foreach($terrace as &$e) {
+            if (($e['id']??'')===$terraceId) {
+                $e['used']=true;
+                $e['usedBy']='terrace-in:test';
+            }
+        }
+        unset($e);
+        $this->setP03HumanEvents($mast);
+        $this->WriteAttributeString('P03TerraceInSignals',
+            json_encode(array_slice($terrace,-24),JSON_UNESCAPED_UNICODE)?:'[]');
+        $count=$this->ReadAttributeInteger('P03TerraceInBackupCount')+1;
+        $this->WriteAttributeInteger('P03TerraceInBackupCount',$count);
+        $message='IN-BACKUP TEST BESTAETIGT #'.$count.': '
+            .(string)$result['path'].' | Kameraabstand '
+            .(string)$result['gap'].' s | TERRASSEN-IVS OPTIONAL; '
+            .'KEIN Produktions-/Zonenwechsel';
+        $this->SetValue('P03TerraceInBackupStatus',$message);
+        $this->appendProtocol('P03 '.$message);
     }
 
     /** @return array{ok:bool,jv:int,work:int} */
