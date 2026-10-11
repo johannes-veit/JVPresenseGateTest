@@ -81,6 +81,10 @@ final class P03OnvifPullPoint
         $out['url']=$clientUrl;
         $out['until']=$validUntil;
         $out['reference']=json_encode($refs, JSON_UNESCAPED_SLASHES)?:'[]';
+        if (!self::isValidSoapResponse($pull['body'], 'PullMessagesResponse')) {
+            $out['status']='ONVIF HTTP 200 ohne gueltige PullMessagesResponse';
+            return $out;
+        }
         $out['status']='ONVIF PullPoint LIVE, HTTP 200';
         $out['events']=P03OnvifEvents::parseNotifications($pull['body']);
         return $out;
@@ -211,6 +215,37 @@ final class P03OnvifPullPoint
                 .'</'.$q.':'.$name.'>';
         }
         return $out;
+    }
+
+    /**
+     * Never call an arbitrary 200-OK HTML/error response a valid event stream.
+     * Reject all namespace variants of SOAP Fault and malformed XML.
+     */
+    public static function isValidSoapResponse(string $xml,string $operation): bool
+    {
+        if (!class_exists('DOMDocument') || strlen($xml)>1024*1024) {
+            return false;
+        }
+        $document=new DOMDocument();
+        $previous=libxml_use_internal_errors(true);
+        try {
+            if (!@$document->loadXML($xml,LIBXML_NONET|LIBXML_NOBLANKS)) {
+                return false;
+            }
+            $xpath=new DOMXPath($document);
+            $faults=$xpath->query('//*[local-name()="Body"]/*[local-name()="Fault"]');
+            if ($faults!==false && $faults->length>0) {
+                return false;
+            }
+            if (!preg_match('/^[A-Za-z]+Response$/D',$operation)) {
+                return false;
+            }
+            $items=$xpath->query('//*[local-name()="Body"]/*[local-name()="'.$operation.'"]');
+            return $items!==false && $items->length===1;
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
     }
 
     private static function findXmlValue(string $xml,string $path): string
