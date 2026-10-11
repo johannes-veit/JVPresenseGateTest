@@ -99,6 +99,11 @@
     },
     {
       "type": "Button",
+      "caption": "IN-Backup einzeln testen (1 Weg, bisherige Beweise behalten)",
+      "onClick": "JVP03MC_StartTerraceInBackupOnly($id);"
+    },
+    {
+      "type": "Button",
       "caption": "Straße separat lernen – nur 4 Linienquerungen (ohne Mast-Test)",
       "onClick": "JVP03MC_StartStreetDirectionOnly($id);"
     },
