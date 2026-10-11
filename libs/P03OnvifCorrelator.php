@@ -72,6 +72,11 @@ final class P03OnvifCorrelator
             if ($cls!=='' && !in_array($cls,['human','person','pedestrian'],true)) {
                 return null;
             }
+            // A separate human class must be linked to a concrete video
+            // source, never by an ObjectId alone. Inline Human is self-contained.
+            if ($stream==='' && $cls==='') {
+                return null;
+            }
             $state['crossings'][$key]=[
                 'seen'=>$now,'utc'=>$stamp,'objectId'=>$objectId,
                 'rule'=>$name,'stream'=>$stream
@@ -82,6 +87,9 @@ final class P03OnvifCorrelator
                     'source'=>'ONVIF_INLINE_HUMAN'];
             }
         } elseif (str_contains($topic,'ruleengine/objectdetection/object')) {
+            if ($stream==='') {
+                return null;
+            }
             $cls=P03OnvifEvents::extractObjectClassification($data);
             if (!in_array($cls,['human','person','pedestrian'],true)) {
                 unset($state['classes'][$key]);
