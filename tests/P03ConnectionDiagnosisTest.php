@@ -319,6 +319,7 @@ $liveStairAudit=new class extends SimulatedIPC5442Main {
         string $host,int $port,string $username,string $password,string $uri
     ):array {
         if (str_contains($uri,'name=VideoAnalyseRule')) {
+            $this->uris[]=$host.' '.$uri;
             $lines=[
                 'table.VideoAnalyseRule[0][0].Name=HeatMap1',
                 'table.VideoAnalyseRule[0][0].Type=HeatMap',
