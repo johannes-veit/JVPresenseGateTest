@@ -9,6 +9,7 @@ require_once dirname(__DIR__) . '/libs/P03ProofEngine.php';
 require_once dirname(__DIR__) . '/libs/P03DahuaTemplate.php';
 require_once dirname(__DIR__) . '/libs/P03AuxHumanRule.php';
 require_once dirname(__DIR__) . '/libs/P03ExistingIvsLines.php';
+require_once dirname(__DIR__) . '/libs/P03WorkStreetLearning.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
 
 class JVPresenceP03MultiCamera extends IPSModule
@@ -133,6 +134,11 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('AuxWorkLastSeenHumanCounter', -1);
         $this->RegisterAttributeInteger('AuxJVStreamVarID', 0);
         $this->RegisterAttributeInteger('AuxWorkStreamVarID', 0);
+        $this->RegisterAttributeInteger('AuxWorkStreetIVSVarID', 0);
+        $this->RegisterAttributeString('P03StreetSeenKeys', '[]');
+        $this->RegisterAttributeString('P03StreetTrainingEvents', '[]');
+        $this->RegisterAttributeString('P03StreetDirectionMapping', '{}');
+        $this->RegisterAttributeBoolean('P03StreetLearningActive', false);
         $this->RegisterAttributeString('AuxJVModel', '');
         $this->RegisterAttributeString('AuxWorkModel', '');
         $this->RegisterAttributeString('AuxJVFirmware', '');
@@ -189,6 +195,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
         $this->RegisterVariableString('P03OwnershipAudit', 'P03 Instanz-/Observer-Bestandsprüfung (nur lesen)', '', 78);
         $this->RegisterVariableString('P03TerraceMonitor', 'P03 Terrasse: IVS-Zusatzsensor', '', 79);
+        $this->RegisterVariableString('P03StreetDirectionStatus', 'P03 Straße: Richtungslernen', '', 80);
+        $this->RegisterVariableString('P03WorkBoundaryStatus', 'P03 Arbeit / außerhalb – letzter Straßenübertritt', '', 81);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03MC_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03MC_SocketRestartTimer($_IPS["TARGET"]);');
@@ -212,6 +220,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('P03IPC5442Audit', 'P03 IPC-HFW5442E-ZE Konfigurations-Audit (nur lesen)', '', 77);
         $this->RegisterVariableString('P03OwnershipAudit', 'P03 Instanz-/Observer-Bestandsprüfung (nur lesen)', '', 78);
         $this->RegisterVariableString('P03TerraceMonitor', 'P03 Terrasse: IVS-Zusatzsensor', '', 79);
+        $this->RegisterVariableString('P03StreetDirectionStatus', 'P03 Straße: Richtungslernen', '', 80);
+        $this->RegisterVariableString('P03WorkBoundaryStatus', 'P03 Arbeit / außerhalb – letzter Straßenübertritt', '', 81);
         // Simplify the visible Symcon instance tree without destroying
         // existing object IDs, links, archival history, or plugin consumers.
         // The essential #35115/#53524 diagnostic IDs remain visible.
@@ -422,6 +432,15 @@ class JVPresenceP03MultiCamera extends IPSModule
                             'Ereignis-Diagnose fehlgeschlagen: '.get_class($e),0);
                     }
                 }
+                return;
+            }
+
+            // Existing WORK_LEFT stream delivers BOTH distinct IVS rules:
+            // Treppe RuleID4 -> mast HumanCounter; Straße RuleID5 -> work
+            // perimeter learning ONLY, without a second camera connection.
+            if ($sender > 0 && $sender === $this->ReadAttributeInteger('AuxWorkStreetIVSVarID')) {
+                $this->processWorkStreetHistory();
+                $this->DiagnoseP03Connections(true);
                 return;
             }
 
@@ -750,10 +769,14 @@ class JVPresenceP03MultiCamera extends IPSModule
             'ROHMONITOR: alle 30 Sekunden automatische Status-/Deltameldung; '
             . 'kein Human-Start = keine Bewegung oder Mensch wird hinzuerfunden.');
 
+        $this->startP03StreetLearning();
         $this->appendProtocol(
-            'TESTFOLGE: 1 HOME→LAGER, 2 LAGER→HOME, 3 HOME→LAGER, 4 LAGER→HOME. '
-            . 'Nur die Reihenfolge der zwei Mastkamera-Human-Ereignisse zählt.'
+            'TESTFOLGE: OUT → IN → OUT → IN – jedes Mal ueber die Treppenlinie UND '
+            .'die Straßenlinie der WORK_LEFT-Kamera (RuleID5) gehen.'
         );
+        $this->appendProtocol('STRASSENRICHTUNG: wird auf derselben Gehfolge parallel gelernt. '
+            .'Straße markiert erst ARBEIT→AUSSERHALB, nicht Haus/Grundstueck leer. '
+            .'Keine Straßenmeldung darf HOME↔ARBEIT als Treppenbeweis ersetzen.');
         $this->setResult('P03 MASTTEST vorbereitet – warte auf beide P03-Mastkamera-Eventstreams …');
         $this->refreshReadyState();
     }
@@ -888,6 +911,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->WriteAttributeBoolean('P03MultiAuditPassed', false);
         $this->WriteAttributeBoolean('P03SimulationPassed', false);
         $this->WriteAttributeBoolean('TestActive', false);
+        $this->WriteAttributeBoolean('P03StreetLearningActive', false);
         $this->SetTimerInterval('P03ProofTimer', 0);
         $this->SetValue('TestActive', false);
         $this->SetValue('CrossingCount', 0);
@@ -907,6 +931,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         // than the user's hand-drawn Treppe/Straße lines. NEVER restore it.
         $this->WriteAttributeBoolean('ProductionEnabled', false);
         $this->WriteAttributeBoolean('TestActive', false);
+        $this->WriteAttributeBoolean('P03StreetLearningActive', false);
         $this->WriteAttributeBoolean('P03MultiAuditPassed', false);
         $this->SetTimerInterval('P03ProofTimer', 0);
         $this->WriteAttributeString('P03PendingCrossings', '[]');
@@ -3633,6 +3658,98 @@ class JVPresenceP03MultiCamera extends IPSModule
         );
     }
 
+    /**
+     * Start street direction training with the SAME four walks as the
+     * existing mast camera test. The already visible forensic history is a
+     * baseline, never replayed as a new STREET crossing after an update.
+     * No camera configuration is changed.
+     */
+    private function startP03StreetLearning(): void
+    {
+        $id=$this->ReadAttributeInteger('AuxWorkStreetIVSVarID');
+        $history=($id>0 && IPS_VariableExists($id))
+            ? json_decode((string)GetValue($id),true) : [];
+        $history=is_array($history)?$history:[];
+        $snapshot=P03WorkStreetLearning::ingest($history,[]);
+        $this->WriteAttributeString('P03StreetSeenKeys',
+            json_encode($snapshot['seen'])?:'[]');
+        $this->WriteAttributeString('P03StreetTrainingEvents','[]');
+        $this->WriteAttributeString('P03StreetDirectionMapping','{}');
+        $this->WriteAttributeBoolean('P03StreetLearningActive',true);
+        $this->SetValue('P03StreetDirectionStatus',
+            'LERNEN 0/4: OUT → IN → OUT → IN (jeweils Straße WORK_LEFT RuleID5)');
+        $this->SetValue('P03WorkBoundaryStatus',
+            'UNBEKANNT – Straße noch nicht eingelernt; keine Anwesenheitszertifizierung');
+    }
+
+    /**
+     * WORK_LEFT LastIVSEvent is the last-eight forensic stream, not the mast
+     * Human counter. Never re-publish a street event into that counter.
+     * Physical outgoing/incoming directions are verified by 2x alternating
+     * captured Human crossings, not assumed from one camera event.
+     */
+    private function processWorkStreetHistory(): void
+    {
+        $work=$this->ReadAttributeInteger('AuxWorkInstanceID');
+        $workHost=trim($this->ReadPropertyString('AuxWorkHost'));
+        if (!$this->matchesTrustedP03Observer($work,$workHost,self::AUX_WORK_ROLE)
+            || !$this->p03AuxStreamsReady()) {
+            return;
+        }
+        $sourceID=$this->ReadAttributeInteger('AuxWorkStreetIVSVarID');
+        if ($sourceID<=0 || !IPS_VariableExists($sourceID)
+            || $sourceID!==$this->findAuxVariable($work,'LastIVSEvent')) {
+            return;
+        }
+        $history=json_decode((string)GetValue($sourceID),true);
+        if (!is_array($history) || !array_is_list($history)) return;
+        $seen=json_decode($this->ReadAttributeString('P03StreetSeenKeys'),true);
+        $seen=is_array($seen)?$seen:[];
+        $observed=P03WorkStreetLearning::ingest($history,$seen);
+        $this->WriteAttributeString('P03StreetSeenKeys',
+            json_encode($observed['seen'])?:'[]');
+        foreach ($observed['new'] as $streetEvent) {
+            $direction=(string)$streetEvent['direction'];
+            if ($this->ReadAttributeBoolean('P03StreetLearningActive')) {
+                $captured=json_decode(
+                    $this->ReadAttributeString('P03StreetTrainingEvents'),true);
+                $captured=is_array($captured)?$captured:[];
+                if (count($captured)<4) {
+                    $captured[]=$streetEvent;
+                    $this->WriteAttributeString('P03StreetTrainingEvents',
+                        json_encode($captured,JSON_UNESCAPED_UNICODE)?:'[]');
+                    $status=P03WorkStreetLearning::evaluateTraining($captured);
+                    $steps=['OUT','IN','OUT','IN'];
+                    $step=count($captured);
+                    $this->SetValue('P03StreetDirectionStatus',
+                        $status['status']==='LEARNING'
+                            ? 'LERNEN '.$step.'/4 | Straßenlinie '
+                                .$steps[$step-1].'='.$direction
+                                .' | nächster Weg: '.$steps[$step]
+                            : ($status['status']==='VERIFIED'
+                                ? 'GELERNT 4/4: OUT='.$status['out']
+                                    .' | IN='.$status['in'].' | WORK_LEFT Straße RuleID5'
+                                : 'WIDERSPRUCH: 4 Straßenübertritte haben keine'
+                                    .' alternierenden Richtungen; Gehtest wiederholen'));
+                    $this->appendProtocol('P03 STRASSE LERNEN '.$step.'/4 '
+                        .$steps[$step-1].' Kamera-Richtung='.$direction
+                        .' | '.(string)$streetEvent['time']);
+                    if ($status['status']!=='LEARNING') {
+                        $this->WriteAttributeBoolean('P03StreetLearningActive',false);
+                        if ($status['status']==='VERIFIED') {
+                            $this->WriteAttributeString('P03StreetDirectionMapping',
+                                json_encode($status,JSON_UNESCAPED_UNICODE)?:'{}');
+                        }
+                    }
+                }
+            }
+            $map=json_decode($this->ReadAttributeString('P03StreetDirectionMapping'),true);
+            $map=is_array($map)?$map:[];
+            $this->SetValue('P03WorkBoundaryStatus',
+                P03WorkStreetLearning::boundaryMessage($streetEvent,$map));
+        }
+    }
+
     /** @return array{ok:bool,jv:int,work:int} */
     private function discoverP03AuxSources(bool $allowCreate): array
     {
@@ -3669,6 +3786,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $workCounter = $work > 0 ? $this->findAuxVariable($work, 'HumanEventCounter') : 0;
         $jvStream = $jv > 0 ? $this->findAuxVariable($jv, 'StreamOK') : 0;
         $workStream = $work > 0 ? $this->findAuxVariable($work, 'StreamOK') : 0;
+        $workStreet = $work > 0 ? $this->findAuxVariable($work, 'LastIVSEvent') : 0;
         if ($jv > 0) {
             $this->updateP03AuxSubscription('AuxJVPersonVarID', $jvVar);
             $this->updateP03AuxSubscription('AuxJVEventCounterVarID', $jvCounter);
@@ -3678,6 +3796,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             $this->updateP03AuxSubscription('AuxWorkPersonVarID', $workVar);
             $this->updateP03AuxSubscription('AuxWorkEventCounterVarID', $workCounter);
             $this->updateP03AuxSubscription('AuxWorkStreamVarID', $workStream);
+            $this->updateP03AuxSubscription('AuxWorkStreetIVSVarID', $workStreet);
         }
 
         return [
@@ -3851,7 +3970,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         foreach ([
             'AuxJVPersonVarID', 'AuxWorkPersonVarID',
             'AuxJVEventCounterVarID', 'AuxWorkEventCounterVarID',
-            'AuxJVStreamVarID', 'AuxWorkStreamVarID'
+            'AuxJVStreamVarID', 'AuxWorkStreamVarID',
+            'AuxWorkStreetIVSVarID'
         ] as $attr) {
             $id = $this->ReadAttributeInteger($attr);
             if ($id > 0 && IPS_VariableExists($id)) {
