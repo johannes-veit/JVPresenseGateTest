@@ -248,6 +248,25 @@ final class P03OnvifPullPoint
         }
     }
 
+    /** ONVIF WS-Security nonce-based UsernameToken digest. */
+    public static function wsUsernameToken(string $user,string $secret,?string $nonce=null,?string $when=null): string
+    {
+        $nonce=$nonce??random_bytes(16);
+        $when=$when??gmdate('Y-m-d\TH:i:s\Z');
+        $digest=base64_encode(sha1($nonce.$when.$secret,true));
+        $base='http://docs.oasis-open.org/wss/2004/01/';
+        return '<wsse:Security xmlns:wsse="'.$base.'oasis-200401-wss-wssecurity-secext-1.0.xsd"'
+            .' xmlns:wsu="'.$base.'oasis-200401-wss-wssecurity-utility-1.0.xsd"'
+            .' s:mustUnderstand="1"><wsse:UsernameToken>'
+            .'<wsse:Username>'.htmlspecialchars($user,ENT_XML1|ENT_QUOTES).'</wsse:Username>'
+            .'<wsse:Password Type="'.$base.'oasis-200401-wss-username-token-profile-1.0#PasswordDigest">'
+            .$digest.'</wsse:Password>'
+            .'<wsse:Nonce EncodingType="'.$base.'oasis-200401-wss-soap-message-security-1.0#Base64Binary">'
+            .base64_encode($nonce).'</wsse:Nonce>'
+            .'<wsu:Created>'.htmlspecialchars($when,ENT_XML1|ENT_QUOTES).'</wsu:Created>'
+            .'</wsse:UsernameToken></wsse:Security>';
+    }
+
     private static function findXmlValue(string $xml,string $path): string
     {
         if (!class_exists('DOMDocument') || strlen($xml)>1024*1024) {
