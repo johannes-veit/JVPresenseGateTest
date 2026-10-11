@@ -153,7 +153,7 @@
     },
     {
       "type": "Label",
-      "caption": "Zeigt Client-Socket-IDs, Status, Host/Port, Eventstream, Human-Zähler, Auth-/Watchdog-Zustand und Fremdnutzung. Kein Neustart, keine Kamera-/Fremdmoduländerung. Ergebnis im Konfigurationsfenster und als kopierbare Variable."
+      "caption": "Zeigt Client-Socket-IDs, Status, Host/Port, Eventstream, Human-Zähler, Auth-/Watchdog-Zustand und Fremdnutzung. Kein Neustart, keine Kamera-/Fremdmoduländerung. Ergebnis ausschließlich als kopierbare Instanzvariable #35115; das Konfigurationsfenster bleibt statisch."
     },
     {
       "type": "Button",
@@ -171,18 +171,22 @@
       "onClick": "JVP03MC_P03AuxRescan($id);"
     },
     {
+      "type": "Label",
+      "caption": "WICHTIG: P03 ermittelt Treppenlinien nur aus dem tatsächlich lesbaren VideoAnalyseRule-API. Die Straßenlinie, Fahrzeugereignisse, SMD im ganzen Bild und alte P03-Rechteckregeln sind KEIN Grenzübertritt. Fehlen die Linien trotz Kameraoberfläche im API, bleibt die Auswertung absichtlich gesperrt. Es werden keine Kameraeinstellungen geschrieben."
+    },
+    {
       "type": "Button",
-      "caption": "P03 2-Kamera-Lauftest vorbereiten & starten",
+      "caption": "P03 2-KAMERA-TEST / ROHMONITOR STARTEN (KAMERAS NUR LESEN)",
       "onClick": "JVP03MC_PrepareAndStartTest($id);"
     },
     {
       "type": "Button",
-      "caption": "P03 Produktivbetrieb aktivieren",
+      "caption": "P03 Produktivbetrieb aktivieren (nur bei verifizierter Treppenlinie)",
       "onClick": "JVP03MC_EnableProductionP03($id);"
     },
     {
       "type": "Button",
-      "caption": "P03 Produktivbetrieb deaktivieren / Testkonfiguration zurücksetzen",
+      "caption": "P03 Test/Produktion beenden (Kameras unverändert)",
       "onClick": "JVP03MC_DisableProductionP03($id);"
     },
     {
