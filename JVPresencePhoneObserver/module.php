@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/libs/JVPhoneEvidenceEngine.php';
 require_once dirname(__DIR__) . '/libs/JVUniFiAPSnapshot.php';
+require_once dirname(__DIR__) . '/libs/JVUniFiLocalInventory.php';
 
 /**
  * PHONE-ONLY observer for the PresenceCore.
@@ -34,6 +35,7 @@ class JVPresencePhoneObserver extends IPSModule
         // Internal per-AP evidence in an IPSModule buffer, NOT variables.
         // New instance and restart always begin with unknown AP observations.
         $this->SetBuffer('APSnapshotStatus','{}');
+        $this->SetBuffer('UniFiLocalAudit','Noch keine lokale AP-Inventur durchgeführt.');
     }
 
     public function ApplyChanges(): void
@@ -48,7 +50,50 @@ class JVPresencePhoneObserver extends IPSModule
     public function GetConfigurationForm(): string
     {
         $path=__DIR__.'/form.json';
-        return (string)file_get_contents($path);
+        $form=json_decode((string)file_get_contents($path),true);
+        if (!is_array($form) || !isset($form['elements'])
+            || !is_array($form['elements'])) return '{}';
+        $audit=$this->GetBuffer('UniFiLocalAudit');
+        if (trim($audit)==='') $audit='Noch keine lokale AP-Inventur durchgeführt.';
+        $form['elements'][]=[
+            'type'=>'Label',
+            'caption'=>mb_substr($audit,0,6000)
+        ];
+        return json_encode($form,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:'{}';
+    }
+
+    /**
+     * One-click audit only: reads existing IPS names and selected host/IP
+     * properties of relevant locally installed IPS instances. No network I/O,
+     * no credentials emitted, no AP or Symcon instance configuration written,
+     * no new Symcon variables. The report persists only in an instance buffer.
+     */
+    public function DiagnoseUniFiLocal(): string
+    {
+        $objects=[];
+        $matched=0;
+        foreach (IPS_GetInstanceList() as $id) {
+            if (!is_int($id) && !is_numeric($id)) continue;
+            $id=(int)$id;
+            if ($id<=0) continue;
+            try {
+                $name=(string)IPS_GetName($id);
+                if (!JVUniFiLocalInventory::plausibleName($name)) continue;
+                // Limit configuration reads to avoid excessive local work.
+                if ($matched++>=JVUniFiLocalInventory::MAX_CANDIDATES) break;
+                $objects[]=[
+                    'name'=>$name,
+                    'config'=>IPS_GetConfiguration($id)
+                ];
+            } catch (Throwable $e) {
+                // Failure is strictly informational. Never attempt to
+                // recover by changing this or any remote device.
+            }
+        }
+        $audit=JVUniFiLocalInventory::inspect($objects);
+        $message=JVUniFiLocalInventory::readable($audit);
+        $this->SetBuffer('UniFiLocalAudit',$message);
+        return $message;
     }
 
     /**
