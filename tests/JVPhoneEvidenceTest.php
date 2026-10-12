@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once dirname(__DIR__).'/libs/JVPhoneEvidenceEngine.php';
+require_once dirname(__DIR__).'/libs/JVUniFiAPSnapshot.php';
 function check(bool $ok, string $msg): void {
     if (!$ok) throw new RuntimeException('FAIL: '.$msg);
     echo "PASS: ".$msg."\n";
@@ -109,6 +110,7 @@ class IPSModule {
     public array $values=[];
     public array $timer=[];
     public array $writes=[];
+    public array $buffers=[];
     public function Create():void {}
     public function ApplyChanges():void {}
     protected function RegisterPropertyBoolean(string $k,bool $v):void {$this->properties[$k]=$v;}
@@ -125,6 +127,8 @@ class IPSModule {
         $this->writes[]=['key'=>$k,'value'=>$v];
     }
     protected function GetValue(string $k):mixed {return $this->values[$k]??null;}
+    protected function SetBuffer(string $k,string $v):void {$this->buffers[$k]=$v;}
+    protected function GetBuffer(string $k):string {return (string)($this->buffers[$k]??'');}
 }
 require_once dirname(__DIR__).'/JVPresencePhoneObserver/module.php';
 $mod=new JVPresencePhoneObserver();
@@ -201,4 +205,83 @@ check(count($form['actions'])===2
     && count($form['elements'])>=5,'module configuration form loads with actions and editing');
 $mod->RunSimulation();
 check(str_contains($mod->values['Status'],'PASS'),'safe built-in simulation');
+// Direct-AP snapshots: no router/controller, camera or IP-Symcon sources needed.
+$mod->properties['Enabled']=true;
+$mod->properties['WiFiFreshSeconds']=180;
+$mod->properties['APSnapshotFreshSeconds']=180;
+$mod->properties['APSources']=json_encode([
+    ['APID'=>'buero','Enabled'=>true], ['APID'=>'werkstatt','Enabled'=>true],
+]);
+$mod->properties['Devices']=json_encode([
+ ['DeviceID'=>'johannes_phone','PersonID'=>'johannes','Name'=>'Xiaomi 13T',
+  'Enabled'=>true,'MAC'=>'92:aa:bb:cc:dd:01','WiFiVarID'=>0,'GeoVarID'=>0],
+ ['DeviceID'=>'carina_phone','PersonID'=>'carina','Name'=>'iPhone',
+  'Enabled'=>true,'MAC'=>'a6:aa:bb:cc:dd:02','WiFiVarID'=>0,'GeoVarID'=>0]
+]);
+$mod->ApplyChanges();
+$rawJV=json_encode(['vap_table'=>[['sta_table'=>[
+ ['mac'=>'92:AA:BB:CC:DD:01'],['mac'=>'d0:aa:bb:cc:dd:04']
+]]]]);
+$rawCarina=json_encode(['vap_table'=>[['sta_table'=>[
+ ['mac'=>'a6:aa:bb:cc:dd:02']
+]]]]);
+check($mod->ImportUniFiAPSnapshot('buero',$rawJV),'AP BüRO valid full read-only snapshot accepted');
+$r=json_decode($mod->values['EvidenceJSON'],true);
+check($r['people'][0]['phoneStatus']==='PHONE_PROPERTY_INDICATION'
+  && $r['people'][1]['phoneStatus']==='PHONE_UNKNOWN'
+  && $r['people'][0]['personLocation']==='UNKNOWN',
+  'enrolled Android observed at Buero, iPhone not presumed present');
+check(!str_contains($mod->buffers['APSnapshotStatus'],'d0:aa:bb:cc:dd:04')
+   && !str_contains($mod->buffers['APSnapshotStatus'],'92:aa:bb:cc:dd:01'),
+   'raw station MAC lists and unrelated client MACs NOT retained');
+check($mod->ImportUniFiAPSnapshot('werkstatt',$rawCarina),'AP WERKSTATT accepted independently');
+$r=json_decode($mod->values['EvidenceJSON'],true);
+check($r['people'][0]['phoneStatus']==='PHONE_PROPERTY_INDICATION'
+  && $r['people'][1]['phoneStatus']==='PHONE_PROPERTY_INDICATION'
+  && count($mod->values)===2,
+  'two residents on two APs without extra IP-Symcon variables');
+$writes=count($mod->writes);
+check($mod->ImportUniFiAPSnapshot('werkstatt',$rawCarina)
+    && count($mod->writes)===$writes,
+    'repeat AP snapshot of same phone is deduplicated; zero output writes');
+check(!$mod->ImportUniFiAPSnapshot('untrusted_ap',$rawJV)
+    && count($mod->writes)===$writes,
+    'unknown AP does not influence detection');
+check(!$mod->ImportUniFiAPSnapshot('buero','{"vap_table":[{"something_else":[]}]}'),
+      'malformed AP station list fails closed');
+$r=json_decode($mod->values['EvidenceJSON'],true);
+check($r['people'][0]['phoneStatus']==='PHONE_UNKNOWN'
+  && $r['people'][1]['phoneStatus']==='PHONE_PROPERTY_INDICATION',
+  'failed AP refresh removes only its own cached positive proof');
+check(JVUniFiAPSnapshot::parse('[]',[])['ok']===false
+  && JVUniFiAPSnapshot::parse('{"vap_table":[]}',[])['ok']===false
+  && JVUniFiAPSnapshot::parse('{"vap_table":[{"sta_table":[{"mac":"bad"}]}]}',[])['ok']===false,
+  'invalid, empty or malformed station snapshots rejected');
+check(!JVUniFiAPSnapshot::parse(str_repeat('x',262145),[])['ok'],
+  'oversized snapshot rejected before JSON decoding');
+check(JVUniFiAPSnapshot::normalizedMac('a6-aa-bb-cc-dd-02')==='a6:aa:bb:cc:dd:02',
+  'locally randomized but valid phone MAC correctly normalizes');
+$mod->properties['APSources']=json_encode([['APID'=>'werkstatt','Enabled'=>false]]);
+$mod->RefreshEvidence();
+$r=json_decode($mod->values['EvidenceJSON'],true);
+check($r['people'][1]['phoneStatus']==='PHONE_UNKNOWN',
+  'deactivated AP cannot keep phone indication alive');
+$mod->properties['APSources']=json_encode([['APID'=>'buero','Enabled'=>true]]);
+check($mod->ImportUniFiAPSnapshot('buero',$rawJV),
+  'AP can be reenabled after configuration');
+$mod->buffers['APSnapshotStatus']=json_encode(['buero'=>[
+    'at'=>time()-500,'ok'=>true,'matchedDeviceIDs'=>['johannes_phone']]]);
+$mod->RefreshEvidence();
+$r=json_decode($mod->values['EvidenceJSON'],true);
+check($r['people'][0]['phoneStatus']==='PHONE_UNKNOWN',
+  'stale AP snapshot cannot remain a positive indication');
+$mod->properties['APSources']=json_encode([
+ ['APID'=>'buero','Enabled'=>true],['APID'=>'buero','Enabled'=>true]
+]);
+$mod->RefreshEvidence();
+$r=json_decode($mod->values['EvidenceJSON'],true);
+check(count($r['errors'])>0 && count($r['devices'])===0,
+  'duplicate AP identifiers fail closed rather than selecting wrong source');
+check(count($mod->values)===2,'all multi-AP tests finish with two Symcon variables');
+
 echo "PHONE OBSERVER: ALL REGRESSION TESTS PASSED\n";
