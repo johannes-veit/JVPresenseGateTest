@@ -83,8 +83,13 @@ class JVPresencePhoneObserver extends IPSModule
         }
         $inputs=[];
         foreach ($validated['devices'] as $device) {
-            // Source variable types are mandatory: bool for WLAN association,
-            // string PROPERTY|OUTSIDE|UNKNOWN for geo fence, no fallback.
+            // Inactive/retired phones are never read. This also allows safe
+            // replacement of their old variable IDs without extra work.
+            if (!$device['enabled']) {
+                continue;
+            }
+            // Read ONLY existing local Symcon source values; zero network I/O,
+            // no AP polling, no camera API calls, no per-phone objects.
             $inputs[$device['id']]=[
                 'wifi'=>$this->readSource($device['wifiVarID'],0),
                 'geo'=>$this->readSource($device['geoVarID'],3)
@@ -97,6 +102,11 @@ class JVPresencePhoneObserver extends IPSModule
         );
         $pieces=[];
         foreach ($report['people'] as $person) {
+            // Keep the ONE short human-readable status bounded even with
+            // 30+ residents. All residents remain in the single JSON report.
+            if (count($pieces) >= 5) {
+                break;
+            }
             $parts=[
                 'PHONE_PROPERTY_INDICATION'=>'Telefon am Grundstück wahrscheinlich',
                 'PHONE_OUTSIDE_INDICATION'=>'Telefon außerhalb gemeldet',
@@ -105,6 +115,10 @@ class JVPresencePhoneObserver extends IPSModule
                 'PHONE_UNKNOWN'=>'Telefonstatus unbekannt'
             ];
             $pieces[]=$person['name'].': '.($parts[$person['phoneStatus']]??'unbekannt');
+        }
+        $remainder=count($report['people'])-count($pieces);
+        if ($remainder>0) {
+            $pieces[]='+'.$remainder.' weitere Hausbewohner (Details im JSON)';
         }
         $this->publish($report,implode(' | ',$pieces)
             .' | Personen-Anwesenheit: NICHT abgeleitet');
@@ -130,8 +144,27 @@ class JVPresencePhoneObserver extends IPSModule
     private function publish(array $report,string $status): void
     {
         $json=json_encode($report,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-        $this->SetValue('EvidenceJSON',$json===false?'{}':$json);
-        $this->SetValue('Status',$status);
+        $newJson=$json===false?'{}':$json;
+        // Compare semantic evidence, NOT the current polling timestamp:
+        // otherwise SetValue writes two variables to the Symcon archive and
+        // update bus every 60s although no phone state actually changed.
+        $previousJson=(string)$this->GetValue('EvidenceJSON');
+        $previous=json_decode($previousJson,true);
+        if (is_array($previous)) {
+            $newComparable=$report;
+            $oldComparable=$previous;
+            unset($newComparable['time'],$oldComparable['time']);
+            if ($newComparable===$oldComparable) {
+                // 'time' in EvidenceJSON means LAST CHANGED, not last polled.
+                $newJson=$previousJson;
+            }
+        }
+        if ($previousJson!==$newJson) {
+            $this->SetValue('EvidenceJSON',$newJson);
+        }
+        if ((string)$this->GetValue('Status')!==$status) {
+            $this->SetValue('Status',$status);
+        }
     }
 
     public function RunSimulation(): void
