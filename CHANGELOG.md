@@ -1,3 +1,11 @@
+# v0.8.13 (Build 94) – Vollständige Kamerakonfiguration aller drei P03-Kameras auslesen
+
+- Ein eigener Button in der P03-Hauptinstanz **#53879** startet per SymBox ausschließlich lesende Dahua-CGI-Gesamtabfragen für **JV_LEFT, WORK_LEFT und TERRACE**. Keine Konfigänderung, kein Kamera-/Observer-Restart, keine neue Socketverbindung.
+- Jede Kamera liefert über `getConfig&name=All` (bei Bedarf `Config.backup?action=All`) ein eigenes vollständig erhaltenes, hinsichtlich sensibler Werte geschwärztes TXT-Dokument direkt unter der Hauptinstanz. Die existierenden zwei Mastkamera-Dokumente werden bei erneutem Export aktualisiert; hinzu kommt ein einziges separates Terrassen-Dokument. Bericht **#35115** nennt die tatsächlichen Medien-IDs sowie die Erfolgsquote **0–3/3**.
+- Terrassen-Export ausschließlich über eindeutig geprüften P03-TERRACE-Observer mit exklusivem P03-Socket. Ein fehlender, geteilter oder fremder Observer wird weder abgefragt noch manipuliert.
+- Zusätzliche Simulationen: drei vollständige Antworten, generischer Datenbereich, sensible Werte maskiert, vorhandene Dokumente statt Duplikaten aktualisiert, aktueller Gesichtserkennungs-/Snapshot-Status im Export, abgewiesener fremder Observer und unveränderte Kamerakonfiguration.
+- **Kein zusätzlicher IP-Symcon-Variablenverbrauch**, kein Eingriff in P03-Zähl-, IVS-, Richtungs- oder Dreikamera-Backup-Logik.
+
 # v0.8.12 (Build 93) – Reale Variablenbereinigung, interne Diagnosen und Vollsimulation
 
 - P03-Hauptinstanz reduziert von 24 auf **6 Symcon-Variablen**: `P03CameraStatus`, `P03ProofState`, `P03VerifiedTransfers`, `Result`, `Protocol`, `P03ConnectionDiagnosis`. Die beiden nachgewiesenen SymBox-IDs **#53524 (Testprotokoll)** und **#35115 (Hauptdiagnose)** bleiben unverändert.
