@@ -84,6 +84,11 @@
     },
     {
       "type": "Button",
+      "caption": "Alle 3 Kamerakonfigurationen vollständig auslesen (nur lesen, 3 TXT)",
+      "onClick": "JVP03MC_DiagnoseIPC5442AllValues($id);"
+    },
+    {
+      "type": "Button",
       "caption": "Terrasse: IVS-Regel einlesen / optionalen Observer verbinden",
       "onClick": "JVP03MC_ConfigureTerraceMonitor($id);"
     },
