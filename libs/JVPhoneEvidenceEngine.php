@@ -52,19 +52,20 @@ final class JVPhoneEvidenceEngine
                 $errors[] = 'Gerät ohne bekanntes Personenprofil: '.$id;
                 continue;
             }
+            $enabled = (bool)($row['Enabled'] ?? true);
             $wifi = (int)($row['WiFiVarID'] ?? 0);
             $geo = (int)($row['GeoVarID'] ?? 0);
             if ($wifi < 0 || $geo < 0 || ($wifi > 0 && $wifi === $geo)) {
                 $errors[] = 'Ungültige Quellenzuordnung: '.$id;
                 continue;
             }
-            if ($wifi > 0) {
+            if ($enabled && $wifi > 0) {
                 if (isset($wifiSources[$wifi]) || isset($geoSources[$wifi])) {
                     $errors[] = 'WLAN-Variable mehrfach verwendet: '.$wifi;
                 }
                 $wifiSources[$wifi] = $id;
             }
-            if ($geo > 0) {
+            if ($enabled && $geo > 0) {
                 if (isset($geoSources[$geo]) || isset($wifiSources[$geo])) {
                     $errors[] = 'GPS-Variable mehrfach verwendet: '.$geo;
                 }
@@ -74,14 +75,14 @@ final class JVPhoneEvidenceEngine
             if ($mac !== '' && !preg_match('/^(?:[a-f0-9]{2}:){5}[a-f0-9]{2}$/D', $mac)) {
                 $errors[] = 'Ungültige WLAN-MAC bei: '.$id;
             }
-            if ($mac !== '' && isset($macs[$mac])) {
+            if ($enabled && $mac !== '' && isset($macs[$mac])) {
                 $errors[] = 'WLAN-MAC zwei Geräten zugeordnet: '.$id;
             }
-            if ($mac !== '') $macs[$mac] = $id;
+            if ($enabled && $mac !== '') $macs[$mac] = $id;
             $deviceMap[$id] = [
                 'id'=>$id, 'personId'=>$personId,
                 'name'=>trim((string)($row['Name'] ?? '')) ?: $id,
-                'enabled'=>(bool)($row['Enabled'] ?? true),
+                'enabled'=>$enabled,
                 'wifiVarID'=>$wifi, 'geoVarID'=>$geo,
                 'mac'=>$mac
             ];
