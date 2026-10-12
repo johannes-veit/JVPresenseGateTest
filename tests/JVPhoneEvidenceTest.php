@@ -108,6 +108,7 @@ class IPSModule {
     public array $properties=[];
     public array $values=[];
     public array $timer=[];
+    public array $writes=[];
     public function Create():void {}
     public function ApplyChanges():void {}
     protected function RegisterPropertyBoolean(string $k,bool $v):void {$this->properties[$k]=$v;}
@@ -119,7 +120,11 @@ class IPSModule {
     protected function ReadPropertyBoolean(string $k):bool {return (bool)($this->properties[$k]??false);}
     protected function ReadPropertyInteger(string $k):int {return (int)($this->properties[$k]??0);}
     protected function ReadPropertyString(string $k):string {return (string)($this->properties[$k]??'');}
-    protected function SetValue(string $k,mixed $v):void {$this->values[$k]=$v;}
+    protected function SetValue(string $k,mixed $v):void {
+        $this->values[$k]=$v;
+        $this->writes[]=['key'=>$k,'value'=>$v];
+    }
+    protected function GetValue(string $k):mixed {return $this->values[$k]??null;}
 }
 require_once dirname(__DIR__).'/JVPresencePhoneObserver/module.php';
 $mod=new JVPresencePhoneObserver();
@@ -127,6 +132,32 @@ $mod->Create();
 $mod->ApplyChanges();
 check(count($mod->values)===2 && $mod->timer['Poll']===60000,
       'only 2 variables, single passive 60s timer');
+
+$baselineWrites=count($mod->writes);
+for ($i=0;$i<100;$i++) $mod->RefreshEvidence();
+check(count($mod->writes)===$baselineWrites,
+    '100 identical local refreshes produce ZERO Symcon writes or bus events');
+check(count($mod->values)===2, 'variable count remains two after 100 polls');
+
+$morePeople=json_decode($mod->properties['People'],true);
+for ($i=1;$i<=30;$i++) {
+    $morePeople[]=['PersonID'=>'resident_'.$i,'Name'=>'Bewohner '.$i,'Enabled'=>true];
+}
+$mod->properties['People']=json_encode($morePeople);
+$mod->RefreshEvidence();
+$many=json_decode($mod->values['EvidenceJSON'],true);
+check(count($many['people'])===32
+    && ($many['people'][31]['personLocation']??'')==='UNKNOWN',
+    '30 additional residents supported, even without smartphones');
+check(count($mod->values)===2 && str_contains($mod->values['Status'],'27 weitere Hausbewohner'),
+    '32 people use still only two variables and bounded short summary');
+$baselineWrites=count($mod->writes);
+for ($i=0;$i<100;$i++) $mod->RefreshEvidence();
+check(count($mod->writes)===$baselineWrites,
+    '30 additional residents cause no writes if their evidence did not change');
+$mod->properties['People']=json_encode($p);
+$mod->RefreshEvidence();
+
 $report=json_decode($mod->values['EvidenceJSON'],true);
 check(($report['people'][0]['id']??'')==='johannes'
     && ($report['people'][1]['id']??'')==='carina'
@@ -145,6 +176,11 @@ $report=json_decode($mod->values['EvidenceJSON'],true);
 check(($report['people'][0]['phoneStatus']??'')==='PHONE_PROPERTY_INDICATION'
     && ($report['people'][0]['personLocation']??'')==='UNKNOWN',
     'module reads valid fresh Boolean AP input but cannot change person');
+$lastPhoneWrites=count($mod->writes);
+for ($i=0;$i<100;$i++) $mod->RefreshEvidence();
+check(count($mod->writes)===$lastPhoneWrites,
+    'fresh unchanged connected phone does not publish again');
+
 $GLOBALS['meta'][701]['VariableUpdated']=time()-500;
 $mod->RefreshEvidence();
 $report=json_decode($mod->values['EvidenceJSON'],true);

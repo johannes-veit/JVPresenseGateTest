@@ -1,3 +1,11 @@
+# v0.8.15 (Build 96) – erweiterbare Hausbewohner, minimale Variablen-/Ereignislast
+
+- Hausbewohnerverwaltung jetzt deutlich in der Instanz hervorgehoben: Personen mit `+` ergänzen, auch ohne Smartphone; freie PersonID, 0..n austauschbare Smartphones je Person. Regression mit **32 Personen und weiterhin genau zwei Symcon-Variablen**.
+- Lokale Smartphone-Auswertung weiterhin einmal pro 60 Sekunden, **ohne irgendeine Netzwerkanfrage an AP, Kamera, Router, Google oder Apple**. Inaktive Altgeräte werden nicht gelesen.
+- Zwei Ausgabevariablen werden **nur bei tatsächlicher Zustandsänderung** mit `SetValue` beschrieben; keinen 60-Sekunden-Update-/Archiv-/Event-Traffic mehr für gleichbleibende Werte. `EvidenceJSON.time` ist nun Zeitpunkt der letzten Zustandsänderung, nicht Poll-Zeit.
+- Kompakter Übersichtsstatus zeigt maximal fünf Bewohner, das vollständige personenübergreifende JSON bleibt verfügbar.
+- P03/P05 und Kamera-/Netzwerksockets unverändert. Keine neue Kamera-Diagnostik, keine periodischen CGI-Zugriffe.
+
 # v0.8.14 (Build 95) – Smartphone-/WLAN-Beobachtung ohne Personenzonen-Buchungen
 
 - Neue **optionale eigene Instanz** `JV Presence Phone Observer`, Personenprofile mit stabilen PersonID-Werten und beliebig austauschbaren Geräten (Xiaomi 13T, iPhone vorbefüllt). Profile bleiben beim Gerätewechsel unverändert.
