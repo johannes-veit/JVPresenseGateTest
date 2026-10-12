@@ -80,6 +80,16 @@ $bad=$d;
 $bad[0]['MAC']='aa:bb:cc:dd:ee:ff';
 $bad[1]['MAC']='aa:bb:cc:dd:ee:ff';
 check(count($evaluate([],$bad)['errors'])>0,'same MAC bound to two phones rejected');
+$swap=$d;
+$swap[0]['Enabled']=false;
+$swap[0]['MAC']='aa:bb:cc:dd:ee:ff';
+$swap[]=['DeviceID'=>'next_android','PersonID'=>'johannes','Name'=>'Neues Smartphone',
+         'Enabled'=>true,'MAC'=>'aa:bb:cc:dd:ee:ff',
+         'WiFiVarID'=>101,'GeoVarID'=>102];
+$a=$evaluate(['next_android'=>['wifi'=>['value'=>true,'updatedAt'=>$t]]],$swap);
+check($a['errors']===[] && $a['people'][0]['phoneStatus']==='PHONE_PROPERTY_INDICATION',
+    'disable old phone then reuse same Wi-Fi source/MAC without manual cleanup');
+
 $bad=$d;
 $bad[0]['PersonID']='unknown-person';
 check(count($evaluate([],$bad)['errors'])>0,'unregistered person cannot inherit smartphone');
