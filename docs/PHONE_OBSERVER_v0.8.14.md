@@ -51,3 +51,13 @@ Button `Sicherheits-Simulation` testet die Regeln ohne Fremdmodule zu beeinfluss
 ## Noch benötigte Netzwerkdaten
 
 Für die nächste Ausbaustufe die **exakte Management-IP (letztes Oktett) eines vorhandenen UniFi-APs** und – falls bekannt – den AP-Typ nennen. Auf keinen Fall Zugangsdaten ins Chat-Protokoll schreiben. Nach bestätigter VLAN-Erreichbarkeit können wir einen **lesenden** Clientstatus-Adapter hinzufügen. Die bisherige Kamera-Logik ist davon vollständig unabhängig.
+
+## Ressourcenregeln ab v0.8.15
+
+- **Beliebig viele Hausbewohner** in der vorhandenen `People`-Liste (`+`): Name + stabile `PersonID`, kein Smartphone notwendig. Das Gerätefeld verwendet dieselbe PersonID; eine Person kann mehrere Geräte besitzen. Testdeckel: 32 Hausbewohner simuliert, nicht hardcodiert.
+- **Konstant zwei Symcon-Variablen pro Modulinstanz**, nicht pro Hausbewohner oder Gerät. Auch 30 zusätzliche Bewohner erzeugen keine weiteren Variablen.
+- Der vorhandene **60-Sekunden-Timer liest ausschließlich schon vorhandene lokale Symcon-Variablen**. Er erzeugt keinen WLAN- oder Kamera-Netzwerk-Traffic und keinen AP-/Controller-Poll.
+- Die beiden Ergebnisvariablen werden **nur noch geschrieben, wenn ihr semantischer Zustand sich ändert** (einschließlich eines frischen/abgelaufenen Quellsignals und Konfigurationsfehler). Gleichbleibende Zustände erzeugen auch über 100 wiederholte Abfragen keine Variablen-Updates.
+- `EvidenceJSON.time` bezeichnet bei diesen optimierten Änderungsbenachrichtigungen **den Zeitpunkt der letzten Zustandsänderung**, nicht den Zeitpunkt des jüngsten lokalen 60-Sekunden-Timerlaufs. Ein unveränderter Zeitstempel **ist ausdrücklich kein Kommunikationsausfall**.
+- Die kompakte Statusvariable zeigt bis zu fünf Profile direkt; der Rest steht vollständig in `EvidenceJSON`.
+- Das P03/P05-Kameramodul bleibt unverändert; keine zusätzlichen Kamerasockets, CGI-Dumps, RTSP-Streams oder Hintergrundabfragen.
