@@ -221,7 +221,7 @@ check($mod->timer['Poll']===0
     && json_decode($mod->values['EvidenceJSON'],true)['authority']==='DISABLED',
     'disabling observer stops timer without affecting other modules');
 $form=json_decode($mod->GetConfigurationForm(),true);
-check(count($form['actions'])===2
+check(count($form['actions'])===3
     && count($form['elements'])>=5,'module configuration form loads with actions and editing');
 $mod->RunSimulation();
 check(str_contains($mod->values['Status'],'PASS'),'safe built-in simulation');
