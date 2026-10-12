@@ -2335,6 +2335,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             ['role'=>self::AUX_WORK_ROLE,'hostProp'=>'AuxWorkHost','idAttr'=>'AuxWorkInstanceID'],
             ['role'=>self::TERRACE_ROLE,'hostProp'=>'TerraceHost','idAttr'=>'TerraceObserverInstanceID']
         ];
+        $successful = 0;
         foreach ($targets as $target) {
             $role=(string)$target['role'];
             $host=trim($this->ReadPropertyString((string)$target['hostProp']));
