@@ -1,0 +1,14 @@
+{
+  "id": "{B5BF0266-A4D1-40A0-AAC8-97E9C24C4173}",
+  "name": "JV Presence Phone Observer",
+  "type": 3,
+  "vendor": "",
+  "aliases": [
+    "Presence Smartphone WLAN und Geofence",
+    "JV Smartphone Sensoren"
+  ],
+  "parentRequirements": [],
+  "childRequirements": [],
+  "implemented": [],
+  "prefix": "JVPHONE"
+}
