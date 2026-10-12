@@ -8,7 +8,7 @@
 4. Geräte `johannes_phone` (Xiaomi 13T) und `carina_phone` (iPhone) sind vorbereitete Profile.
 5. Ohne verfügbare Symcon-Quellvariablen bleiben die Eingänge auf **0**. Das Modul zeigt `PHONE_UNKNOWN` und nimmt **keine Anwesenheitsbuchungen** vor.
 
-**Wichtig:** Diese Version liest keinen UniFi-AP selbst aus. Ein UniFi-Controller ist NICHT vorausgesetzt; wir müssen zuerst ermitteln, wie die vorhandenen APs verwaltet werden, welche AP-Management-IP aus VLAN 103 erreichbar ist und ob ein nur-lesender Clientstatus via lokaler AP-Schnittstelle bereitgestellt werden kann. Keine neuen Firewallregeln oder Routeränderungen durch das Modul.
+**Wichtig:** Diese Version liest keinen UniFi-AP selbst aus. Ein UniFi-Controller ist NICHT vorausgesetzt; wir müssen zuerst ermitteln, wie die vorhandenen APs verwaltet werden, welche der im korrigierten Netzwerkschaubild (29.08.2026) als 192.168.107.x gekennzeichneten AP-Management-IP-Adressen von der SymBox 192.168.103.59 aus erreichbar ist und ob ein nur-lesender Clientstatus via lokaler AP-Schnittstelle bereitgestellt werden kann. Keine neuen Firewallregeln oder Routeränderungen durch das Modul.
 
 ## Eingangsvariablen
 
@@ -50,4 +50,4 @@ Button `Sicherheits-Simulation` testet die Regeln ohne Fremdmodule zu beeinfluss
 
 ## Noch benötigte Netzwerkdaten
 
-Für die nächste Ausbaustufe die **Management-IP bzw. den Verwaltungspfad eines vorhandenen UniFi-APs** und – falls bekannt – den AP-Typ nennen. Auf keinen Fall Zugangsdaten ins Chat-Protokoll schreiben. Nach bestätigter VLAN-Erreichbarkeit können wir einen **lesenden** Clientstatus-Adapter hinzufügen. Die bisherige Kamera-Logik ist davon vollständig unabhängig.
+Für die nächste Ausbaustufe die **exakte Management-IP (letztes Oktett) eines vorhandenen UniFi-APs** und – falls bekannt – den AP-Typ nennen. Auf keinen Fall Zugangsdaten ins Chat-Protokoll schreiben. Nach bestätigter VLAN-Erreichbarkeit können wir einen **lesenden** Clientstatus-Adapter hinzufügen. Die bisherige Kamera-Logik ist davon vollständig unabhängig.
