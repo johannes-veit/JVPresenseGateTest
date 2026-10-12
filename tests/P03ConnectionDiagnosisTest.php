@@ -419,7 +419,7 @@ $GLOBALS['props'][27938]['CameraHost']=$savedWorkHost;
 
 // Explicit user demand: ALL original camera config values, no relevance
 // whitelist and no first-48/80-line truncation. Store FULL redacted texts in
-// two Symcon DOCUMENT objects under P03 #53879; known #35115 gives IDs.
+// three Symcon DOCUMENT objects under P03 #53879; known #35115 gives IDs.
 class SimulatedFullIPC5442Main extends SimulatedIPC5442Main
 {
     public array $fullRequests=[];
@@ -441,6 +441,8 @@ class SimulatedFullIPC5442Main extends SimulatedIPC5442Main
         }
         $lines=[
             'table.SmartMotionDetect[0].Enable=true',
+            'table.VideoAnalyseRule[0][1].Enable=false',
+            'table.VideoAnalyseRule[0][1].EventHandler.SnapshotEnable=false',
             'table.VideoAnalyseRule[0][3].Enable=true',
             'table.UnrelatedSettings.DeviceFoo=unlisted-by-all-our-other-filters',
             'table.General.Password=PASSWORD_SHOULD_NOT_LEAK',
@@ -453,7 +455,19 @@ class SimulatedFullIPC5442Main extends SimulatedIPC5442Main
         return ['ok'=>true,'http'=>200,'error'=>'','body'=>implode("\r\n",$lines)."\r\n"];
     }
 }
+// Real P03 terrace is a separate exclusive auxiliary observer on the .110 IPC.
+$remainingInstances=$GLOBALS['instances'];
+$remainingProps=$GLOBALS['props'];
+$GLOBALS['instances'][33107]=['ConnectionID'=>51876,'InstanceStatus'=>102,
+    'ModuleInfo'=>['ModuleID'=>'{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}']];
+$GLOBALS['instances'][51876]=['ConnectionID'=>0,'InstanceStatus'=>102,
+    'ModuleInfo'=>['ModuleID'=>'{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}']];
+$GLOBALS['props'][33107]=['CameraHost'=>'192.168.107.110','Role'=>'TERRACE',
+    'CameraPort'=>80,'Username'=>'test-terrace','Password'=>'mock-private-terrace'];
+$GLOBALS['props'][51876]=['Host'=>'192.168.107.110','Port'=>80,'Open'=>true];
 $full=new SimulatedFullIPC5442Main();
+$full->attributes['TerraceObserverInstanceID']=33107;
+$full->properties['TerraceHost']='192.168.107.110';
 // Warnings are errors in the test. First export has no existing TXT documents.
 set_error_handler(static function(int $severity,string $message):bool {
     throw new ErrorException($message,0,$severity);
@@ -465,14 +479,19 @@ try {
 }
 $summary=(string)$full->values['P03ConnectionDiagnosis'];
 verifyDiag(str_contains($summary,'IP-Symcon DOKUMENT-ID: 91001')
-    && str_contains($summary,'IP-Symcon DOKUMENT-ID: 91002'),
+    && str_contains($summary,'IP-Symcon DOKUMENT-ID: 91002')
+    && str_contains($summary,'IP-Symcon DOKUMENT-ID: 91003')
+    && str_contains($summary,'GESAMTSTATUS: 3/3'),
     'known report #35115 lists EXACT generated TXT document IDs');
-verifyDiag(count($GLOBALS['media'])===2
-    && count($full->fullRequests)===3,
-    'read-only two-camera all-config: one primary GET each and one backup fallback');
+verifyDiag(count($GLOBALS['media'])===3
+    && count($full->fullRequests)===4,
+    'read-only three-camera all-config: one primary GET each and one backup fallback');
 verifyDiag(str_contains($GLOBALS['media'][91001]['content'],'ArbitraryValue[749].Anything=749')
     && str_contains($GLOBALS['media'][91001]['content'],'UnrelatedSettings.DeviceFoo=unlisted-by-all-our-other-filters'),
     'all 756 camera values kept WITHOUT thematic whitelist or first-48/80 truncation');
+verifyDiag(str_contains($GLOBALS['media'][91003]['content'],'VideoAnalyseRule[0][1].Enable=false')
+    && str_contains($GLOBALS['media'][91003]['content'],'VideoAnalyseRule[0][1].EventHandler.SnapshotEnable=false'),
+    'terrace complete settings include the currently relevant face/snapshot settings');
 verifyDiag(str_contains($GLOBALS['media'][91001]['content'],'UnusualString.EqualSign=x=y=z'),
     'camera field values containing equals signs preserved exactly');
 verifyDiag(str_contains($GLOBALS['media'][91001]['content'],'General.Password=[GESCHWAERZT')
@@ -484,8 +503,9 @@ verifyDiag(str_contains($GLOBALS['media'][91002]['content'],'NeverCurated=backup
     && !str_contains($GLOBALS['media'][91002]['content'],'VERY_PRIVATE'),
     'full Config.backup fallback flattens ALL JSON fields, masks secrets');
 verifyDiag(str_contains($GLOBALS['media'][91001]['content'],'NICHT ABGESCHNITTEN: JA')
-    && str_contains($GLOBALS['media'][91002]['content'],'NICHT ABGESCHNITTEN: JA'),
-    'both full TXT documents explicitly confirm no silent truncation');
+    && str_contains($GLOBALS['media'][91002]['content'],'NICHT ABGESCHNITTEN: JA')
+    && str_contains($GLOBALS['media'][91003]['content'],'NICHT ABGESCHNITTEN: JA'),
+    'all three full TXT documents explicitly confirm no silent truncation');
 verifyDiag($GLOBALS['writes']===[],'no socket/foreign instance/camera config modifications');
 $mediaIds=array_keys($GLOBALS['media']);
 set_error_handler(static function(int $severity,string $message):bool {
@@ -497,11 +517,21 @@ try {
     restore_error_handler();
 }
 verifyDiag(array_keys($GLOBALS['media'])===$mediaIds
-    && count($GLOBALS['media'])===2,
-    'repeat export UPDATES existing two owned documents without duplicating media');
-verifyDiag(!in_array('JVP03MC_DiagnoseIPC5442AllValues($id);',
+    && count($GLOBALS['media'])===3,
+    'repeat export UPDATES existing three owned documents without duplicating media');
+verifyDiag(in_array('JVP03MC_DiagnoseIPC5442AllValues($id);',
     array_column(json_decode($full->GetConfigurationForm(),true)['actions']??[],'onClick'),true),
-    'obsolete full-dump button removed from lean UI; safe backend export remains available');
+    'one-click three-camera read-only export available in Symcon P03 instance');
+// A forged or non-P03 terrace observer may never be queried.
+$before=count($full->fullRequests);
+$GLOBALS['props'][33107]['Role']='FOREIGN';
+$full->DiagnoseIPC5442AllValues();
+verifyDiag(count($full->fullRequests)===$before+3
+    && str_contains((string)$full->values['P03ConnectionDiagnosis'],'GESAMTSTATUS: 2/3')
+    && count($GLOBALS['media'])===3,
+    'untrusted terrace is refused; other cameras still exported without duplicate documents');
+$GLOBALS['instances']=$remainingInstances;
+$GLOBALS['props']=$remainingProps;
 
 // A read-only 30-second wire trace must update the test protocol even if no
 // new Human event arrives, showing distinguishable camera-level motion traffic.
