@@ -1053,7 +1053,7 @@ verifyDiag($GLOBALS['writes']===[],
 $ui2=json_decode($instance->GetConfigurationForm(),true);
 verifyDiag(!in_array('JVP03MC_DiagnoseP03Ownership($id);',
     array_column($ui2['actions']??[],'onClick'),true)
-    && count($ui2['actions']??[])===10
+    && count($ui2['actions']??[])===11
     && in_array('JVP03MC_StartTerraceInBackupOnly($id);',
         array_column($ui2['actions']??[],'onClick'),true)
     && in_array('JVP03MC_StartStreetDirectionOnly($id);',
