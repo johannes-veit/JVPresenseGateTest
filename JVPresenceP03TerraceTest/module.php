@@ -2119,7 +2119,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         if (count($targets) !== 2) {
             $lines[] = 'SICHERHEIT: Keine Observer verändert; Vorprüfung nicht vollständig erfolgreich.';
         } else {
-            foreach ($targets as $target) {
+            $successful = 0;
+        foreach ($targets as $target) {
                 $id = (int) $target['id'];
                 $role = (string) $target['role'];
                 try {
@@ -2311,7 +2312,7 @@ class JVPresenceP03MultiCamera extends IPSModule
      * stored in the P03 instance. No credentials or raw camera JSON persisted.
      */
     /**
-     * FULL two-camera IPC config export via the existing authenticated SymBox
+     * FULL three-camera Dahua config export via the existing authenticated SymBox
      * route. This is NOT a curated AI summary: try Dahua getConfig&name=All,
      * fall back only if needed to the documented Config.backup?action=All.
      * Every returned field is retained (except masked secret VALUES), and
@@ -2321,9 +2322,9 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function DiagnoseIPC5442AllValues(): void
     {
         $lines=[
-            '=== P03 VOLLSTÄNDIGE IPC-HFW5442E-ZE KONFIGURATION (NUR LESEN) ===',
+            '=== P03 VOLLSTÄNDIGE KONFIGURATION ALLER DREI DAHUA-KAMERAS (NUR LESEN) ===',
             'Zeit: '.date('Y-m-d H:i:s'),
-            'Ausgabe: Zwei Symcon-Dokumente (TXT) direkt unter Hauptinstanz #'.$this->InstanceID,
+            'Ausgabe: Bis zu drei Symcon-Dokumente (TXT) direkt unter Hauptinstanz #'.$this->InstanceID,
             'Zuerst getConfig&name=All, bei fehlender Unterstützung Config.backup?action=All.',
             'ALLE gelieferten Felder, keine thematische Auswahl, keine Zeilenbegrenzung.',
             'Sensible Werte sind geschwärzt. Die Gesamtanzahl der Felder wird genannt.',
@@ -2331,7 +2332,8 @@ class JVPresenceP03MultiCamera extends IPSModule
         ];
         $targets=[
             ['role'=>self::AUX_JV_ROLE,'hostProp'=>'AuxJVHost','idAttr'=>'AuxJVInstanceID'],
-            ['role'=>self::AUX_WORK_ROLE,'hostProp'=>'AuxWorkHost','idAttr'=>'AuxWorkInstanceID']
+            ['role'=>self::AUX_WORK_ROLE,'hostProp'=>'AuxWorkHost','idAttr'=>'AuxWorkInstanceID'],
+            ['role'=>self::TERRACE_ROLE,'hostProp'=>'TerraceHost','idAttr'=>'TerraceObserverInstanceID']
         ];
         foreach ($targets as $target) {
             $role=(string)$target['role'];
@@ -2339,7 +2341,8 @@ class JVPresenceP03MultiCamera extends IPSModule
             $observerID=$this->ReadAttributeInteger((string)$target['idAttr']);
             $lines[]='';
             $lines[]='--- '.$role.' / '.$host.' ---';
-            if (!$this->matchesTrustedP03Observer($observerID,$host,$role)) {
+            if (!$this->matchesTrustedP03Observer($observerID,$host,$role)
+                || ($role === self::TERRACE_ROLE && !$this->terraceObserverSocketExclusive($observerID))) {
                 $lines[]='FEHLER: eigene P03-Observer/Host/Rolle nicht eindeutig verifiziert; keine Abfrage.';
                 continue;
             }
@@ -2372,17 +2375,21 @@ class JVPresenceP03MultiCamera extends IPSModule
                         .(string)($result['error']??($reply['error']??'Kamera lehnt Gesamtabfrage ab'));
                     continue;
                 }
-                $filename='P03_IPC5442_'.$this->InstanceID.'_'.$role.'_ALLE_WERTE.txt';
+                // Reuse the two established mast documents/IDs. Terrace gets one
+                // separate P03-owned document; never overwrite another role.
+                $prefix = $role === self::TERRACE_ROLE ? 'P03_DAHUA_' : 'P03_IPC5442_';
+                $filename=$prefix.$this->InstanceID.'_'.$role.'_ALLE_WERTE.txt';
                 $mediaID=$this->writeP03PrivateDocument(
-                    'P03_IPC5442_'. $role .'_ALL',
-                    'P03 IPC5442 '.$role.' – vollständige Konfiguration (TXT)',
+                    $prefix.$role.'_ALL',
+                    'P03 Dahua '.$role.' – vollständige Konfiguration (TXT)',
                     $filename,(string)$result['text']);
                 $lines[]='EXPORT VOLLSTÄNDIG: JA (Antwortquelle '.$transport[0].')';
                 $lines[]='Felder: '.(int)$result['fields']
                     .' | sensible Werte geschwärzt: '.(int)$result['redacted']
                     .' | Textgröße: '.strlen((string)$result['text']).' Bytes';
                 $lines[]='IP-Symcon DOKUMENT-ID: '.$mediaID;
-                $lines[]='Dokumentname: P03 IPC5442 '.$role.' – vollständige Konfiguration (TXT)';
+                $successful++;
+                $lines[]='Dokumentname: P03 Dahua '.$role.' – vollständige Konfiguration (TXT)';
                 $lines[]='TXT-Datei: '.$filename;
                 $lines[]='Zum Öffnen/Speichern: Dokument-ID '.$mediaID
                     .' direkt unter Hauptinstanz #'.$this->InstanceID.' doppelklicken.';
@@ -2393,7 +2400,10 @@ class JVPresenceP03MultiCamera extends IPSModule
             }
         }
         $lines[]='';
-        $lines[]='GESAMTSTATUS: Bitte die zwei Dokument-IDs und alle tatsächlichen Werte vergleichen.';
+        $lines[]='GESAMTSTATUS: '.$successful.'/3 Kameras vollständig ausgelesen.';
+        if ($successful !== 3) {
+            $lines[]='UNVOLLSTÄNDIG: Fehlgeschlagene Kamera nicht als erfolgreich ausgelesen behandeln.';
+        }
         $lines[]='Die vorhandene Variable #35115 enthält nur die Übersicht und Dokument-IDs.';
         $this->SetValue('P03ConnectionDiagnosis',implode("\n",$lines));
     }
