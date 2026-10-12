@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/libs/JVPhoneEvidenceEngine.php';
+require_once dirname(__DIR__) . '/libs/JVUniFiAPSnapshot.php';
 
 /**
  * PHONE-ONLY observer for the PresenceCore.
@@ -15,6 +16,8 @@ class JVPresencePhoneObserver extends IPSModule
         $this->RegisterPropertyBoolean('Enabled', true);
         $this->RegisterPropertyInteger('WiFiFreshSeconds', 180);
         $this->RegisterPropertyInteger('GeoFreshSeconds', 900);
+        $this->RegisterPropertyInteger('APSnapshotFreshSeconds', 180);
+        $this->RegisterPropertyString('APSources','[]');
         $this->RegisterPropertyString('People', json_encode([
             ['PersonID'=>'johannes','Name'=>'Johannes','Enabled'=>true],
             ['PersonID'=>'carina','Name'=>'Carina','Enabled'=>true]
@@ -28,6 +31,9 @@ class JVPresencePhoneObserver extends IPSModule
         $this->RegisterVariableString('Status','Smartphone-Status','',0);
         $this->RegisterVariableString('EvidenceJSON','Smartphone-Nachweise (JSON)','',1);
         $this->RegisterTimer('Poll',0,'JVPHONE_RefreshEvidence($_IPS["TARGET"]);');
+        // Internal per-AP evidence in an IPSModule buffer, NOT variables.
+        // New instance and restart always begin with unknown AP observations.
+        $this->SetBuffer('APSnapshotStatus','{}');
     }
 
     public function ApplyChanges(): void
@@ -81,6 +87,26 @@ class JVPresencePhoneObserver extends IPSModule
             $this->publish($report,'Konfigurationsfehler – keine Smartphone-Nachweise');
             return;
         }
+        $apConfig=$this->validatedAPSources();
+        if ($apConfig['errors']!==[]) {
+            $validated['errors']=array_merge($validated['errors'],$apConfig['errors']);
+        }
+        if ($validated['errors']!==[]) {
+            $report=JVPhoneEvidenceEngine::evaluate($people,$devices,[],time());
+            $report['errors']=array_merge($report['errors'],$apConfig['errors']);
+            $report['people']=[];
+            $report['devices']=[];
+            $this->publish($report,'Konfigurationsfehler – AP-Quellen unklar');
+            return;
+        }
+        $apStatus=json_decode($this->GetBuffer('APSnapshotStatus'),true);
+        $apStatus=is_array($apStatus)?$apStatus:[];
+        // Old, removed or disabled APs MUST NOT contribute to matching.
+        $activeAPs=array_fill_keys($apConfig['active'],true);
+        $apStatus=array_intersect_key($apStatus,$activeAPs);
+        $matched=JVUniFiAPSnapshot::currentMatches(
+            $apStatus,time(),$this->ReadPropertyInteger('APSnapshotFreshSeconds')
+        );
         $inputs=[];
         foreach ($validated['devices'] as $device) {
             // Inactive/retired phones are never read. This also allows safe
@@ -90,8 +116,14 @@ class JVPresencePhoneObserver extends IPSModule
             }
             // Read ONLY existing local Symcon source values; zero network I/O,
             // no AP polling, no camera API calls, no per-phone objects.
+            $wifi=$this->readSource($device['wifiVarID'],0);
+            if (isset($matched[$device['id']])) {
+                // Positive direct-AP station match outranks missing/negative
+                // generic WLAN sources. Neither can certify human presence.
+                $wifi=['value'=>true,'updatedAt'=>$matched[$device['id']]];
+            }
             $inputs[$device['id']]=[
-                'wifi'=>$this->readSource($device['wifiVarID'],0),
+                'wifi'=>$wifi,
                 'geo'=>$this->readSource($device['geoVarID'],3)
             ];
         }
@@ -122,6 +154,73 @@ class JVPresencePhoneObserver extends IPSModule
         }
         $this->publish($report,implode(' | ',$pieces)
             .' | Personen-Anwesenheit: NICHT abgeleitet');
+    }
+
+    /**
+     * Authorized local adapter hands us ONE complete, fresh AP mca-dump JSON.
+     * No network sockets, AP login, images or passwords are handled here.
+     * Returns false on unknown AP, invalid or overlarge data. An invalid
+     * snapshot INVALIDATES older same-AP evidence (fail closed).
+     * No IPS variables are created, even with dozens of devices or APs.
+     */
+    public function ImportUniFiAPSnapshot(string $apId,string $json): bool
+    {
+        if (!$this->ReadPropertyBoolean('Enabled')) return false;
+        $apConfig=$this->validatedAPSources();
+        if ($apConfig['errors']!==[] || !in_array($apId,$apConfig['active'],true)) {
+            return false;
+        }
+        $people=json_decode($this->ReadPropertyString('People'),true);
+        $devices=json_decode($this->ReadPropertyString('Devices'),true);
+        if (!is_array($people)||!is_array($devices)
+            || !array_is_list($people)||!array_is_list($devices)) return false;
+        $validated=JVPhoneEvidenceEngine::validateConfiguration($people,$devices);
+        if ($validated['errors']!==[]) return false;
+        $matched=JVUniFiAPSnapshot::parse($json,$validated['devices']);
+        $snapshots=json_decode($this->GetBuffer('APSnapshotStatus'),true);
+        $snapshots=is_array($snapshots)?$snapshots:[];
+        $snapshots=array_intersect_key(
+            $snapshots,array_fill_keys($apConfig['active'],true));
+        $snapshots[$apId]=[
+            'at'=>time(),
+            'ok'=>$matched['ok'],
+            // Store ONLY already enrolled phone IDs, NOT station MACs.
+            'matchedDeviceIDs'=>$matched['matchedDeviceIDs']
+        ];
+        // Even a previously cached association must be removed if a fresh
+        // complete AP read fails. Never reuse possibly stale snapshots.
+        $this->SetBuffer('APSnapshotStatus',
+            json_encode($snapshots,JSON_UNESCAPED_SLASHES)?:'{}');
+        $this->RefreshEvidence();
+        return $matched['ok'];
+    }
+
+    /** @return array{active:array,errors:array} */
+    private function validatedAPSources(): array
+    {
+        $rows=json_decode($this->ReadPropertyString('APSources'),true);
+        if (!is_array($rows) || !array_is_list($rows)) {
+            return ['active'=>[], 'errors'=>['APSources: ungültige Liste']];
+        }
+        $active=[];
+        $seen=[];
+        $errors=[];
+        if (count($rows)>64) $errors[]='APSources: mehr als 64 APs';
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                $errors[]='APSources: ungültige Zeile';
+                continue;
+            }
+            $id=trim((string)($row['APID']??''));
+            if (!preg_match('/^[a-z][a-z0-9_-]{0,63}$/D',$id)
+                || isset($seen[$id])) {
+                $errors[]='APSources: ungültige/doppelte AP-ID';
+                continue;
+            }
+            $seen[$id]=true;
+            if (!empty($row['Enabled'])) $active[]=$id;
+        }
+        return ['active'=>$active,'errors'=>$errors];
     }
 
     /** Only fresh, already existing variables can feed an observation. */

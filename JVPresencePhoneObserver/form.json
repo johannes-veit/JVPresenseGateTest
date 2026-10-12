@@ -130,6 +130,45 @@
       ]
     },
     {
+      "type": "Label",
+      "caption": "UniFi ohne Controller: APs hier als Quellen registrieren. Das Modul macht KEINE SSH- oder Netzwerkabfrage; ein späterer autorisierter, lesender AP-Adapter übergibt vollständige mca-dump-Snapshots über die Modul-Methode ImportUniFiAPSnapshot. Dadurch keine zusätzlichen Variablen pro AP oder Bewohner."
+    },
+    {
+      "type": "List",
+      "name": "APSources",
+      "caption": "UniFi AP-Quellen (nur Namen, keine Zugangsdaten)",
+      "rowCount": 4,
+      "add": true,
+      "delete": true,
+      "columns": [
+        {
+          "name": "APID",
+          "caption": "Feste AP-ID",
+          "width": "180px",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "name": "Enabled",
+          "caption": "Aktiv",
+          "width": "85px",
+          "add": true,
+          "edit": {
+            "type": "CheckBox"
+          }
+        }
+      ]
+    },
+    {
+      "type": "NumberSpinner",
+      "name": "APSnapshotFreshSeconds",
+      "caption": "Gültigkeit eines AP-Snapshots (Sekunden)",
+      "minimum": 10,
+      "maximum": 3600
+    },
+    {
       "type": "NumberSpinner",
       "name": "WiFiFreshSeconds",
       "caption": "WLAN-Meldung gültig für (Sekunden)",

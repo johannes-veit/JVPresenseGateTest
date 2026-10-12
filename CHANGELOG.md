@@ -1,3 +1,13 @@
+# v0.8.16 (Build 97) – UniFi AP-Snapshot-Eingang ohne Controller-/Variablenmehrverbrauch
+
+- Smartphone-Modul besitzt eine konfigurierbare Liste zusätzlicher UniFi-AP-Quellen; optional beliebig viele APs, aber **weiter exakt zwei Symcon-Variablen**.
+- Neuer `JVPHONE_ImportUniFiAPSnapshot`-Eingang akzeptiert komplette, frische, autorisiert übergebene AP-`mca-dump`-JSON-Daten mit `vap_table[].sta_table[].mac` (Firmwareabhängigkeit ausdrücklich beachten).
+- Prüft Maximalgröße, Tabellen-Vollständigkeit, konfigurierte AP-ID, aktuelle Gerätezuordnung, gültige MACs, zeitliche Gültigkeit und getrennte AP-Ausfälle.
+- Speichert im internen Modulbuffer nur Treffer zu registrierten Smartphone-Geräten, **keine MAC-Listen fremder WLAN-Nutzer**. Keine je-AP- oder je-Smartphone-Variablen.
+- Positive WLAN-Verbindung ist nur Telefonindiz. AP-Nichterreichbarkeit oder fehlendes Telefon niemals Personen-AWAY/Leerstand. P03/P05 unangetastet.
+- **Noch kein AP-Netzwerkreader:** Kein SSH/HTTP, keine UniFi-Zentralsoftware, keine zusätzlichen Netzwerkabfragen. Der lokale Einspeiseweg wird erst nach echter AP-IP/Firmware-/Zugriffsprüfung mit einem lesenden Adapter verbunden.
+- Regression für mehrere APs und Personen, Privacy, unvollständige/ungültige Snapshots, abgelaufene Daten, Doppel-APs und konstante zwei Variablen.
+
 # v0.8.15 (Build 96) – erweiterbare Hausbewohner, minimale Variablen-/Ereignislast
 
 - Hausbewohnerverwaltung jetzt deutlich in der Instanz hervorgehoben: Personen mit `+` ergänzen, auch ohne Smartphone; freie PersonID, 0..n austauschbare Smartphones je Person. Regression mit **32 Personen und weiterhin genau zwei Symcon-Variablen**.
