@@ -478,6 +478,7 @@ try {
     restore_error_handler();
 }
 $summary=(string)$full->values['P03ConnectionDiagnosis'];
+echo 'SIMULATED THREE-CAMERA EXPORT: '.str_replace("\n",' | ',$summary)."\n";
 verifyDiag(str_contains($summary,'IP-Symcon DOKUMENT-ID: 91001')
     && str_contains($summary,'IP-Symcon DOKUMENT-ID: 91002')
     && str_contains($summary,'IP-Symcon DOKUMENT-ID: 91003')
