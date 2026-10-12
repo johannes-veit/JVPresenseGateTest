@@ -41,12 +41,10 @@ final class JVUniFiAPSnapshot
             return $fail('EMPTY_OR_TOO_LARGE');
         }
         $data = json_decode($json,true);
-        if (!is_array($data) || !array_is_list($data) || count($data) !== 1) {
-            // mca-dump should be a JSON object (associative PHP array),
-            // not a user-supplied station list.
-            if (!is_array($data) || array_is_list($data)) {
-                return $fail('INVALID_JSON_OBJECT');
-            }
+        // mca-dump must be a single JSON object, never a station-array
+        // fragment, an event, or a user-supplied MAC list.
+        if (!is_array($data) || array_is_list($data)) {
+            return $fail('INVALID_JSON_OBJECT');
         }
         if (!isset($data['vap_table']) || !is_array($data['vap_table'])
             || !array_is_list($data['vap_table'])
