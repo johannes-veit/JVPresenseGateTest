@@ -1,3 +1,13 @@
+# v0.8.14 (Build 95) – Smartphone-/WLAN-Beobachtung ohne Personenzonen-Buchungen
+
+- Neue **optionale eigene Instanz** `JV Presence Phone Observer`, Personenprofile mit stabilen PersonID-Werten und beliebig austauschbaren Geräten (Xiaomi 13T, iPhone vorbefüllt). Profile bleiben beim Gerätewechsel unverändert.
+- Verarbeitet **nur vorhandene Symcon-Quellvariablen**: AP-assoziiert als Boolean, Geofence als String `PROPERTY`/`OUTSIDE`/`UNKNOWN`. Kein UniFi-Controller wird angenommen, keine App auf Telefonen verlangt, kein ungesicherter Direktzugriff auf fremde Netze eingebaut.
+- Quellwerte benötigen passende Typen und frische `VariableUpdated`-Zeit. Keine Meldung, veraltete Daten, WLAN-Abmeldung, falscher Typ oder Widerspruch liefern `PHONE_UNKNOWN`/Konflikt, **niemals** Personen-AWAY oder Leerstand.
+- Das Smartphone-Beobachtungsmodul erzeugt genau zwei String-Variablen: kurze Übersicht und versioniertes Nachweis-JSON. Keine Kameraeinstellungen, P03/P05, fremde Symcon-Variablen oder PresenceCore-Zonenbuchungen werden verändert.
+- Strenge Doppel-ID/-MAC/-Quellvariablen-Prüfung; keine mehrfachen Benutzerzuordnungen, keine heimliche Identifizierung einer Person über ein zurückgelassenes Handy.
+- Bei installierter SymBox können spätere Adapter, etwa direkter UniFi-AP-Sitzungsstatus per autorisiertem SSH-/Controller-Leseweg, die WLAN-Boolean-Werte liefern. Vorbereitete Schnittstellen sind **keine bereits funktionierende AP-Integration**.
+- Eigenständige Simulation und CI für Geräteaustausch, Schlafmodus, MAC-Duplikate, fehlende/falsche Daten, widersprüchliche GPS/WLAN-Werte und deaktiviertes Modul.
+
 # v0.8.13 (Build 94) – Vollständige Kamerakonfiguration aller drei P03-Kameras auslesen
 
 - Ein eigener Button in der P03-Hauptinstanz **#53879** startet per SymBox ausschließlich lesende Dahua-CGI-Gesamtabfragen für **JV_LEFT, WORK_LEFT und TERRACE**. Keine Konfigänderung, kein Kamera-/Observer-Restart, keine neue Socketverbindung.
