@@ -10,9 +10,13 @@
       "caption": "Smartphone-Beobachtung aktiv"
     },
     {
+      "type": "Label",
+      "caption": "Weitere Hausbewohner: + in der folgenden Personenliste. PersonID dauerhaft vergeben (Kleinbuchstaben/Zahlen/_), Name frei. Ohne Smartphone bleibt der Telefonstatus UNBEKANNT. Weitere Smartphones werden unten derselben PersonID zugeordnet."
+    },
+    {
       "type": "List",
       "name": "People",
-      "caption": "Personenprofile (bleiben beim Smartphonewechsel bestehen)",
+      "caption": "Hausbewohner – weitere Personen mit + hinzufügen (ohne neue Symcon-Variablen)",
       "rowCount": 4,
       "add": true,
       "delete": true,
