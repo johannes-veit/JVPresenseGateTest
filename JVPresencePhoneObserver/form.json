@@ -2,6 +2,10 @@
   "elements": [
     {
       "type": "Label",
+      "caption": "Sicherheitsgarantie: AP-Diagnose liest ausschließlich bereits vorhandene IP-Symcon-Objekte. Kein Scan, kein Ping, kein SSH-/HTTP-Login, keine Netzwerkkonfiguration oder Geräteschreibzugriffe. Die AP-IP-Endziffern sind im Netzwerkschaubild als x dargestellt."
+    },
+    {
+      "type": "Label",
       "caption": "Smartphones liefern NUR Telefonbeobachtungen. Kein HOME/AWAY einer Person, keine Leerstandsbescheinigung, keine Eingriffe in P03/P05 oder Kameras."
     },
     {
@@ -196,6 +200,11 @@
     }
   ],
   "actions": [
+    {
+      "type": "Button",
+      "caption": "UniFi-AP-Inventur aus vorhandenen Symcon-Objekten (NUR LOKAL LESEN)",
+      "onClick": "JVPHONE_DiagnoseUniFiLocal($id);"
+    },
     {
       "type": "Button",
       "caption": "Smartphone-Nachweise jetzt prüfen (nur lesen)",

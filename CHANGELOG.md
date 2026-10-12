@@ -1,3 +1,11 @@
+# v0.8.17 (Build 98) – neun UniFi-APs inventarisieren ohne Netzwerkscan oder Änderungen
+
+- Vollständig **nur lesender** Einmalbutton für bestehende **lokale** Symcon-Objekte: Name und ausschließlich IP-Quellfelder aus bereits gespeicherten Konfigurationen. Keine Geräteabfrage, kein Netzwerktraffic, kein Login, kein Schreiben.
+- Topologie neun AP-Positionen aus Netzwerkdiagramm 29.08.2026 übernommen; enthaltene `192.168.107.x` bzw. `192.168.103.x` sind **explizite Platzhalter**, keine bekannten IP-Adressen; unbekannte Endadressen werden niemals erfunden.
+- Ergebnis erscheint ohne neue Symcon-Variable im vorhandenen Konfigurationsformular aus internem Instanzpuffer, keine sensiblen Quellkonfigurationen im Bericht.
+- Testfälle: vorhandene IPv4-Informationen, keine Tokens/Passwörter, Ausschluss von Dahua-Kameraobjekten, keine falschen IPs, null Symcon-Variablenupdates beim Bericht.
+- Das bereits implementierte AP-Snapshot-Parsing aus Build 97 bleibt unverändert. Der tatsächliche AP-Transport ist weiterhin offen und bedarf einer bestätigten Geräte-IP/Zugriffsmöglichkeit.
+
 # v0.8.16 (Build 97) – UniFi AP-Snapshot-Eingang ohne Controller-/Variablenmehrverbrauch
 
 - Smartphone-Modul besitzt eine konfigurierbare Liste zusätzlicher UniFi-AP-Quellen; optional beliebig viele APs, aber **weiter exakt zwei Symcon-Variablen**.

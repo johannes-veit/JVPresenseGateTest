@@ -45,3 +45,19 @@ Jedes komplette AP-Snapshot wird spätestens nach `APSnapshotFreshSeconds` (Stan
 3. Ein einziger kontrollierter Original-Snapshot des APs zur Prüfung der **tatsächlichen** Firmware-Feldstruktur, bevor ein Leser automatisiert wird.
 
 Bis dahin bleiben die neuen AP-Quellen korrekt auf `PHONE_UNKNOWN`. Weder eine Verbindung noch eine vollständige Integration wird behauptet.
+
+## v0.8.17 – Null-Traffic-Inventur für neun AP-Positionen
+
+Die Zeichnungen vom 29.08.2026 zeigen neun vorhandene AP-Positionen: Büro, A-Raum, UniFi Flex/Lagerplatz, zweimal Werkstatt, Garage JV, JV Keller, JV EG und JV OG. Die AP-Beschriftungen lauten im Detail **192.168.107.x** bzw. für Garage JV **192.168.103.x**. Die echten Endadressen sind **nicht** in den verfügbaren Zeichnungen enthalten. Kameras, NVR, SymBox und einige Switches sind im Gegensatz dazu vollständig adressiert.
+
+**Neuer Button** im `JV Presence Phone Observer`:
+`UniFi-AP-Inventur aus vorhandenen Symcon-Objekten (NUR LOKAL LESEN)`.
+
+- Er liest ausschließlich lokale Objektbezeichnungen `IPS_GetName` und bei passenden Namen die gespeicherte Konfiguration `IPS_GetConfiguration` zum Zweck der Anzeige echter, bereits lokal dokumentierter AP-IP-Kandidaten.
+- Es wird ein streng begrenzter Satz unkritischer Top-Level-Felder `Host`, `Hostname`, `IPAddress`, `IP`, `Address`, `DeviceIP` akzeptiert, jeweils nur wenn der Wert eine **gültige reine IPv4-Adresse** ist. Zugangsdaten, Tokens, URIs, private Schlüssel und restliche Konfigurationen werden **nie** ausgegeben.
+- Kein Netzwerkscan, kein Ping, kein SSH, kein HTTP, keine Firewallabfrage; insbesondere **keine AP-, Switch-, WLAN-, VLAN- oder Kameraänderungen**.
+- Der Bericht steht nach dem Button-Klick im neu geöffneten Instanz-Konfigurationsformular (Label aus internem Puffer), **nicht** in einer neuen Symcon-Variable.
+- Kandidaten aus lokalen Symcon-Objekten werden als unbestätigt markiert. Nicht belegte AP-Adressen bleiben **unbekannt**. Falls kein passendes Objekt existiert, ist das ein korrektes Ergebnis und kein Anlass für einen Blindscan.
+- Unverändert: maximal zwei Ausgabewerte im Modul, kein neues Netzwerksocket, P03/P05 unverändert.
+
+Zur Nachprüfung nach Modul-Update die Telefon-Observer-Instanz öffnen, neuen Button drücken und **danach die Instanzkonfiguration neu öffnen**. Das lokale Ergebnis kann dann ohne geheime Daten in den Chat kopiert werden. Die Diagnose bewirkt nur ein einmaliges Auslesen bestehender Symcon-Metadaten. Ein AP-Transport wird dadurch noch nicht behauptet.
