@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once dirname(__DIR__).'/libs/JVPhoneEvidenceEngine.php';
 require_once dirname(__DIR__).'/libs/JVUniFiAPSnapshot.php';
+require_once dirname(__DIR__).'/libs/JVUniFiLocalInventory.php';
 function check(bool $ok, string $msg): void {
     if (!$ok) throw new RuntimeException('FAIL: '.$msg);
     echo "PASS: ".$msg."\n";
@@ -101,6 +102,25 @@ check(count($evaluate([],$bad)['errors'])>0,'invalid MAC rejected');
 // Isolated Symcon module lifecycle and variable-access simulation.
 $GLOBALS['vars']=[];
 $GLOBALS['meta']=[];
+$GLOBALS['local_instances']=[
+    1001=>['name'=>'UniFi WiFi AP Büro','configuration'=>json_encode([
+       'Host'=>'192.168.107.21','Password'=>'SECRET-NOT-TO-LEAK',
+       'Username'=>'user','Token'=>'super-secret-token'
+    ])],
+    1002=>['name'=>'UniFi Network Software','configuration'=>json_encode([
+       'IPAddress'=>'192.168.103.44','ApiKey'=>'SECRET'
+    ])],
+    1003=>['name'=>'Dahua Terrasse Kamera','configuration'=>json_encode([
+       'Host'=>'192.168.107.110','Password'=>'SECRET'
+    ])],
+    1004=>['name'=>'UniFi AP Keller','configuration'=>json_encode([
+       'Host'=>'https://not-an-ip.example','Password'=>'SECRET'
+    ])]
+];
+function IPS_GetInstanceList():array {return array_keys($GLOBALS['local_instances']);}
+function IPS_GetName(int $id):string {return $GLOBALS['local_instances'][$id]['name'];}
+function IPS_GetConfiguration(int $id):string {return $GLOBALS['local_instances'][$id]['configuration'];}
+
 function IPS_VariableExists(int $id): bool { return isset($GLOBALS['meta'][$id]); }
 function IPS_GetVariable(int $id): array { return $GLOBALS['meta'][$id]; }
 function GetValue(int $id): mixed { return $GLOBALS['vars'][$id]; }
@@ -284,4 +304,41 @@ check(count($r['errors'])>0 && count($r['devices'])===0,
   'duplicate AP identifiers fail closed rather than selecting wrong source');
 check(count($mod->values)===2,'all multi-AP tests finish with two Symcon variables');
 
+// Offline UniFi inventory: user-provided diagrams have literal x placeholders
+// instead of actual management-IP last octets. Never infer/fill in an AP IP.
+check(count(JVUniFiLocalInventory::diagram())===9,
+    'network diagram maps nine possible UniFi AP positions without guessing full addresses');
+foreach (JVUniFiLocalInventory::diagram() as $ap) {
+    check(str_contains($ap['ip'],'x (Platzhalter)'),
+        'each diagram AP IP remains explicit unresolved placeholder: '.$ap['name']);
+}
+$beforeVars=count($mod->values);
+$beforeWrites=count($mod->writes);
+$auditText=$mod->DiagnoseUniFiLocal();
+check(str_contains($auditText,'UniFi WiFi AP Büro')
+  && str_contains($auditText,'192.168.107.21')
+  && str_contains($auditText,'192.168.103.44'),
+  'read-only local Symcon inventory collects candidate IPs already present in Symcon');
+check(!str_contains($auditText,'SECRET')
+  && !str_contains($auditText,'super-secret')
+  && !str_contains($auditText,'192.168.107.110')
+  && !str_contains($auditText,'not-an-ip'),
+  'local AP inventory never leaks credentials, camera IPs or unverified URLs');
+check(count($mod->values)===$beforeVars
+  && count($mod->writes)===$beforeWrites,
+  'read-only AP inventory creates ZERO variables and ZERO Symcon writes');
+$diagnosticForm=json_decode($mod->GetConfigurationForm(),true);
+check(str_contains(json_encode($diagnosticForm),'192.168.107.21')
+    && count($diagnosticForm['actions'])===3,
+    'inventory report appears in existing module form without third output variable');
+$inspection=JVUniFiLocalInventory::inspect([
+ ['name'=>'UniFi WiFi AP Garage', 'config'=>'{"Host":"192.168.103.20","Password":"secret"}'],
+ ['name'=>'UniFi WiFi AP Garage', 'config'=>'{"Host":"192.168.103.20","Password":"secret"}'],
+ ['name'=>'UniFi Controller', 'config'=>'{}'],
+ ['name'=>'iPhone Carina', 'config'=>'{"IP":"192.168.103.55"}']
+]);
+check(count($inspection['found'])===2,
+    'duplicate AP information deduplicated and unrelated iPhone ignored');
+check($inspection['found'][1]['ipCandidates']===[],
+    'controller is merely candidate, and no IP is fabricated');
 echo "PHONE OBSERVER: ALL REGRESSION TESTS PASSED\n";
