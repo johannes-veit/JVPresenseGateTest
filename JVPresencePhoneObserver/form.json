@@ -1,0 +1,167 @@
+{
+  "elements": [
+    {
+      "type": "Label",
+      "caption": "Smartphones liefern NUR Telefonbeobachtungen. Kein HOME/AWAY einer Person, keine Leerstandsbescheinigung, keine Eingriffe in P03/P05 oder Kameras."
+    },
+    {
+      "type": "CheckBox",
+      "name": "Enabled",
+      "caption": "Smartphone-Beobachtung aktiv"
+    },
+    {
+      "type": "List",
+      "name": "People",
+      "caption": "Personenprofile (bleiben beim Smartphonewechsel bestehen)",
+      "rowCount": 4,
+      "add": true,
+      "delete": true,
+      "columns": [
+        {
+          "name": "PersonID",
+          "caption": "Feste Personen-ID",
+          "width": "160px",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "name": "Name",
+          "caption": "Name",
+          "width": "auto",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "name": "Enabled",
+          "caption": "Aktiv",
+          "width": "75px",
+          "add": true,
+          "edit": {
+            "type": "CheckBox"
+          }
+        }
+      ]
+    },
+    {
+      "type": "List",
+      "name": "Devices",
+      "caption": "Austauschbare Smartphones (neues Gerät eintragen, altes deaktivieren)",
+      "rowCount": 5,
+      "add": true,
+      "delete": true,
+      "columns": [
+        {
+          "name": "Enabled",
+          "caption": "Aktiv",
+          "width": "60px",
+          "add": true,
+          "edit": {
+            "type": "CheckBox"
+          }
+        },
+        {
+          "name": "DeviceID",
+          "caption": "Geräte-ID",
+          "width": "135px",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "name": "PersonID",
+          "caption": "Personen-ID",
+          "width": "135px",
+          "add": "johannes",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "name": "Name",
+          "caption": "Smartphone",
+          "width": "auto",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "name": "MAC",
+          "caption": "WLAN MAC (optional)",
+          "width": "160px",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "name": "WiFiVarID",
+          "caption": "AP verbunden (Bool)",
+          "width": "155px",
+          "add": 0,
+          "edit": {
+            "type": "SelectVariable",
+            "validVariableTypes": [
+              0
+            ]
+          }
+        },
+        {
+          "name": "GeoVarID",
+          "caption": "Geofence (String)",
+          "width": "170px",
+          "add": 0,
+          "edit": {
+            "type": "SelectVariable",
+            "validVariableTypes": [
+              3
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "NumberSpinner",
+      "name": "WiFiFreshSeconds",
+      "caption": "WLAN-Meldung gültig für (Sekunden)",
+      "minimum": 10,
+      "maximum": 86400
+    },
+    {
+      "type": "NumberSpinner",
+      "name": "GeoFreshSeconds",
+      "caption": "Geofence-Meldung gültig für (Sekunden)",
+      "minimum": 10,
+      "maximum": 86400
+    },
+    {
+      "type": "Label",
+      "caption": "WLAN: bestehende Symcon-Boolean-Variable 'wirklich am UniFi-AP angemeldet', regelmäßig aktualisiert. Ping oder WLAN-Verlust sind kein Abwesenheitsbeweis. AP-Auslesung wird nach Klärung der UniFi-Verwaltung angeschlossen."
+    },
+    {
+      "type": "Label",
+      "caption": "Geofence: bestehende String-Variable mit genau PROPERTY / OUTSIDE / UNKNOWN und Aktualisierungszeit. Google/Apple liefern Symcon standardmäßig keine direkte Meldung; Smartphone-App bleibt vorerst optional."
+    },
+    {
+      "type": "Label",
+      "caption": "WICHTIG: Private WLAN-MAC-Adressen können sich mit WLAN-Profil oder Gerätewechsel ändern. Im Modul genügt das Ersetzen der Gerätezeile. Keine IDs oder IPs sind im Code fest eingebaut."
+    }
+  ],
+  "actions": [
+    {
+      "type": "Button",
+      "caption": "Smartphone-Nachweise jetzt prüfen (nur lesen)",
+      "onClick": "JVPHONE_RefreshEvidence($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Sicherheits-Simulation (ohne Zonenwechsel)",
+      "onClick": "JVPHONE_RunSimulation($id);"
+    }
+  ]
+}

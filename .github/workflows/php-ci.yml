@@ -48,6 +48,8 @@ jobs:
               prefixes[prefix]=p
           print('Module loader contracts PASS')
           PY
+      - name: Smartphone evidence and Symcon lifecycle regression
+        run: php tests/JVPhoneEvidenceTest.php
       - name: P03 proof simulations
         run: php tests/P03ProofEngineTest.php
       - name: Independent ONVIF PullPoint event parser and safety tests
