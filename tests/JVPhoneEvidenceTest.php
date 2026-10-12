@@ -16,8 +16,9 @@ $d=[
       'Enabled'=>true,'MAC'=>'','WiFiVarID'=>103,'GeoVarID'=>104]
 ];
 $t=100000;
-$evaluate=static fn(array $in,array $devices=$d):array=>
-    JVPhoneEvidenceEngine::evaluate($p,$devices,$in,$t,180,900);
+$evaluate=static function(array $in,?array $devices=null) use ($p,$d,$t):array {
+    return JVPhoneEvidenceEngine::evaluate($p,$devices??$d,$in,$t,180,900);
+};
 $a=$evaluate([]);
 check(count($a['people'])===2 && count($a['devices'])===2,'two persistent person profiles and device rows');
 check($a['people'][0]['phoneStatus']==='PHONE_UNKNOWN','no input means UNKNOWN not AWAY');
