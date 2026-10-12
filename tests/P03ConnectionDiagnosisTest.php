@@ -91,7 +91,7 @@ function IPS_GetObject(int $id): array {
         'ObjectIdent'=>$ident===false?'':(string)$ident];
 }
 function IPS_SetMediaFile(int $id,string $filename,bool $mustExist): bool {
-    if (!isset($GLOBALS['media'][$id]) || !str_starts_with($filename,'media/P03_IPC5442_'))
+    if (!isset($GLOBALS['media'][$id]) || !(str_starts_with($filename,'media/P03_IPC5442_') || str_starts_with($filename,'media/P03_DAHUA_')))
         throw new RuntimeException('Foreign media path');
     $GLOBALS['media'][$id]['MediaFile']=$filename;
     return true;
@@ -478,7 +478,6 @@ try {
     restore_error_handler();
 }
 $summary=(string)$full->values['P03ConnectionDiagnosis'];
-echo 'SIMULATED THREE-CAMERA EXPORT: '.str_replace("\n",' | ',$summary)."\n";
 verifyDiag(str_contains($summary,'IP-Symcon DOKUMENT-ID: 91001')
     && str_contains($summary,'IP-Symcon DOKUMENT-ID: 91002')
     && str_contains($summary,'IP-Symcon DOKUMENT-ID: 91003')
