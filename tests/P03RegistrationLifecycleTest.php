@@ -81,14 +81,15 @@ foreach ([$main,$observer] as $source) {
         'obsolete status variables are removed only by own-module UnregisterVariable');
 }
 $form=json_decode(file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/form.json'),true);
-lifecycleAssert(is_array($form) && count($form['actions']??[])===10,
-    'Symcon user form has ten focused buttons including single-IN and street-only training');
+lifecycleAssert(is_array($form) && count($form['actions']??[])===11,
+    'Symcon user form has eleven focused buttons including single-IN and street-only training');
 $commands=array_column($form['actions'],'onClick');
 foreach ([
     'JVP03MC_ConfigureTerraceMonitor($id);',
     'JVP03MC_DiagnoseP03Connections($id);',
     'JVP03MC_DiagnoseIPC5442Configuration($id);',
     'JVP03MC_AuditCameraConfiguration($id);',
+    'JVP03MC_DiagnoseIPC5442AllValues($id);',
     'JVP03MC_RunP03Simulation($id);',
     'JVP03MC_PrepareAndStartTest($id);',
     'JVP03MC_StartStreetDirectionOnly($id);',
