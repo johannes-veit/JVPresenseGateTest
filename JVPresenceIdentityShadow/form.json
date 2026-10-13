@@ -19,7 +19,7 @@
     {
       "type": "NumberSpinner",
       "name": "PhoneObserverInstanceID",
-      "caption": "Smartphone-Observer-ID (0 = ignorieren)",
+      "caption": "Smartphone-Observer-ID (0 = automatisch vorhandenen eindeutigen Observer finden)",
       "minimum": 0,
       "maximum": 2147483647
     },
@@ -142,6 +142,10 @@
     {
       "type": "Label",
       "caption": "P03-Testprotokoll liefert verifizierte Richtungspaarungen und die gelernte Straßenrichtung. Mehrere gleichzeitig gehende Personen sind damit NOCH NICHT sicher gezählt. Darum meldet das Modul ausdrücklich weder HOME/AWAY noch Leerstand."
+    },
+    {
+      "type": "Label",
+      "caption": "Bei genau einem vorhandenen JV Presence Phone Observer wird dessen Evidenz mit ID=0 automatisch und nur lesend verwendet. P03 Live-Zähler zählt nachgewiesene Richtungsereignisse, keine Personen. Keine HOME/AWAY-Buchungen."
     }
   ],
   "actions": [

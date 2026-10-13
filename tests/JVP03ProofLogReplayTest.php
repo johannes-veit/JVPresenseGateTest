@@ -104,7 +104,11 @@ function IPS_GetObjectIDByIdent(string $ident,int $id):int|false {
     return $GLOBALS['ids'][$id.':'.$ident]??false;
 }
 function IPS_GetInstanceListByModuleID(string $guid):array {
-    return $guid==='{2D871359-14D8-493F-9B01-26432E3A710F}'?[8001,8002]:[];
+    if($guid==='{2D871359-14D8-493F-9B01-26432E3A710F}')
+        return [8001,8002];
+    if($guid==='{B5BF0266-A4D1-40A0-AAC8-97E9C24C4173}')
+        return $GLOBALS['phoneObserverCandidates']??[12345];
+    return [];
 }
 function IPS_GetChildrenIDs(int $id):array {
     return $GLOBALS['unitChildren'][$id]??[];
@@ -406,4 +410,86 @@ eq($module->properties['SensorSources'],$sourceBefore,
 eq(count($GLOBALS['shadowPropertyWrites']),1,
    'failed import makes zero changes');
 $GLOBALS['names'][51040]='Status';
+
+// Previously phone=[] with unconfigured ID 0. An existing UNIQUE phone
+// observer must be found automatically with no network scan or IPS writes.
+$GLOBALS['raw'][60001]=json_encode(['schema'=>1,
+    'authority'=>'PHONE_OBSERVATIONS_ONLY',
+    'people'=>[
+      ['id'=>'johannes','phoneStatus'=>'PHONE_PROPERTY_INDICATION'],
+      ['id'=>'carina','phoneStatus'=>'PHONE_UNKNOWN']
+    ]]);
+$GLOBALS['ids']['53879:P03VerifiedTransfers']=62001;
+$GLOBALS['ids']['53879:P03ProofState']=62002;
+$GLOBALS['meta'][62001]=['VariableType'=>1];
+$GLOBALS['meta'][62002]=['VariableType'=>3];
+$GLOBALS['raw'][62001]=4;
+$GLOBALS['raw'][62002]='VERIFIED';
+$module->properties['P03InstanceID']=53879;
+$module->properties['PhoneObserverInstanceID']=0;
+$module->properties['Enabled']=true;
+$module->ApplyChanges();
+$linked=json_decode($module->values['EvidenceJSON'],true);
+eq($linked['phoneLink']['state'],'AUTO_LINKED',
+    'unique phone observer recognized with zero configured ID');
+eq($linked['phoneLink']['instanceId'],12345,
+    'phone source id from existing matching Symcon module');
+eq($linked['phone']['johannes'],'PHONE_PROPERTY_INDICATION',
+    'existing smartphone evidence read automatically');
+eq($linked['phone']['carina'],'PHONE_UNKNOWN',
+    'unknown smartphone remains unknown');
+eq($linked['people']['johannes'],'UNKNOWN',
+    'phone hint does not invent Johannes at home');
+eq($linked['personPresenceMayBeChanged'],false,
+    'automatic phone link never changes PresenceCore');
+eq($linked['p03Live']['verifiedProofCounter'],4,
+    'live P03 counter read independently from old protocol');
+eq($linked['p03Live']['proofState'],'VERIFIED',
+    'read-only P03 proof state');
+eq($linked['p03Live']['countIsNumberOfPeople'],false,
+    'four historical proof events cannot be counted as four humans');
+eq($module->properties['PhoneObserverInstanceID'],0,
+    'automatic reader never writes its own phone linkage property');
+
+$GLOBALS['phoneObserverCandidates']=[];
+$module->Refresh();
+$missing=json_decode($module->values['EvidenceJSON'],true);
+eq($missing['phoneLink']['state'],'NO_OBSERVER_FOUND',
+    'missing observer is surfaced rather than silently claiming absent phone');
+eq($missing['phone'],[],'missing observer produces no fake phone presence');
+
+$GLOBALS['instances'][12346]=['ModuleInfo'=>[
+   'ModuleID'=>'{B5BF0266-A4D1-40A0-AAC8-97E9C24C4173}'
+]];
+$GLOBALS['phoneObserverCandidates']=[12345,12346];
+$module->Refresh();
+$multi=json_decode($module->values['EvidenceJSON'],true);
+eq($multi['phoneLink']['state'],'AMBIGUOUS_MULTIPLE',
+   'two existing phone observers not silently merged');
+eq($multi['phone'],[],'ambiguous sources not read');
+$module->properties['PhoneObserverInstanceID']=12345;
+$module->Refresh();
+$manual=json_decode($module->values['EvidenceJSON'],true);
+eq($manual['phoneLink']['state'],'MANUAL_LINK',
+   'explicit owner choice overrides ambiguous auto selection');
+eq($manual['phone']['johannes'],'PHONE_PROPERTY_INDICATION',
+   'user-selected correct module read');
+$GLOBALS['phoneObserverCandidates']=[12345];
+$module->properties['PhoneObserverInstanceID']=0;
+$module->Refresh();
+$normal=json_decode($module->values['EvidenceJSON'],true);
+eq($normal['phoneLink']['state'],'AUTO_LINKED','auto selection resumes');
+
+$GLOBALS['raw'][62001]=5;
+$module->Refresh();
+$updated=json_decode($module->values['EvidenceJSON'],true);
+eq($updated['p03Live']['verifiedProofCounter'],5,
+    'new P03 verification counter visible as proof-only diagnostic');
+eq($updated['p03']['p03']['homeToWork'],2,
+    'historic archive does not fabricate a new direction event');
+eq($updated['p03Live']['countIsNumberOfPeople'],false,
+    'incremental P03 proof count never becomes headcount');
+$GLOBALS['raw'][62001]=4;
+$module->properties['Enabled']=false;
+$module->ApplyChanges();
 echo "P03 historic replay & passive shadow PASS ($checks assertions)\n";
