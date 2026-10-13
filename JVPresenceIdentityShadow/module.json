@@ -1,0 +1,14 @@
+{
+  "id": "{D94700DB-96B0-490C-9F23-E6AE39677384}",
+  "name": "JV Presence Identity Shadow",
+  "type": 3,
+  "vendor": "",
+  "aliases": [
+    "JV Presence Identität SHADOW",
+    "Anwesenheit Richtungsnachweise nur lesen"
+  ],
+  "parentRequirements": [],
+  "childRequirements": [],
+  "implemented": [],
+  "prefix": "JVIDSH"
+}

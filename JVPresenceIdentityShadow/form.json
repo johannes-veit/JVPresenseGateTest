@@ -1,0 +1,159 @@
+{
+  "elements": [
+    {
+      "type": "Label",
+      "caption": "SHADOW: liest nur vorhandene Symcon-Variablen. Keine Änderungen an P03, P05, Kameras, LCN, Alarmanlage oder PresenceCore. Bewiesene Bewegungsrichtung bedeutet noch nicht bewiesene Personenzahl oder Identität."
+    },
+    {
+      "type": "CheckBox",
+      "name": "Enabled",
+      "caption": "SHADOW-Beobachtung einschalten (ausschließlich lokal lesen)"
+    },
+    {
+      "type": "NumberSpinner",
+      "name": "P03InstanceID",
+      "caption": "Bestehende P03-Hauptinstanz (bekannt: #53879)",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    {
+      "type": "NumberSpinner",
+      "name": "PhoneObserverInstanceID",
+      "caption": "Smartphone-Observer-ID (0 = ignorieren)",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    {
+      "type": "Label",
+      "caption": "Vorhandene Symcon-Ausgänge auswählen (Bool oder Integer-Status, KEINE direkten Aktorbefehle). Bei Boolean gilt true=aktiv, bei Integer >0=aktiv. Sämtliche Daten sind HINWEISE, niemals Person/AWAY-Beweise. Keine zusätzliche Hardware, keine weiteren Ausgabewerte je Sensor."
+    },
+    {
+      "type": "List",
+      "name": "SensorSources",
+      "caption": "LCN-Bewegungsmelder, Licht, Tore und vorhandene Fahrzeugsignale (nur lesen)",
+      "add": true,
+      "delete": true,
+      "rowCount": 5,
+      "columns": [
+        {
+          "name": "Enabled",
+          "caption": "Aktiv",
+          "width": "60px",
+          "add": true,
+          "edit": {
+            "type": "CheckBox"
+          }
+        },
+        {
+          "name": "SourceID",
+          "caption": "Sensor-ID eindeutig",
+          "width": "140px",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "name": "Name",
+          "caption": "Bezeichnung",
+          "width": "210px",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "name": "Kind",
+          "caption": "Signal",
+          "width": "200px",
+          "add": "MOTION",
+          "edit": {
+            "type": "Select",
+            "options": [
+              {
+                "caption": "Bewegungsmelder",
+                "value": "MOTION"
+              },
+              {
+                "caption": "Kamin-Bewegungsmelder (Uhr-Filter)",
+                "value": "MOTION_KAMIN"
+              },
+              {
+                "caption": "Küche (Kamin-Bestätigung)",
+                "value": "MOTION_KITCHEN"
+              },
+              {
+                "caption": "Licht eingeschaltet",
+                "value": "LIGHT"
+              },
+              {
+                "caption": "Torstatus / Aktivität",
+                "value": "GATE"
+              },
+              {
+                "caption": "Fahrzeugstatus",
+                "value": "VEHICLE"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Zone",
+          "caption": "Bereich",
+          "width": "160px",
+          "add": "HOME",
+          "edit": {
+            "type": "Select",
+            "options": [
+              {
+                "caption": "Haus",
+                "value": "HOME"
+              },
+              {
+                "caption": "Lagerplatz/Firma",
+                "value": "WORK"
+              },
+              {
+                "caption": "Hof / Terrasse / Grundstück",
+                "value": "PROPERTY_OTHER"
+              }
+            ]
+          }
+        },
+        {
+          "name": "VariableID",
+          "caption": "Symcon-Variable",
+          "width": "180px",
+          "add": 0,
+          "edit": {
+            "type": "SelectVariable",
+            "validVariableTypes": [
+              0,
+              1
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "Label",
+      "caption": "EG Wohnen Kamin: 25.–35. Minute jeder Stunde wird ignoriert; außerhalb davon nur zusammen mit einem Küchen-Bewegungsimpuls innerhalb von 60 Sekunden stärker bewertet. Stille, ausgeschaltete Lichter, geschlossenes Tor oder fehlendes Fahrzeug beweisen ausdrücklich keine Abwesenheit. Nach Start gibt es eine sichere Beobachtungs-Baseline, keine erfundenen alten Bewegungen."
+    },
+    {
+      "type": "Label",
+      "caption": "P03-Testprotokoll liefert verifizierte Richtungspaarungen und die gelernte Straßenrichtung. Mehrere gleichzeitig gehende Personen sind damit NOCH NICHT sicher gezählt. Darum meldet das Modul ausdrücklich weder HOME/AWAY noch Leerstand."
+    }
+  ],
+  "actions": [
+    {
+      "type": "Button",
+      "caption": "1. Bestehende LCN-Bewegungsmelder-IDs prüfen (nur lesen)",
+      "onClick": "JVIDSH_AuditLocalLCNInventory($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "Bestehende Nachweise anzeigen (nur lesen)",
+      "onClick": "JVIDSH_Refresh($id);"
+    }
+  ]
+}
