@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__).'/libs/JVP03ProofLogReplay.php';
 require_once dirname(__DIR__).'/libs/JVLocalSensorEvidence.php';
 require_once dirname(__DIR__).'/libs/JVLCNGUSInventory.php';
+require_once dirname(__DIR__).'/libs/JVLocalActivityLedger.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -21,6 +22,9 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterPropertyBoolean('Enabled',false);
         // Known owner installation ID; verify GUID before EVERY read.
         $this->RegisterPropertyInteger('P03InstanceID',53879);
+        // WLAN/Smartphone is developed in a separate project. NEVER read it
+        // until the user explicitly authorizes a future opt-in.
+        $this->RegisterPropertyBoolean('EnablePhoneIntegration',false);
         $this->RegisterPropertyInteger('PhoneObserverInstanceID',0);
         // Historical LCN snapshot (06.10.2026). Candidates DISABLED until
         // current live source/path/type verification; never silently activate.
@@ -37,6 +41,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterVariableString('EvidenceJSON','Identität – Nachweise (JSON)','',1);
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
         $this->SetBuffer('LocalSensorState','{}');
+        $this->SetBuffer('LocalActivityLedger','{}');
     }
 
     public function ApplyChanges(): void
@@ -343,7 +348,9 @@ class JVPresenceIdentityShadow extends IPSModule
         if ($p03['warnings']) $warnings=array_merge($warnings,$p03['warnings']);
 
         $phones=[];
-        $phoneLink=$this->resolvePhoneObserver();
+        $phoneLink=$this->ReadPropertyBoolean('EnablePhoneIntegration')
+            ?$this->resolvePhoneObserver()
+            :['state'=>'DISABLED_SEPARATE_PROJECT','instanceId'=>0];
         $phoneInst=$phoneLink['instanceId'];
         if ($phoneInst>0) {
             $phoneRaw=$this->readLocalVariable($phoneInst,self::PHONE_GUID,'EvidenceJSON');
@@ -395,6 +402,22 @@ class JVPresenceIdentityShadow extends IPSModule
         if($local['warnings']) {
             $warnings=array_merge($warnings,$local['warnings']);
         }
+        // Retain rolling room-level motion edges across 60s polls. A
+        // single PIR can fire repeatedly and multiple PIRs can see one
+        // person: these are NOT headcounts or identity evidence.
+        $ledgerState=json_decode($this->GetBuffer('LocalActivityLedger'),true);
+        $ledger=JVLocalActivityLedger::evaluate(
+            $local['motionSignals'],$local['readings'],
+            is_array($ledgerState)?$ledgerState:[],time());
+        $ledgerNext=json_encode($ledger['next'],JSON_UNESCAPED_SLASHES);
+        if(is_string($ledgerNext)
+            && $this->GetBuffer('LocalActivityLedger')!==$ledgerNext) {
+            $this->SetBuffer('LocalActivityLedger',$ledgerNext);
+        }
+        $activity=$ledger['report'];
+        if($activity['warnings']) {
+            $warnings=array_merge($warnings,$activity['warnings']);
+        }
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'personPresenceMayBeChanged'=>false,
@@ -404,6 +427,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'phone'=>$phones,
             'phoneLink'=>$phoneLink,
             'localSensors'=>$local,
+            'localActivity'=>$activity,
             // No baseline and no group count -> NO person occupancy guesses.
             'people'=>array_fill_keys(array_keys($phones),'UNKNOWN'),
             'warnings'=>array_values(array_unique($warnings))
@@ -412,15 +436,18 @@ class JVPresenceIdentityShadow extends IPSModule
         $in=$p03['p03']['workToHome'];
         $street=$p03['street']['directionMappingCertified']?'Straße gelernt':'Straße ungeklärt';
         $homeHint=$local['zones']['HOME']['activity']??'UNKNOWN';
-        $phoneDescription=$phoneLink['state']==='AUTO_LINKED'
-            ?'Telefon-Observer AUTO #'.$phoneInst
-            :($phoneLink['state']==='MANUAL_LINK'
-                ?'Telefon-Observer #'.$phoneInst
-                :'Telefon-Observer '.$phoneLink['state']);
-        $state='P03-Archiv: OUT '.$out.' / IN '.$in.' (nur Richtungsbeweise); '
+        $phoneDescription=$phoneLink['state']==='DISABLED_SEPARATE_PROJECT'
+            ?'Smartphone getrennt'
+            :($phoneLink['state']==='AUTO_LINKED'
+                ?'Telefon-Observer AUTO #'.$phoneInst
+                :($phoneLink['state']==='MANUAL_LINK'
+                    ?'Telefon-Observer #'.$phoneInst
+                    :'Telefon-Observer '.$phoneLink['state']));
+        $state='P03-Archiv: OUT '.$out.' / IN '.$in.' (Richtungsbeweise); '
             .$street.' | LCN Haus: '.$homeHint
+            .' | GUS-Impulse/24h: '.$activity['totalMotionEdges24h']
             .' | '.$phoneDescription
-            .' | Personenzahl/Identitaet UNBEKANNT';
+            .' | Personenidentitaet UNBEKANNT';
         if ($warnings) $state.=' | QUELLHINWEIS '.implode(',',array_slice($warnings,0,2));
         $this->publish($report,$state);
     }

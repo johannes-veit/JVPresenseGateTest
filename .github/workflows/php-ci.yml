@@ -56,6 +56,8 @@ jobs:
         run: php tests/JVP03ProofLogReplayTest.php
       - name: Existing LCN and GUS evidence safety and clock suppression
         run: php tests/JVLocalSensorEvidenceTest.php
+      - name: Local-only 24-hour room movement ledger, no phones or headcount
+        run: php tests/JVLocalActivityLedgerTest.php
       - name: Fifteen verified real LCN GUS inventory imports and collision protection
         run: php tests/JVLCNGUSInventoryTest.php
       - name: P03 proof simulations

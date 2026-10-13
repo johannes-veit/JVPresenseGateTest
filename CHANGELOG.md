@@ -1,3 +1,12 @@
+# v0.8.21 (Build 102) – IP-Symcon Identity Shadow vorerst ohne Smartphone/WLAN
+
+- Auf ausdrücklichen Nutzerwunsch bleibt die Smartphone-/WLAN-Entwicklung vollständig in einem anderen Chat und wird erst später optional eingebunden.
+- Neue Option `EnablePhoneIntegration`, standardmäßig **AUS**. Wenn AUS, keine Auto-Discovery und keinerlei Zugriff auf Smartphone-Observer, unabhängig davon, ob ID 0 oder eine alte PhoneObserverInstanceID eingetragen ist. Der lesende P03-/LCN-SHADOW bleibt separat funktionsfähig.
+- Neue rein lesende `localActivity`: 24-Stunden-Verlauf der Bewegungs-Impulse für die bereits eingebundenen **15 GUS** mit stabilen IDs, letzten Zeitpunkten, Zonen-/Melderübersicht und gesondert ausgewiesenen bestätigten Zwei-Sensor-Hinweisen. Kein nachträgliches Zählen identischer Impulse; ein späteres Küchen-Signal stärkt den Kamin-Impuls, ohne ihn ein zweites Mal zu zählen.
+- `LCN Haus: UNKNOWN` bei ruhigen/INACTIVE Meldern ist fachlich korrekt, nicht automatisch ein Fehler. Die Bewegungshistorie zeigt stattdessen auch zurückliegende Ereignisse innerhalb des Fensters an.
+- Weder einzelne GUS-Impulse noch Bewegungs-Ruhe, P03-Richtungsereignisse oder die Telefonverfügbarkeit sind eine nachgewiesene Personenanzahl oder Identität.
+- Keine P03-/P05- oder Kamera-Änderung, keine Steuerung von LCN, Licht, Alarm oder Person-/Leerstandswerten. Genau die beiden bisherigen Shadow-Ausgabevariablen bleiben erhalten; kein neuer Smartphone-Anschluss erforderlich.
+
 # v0.8.20 (Build 101) – Smartphone-Observer automatisch wiederverwenden, P03 live nur lesen
 
 - Der am 13.10.2026 gelieferte Shadow-Bericht bestätigt: alle 15 LCN-GUS aktiv, baselineInitialized=true, warnings=[]. motionSignals=[] bedeutet vorläufig keinen neuen positiven Bewegungsimpuls. Das ist kein Leerstand und kein nachgewiesener Fehler.
