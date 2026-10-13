@@ -52,6 +52,18 @@ assertEq($r['next']['initialized'],true,'baseline activated on next read');
 $nochange=sample($sources,$base,$r['next'],$initial+2);
 assertEq($nochange['report']['motionSignals'],[],'active true without changedAt delta does not re-trigger');
 assertEq($nochange['report']['zones']['HOME']['activity'],'UNKNOWN','no historical motion reused');
+// Adding a fresh source to an already running instance must baseline that
+// source; an old ON flag cannot be misread as a just-detected person.
+$running=sample([],[],$nochange['next'],$initial+2);
+$added=sample([source('new_motion',700,'MOTION')],
+    [700=>snap(true,$initial+1)],$running['next'],$initial+2);
+assertEq($added['report']['motionSignals'],[],
+    'new GUS added to running observer does not invent motion');
+$addedAgain=sample([source('new_motion',700,'MOTION')],
+    [700=>snap(true,$initial+1)],$added['next'],$initial+3);
+assertEq($addedAgain['report']['motionSignals'],[],
+    'new GUS same timestamp never replays');
+
 $base[100]=snap(false,$initial+3);
 $r=sample($sources,$base,$nochange['next'],$initial+3);
 assertEq($r['report']['motionSignals'],[],'falling edge ignored');
