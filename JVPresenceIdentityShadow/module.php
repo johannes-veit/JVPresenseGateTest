@@ -343,7 +343,8 @@ class JVPresenceIdentityShadow extends IPSModule
         if ($p03['warnings']) $warnings=array_merge($warnings,$p03['warnings']);
 
         $phones=[];
-        $phoneInst=$this->ReadPropertyInteger('PhoneObserverInstanceID');
+        $phoneLink=$this->resolvePhoneObserver();
+        $phoneInst=$phoneLink['instanceId'];
         if ($phoneInst>0) {
             $phoneRaw=$this->readLocalVariable($phoneInst,self::PHONE_GUID,'EvidenceJSON');
             $data=is_string($phoneRaw) && strlen($phoneRaw)<=65536
@@ -399,7 +400,9 @@ class JVPresenceIdentityShadow extends IPSModule
             'personPresenceMayBeChanged'=>false,
             'propertyEmptyMayBeCertified'=>false,
             'p03'=>$p03,
+            'p03Live'=>$this->readP03LiveCounters(),
             'phone'=>$phones,
+            'phoneLink'=>$phoneLink,
             'localSensors'=>$local,
             // No baseline and no group count -> NO person occupancy guesses.
             'people'=>array_fill_keys(array_keys($phones),'UNKNOWN'),
@@ -409,11 +412,93 @@ class JVPresenceIdentityShadow extends IPSModule
         $in=$p03['p03']['workToHome'];
         $street=$p03['street']['directionMappingCertified']?'Straße gelernt':'Straße ungeklärt';
         $homeHint=$local['zones']['HOME']['activity']??'UNKNOWN';
+        $phoneDescription=$phoneLink['state']==='AUTO_LINKED'
+            ?'Telefon-Observer AUTO #'.$phoneInst
+            :($phoneLink['state']==='MANUAL_LINK'
+                ?'Telefon-Observer #'.$phoneInst
+                :'Telefon-Observer '.$phoneLink['state']);
         $state='P03-Archiv: OUT '.$out.' / IN '.$in.' (nur Richtungsbeweise); '
             .$street.' | LCN Haus: '.$homeHint
+            .' | '.$phoneDescription
             .' | Personenzahl/Identitaet UNBEKANNT';
         if ($warnings) $state.=' | QUELLHINWEIS '.implode(',',array_slice($warnings,0,2));
         $this->publish($report,$state);
+    }
+
+    /**
+     * Existing phone observer can be reused directly. No new phone observer
+     * instance is created, no Wi-Fi network requests, and no property changes.
+     * Automatic selection is allowed ONLY for exactly one matching module.
+     */
+    private function resolvePhoneObserver(): array
+    {
+        $manual=$this->ReadPropertyInteger('PhoneObserverInstanceID');
+        if ($manual>0) {
+            return ['state'=>'MANUAL_LINK','instanceId'=>$manual];
+        }
+        $candidates=[];
+        try {
+            $ids=IPS_GetInstanceListByModuleID(self::PHONE_GUID);
+            if (!is_array($ids)) return [
+                'state'=>'LOOKUP_FAILED','instanceId'=>0
+            ];
+            foreach($ids as $id) {
+                if (!is_int($id) && !is_numeric($id)) continue;
+                $id=(int)$id;
+                if ($id<=0) continue;
+                $instance=IPS_GetInstance($id);
+                if(strcasecmp(
+                    (string)($instance['ModuleInfo']['ModuleID']??''),
+                    self::PHONE_GUID
+                )===0) $candidates[$id]=true;
+            }
+        } catch(Throwable $e) {
+            return ['state'=>'LOOKUP_FAILED','instanceId'=>0];
+        }
+        if(count($candidates)===1) return [
+            'state'=>'AUTO_LINKED','instanceId'=>(int)array_key_first($candidates)
+        ];
+        return [
+            'state'=>count($candidates)>1?'AMBIGUOUS_MULTIPLE':'NO_OBSERVER_FOUND',
+            'instanceId'=>0
+        ];
+    }
+
+    /**
+     * Live diagnostics of EXISTING P03 variables. Do not increment any
+     * person counter: the verified counter measures proof events, not humans.
+     */
+    private function readP03LiveCounters(): array
+    {
+        $inst=$this->ReadPropertyInteger('P03InstanceID');
+        $count=null;
+        $state=$this->readLocalVariable($inst,self::P03_GUID,'P03ProofState');
+        try {
+            if ($inst<=0) throw new RuntimeException('invalid instance');
+            $i=IPS_GetInstance($inst);
+            if(strcasecmp(
+                (string)($i['ModuleInfo']['ModuleID']??''),
+                self::P03_GUID
+            )!==0) throw new RuntimeException('not P03');
+            $id=@IPS_GetObjectIDByIdent('P03VerifiedTransfers',$inst);
+            if(!is_int($id)||$id<=0||!IPS_VariableExists($id))
+                throw new RuntimeException('missing counter');
+            $meta=IPS_GetVariable($id);
+            if(($meta['VariableType']??-1)!==1)
+                throw new RuntimeException('wrong counter type');
+            $value=GetValue($id);
+            if(!is_int($value)||$value<0)
+                throw new RuntimeException('invalid counter value');
+            $count=$value;
+        } catch(Throwable $e) {}
+        return [
+            'authority'=>'P03_COUNTER_DIAGNOSTIC_ONLY',
+            'verifiedProofCounter'=>$count,
+            'proofState'=>$state,
+            'countIsNumberOfPeople'=>false,
+            'personPresenceMayBeChanged'=>false,
+            'propertyEmptyMayBeCertified'=>false
+        ];
     }
 
     private function readLocalVariable(int $instanceId,string $guid,string $ident): ?string
