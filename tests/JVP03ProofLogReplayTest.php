@@ -97,6 +97,7 @@ $GLOBALS['raw']=[
     60002=>$historic
 ];
 $GLOBALS['readCount']=0;
+$GLOBALS['readById']=[];
 function IPS_GetInstance(int $id):array {
     return $GLOBALS['instances'][$id]??throw new RuntimeException('not found');
 }
@@ -123,6 +124,7 @@ function IPS_VariableExists(int $id):bool {return isset($GLOBALS['meta'][$id]);}
 function IPS_GetVariable(int $id):array {return $GLOBALS['meta'][$id];}
 function GetValue(int $id):mixed {
     $GLOBALS['readCount']++;
+    $GLOBALS['readById'][$id]=($GLOBALS['readById'][$id]??0)+1;
     return $GLOBALS['raw'][$id];
 }
 class IPSModule {
@@ -183,7 +185,18 @@ eq($GLOBALS['readCount'],0,'disabled by default: no external read');
 $module->properties['Enabled']=true;
 $module->properties['PhoneObserverInstanceID']=12345;
 $module->ApplyChanges();
+$separate=json_decode($module->values['EvidenceJSON'],true);
+eq($separate['phoneLink']['state'],'DISABLED_SEPARATE_PROJECT',
+    'phone observer integration is OFF by default');
+eq($separate['phone'],[],'phone list stays empty even with manual instance ID');
+eq(($GLOBALS['readById'][60001]??0),0,
+    'no smartphone data read when phone project excluded');
+eq($module->properties['EnablePhoneIntegration'],false,
+    'phone opt-in stays disabled after applying main observer');
 eq($module->timer['ReadLocal'],60000,'reads locally at most once per minute');
+// Explicit later opt-in is separately tested but not required by the user.
+$module->properties['EnablePhoneIntegration']=true;
+$module->ApplyChanges();
 $observed=json_decode($module->values['EvidenceJSON'],true);
 eq($observed['p03']['p03']['commissioningReplayed'],true,
     'existing P03 fourfold proof observed without new test');
@@ -490,6 +503,25 @@ eq($updated['p03']['p03']['homeToWork'],2,
 eq($updated['p03Live']['countIsNumberOfPeople'],false,
     'incremental P03 proof count never becomes headcount');
 $GLOBALS['raw'][62001]=4;
+// Turning integration back OFF must cut all phone reads, including
+// previously known observer sources and future automatic module discovery.
+$module->properties['EnablePhoneIntegration']=false;
+$readsBeforePhoneOff=$GLOBALS['readById'][60001]??0;
+$module->Refresh();
+$off=json_decode($module->values['EvidenceJSON'],true);
+eq($off['phoneLink']['state'],'DISABLED_SEPARATE_PROJECT',
+   'explicit OFF wins over old auto-link');
+eq($off['phone'],[],'previous phone evidence immediately removed');
+eq(($GLOBALS['readById'][60001]??0),$readsBeforePhoneOff,
+   'no more smartphone reads after decoupling');
+eq($off['people'],[],'no person objects from disconnected phones');
+eq($off['localSensors']['sourceCount'],15,
+   'disabling phones never disables 15 local GUS');
+eq($off['localActivity']['personCountCertified'],false,
+   'motion events do not morph into human numbers');
+eq($off['localActivity']['propertyEmptyMayBeCertified'],false,
+   'motion history never certifies empty property');
+
 $module->properties['Enabled']=false;
 $module->ApplyChanges();
 echo "P03 historic replay & passive shadow PASS ($checks assertions)\n";
