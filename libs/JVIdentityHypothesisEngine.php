@@ -170,9 +170,9 @@ final class JVIdentityHypothesisEngine
             $zones = array_keys($possible);
             sort($zones);
             $persons[$id] = [
-                'zone'=>count($zones) === 1 ? $zones[0] : 'UNKNOWN',
+                'zone'=>$baselineCertified && !$stopped && count($zones)===1 ? $zones[0] : 'UNKNOWN',
                 'possibleZones'=>$zones,
-                'identityResolved'=>count($zones) === 1
+                'identityResolved'=>$baselineCertified && !$stopped && count($zones)===1
             ];
         }
         $counts = [];
@@ -223,6 +223,7 @@ final class JVIdentityHypothesisEngine
             'stopped'=>$stopped,
             'people'=>$persons,
             'counts'=>$counts,
+            'countsCertified'=>$baselineCertified && !$stopped && !$warnings,
             'certificates'=>$certificates,
             'warnings'=>array_values(array_unique(array_merge($warnings, $phoneWarnings))),
             'unresolvedActivityZones'=>array_keys($invalidated)
@@ -301,7 +302,7 @@ final class JVIdentityHypothesisEngine
             'propertyEmptyMayBePublished'=>false,
             'baselineCertified'=>false,
             'worldCount'=>0, 'transfersApplied'=>0, 'stopped'=>true,
-            'people'=>[], 'counts'=>[], 'certificates'=>[
+            'people'=>[], 'counts'=>[], 'countsCertified'=>false, 'certificates'=>[
                 'HOME_EMPTY_CERTIFIED'=>false,
                 'HOUSE_EMPTY_CERTIFIED'=>false,
                 'PROPERTY_EMPTY_CERTIFIED'=>false
