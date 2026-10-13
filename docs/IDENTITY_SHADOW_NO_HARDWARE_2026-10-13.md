@@ -6,8 +6,7 @@
 - Weder P03 noch P05, Kameras, Aussenlicht, Alarmanlage, LCN oder PresenceCore werden verändert.
 - **Keine Anwesenheitsbuchungen oder Alarmfreigaben**: Ausgaben `personPresenceMayBeChanged=false`,
   `propertyEmptyMayBePublished=false`. Zertifikate im Bericht sind nur simulierte Hypothesen.
-- Das laufende P03/P05 TEST/PRODUKTION-Gate bleibt zu. Ein realer P03-Gehtest mit Zählern,
-  IVS-Richtung und der bestätigten dritten Kamera muss vor der Freigabe bestanden sein.
+- Der bereits **am 12.10.2026 erfolgreich abgeschlossene** P03-Vierfach-Gehtest (2× OUT, 2× IN sowie 4 Straßenrichtungen) ist archiviert und wird **nicht wiederholt**. Dies belegt noch keine Zählung gleichzeitig gehender Personen und keine identifizierten Bewohner. Produktionsfreigaben bleiben gesperrt, bis die gesamte Eingangs-/Ausgangsabdeckung und Gruppenzählung sicher sind.
 - Keine zusätzliche Hardware, keine BLE-Tags, Gesichtserkennung oder Cloud-Abhängigkeit.
 
 ## Warum Hypothesen und keine Punktesummen?
@@ -111,7 +110,7 @@ sperrt vorsichtshalber ein Leerzertifikat, erzeugt aber keine anwesende Person.
 - Aktivität im leeren Haus, fehlende Coverage und fehlende Ausgangsinventur.
 
 **Produktivschaltung ist ausdrücklich nicht Teil dieser Änderung.**
-Nächster Schritt nach P03-Gehtest: P03/P05 Eventnormalisierung mit überprüften
+Nächster Schritt nach abgeschlossener P03-Abnahme: P03/P05 Eventnormalisierung mit überprüften
 Zeitstempeln, Zählgenauigkeit bei Gruppen, erfassten Eingängen/Ausgängen,
 aktualisierbarem PersonLedger und tatsächlicher Coverage-Map; anschließend
 Zertifikate erst nach kompletter Replay-/Fault-Injection-Regression freigeben.
@@ -143,3 +142,27 @@ Die Shadow-Instanz besitzt **genau zwei** Ausgabevariablen (Status/JSON) und max
 - Ob aus HOME→WORK bereits ein Verlassen des **gesamten Grundstücks** folgt. (Nein.)
 
 Deshalb meldet der passive Parser `personCountCertified=false` und `identityCertified=false`. Der neue Shadow-Observer darf niemals ein bestätigtes Leerstandszertifikat oder persönliche AWAY-Buchungen schreiben. Die präzise Anzahl sowie individuelle Namen werden erst durch unabhängig verifizierte Zählung, Personenausgangsinventur und entsprechende Identitätshinweise freigeschaltet. P03-Kamera- oder Geh-Test **nicht** wiederholen.
+
+## Weitere Integration: vorhandene LCN/GUS-, Licht-, Tor- und Fahrzeugsignale (13.10.2026)
+
+Ein neuer **rein lokaler** Normalisierer `libs/JVLocalSensorEvidence.php` interpretiert ausschließlich bestehende **Boolean- oder Integer-Statusvariablen** (Boolean=true bzw. Integer>0 = aktiv). Bis zu 64 frei zugeordnete, stabile Quellen-IDs und Zonen (HOME, WORK, PROPERTY_OTHER) können in der vorhandenen neuen `JVPresenceIdentityShadow`-Instanz konfiguriert werden. Es wird **keine** unbekannte Variable geraten, kein LCN-Aktor angesteuert und keine neue Hardware installiert.
+
+Signalrollen:
+
+- `MOTION` – gewöhnliche vorhandene GUS (Mensch nur möglich, Identität unbekannt)
+- `MOTION_KAMIN` – **EG Wohnen Kamin**, Uhr-Fehlalarme jede Stunde im Zeitraum Minute **25 bis einschließlich 35** vollständig ignorieren; außerhalb nur zusammen mit separatem `MOTION_KITCHEN`-Impuls im 60-s-Fenster *stärker* bestätigen
+- `MOTION_KITCHEN` – EG Wohnen Küche, Bestätigung für Kamin außerhalb Uhrfilter
+- `LIGHT`, `GATE`, `VEHICLE` – aktuelle lokale Schalt-/Statushinweise; weder Fahrer noch Bewohner; `allConfiguredLightsOff` bedeutet **nur die ausgewählten** Lichtquellen
+
+Ein Bewegungsimpuls ist stärker, wenn **zwei unterschiedliche** GUS derselben Zone innerhalb 60 Sekunden reagieren. Der gleiche GUS zweimal, ein alleiniger Kamin-Impuls oder zwei Melder in verschiedenen Zonen liefern **keinen** verifizierten Menschen- oder Identitätsnachweis. Eine positive Aktivitätskombination bleibt in jedem Fall nur `CORROBORATED_MOTION_HINT`; auch dann dürfen keine PresenceCore-Personen oder Leerstands-Zertifikate verändert werden.
+
+Technisch:
+- Nutzt `VariableChanged` aus bestehenden IP-Symcon-Statusvariablen, nicht bloß `VariableUpdated`. Es werden nur neue positive Flanken und keine alten anstehenden Signale als Bewegungen gewertet. Neue Sensoren werden auch im laufenden Betrieb zunächst eingemessen.
+- Verwendet zusätzlich die dokumentierte Symcon-Meldung **VM_UPDATE = 10603**. Die Shadow-Instanz registriert sie **ausschließlich** für explizit zugeordnete und validierte lokale Variablen und reagiert damit zeitnah auf kurze GUS-Pulse. Subscriptions werden bei Quelländerungen, Modul-Deaktivierung und Service-Neustart abgeglichen. Der 60-Sekunden-Timer ist nur die lesende Reserve.
+- Das unveränderte P03-Modul und der Smartphone-Observer sind keine GUS-Meldequellen, sodass Ausgaben keine Endlosschleife auslösen.
+- Maximal **zwei** Symcon-String-Ausgabevariablen für das gesamte Identity-Shadow-Modul; die einzelnen Sensoren erzeugen **keine** neue lizenzpflichtige Variable. Interne Ereignishistorie und Beobachterzustand liegen ausschließlich im Buffer.
+- Ein Sensorwert kann durch Neustart, falschen Typ oder fehlende Variable unklar sein; dann wird er `UNKNOWN`. Kein Sensorstatus `OFF`, geschlossene Tore oder ruhiger Bewegungsmelder erlaubt die Aussage „alle Personen AWAY“.
+
+Regressionstest `tests/JVLocalSensorEvidenceTest.php` plus die erweiterte `tests/JVP03ProofLogReplayTest.php` prüfen Start-Baseline, Uhr-Minuten-Grenzen, Küchenbestätigung, zwei GUS, verschiedene Zonen, aktive Lichter, Tore/Fahrzeuge, falsche Typen, Duplikate, Quellenwechsel, Update-Subscriptions und wiederholte identische Symcon-Werte.
+
+**Live-Datenquelle:** Die genauen IDs der LCN-GUS-/Licht-/Torausgänge sind noch nicht in dieser Entwicklungsumgebung verfügbar. Deshalb sind die neuen Quellzeilen bei Auslieferung **leer** (fail-closed), bis sie anhand realer existierender IP-Symcon-Objekte eindeutig zugeordnet werden. Die vorhandenen P03-Gehtests und Kamera-Exporte müssen dafür **nicht erneut** bereitgestellt werden.
