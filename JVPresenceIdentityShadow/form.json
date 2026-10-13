@@ -147,6 +147,11 @@
   "actions": [
     {
       "type": "Button",
+      "caption": "1. Bestehende LCN-Bewegungsmelder-IDs prüfen (nur lesen)",
+      "onClick": "JVIDSH_AuditLocalLCNInventory($id);"
+    },
+    {
+      "type": "Button",
       "caption": "Bestehende Nachweise anzeigen (nur lesen)",
       "onClick": "JVIDSH_Refresh($id);"
     }
