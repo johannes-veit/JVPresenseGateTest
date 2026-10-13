@@ -115,3 +115,31 @@ Nächster Schritt nach P03-Gehtest: P03/P05 Eventnormalisierung mit überprüfte
 Zeitstempeln, Zählgenauigkeit bei Gruppen, erfassten Eingängen/Ausgängen,
 aktualisierbarem PersonLedger und tatsächlicher Coverage-Map; anschließend
 Zertifikate erst nach kompletter Replay-/Fault-Injection-Regression freigeben.
+
+## Fortschritt 13.10.: Vorhandenen P03-Lauftest direkt wiederverwendet
+
+Der am **12.10.2026** bereits vom Nutzer gelieferte P03-Abnahmelog wurde als selektive, exakt wiedergegebene Testreferenz eingebunden. **Keine weitere Feldtestanforderung!**
+
+- Treppe/HOME→LAGER: **2×** `P03 PROOF VERIFIED HOME_TO_LAGER via P03_2CAM_JV_THEN_WORK`.
+- Treppe/LAGER→HOME: **2×** `P03 PROOF VERIFIED LAGER_TO_HOME via P03_2CAM_WORK_THEN_JV`.
+- Abschluss: `P03 COMMISSIONING COMPLETE: OUT=2, IN=2`.
+- Straße WORK_LEFT RuleID5: `RightToLeft = OUT`, `LeftToRight = IN`, mit je zwei Übertritten.
+- Die Rohdatei enthielt drei vorhandene Kamera-Konfigurations-Exporte. Diese werden **nicht erneut angefordert**.
+
+Implementierte Komponenten:
+
+1. `libs/JVP03ProofLogReplay.php`: passiver Replay-Parser für bestehende Symcon-Protokolle. Erkennt auch zusammengeklebte `[Datum Uhrzeit]`-Datensätze, exakt gebundene Zweimastbeweise, Straßenrichtung, Dubletten, unvollständige Abschlussmeldungen und widersprüchliche Kamerarichtungen.
+2. `JVPresenceIdentityShadow` (neue, **standardmäßig deaktivierte** Symcon-Instanz): liest nur den vorhandenen `Protocol`-Wert der bekannten P03-Hauptinstanz **#53879** nach Prüfung der echten Modul-GUID; optional `EvidenceJSON` einer bereits installierten Smartphone-Observer-Instanz. Kein Kamera-Poll, keine Socket-Erstellung, keine P03-Befehle, keine Fremdvariablen-Beschreibung.
+3. `tests/JVP03ProofLogReplayTest.php`: historische Datensätze, Manipulation/Dubletten, Quell-GUID-/Typ-Prüfung, 100 identische Abfragen ohne zusätzliche Variablenschreibvorgänge, sichere Deaktivierung.
+4. `tests/JVIdentityHypothesisEngineTest.php`: zusätzlich gesichert, dass eine unbestätigte Ausgangsinventur oder fehlerhafte Ereigniskette **keine namentliche Personenfeststellung** erlaubt.
+
+Die Shadow-Instanz besitzt **genau zwei** Ausgabevariablen (Status/JSON) und maximal einen rein lokalen 60-s-Lesetimer. Eingaben `P03InstanceID` und `PhoneObserverInstanceID` sind auswählbar, letzterer standardmäßig `0` (= ignorieren). Bei `Enabled=false` entstehen keine Quellabfragen. Die Instanz ist als zukünftige optionale Leseergänzung gedacht, **noch nicht automatisch installiert**.
+
+### Was P03 trotz bestandenem Gehtest bewusst noch NICHT beweist
+
+- Ob bei einem einzelnen IVS-Ereignispaar eine oder mehrere **gleichzeitig** gehende Personen vorlagen.
+- Ob ein gewisser Durchgang eindeutig Johannes, Carina oder einem Besucher gehört.
+- Ob sämtliche Türen, Grundstücksausgänge und Umwege lückenlos beobachtet werden.
+- Ob aus HOME→WORK bereits ein Verlassen des **gesamten Grundstücks** folgt. (Nein.)
+
+Deshalb meldet der passive Parser `personCountCertified=false` und `identityCertified=false`. Der neue Shadow-Observer darf niemals ein bestätigtes Leerstandszertifikat oder persönliche AWAY-Buchungen schreiben. Die präzise Anzahl sowie individuelle Namen werden erst durch unabhängig verifizierte Zählung, Personenausgangsinventur und entsprechende Identitätshinweise freigeschaltet. P03-Kamera- oder Geh-Test **nicht** wiederholen.
