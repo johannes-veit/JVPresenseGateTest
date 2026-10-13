@@ -1,3 +1,13 @@
+# v0.8.22 (Build 103) – Live-P03-Richtungsbeweise und LCN-GUS in einer SHADOW-Chronik
+
+- Die vom Nutzer am 12.10.2026 bereits vollständig bestätigten P03-Gehtests (2× OUT/2× IN) bleiben als historische Baseline. Bei Start der neuen Chronik werden alle bisherigen P03-Protokolle **nicht** als neue Bewegungen nachgebucht. Keine Wiederholung der Feldtests.
+- Neue reine PHP-Auswertung `JVP03IncrementalTimeline`: verfolgt ausschließlich neu an das vorhandene P03-`Protocol` angehängte verifizierte Zweimast-Richtungsereignisse, getrennt für HOME→LAGER und LAGER→HOME. Verifizierungszähler bleibt Richtungsbeweis, **niemals** Personenanzahl.
+- Bei identischem Log kein erneutes Event; bei Log-Kürzung (P03-Ringpuffer ~55KB) Fortschreibung nur bei sicherer Textüberlappung; Log-Reset oder unbekannte Überlappung wird konservativ als Lücke markiert, nicht als neue Bewegung.
+- Bereits vorhandenes 24h-GUS-Impulsledger (`localActivity`) mit den **15 vom Nutzer bestätigten** LCN-Meldern bleibt unverändert. Ergänzt `p03LiveTimeline` und `recentCombinedEvidence`: maximal 20 zeitlich sortierte Kamerarichtungs-/Raumbewegungshinweise in den **bestehenden zwei** Shadow-Ausgabevariablen.
+- Smartphone/WLAN weiterhin unabhängig im anderen Chat. `EnablePhoneIntegration` standardmäßig **AUS**, ohne automatische Suche oder Telefon-Datenzugriffe.
+- P03, P05, Dahua-Kamera, LCN-Aktoren, Alarmanlage und produktive Anwesenheitslogik werden nicht verändert. **Keine** Freigabe für personengebundene HOME/AWAY-Status oder Leerstand.
+- Regression von Basislauf, neuem P03-Event, beiden Richtungen, Replay-Schutz, doppelten Sekunden, falschen Richtungswegen, Log-Rotation/Reset, veralteten/Future-Zeitstempeln und Isolation des bereits aktiven 15-GUS-Shadow.
+
 # v0.8.21 (Build 102) – IP-Symcon Identity Shadow vorerst ohne Smartphone/WLAN
 
 - Auf ausdrücklichen Nutzerwunsch bleibt die Smartphone-/WLAN-Entwicklung vollständig in einem anderen Chat und wird erst später optional eingebunden.

@@ -4,6 +4,7 @@ require_once dirname(__DIR__).'/libs/JVP03ProofLogReplay.php';
 require_once dirname(__DIR__).'/libs/JVLocalSensorEvidence.php';
 require_once dirname(__DIR__).'/libs/JVLCNGUSInventory.php';
 require_once dirname(__DIR__).'/libs/JVLocalActivityLedger.php';
+require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -42,6 +43,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
         $this->SetBuffer('LocalSensorState','{}');
         $this->SetBuffer('LocalActivityLedger','{}');
+        $this->SetBuffer('P03IncrementalTimeline','{}');
     }
 
     public function ApplyChanges(): void
@@ -346,6 +348,29 @@ class JVPresenceIdentityShadow extends IPSModule
             $p03=JVP03ProofLogReplay::parse($p03Raw);
         }
         if ($p03['warnings']) $warnings=array_merge($warnings,$p03['warnings']);
+        // The prior completed P03 field test is a baseline, not a live walk.
+        // This rolling proof ledger only consumes lines newly appended to
+        // the existing P03 Protocol after this observer begins monitoring.
+        $p03Previous=json_decode($this->GetBuffer('P03IncrementalTimeline'),true);
+        $p03Timeline=JVP03IncrementalTimeline::evaluate(
+            $p03Raw??'',is_array($p03Previous)?$p03Previous:[],time()
+        );
+        if($p03Raw===null) {
+            // Invalid source is NEVER interpreted as an empty reset log.
+            $p03Timeline['report']['warnings'][]='P03_SOURCE_NOT_READABLE';
+            $p03Timeline['next']=$p03Previous??[];
+        } else {
+            $newState=json_encode($p03Timeline['next'],
+                JSON_UNESCAPED_SLASHES);
+            if(is_string($newState)
+                && $this->GetBuffer('P03IncrementalTimeline')!==$newState) {
+                $this->SetBuffer('P03IncrementalTimeline',$newState);
+            }
+        }
+        if($p03Timeline['report']['warnings']) {
+            $warnings=array_merge($warnings,
+                $p03Timeline['report']['warnings']);
+        }
 
         $phones=[];
         $phoneLink=$this->ReadPropertyBoolean('EnablePhoneIntegration')
@@ -424,10 +449,14 @@ class JVPresenceIdentityShadow extends IPSModule
             'propertyEmptyMayBeCertified'=>false,
             'p03'=>$p03,
             'p03Live'=>$this->readP03LiveCounters(),
+            'p03LiveTimeline'=>$p03Timeline['report'],
             'phone'=>$phones,
             'phoneLink'=>$phoneLink,
             'localSensors'=>$local,
             'localActivity'=>$activity,
+            'recentCombinedEvidence'=>$this->combinedShadowEvidence(
+                $p03Timeline['report'],$activity
+            ),
             // No baseline and no group count -> NO person occupancy guesses.
             'people'=>array_fill_keys(array_keys($phones),'UNKNOWN'),
             'warnings'=>array_values(array_unique($warnings))
@@ -446,6 +475,8 @@ class JVPresenceIdentityShadow extends IPSModule
         $state='P03-Archiv: OUT '.$out.' / IN '.$in.' (Richtungsbeweise); '
             .$street.' | LCN Haus: '.$homeHint
             .' | GUS-Impulse/24h: '.$activity['totalMotionEdges24h']
+            .' | P03-neue Beweise/24h: '
+            .array_sum($p03Timeline['report']['directionProofs24h'])
             .' | '.$phoneDescription
             .' | Personenidentitaet UNBEKANNT';
         if ($warnings) $state.=' | QUELLHINWEIS '.implode(',',array_slice($warnings,0,2));
@@ -526,6 +557,36 @@ class JVPresenceIdentityShadow extends IPSModule
             'personPresenceMayBeChanged'=>false,
             'propertyEmptyMayBeCertified'=>false
         ];
+    }
+
+    /**
+     * Chronological context without person identity. A GUS edge near a
+     * P03 proof may be an unrelated visitor, never an owner identification.
+     * Keep the representation bounded inside the existing JSON variable.
+     */
+    private function combinedShadowEvidence(array $p03,array $local):array
+    {
+        $out=[];
+        foreach(($p03['recentDirectionProofs']??[]) as $row) {
+            if(!is_array($row)||!is_int($row['at']??null))continue;
+            $out[]=[
+                'at'=>$row['at'],'kind'=>'P03_ZONE_DIRECTION',
+                'direction'=>(string)($row['direction']??'UNKNOWN'),
+                'personCount'=>'UNKNOWN','identity'=>'UNKNOWN'
+            ];
+        }
+        foreach(($local['recentMotionEdges']??[]) as $row) {
+            if(!is_array($row)||!is_int($row['at']??null))continue;
+            $out[]=[
+                'at'=>$row['at'],'kind'=>'LCN_GUS_ACTIVITY',
+                'sourceID'=>(string)($row['sourceID']??''),
+                'zone'=>(string)($row['zone']??''),
+                'confidence'=>(string)($row['confidence']??''),
+                'personCount'=>'UNKNOWN','identity'=>'UNKNOWN'
+            ];
+        }
+        usort($out,static fn($a,$b)=>$b['at']<=>$a['at']);
+        return array_slice($out,0,20);
     }
 
     private function readLocalVariable(int $instanceId,string $guid,string $ident): ?string

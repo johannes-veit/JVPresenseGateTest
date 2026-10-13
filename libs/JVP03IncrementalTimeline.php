@@ -1,0 +1,196 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * Read-only incremental replay of the EXISTING P03 Protocol String variable.
+ * Previously completed commissioning proofs are a baseline, NEVER current
+ * transfers.  A P03 camera proof is a directional event, NOT one person.
+ *
+ * This class does not access Symcon or P03 itself; callers only feed the
+ * already existing P03 log string. No writes, actions, network or hardware.
+ */
+final class JVP03IncrementalTimeline
+{
+    public const SCHEMA=1;
+    private const MAX_LOG_BYTES=262144;
+    private const MAX_EVENTS=256;
+    private const WINDOW=86400;
+    private const KEEP_LOG_BYTES=65536;
+
+    public static function evaluate(string $raw,array $prior,int $now):array
+    {
+        if ($now<=0 || strlen($raw)>self::MAX_LOG_BYTES) {
+            return [
+                'report'=>self::emptyReport(['INVALID_CLOCK_OR_LOG_SIZE']),
+                'next'=>$prior
+            ];
+        }
+        $initialized=($prior['initialized']??false)===true;
+        $lastRaw=$prior['lastRaw']??null;
+        $history=$prior['events']??[];
+        if(!is_array($history)||!array_is_list($history)
+            || count($history)>self::MAX_EVENTS
+            || ($initialized && !is_string($lastRaw))) {
+            $initialized=false;$lastRaw=null;$history=[];
+        }
+        $warnings=[];
+        $continuity='OK';
+        $fresh=[];
+        $historicBaseline=!$initialized;
+        if (!$initialized) {
+            $continuity='BASELINE_ONLY';
+        } elseif ($raw===$lastRaw) {
+            // Normal repeated 60-second reads without new proof log entries.
+        } else {
+            $delta=null;
+            if (str_starts_with($raw,$lastRaw)) {
+                $delta=substr($raw,strlen($lastRaw));
+            } elseif ($lastRaw!=='') {
+                // P03 trims long Protocol to its latest ~55k bytes.
+                // Anchor at the prior raw TAIL; a missing anchor is a
+                // discontinuity, not a license to replay old commissionings.
+                $n=min(2048,strlen($lastRaw));
+                $tail=substr($lastRaw,-$n);
+                if($n>=64) {
+                    $pos=strpos($raw,$tail);
+                    if($pos!==false) {
+                        $delta=substr($raw,$pos+$n);
+                        $continuity='TAIL_OVERLAP_AFTER_ROTATION';
+                    }
+                }
+            }
+            if($delta===null) {
+                $continuity='LOG_GAP_OR_RESET';
+                $warnings[]='P03_LOG_GAP_OR_RESET';
+            } else {
+                $tokens=preg_split(
+                    '/(?=\[20\d\d-\d\d-\d\d \d\d:\d\d:\d\d\])/',
+                    $delta,-1,PREG_SPLIT_NO_EMPTY
+                );
+                if (!is_array($tokens)||count($tokens)>512) {
+                    $warnings[]='P03_LOG_BATCH_INVALID';
+                } else {
+                    foreach($tokens as $token) {
+                        if(!preg_match(
+                            '/^\s*\[(20\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\]\s*'
+                            .'P03 PROOF (VERIFIED|STRONG_VERIFIED) '
+                            .'(HOME_TO_LAGER|LAGER_TO_HOME) via '
+                            .'(P03_2CAM_JV_THEN_WORK|P03_2CAM_WORK_THEN_JV)(?:\s|$)/D',
+                            trim($token),$m
+                        )) continue;
+                        $direction=$m[3];$route=$m[4];
+                        if (($direction==='HOME_TO_LAGER'
+                            && $route!=='P03_2CAM_JV_THEN_WORK')
+                            ||($direction==='LAGER_TO_HOME'
+                                && $route!=='P03_2CAM_WORK_THEN_JV')) {
+                            $warnings[]='P03_DIRECTION_ROUTE_MISMATCH';
+                            continue;
+                        }
+                        $at=self::timestamp($m[1]);
+                        if($at===null||$at<=$now-self::WINDOW
+                            ||$at>$now+10) {
+                            $warnings[]='P03_EVENT_TIME_UNTRUSTED';
+                            continue;
+                        }
+                        $fresh[]=[
+                            'at'=>$at,'localTime'=>$m[1],
+                            'direction'=>$direction,'route'=>$route,
+                            'source'=>'P03_TWO_MAST_VERIFIED'
+                        ];
+                    }
+                }
+            }
+        }
+        $entries=[];
+        foreach($history as $event) {
+            if(!is_array($event)
+                || !is_int($event['at']??null)
+                || $event['at']<=$now-self::WINDOW
+                || $event['at']>$now+10
+                || !in_array(($event['direction']??''),[
+                    'HOME_TO_LAGER','LAGER_TO_HOME'
+                ],true)
+                || !is_string($event['localTime']??null)
+                || !is_string($event['route']??null))continue;
+            $key=$event['localTime'].'|'.$event['direction'].'|'.$event['route'];
+            $entries[$key]=$event;
+        }
+        $newProofs=0;
+        foreach($fresh as $event) {
+            $key=$event['localTime'].'|'.$event['direction'].'|'.$event['route'];
+            if(isset($entries[$key])) {
+                // Multiple same-second identical routes could be different
+                // people, but P03 does not certify that. Count once.
+                $warnings[]='P03_SAME_SECOND_PROOF_AMBIGUOUS';
+                continue;
+            }
+            $entries[$key]=$event;
+            $newProofs++;
+        }
+        usort($entries,static fn($a,$b)=>($b['at']<=>$a['at'])
+            ?:strcmp($a['direction'],$b['direction']));
+        if(count($entries)>self::MAX_EVENTS) {
+            $warnings[]='P03_EVENT_HISTORY_LIMITED';
+            $entries=array_slice($entries,0,self::MAX_EVENTS);
+        }
+        $out=0;$in=0;
+        foreach($entries as $event) {
+            if($event['direction']==='HOME_TO_LAGER')$out++;
+            else $in++;
+        }
+        $report=[
+            'schema'=>self::SCHEMA,
+            'authority'=>'P03_LIVE_PROOFS_DIRECTION_ONLY',
+            'personPresenceMayBeChanged'=>false,
+            'propertyEmptyMayBeCertified'=>false,
+            'personCountCertified'=>false,
+            'identityCertified'=>false,
+            'historicCommissioningReplayedAsLive'=>false,
+            'baselineOnly'=>$historicBaseline,
+            'logContinuity'=>$continuity,
+            'newDirectionProofsThisRead'=>$newProofs,
+            'directionProofs24h'=>['HOME_TO_LAGER'=>$out,
+                'LAGER_TO_HOME'=>$in],
+            'lastDirectionAt'=>($entries[0]['at']??null),
+            'recentDirectionProofs'=>array_slice($entries,0,15),
+            'warnings'=>array_values(array_unique($warnings))
+        ];
+        return ['report'=>$report,'next'=>[
+            'initialized'=>true,
+            'lastRaw'=>strlen($raw)>self::KEEP_LOG_BYTES
+                ?substr($raw,-self::KEEP_LOG_BYTES):$raw,
+            'events'=>$entries
+        ]];
+    }
+
+    private static function timestamp(string $localTime):?int
+    {
+        try {
+            $date=DateTimeImmutable::createFromFormat(
+                '!Y-m-d H:i:s',$localTime,new DateTimeZone('Europe/Berlin')
+            );
+            if(!$date || $date->format('Y-m-d H:i:s')!==$localTime)
+                return null;
+            return $date->getTimestamp();
+        }catch(Throwable $e) {return null;}
+    }
+
+    private static function emptyReport(array $warnings):array
+    {
+        return [
+            'schema'=>self::SCHEMA,
+            'authority'=>'P03_LIVE_PROOFS_DIRECTION_ONLY',
+            'personPresenceMayBeChanged'=>false,
+            'propertyEmptyMayBeCertified'=>false,
+            'personCountCertified'=>false,
+            'identityCertified'=>false,
+            'historicCommissioningReplayedAsLive'=>false,
+            'baselineOnly'=>true,
+            'logContinuity'=>'UNKNOWN',
+            'newDirectionProofsThisRead'=>0,
+            'directionProofs24h'=>['HOME_TO_LAGER'=>0,'LAGER_TO_HOME'=>0],
+            'lastDirectionAt'=>null,'recentDirectionProofs'=>[],
+            'warnings'=>$warnings
+        ];
+    }
+}
