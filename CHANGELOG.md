@@ -1,3 +1,13 @@
+# v0.8.18 (Build 99) – Identitäts-/Anwesenheits-SHADOW ohne Zusatzhardware
+
+- **Keine Wiederholung der bereits am 12.10.2026 erfolgreich abgeschlossenen P03-Gehtests.** Archiviertes P03-Protokoll (2× HOME→LAGER, 2× LAGER→HOME, Straße OUT=RightToLeft, IN=LeftToRight) wird gelesen, ohne Live-Kamera-/IVS-Konfiguration zu ändern.
+- Neue **optionale und standardmäßig ausgeschaltete** Instanz `JV Presence Identity Shadow` mit exakt **zwei Ausgabevariablen**. Keine Buchung von Personen, HOME/AWAY oder Leerstand; P03/P05, Alarmanlage, Lichtautomatik und LCN bleiben unberührt.
+- Neues **einmaliges Lesen des aktuellen SymBox-LCN-GUS-Inventars** auf Knopfdruck. Sechs bekannte GUS-IDs aus dem Bestandsstand 06.10. sind deaktiviert vorbefüllt. Weitere Bewegungsmelder, insbesondere EG Wohnen Küche, lassen sich lokal per bereits vorhandener IPS-Instanz/Statusvariable auflisten, ohne händische Gehtests oder Netzwerkzugriffe.
+- Bestehende Smartphone-Nachweise optional einlesbar, jedoch **nie** als Personenidentifikation missbrauchen: vergessenes Smartphone, Fremde, zwei Personen und fehlende Gruppenzählung bleiben korrekt ungeklärt.
+- Vorhandene GUS, Licht-, Tor- und Fahrzeug-Statusvariablen als **rein lesende Hinweise**; kurze Bewegungsimpulse über lokale Symcon-`VM_UPDATE`-Registrierungen, 60-s-Reservepoll. Kamin/Uhrfilter 25–35 min, Küchenbestätigung ±60 s und zwei unabhängige Bewegungsmelder, keine Personenzählung aus Sensorruhe.
+- Fail-closed bei unvollständiger Bestandsliste, unklaren Quellen, alten/mangelhaften IVS-Ereignissen, wiederholten Logs und großen Gruppen. Umfangreiche CI-Simulationen und Modulregistrierungstests.
+- **Wichtig:** Firmware-/SymBox-Livetest der neuen Instanz steht noch aus; sie bleibt bis zur bewussten Aktivierung deaktiviert.
+
 # v0.8.17 (Build 98) – neun UniFi-APs inventarisieren ohne Netzwerkscan oder Änderungen
 
 - Vollständig **nur lesender** Einmalbutton für bestehende **lokale** Symcon-Objekte: Name und ausschließlich IP-Quellfelder aus bereits gespeicherten Konfigurationen. Keine Geräteabfrage, kein Netzwerktraffic, kein Login, kein Schreiben.
