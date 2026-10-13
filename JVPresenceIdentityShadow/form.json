@@ -17,9 +17,18 @@
       "maximum": 2147483647
     },
     {
+      "type": "CheckBox",
+      "name": "EnablePhoneIntegration",
+      "caption": "Smartphone/WLAN später optional verbinden – aktuell AUS lassen"
+    },
+    {
+      "type": "Label",
+      "caption": "Smartphone-/WLAN-Aufbau erfolgt separat. Bei AUS werden weder Smartphone-Observer gesucht noch deren Daten gelesen. P03 und alle 15 GUS funktionieren unabhängig."
+    },
+    {
       "type": "NumberSpinner",
       "name": "PhoneObserverInstanceID",
-      "caption": "Smartphone-Observer-ID (0 = automatisch vorhandenen eindeutigen Observer finden)",
+      "caption": "Smartphone-Observer-ID (erst nach späterer Freigabe relevant; 0 = automatische Suche nach opt-in)",
       "minimum": 0,
       "maximum": 2147483647
     },
@@ -146,6 +155,10 @@
     {
       "type": "Label",
       "caption": "Bei genau einem vorhandenen JV Presence Phone Observer wird dessen Evidenz mit ID=0 automatisch und nur lesend verwendet. P03 Live-Zähler zählt nachgewiesene Richtungsereignisse, keine Personen. Keine HOME/AWAY-Buchungen."
+    },
+    {
+      "type": "Label",
+      "caption": "Fortlaufende GUS-Raumübersicht: localActivity zeigt pro Melder die letzten registrierten Bewegungsimpulse aus einem rollenden 24-Stunden-Fenster, ohne alte Ereignisse mehrfach zu zählen. Bewegung ≠ Personenanzahl; Ruhe ≠ Abwesenheit."
     }
   ],
   "actions": [
