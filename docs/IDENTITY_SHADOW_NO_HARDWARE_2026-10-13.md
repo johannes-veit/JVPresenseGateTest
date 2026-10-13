@@ -165,4 +165,15 @@ Technisch:
 
 Regressionstest `tests/JVLocalSensorEvidenceTest.php` plus die erweiterte `tests/JVP03ProofLogReplayTest.php` prüfen Start-Baseline, Uhr-Minuten-Grenzen, Küchenbestätigung, zwei GUS, verschiedene Zonen, aktive Lichter, Tore/Fahrzeuge, falsche Typen, Duplikate, Quellenwechsel, Update-Subscriptions und wiederholte identische Symcon-Werte.
 
-**Live-Datenquelle:** Die genauen IDs der LCN-GUS-/Licht-/Torausgänge sind noch nicht in dieser Entwicklungsumgebung verfügbar. Deshalb sind die neuen Quellzeilen bei Auslieferung **leer** (fail-closed), bis sie anhand realer existierender IP-Symcon-Objekte eindeutig zugeordnet werden. Die vorhandenen P03-Gehtests und Kamera-Exporte müssen dafür **nicht erneut** bereitgestellt werden.
+**Live-Datenquelle:** Ein bereits vorhandener, auf **06.10.2026** datierter Symcon-Objektexport wurde nachträglich in der Library gefunden. Darin sind diese **historisch dokumentierten** GUS-Boolean-`Status`-Quellen:
+
+| Quellrolle | Bestands-ID | Voreinstellung |
+| --- | ---: | --- |
+| EG Wohnen Kamin | `42452` | `MOTION_KAMIN`, **AUS** |
+| EG Flur | `39155` | `MOTION`, **AUS** |
+| OG Flur | `22933` | `MOTION`, **AUS** |
+| OG Ankleide Decke | `25969` | `MOTION`, **AUS** |
+| OG Bad Dusche | `30215` | `MOTION`, **AUS** |
+| OG Ankleide | `51583` | `MOTION`, **AUS** |
+
+Alle sechs sind **nur als deaktivierte Vorschläge** vorausgefüllt. Sie sind noch keine aktuelle Live-Bestätigung und dürfen erst nach Prüfung des realen Symcon-Objektpfads und Typs aktiviert werden. Die Küchen-GUS-ID sowie vollständige Licht-/Torausgangs-IDs sind in diesem unvollständigen Export nicht sicher enthalten und werden nicht erfunden. Die vorhandenen P03-Gehtests und Kamera-Exporte müssen dafür **nicht erneut** bereitgestellt werden.
