@@ -64,6 +64,8 @@ $r=run($both,[transfer('yard',100,'HOME','PROPERTY_OTHER',2),
     transfer('gate',101,'PROPERTY_OTHER','AWAY',2)],
     [],false);
 check($r['certificates']['PROPERTY_EMPTY_CERTIFIED'],false,'no certified initial inventory');
+check($r['people']['johannes']['zone'],'UNKNOWN','uncertified initial state cannot assert Johannes away');
+check($r['countsCertified'],false,'uncertified inventory means uncertified counts');
 
 $r=run($both,[transfer('yard',100,'HOME','PROPERTY_OTHER',2),
     transfer('gate',101,'PROPERTY_OTHER','AWAY',2)],
@@ -104,7 +106,8 @@ check($r['certificates']['HOME_EMPTY_CERTIFIED'],false,'visitor may remain');
 $p=proof();$p['human']=false;
 $r=run(['johannes'=>'HOME'],[transfer('bad',100,'HOME','AWAY',1,$p)]);
 check($r['stopped'],true,'unverified human blocks state');
-check($r['people']['johannes']['zone'],'HOME','no transition for bad IVS');
+check($r['people']['johannes']['zone'],'UNKNOWN','unverified IVS suspends known-person status');
+check($r['people']['johannes']['identityResolved'],false,'unverified IVS cannot publish identity');
 check($r['certificates']['HOME_EMPTY_CERTIFIED'],false,'no certificate after bad IVS');
 
 $r=run(['johannes'=>'HOME'],[
