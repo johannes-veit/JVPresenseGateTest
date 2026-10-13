@@ -105,7 +105,7 @@ function IPS_GetObjectIDByIdent(string $ident,int $id):int|false {
 }
 function IPS_VariableExists(int $id):bool {return isset($GLOBALS['meta'][$id]);}
 function IPS_GetVariable(int $id):array {return $GLOBALS['meta'][$id];}
-function GetValue(int $id):string {
+function GetValue(int $id):mixed {
     $GLOBALS['readCount']++;
     return $GLOBALS['raw'][$id];
 }
@@ -114,14 +114,19 @@ class IPSModule {
     public array $values=[];
     public array $timer=[];
     public array $writes=[];
+    public array $buffers=[];
     public function Create():void {}
     public function ApplyChanges():void {}
     protected function RegisterPropertyBoolean(string $k,bool $v):void {$this->properties[$k]=$v;}
     protected function RegisterPropertyInteger(string $k,int $v):void {$this->properties[$k]=$v;}
+    protected function RegisterPropertyString(string $k,string $v):void {$this->properties[$k]=$v;}
+    protected function ReadPropertyString(string $k):string {return (string)($this->properties[$k]??'');}
     protected function RegisterVariableString(string $k,string $n,string $p='',int $o=0):void {$this->values[$k]='';}
     protected function RegisterTimer(string $k,int $ms,string $script):void {$this->timer[$k]=$ms;}
     protected function SetTimerInterval(string $k,int $ms):void {$this->timer[$k]=$ms;}
     protected function ReadPropertyBoolean(string $k):bool {return (bool)($this->properties[$k]??false);}
+    protected function SetBuffer(string $k,string $v):void {$this->buffers[$k]=$v;}
+    protected function GetBuffer(string $k):string {return (string)($this->buffers[$k]??'');}
     protected function ReadPropertyInteger(string $k):int {return (int)($this->properties[$k]??0);}
     protected function GetValue(string $k):mixed {return $this->values[$k]??null;}
     protected function SetValue(string $k,mixed $v):void {
@@ -159,6 +164,57 @@ eq($observed['propertyEmptyMayBeCertified'],false,'P03 and phone cannot certify 
 $writeCount=count($module->writes);
 for($i=0;$i<100;$i++)$module->Refresh();
 eq(count($module->writes),$writeCount,'100 unchanged refreshes add zero variable writes');
+
+// Local LCN and output-variable integration without any real Symcon writes.
+// Sensor snapshots are initially BASELINED, not replayed as new movements.
+$GLOBALS['meta'][7001]=['VariableType'=>0,'VariableChanged'=>time()-10];
+$GLOBALS['meta'][7002]=['VariableType'=>0,'VariableChanged'=>time()-10];
+$GLOBALS['meta'][7003]=['VariableType'=>0,'VariableChanged'=>time()-10];
+$GLOBALS['meta'][7004]=['VariableType'=>1,'VariableChanged'=>time()-10];
+$GLOBALS['raw'][7001]=true; // active when SHADOW attaches: NOT a new person
+$GLOBALS['raw'][7002]=false;
+$GLOBALS['raw'][7003]=false; // light off
+$GLOBALS['raw'][7004]=0; // gate closed
+$module->properties['SensorSources']=json_encode([
+  ['Enabled'=>true,'SourceID'=>'flur','Name'=>'Flur','Kind'=>'MOTION',
+   'Zone'=>'HOME','VariableID'=>7001],
+  ['Enabled'=>true,'SourceID'=>'bad','Name'=>'Bad','Kind'=>'MOTION',
+   'Zone'=>'HOME','VariableID'=>7002],
+  ['Enabled'=>true,'SourceID'=>'licht','Name'=>'Licht','Kind'=>'LIGHT',
+   'Zone'=>'HOME','VariableID'=>7003],
+  ['Enabled'=>true,'SourceID'=>'tor','Name'=>'Garagentor','Kind'=>'GATE',
+   'Zone'=>'PROPERTY_OTHER','VariableID'=>7004]
+]);
+$module->Refresh();
+$first=json_decode($module->values['EvidenceJSON'],true);
+eq($first['localSensors']['motionSignals'],[],
+   'GUS active at attach does not invent a new event');
+eq($first['localSensors']['allConfiguredLightsOff'],true,
+   'selected light OFF remains contextual only');
+eq($first['propertyEmptyMayBeCertified'],false,
+   'no all-dark garage-closed or GUS claim certifies vacancy');
+// Emulate a real OFF then a fresh ON edge on two independent GUS.
+$GLOBALS['raw'][7001]=false;
+$GLOBALS['meta'][7001]['VariableChanged']=time()-1;
+$module->Refresh();
+$GLOBALS['raw'][7001]=true;
+$GLOBALS['meta'][7001]['VariableChanged']=time();
+$module->Refresh();
+$one=json_decode($module->values['EvidenceJSON'],true);
+eq($one['localSensors']['zones']['HOME']['activity'],'SINGLE_MOTION_HINT',
+   'one independently changed GUS reports weak activity only');
+$GLOBALS['raw'][7002]=true;
+$GLOBALS['meta'][7002]['VariableChanged']=time();
+$module->Refresh();
+$two=json_decode($module->values['EvidenceJSON'],true);
+eq($two['localSensors']['zones']['HOME']['activity'],'CORROBORATED_MOTION_HINT',
+   'two separate GUS inside 60sec report corroborated motion');
+eq($two['people']['johannes'],'UNKNOWN','two GUS do not identify Johannes');
+eq($two['personPresenceMayBeChanged'],false,'GUS never commands core');
+$writesAfterMotion=count($module->writes);
+for($i=0;$i<100;$i++)$module->Refresh();
+eq(count($module->writes),$writesAfterMotion,
+   '100 fixed LCN snapshots do not create output write storms');
 
 $module->properties['P03InstanceID']=22222;
 $module->Refresh();
