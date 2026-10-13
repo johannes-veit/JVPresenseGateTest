@@ -116,6 +116,112 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->Refresh();
     }
 
+    /**
+     * One-click LOCAL READ-ONLY audit. Does not enable any sensor, start a
+     * camera, alter P03, write LCN commands, or edit configured IDs.
+     * Finds pre-existing LCN Unit motion sensors including the missing
+     * kitchen GUS if it exists in the current SymBox object tree.
+     */
+    public function AuditLocalLCNInventory(): void
+    {
+        $guids=['{2D871359-14D8-493F-9B01-26432E3A710F}'];
+        $rows=json_decode($this->ReadPropertyString('SensorSources'),true);
+        $rows=is_array($rows)&&array_is_list($rows)?$rows:[];
+        $configured=[];
+        foreach(array_slice($rows,0,64) as $row) {
+            if(!is_array($row)) continue;
+            $id=$row['VariableID']??0;
+            if(!is_int($id)||$id<=0) continue;
+            $entry=['id'=>$id,'sourceID'=>(string)($row['SourceID']??''),
+                'kind'=>(string)($row['Kind']??''),
+                'configuredEnabled'=>($row['Enabled']??false)===true,
+                'valid'=>false,'name'=>'','parentID'=>null,'error'=>''];
+            try {
+                if(!IPS_VariableExists($id)) {
+                    $entry['error']='VARIABLE_MISSING';
+                } else {
+                    $meta=IPS_GetVariable($id);
+                    $obj=IPS_GetObject($id);
+                    $parent=(int)($obj['ParentID']??0);
+                    $entry['name']=(string)IPS_GetName($id);
+                    $entry['parentID']=$parent?:null;
+                    $type=$meta['VariableType']??null;
+                    if(!in_array($type,[0,1],true)) {
+                        $entry['error']='WRONG_TYPE';
+                    } elseif(str_starts_with($entry['kind'],'MOTION')) {
+                        $inst=$parent>0?IPS_GetInstance($parent):[];
+                        $gid=(string)($inst['ModuleInfo']['ModuleID']??'');
+                        $parentName=$parent>0?(string)IPS_GetName($parent):'';
+                        $looksMotion=stripos($parentName,'Bewegung')!==false;
+                        $validName=strcasecmp($entry['name'],'Status')===0;
+                        if(!in_array(strtoupper($gid),$guids,true)
+                            || !$looksMotion || !$validName || $type!==0) {
+                            $entry['error']='GUS_PARENT_TYPE_OR_NAME_MISMATCH';
+                        } else {
+                            $entry['valid']=true;
+                        }
+                    } else {
+                        // For LIGHT/GATE/VEHICLE the source semantics still
+                        // need separate verification by a user; only type
+                        // and existence can be checked without live context.
+                        $entry['error']='OUTPUT_MEANING_NOT_VERIFIED';
+                    }
+                }
+            } catch(Throwable $e) {
+                $entry['error']='SOURCE_READ_ERROR';
+            }
+            $configured[]=$entry;
+        }
+        $found=[];
+        $limitsReached=false;
+        foreach($guids as $guid) {
+            try {
+                $instances=IPS_GetInstanceListByModuleID($guid);
+                if(!is_array($instances)) continue;
+                if(count($instances)>400) {
+                    $instances=array_slice($instances,0,400);
+                    $limitsReached=true;
+                }
+                foreach($instances as $instId) {
+                    if(count($found)>=80) {$limitsReached=true;break;}
+                    $instId=(int)$instId;
+                    if($instId<=0) continue;
+                    $instanceName=(string)IPS_GetName($instId);
+                    if(stripos($instanceName,'Bewegung')===false) continue;
+                    $children=IPS_GetChildrenIDs($instId);
+                    if(!is_array($children)) continue;
+                    foreach(array_slice($children,0,24) as $child) {
+                        $child=(int)$child;
+                        if($child<=0 || strcasecmp((string)IPS_GetName($child),'Status')!==0
+                            || !IPS_VariableExists($child)) continue;
+                        $meta=IPS_GetVariable($child);
+                        if(($meta['VariableType']??null)!==0) continue;
+                        $found[]=['variableId'=>$child,'unitId'=>$instId,
+                            'name'=>$instanceName];
+                    }
+                }
+            } catch(Throwable $e) {
+                $limitsReached=true;
+            }
+        }
+        usort($found,static fn($a,$b)=>strcmp($a['name'],$b['name']));
+        $validCount=count(array_filter($configured,
+            static fn($entry)=>($entry['valid']??false)===true));
+        $report=[
+            'schema'=>1,'authority'=>'SHADOW_LOCAL_INVENTORY_ONLY',
+            'personPresenceMayBeChanged'=>false,
+            'propertyEmptyMayBeCertified'=>false,
+            'configurationChanged'=>false,
+            'devicesChanged'=>false,
+            'configuredCandidates'=>$configured,
+            'detectedLCNMotionSensors'=>$found,
+            'inventoryLimited'=>$limitsReached
+        ];
+        $this->publish($report,'LCN INVENTUR (NUR LESEN): '
+            .$validCount.'/'.count($configured).' bestehende Quellen geprüft; '
+            .count($found).' Bewegungsmelder gefunden. Details in Nachweise (JSON).');
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
