@@ -524,4 +524,47 @@ eq($off['localActivity']['propertyEmptyMayBeCertified'],false,
 
 $module->properties['Enabled']=false;
 $module->ApplyChanges();
+
+// Shadow integration: archived commissioning is BASELINE, never a current
+// HOME/WORK person event. A newly appended P03 proof appears once.
+$module->buffers['P03IncrementalTimeline']='{}';
+$module->properties['EnablePhoneIntegration']=false;
+$module->properties['Enabled']=true;
+$GLOBALS['raw'][53524]=$historic;
+$module->ApplyChanges();
+$p03Initial=json_decode($module->values['EvidenceJSON'],true);
+eq($p03Initial['p03LiveTimeline']['baselineOnly'],true,
+    'historic field-test log baseline not new occupancy');
+eq($p03Initial['p03LiveTimeline']['directionProofs24h'],
+    ['HOME_TO_LAGER'=>0,'LAGER_TO_HOME'=>0],
+    'do not replay yesterday as today movement');
+eq($p03Initial['phoneLink']['state'],'DISABLED_SEPARATE_PROJECT',
+    'phone remains disabled regardless of P03 proof');
+$localBerlin=(new DateTimeImmutable('now',
+    new DateTimeZone('Europe/Berlin')))->format('Y-m-d H:i:s');
+$GLOBALS['raw'][53524]=$historic."\n[$localBerlin] "
+    .'P03 PROOF VERIFIED HOME_TO_LAGER via P03_2CAM_JV_THEN_WORK';
+$module->Refresh();
+$actual=json_decode($module->values['EvidenceJSON'],true);
+eq($actual['p03LiveTimeline']['newDirectionProofsThisRead'],1,
+    'new P03 log append reflected in shadow');
+eq($actual['p03LiveTimeline']['directionProofs24h']['HOME_TO_LAGER'],1,
+    'live directional proof counted exactly once');
+eq($actual['recentCombinedEvidence'][0]['kind'],'P03_ZONE_DIRECTION',
+    'P03 event included in combined timeline');
+eq($actual['recentCombinedEvidence'][0]['identity'],'UNKNOWN',
+    'combined timeline cannot invent a named person');
+eq($actual['p03LiveTimeline']['personCountCertified'],false,
+    'verified crossing is not number of people');
+$module->Refresh();
+$repeat=json_decode($module->values['EvidenceJSON'],true);
+eq($repeat['p03LiveTimeline']['directionProofs24h']['HOME_TO_LAGER'],1,
+    'same P03 protocol is idempotent across polls');
+eq($repeat['p03LiveTimeline']['newDirectionProofsThisRead'],0,
+    'unchanged P03 protocol has zero new entries');
+eq($repeat['localSensors']['sourceCount'],15,
+    'new P03 timeline cannot remove existing GUS');
+
+$module->properties['Enabled']=false;
+$module->ApplyChanges();
 echo "P03 historic replay & passive shadow PASS ($checks assertions)\n";
