@@ -103,6 +103,18 @@ function IPS_GetInstance(int $id):array {
 function IPS_GetObjectIDByIdent(string $ident,int $id):int|false {
     return $GLOBALS['ids'][$id.':'.$ident]??false;
 }
+function IPS_GetInstanceListByModuleID(string $guid):array {
+    return $guid==='{2D871359-14D8-493F-9B01-26432E3A710F}'?[8001,8002]:[];
+}
+function IPS_GetChildrenIDs(int $id):array {
+    return $GLOBALS['unitChildren'][$id]??[];
+}
+function IPS_GetObject(int $id):array {
+    return $GLOBALS['objects'][$id]??throw new RuntimeException('no object');
+}
+function IPS_GetName(int $id):string {
+    return $GLOBALS['names'][$id]??('object '.$id);
+}
 function IPS_VariableExists(int $id):bool {return isset($GLOBALS['meta'][$id]);}
 function IPS_GetVariable(int $id):array {return $GLOBALS['meta'][$id];}
 function GetValue(int $id):mixed {
@@ -278,5 +290,49 @@ eq($module->timer['ReadLocal'],0,'disabling shadow stops timer');
 eq(count($module->messages),0,'disabled instance releases all GUS subscriptions');
 eq(count($module->values),2,'module never creates more than 2 variables');
 $form=json_decode($module->GetConfigurationForm(),true);
-eq(count($form['actions']),1,'one read-only diagnostic button');
+eq(count($form['actions']),2,'two read-only diagnostic buttons');
+// A one-click LCN inventory must work even with Shadow DISABLED and
+// must not activate configured GUS, alter P03, or read camera credentials.
+$GLOBALS['instances'][8001]=['ModuleInfo'=>[
+    'ModuleID'=>'{2D871359-14D8-493F-9B01-26432E3A710F}']];
+$GLOBALS['instances'][8002]=['ModuleInfo'=>[
+    'ModuleID'=>'{2D871359-14D8-493F-9B01-26432E3A710F}']];
+$GLOBALS['names']=[
+    8001=>'Bewegungsmelder EG Wohnen Küche',7101=>'Status',
+    8002=>'Bewegungsmeder EG Wohnen Kamin',42452=>'Status'
+];
+$GLOBALS['objects']=[7101=>['ParentID'=>8001],42452=>['ParentID'=>8002]];
+$GLOBALS['unitChildren']=[8001=>[7101],8002=>[42452]];
+$GLOBALS['meta'][7101]=['VariableType'=>0];
+$GLOBALS['meta'][42452]=['VariableType'=>0];
+$module->properties['SensorSources']=json_encode([
+    ['Enabled'=>false,'SourceID'=>'eg_wohnen_kamin','Name'=>'Kamin',
+      'Kind'=>'MOTION_KAMIN','Zone'=>'HOME','VariableID'=>42452],
+    ['Enabled'=>false,'SourceID'=>'eg_flur','Name'=>'Flur',
+      'Kind'=>'MOTION','Zone'=>'HOME','VariableID'=>39155]
+]);
+$readsBefore=$GLOBALS['readCount'];
+$module->AuditLocalLCNInventory();
+$audit=json_decode($module->values['EvidenceJSON'],true);
+eq($audit['authority'],'SHADOW_LOCAL_INVENTORY_ONLY',
+    'one-click scan stays inventory-only');
+eq($audit['configuredCandidates'][0]['valid'],true,
+    'historic real Kamin source ID validated locally');
+eq($audit['configuredCandidates'][1]['error'],'VARIABLE_MISSING',
+    'stale source ID not enabled or assumed correct');
+eq(count($audit['detectedLCNMotionSensors']),2,
+    'discovery includes unconfigured kitchen GUS');
+eq($audit['detectedLCNMotionSensors'][1]['variableId'],7101,
+    'kitchen variable ID exposed without new walking test');
+eq($audit['configurationChanged'],false,
+    'audit did not reconfigure any Symcon source');
+eq($audit['devicesChanged'],false,
+    'audit never controls cameras or LCN');
+eq($GLOBALS['readCount'],$readsBefore,
+    'inventory audit reads metadata, not raw sensor or camera values');
+eq($module->timer['ReadLocal'],0,
+    'inventory audit does not start disabled shadow observer');
+eq(count($module->messages),0,
+    'inventory audit does not subscribe to local GUS');
+
 echo "P03 historic replay & passive shadow PASS ($checks assertions)\n";
