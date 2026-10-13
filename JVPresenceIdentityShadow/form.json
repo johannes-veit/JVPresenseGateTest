@@ -1,0 +1,38 @@
+{
+  "elements": [
+    {
+      "type": "Label",
+      "caption": "SHADOW: liest nur vorhandene Symcon-Variablen. Keine Änderungen an P03, P05, Kameras, LCN, Alarmanlage oder PresenceCore. Bewiesene Bewegungsrichtung bedeutet noch nicht bewiesene Personenzahl oder Identität."
+    },
+    {
+      "type": "CheckBox",
+      "name": "Enabled",
+      "caption": "SHADOW-Beobachtung einschalten (ausschließlich lokal lesen)"
+    },
+    {
+      "type": "NumberSpinner",
+      "name": "P03InstanceID",
+      "caption": "Bestehende P03-Hauptinstanz (bekannt: #53879)",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    {
+      "type": "NumberSpinner",
+      "name": "PhoneObserverInstanceID",
+      "caption": "Smartphone-Observer-ID (0 = ignorieren)",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    {
+      "type": "Label",
+      "caption": "P03-Testprotokoll liefert verifizierte Richtungspaarungen und die gelernte Straßenrichtung. Mehrere gleichzeitig gehende Personen sind damit NOCH NICHT sicher gezählt. Darum meldet das Modul ausdrücklich weder HOME/AWAY noch Leerstand."
+    }
+  ],
+  "actions": [
+    {
+      "type": "Button",
+      "caption": "Bestehende Nachweise anzeigen (nur lesen)",
+      "onClick": "JVIDSH_Refresh($id);"
+    }
+  ]
+}
