@@ -122,6 +122,7 @@ function GetValue(int $id):mixed {
     return $GLOBALS['raw'][$id];
 }
 class IPSModule {
+    public int $InstanceID=24680;
     public array $properties=[];
     public array $values=[];
     public array $timer=[];
@@ -153,8 +154,21 @@ class IPSModule {
         $this->writes[]=['key'=>$k,'value'=>$v];
     }
 }
+function IPS_SetProperty(int $instance,string $property,string $value):void {
+    if($instance!==24680) throw new RuntimeException('FOREIGN_INSTANCE_WRITE');
+    $GLOBALS['shadowPropertyWrites'][]=[$instance,$property];
+    $GLOBALS['shadowTestModule']->properties[$property]=$value;
+}
+function IPS_ApplyChanges(int $instance):void {
+    if($instance!==24680) throw new RuntimeException('FOREIGN_INSTANCE_APPLY');
+    $GLOBALS['shadowApplyCalls'][]=$instance;
+    $GLOBALS['shadowTestModule']->ApplyChanges();
+}
 require_once dirname(__DIR__).'/JVPresenceIdentityShadow/module.php';
 $module=new JVPresenceIdentityShadow();
+$GLOBALS['shadowTestModule']=$module;
+$GLOBALS['shadowPropertyWrites']=[];
+$GLOBALS['shadowApplyCalls']=[];
 $module->Create();
 $module->ApplyChanges();
 eq(count($module->values),2,'two variables total');
@@ -290,7 +304,7 @@ eq($module->timer['ReadLocal'],0,'disabling shadow stops timer');
 eq(count($module->messages),0,'disabled instance releases all GUS subscriptions');
 eq(count($module->values),2,'module never creates more than 2 variables');
 $form=json_decode($module->GetConfigurationForm(),true);
-eq(count($form['actions']),2,'two read-only diagnostic buttons');
+eq(count($form['actions']),3,'three safe local operations');
 // A one-click LCN inventory must work even with Shadow DISABLED and
 // must not activate configured GUS, alter P03, or read camera credentials.
 $GLOBALS['instances'][8001]=['ModuleInfo'=>[
@@ -335,4 +349,61 @@ eq($module->timer['ReadLocal'],0,
 eq(count($module->messages),0,
     'inventory audit does not subscribe to local GUS');
 
+
+// Already provided 13 Oct live inventory: all fifteen status variables.
+// Check a one-click import is limited to this Shadow instance, even if the
+// observer itself stays globally OFF and without any extra field walk tests.
+foreach(JVLCNGUSInventory::KNOWN as $known) {
+    $unit=$known['unit'];
+    $id=$known['id'];
+    $GLOBALS['instances'][$unit]=['ModuleInfo'=>[
+        'ModuleID'=>JVLCNGUSInventory::LCN_UNIT_GUID
+    ]];
+    $GLOBALS['objects'][$id]=['ParentID'=>$unit];
+    $GLOBALS['meta'][$id]=['VariableType'=>0,'VariableChanged'=>time()-60];
+    $GLOBALS['names'][$unit]=$known['name'];
+    $GLOBALS['names'][$id]='Status';
+    $GLOBALS['raw'][$id]=false;
+}
+$module->ImportVerifiedLCNGUS();
+$import=json_decode($module->values['EvidenceJSON'],true);
+eq($import['authority'],'SHADOW_LOCAL_GUS_SOURCES_CONFIGURED',
+    'import current 15 GUS in Shadow-only settings');
+eq($import['importedCount'],15,'user-supplied real 15 GUS IDs are all found');
+eq($import['configurationChanged'],true,'first one-click import changes own config');
+eq(count($GLOBALS['shadowPropertyWrites']),1,'exactly one property write for full import');
+eq(count($GLOBALS['shadowApplyCalls']),1,'exactly one own-instance apply');
+eq(count($module->messages),0,'global SHADOW still OFF; no subscriptions');
+eq($module->timer['ReadLocal'],0,'global SHADOW OFF; no timer');
+eq($module->properties['Enabled'],false,'global enable state unchanged');
+$rows=json_decode($module->properties['SensorSources'],true);
+eq(count($rows),15,'all 15 GUS imported; no duplicate pre-existing six');
+eq(count(array_filter($rows,static fn($r)=>$r['Enabled'])),15,
+    'fifteen per-source read flags ready, global observer still OFF');
+$kitchen=array_values(array_filter($rows,
+    static fn($r)=>($r['VariableID']??0)===51040));
+eq($kitchen[0]['Kind'],'MOTION_KITCHEN',
+    'newly discovered kitchen #51040 is Kamin corroborator');
+$kamin=array_values(array_filter($rows,
+    static fn($r)=>($r['VariableID']??0)===42452));
+eq($kamin[0]['Kind'],'MOTION_KAMIN','Kamin special rule retained');
+$module->ImportVerifiedLCNGUS();
+$again=json_decode($module->values['EvidenceJSON'],true);
+eq($again['configurationChanged'],false,'repeat button idempotent');
+eq(count($GLOBALS['shadowPropertyWrites']),1,
+    'repeat import has no additional writes');
+eq(count($GLOBALS['shadowApplyCalls']),1,
+    'repeat import has no second IPS_ApplyChanges');
+
+$sourceBefore=$module->properties['SensorSources'];
+$GLOBALS['names'][51040]='Alarm'; // an unexpected rename is a blocker
+$module->ImportVerifiedLCNGUS();
+$blocked=json_decode($module->values['EvidenceJSON'],true);
+eq($blocked['authority'],'SHADOW_LOCAL_GUS_IMPORT_REJECTED',
+   'renamed kitchen blocks importing everything');
+eq($module->properties['SensorSources'],$sourceBefore,
+   'failed import preserves all source configuration');
+eq(count($GLOBALS['shadowPropertyWrites']),1,
+   'failed import makes zero changes');
+$GLOBALS['names'][51040]='Status';
 echo "P03 historic replay & passive shadow PASS ($checks assertions)\n";

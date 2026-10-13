@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once dirname(__DIR__).'/libs/JVP03ProofLogReplay.php';
 require_once dirname(__DIR__).'/libs/JVLocalSensorEvidence.php';
+require_once dirname(__DIR__).'/libs/JVLCNGUSInventory.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -220,6 +221,102 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->publish($report,'LCN INVENTUR (NUR LESEN): '
             .$validCount.'/'.count($configured).' bestehende Quellen geprüft; '
             .count($found).' Bewegungsmelder gefunden. Details in Nachweise (JSON).');
+    }
+
+    /**
+     * On explicit button click, populate *this* Shadow instance with all 15
+     * physically existing GUS variables from the October 13 live inventory.
+     * Never enable the global Shadow observer or alter third-party instances.
+     * Full scan is repeated internally on the CURRENT SymBox object tree;
+     * incomplete/renamed/reused IDs abort without a partial configuration.
+     */
+    public function ImportVerifiedLCNGUS(): void
+    {
+        $inventory=[];
+        foreach(JVLCNGUSInventory::KNOWN as $known) {
+            $id=$known['id'];
+            try {
+                if(!IPS_VariableExists($id)) continue;
+                $meta=IPS_GetVariable($id);
+                $obj=IPS_GetObject($id);
+                $parent=$obj['ParentID']??0;
+                if(!is_int($parent)||$parent<=0) continue;
+                $inst=IPS_GetInstance($parent);
+                $inventory[]=[
+                    'variableId'=>$id,
+                    'unitId'=>$parent,
+                    'name'=>(string)IPS_GetName($parent),
+                    'moduleGUID'=>(string)($inst['ModuleInfo']['ModuleID']??''),
+                    'variableName'=>(string)IPS_GetName($id),
+                    'variableType'=>$meta['VariableType']??null
+                ];
+            } catch (Throwable $e) {
+                // A missing or inaccessible source blocks the complete
+                // import. It must NOT trigger a partial install.
+            }
+        }
+        $old=json_decode($this->ReadPropertyString('SensorSources'),true);
+        $result=JVLCNGUSInventory::propose($inventory,is_array($old)?$old:[]);
+        if($result['ok']) {
+            $validated=JVLocalSensorEvidence::validate($result['rows']);
+            if($validated['errors']) {
+                $result['ok']=false;
+                $result['errors']=$validated['errors'];
+            }
+        }
+        if(!$result['ok']) {
+            $this->publish([
+                'schema'=>1,'authority'=>'SHADOW_LOCAL_GUS_IMPORT_REJECTED',
+                'personPresenceMayBeChanged'=>false,
+                'propertyEmptyMayBeCertified'=>false,
+                'configurationChanged'=>false,
+                'devicesChanged'=>false,
+                'importedCount'=>0,'warnings'=>$result['errors']
+            ],'GUS-Import gesperrt – keine Änderung: '.implode(', ',array_slice($result['errors'],0,2)));
+            return;
+        }
+
+        if(!$result['unchanged']) {
+            $json=json_encode($result['rows'],
+                JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+            if(!is_string($json)) {
+                $this->publish([
+                    'schema'=>1,'authority'=>'SHADOW_LOCAL_GUS_IMPORT_REJECTED',
+                    'personPresenceMayBeChanged'=>false,
+                    'propertyEmptyMayBeCertified'=>false,
+                    'configurationChanged'=>false,'devicesChanged'=>false,
+                    'importedCount'=>0,'warnings'=>['JSON_ENCODING_FAILED']
+                ],'GUS-Import gesperrt – JSON-Fehler.');
+                return;
+            }
+            try {
+                // Write EXCLUSIVELY this observer's own property.
+                IPS_SetProperty($this->InstanceID,'SensorSources',$json);
+                IPS_ApplyChanges($this->InstanceID);
+            } catch(Throwable $e) {
+                $this->publish([
+                    'schema'=>1,'authority'=>'SHADOW_LOCAL_GUS_IMPORT_REJECTED',
+                    'personPresenceMayBeChanged'=>false,
+                    'propertyEmptyMayBeCertified'=>false,
+                    'configurationChanged'=>false,'devicesChanged'=>false,
+                    'importedCount'=>0,'warnings'=>['SHADOW_PROPERTY_APPLY_FAILED']
+                ],'GUS-Import konnte nicht übernommen werden. Instanz prüfen.');
+                return;
+            }
+        }
+        $this->publish([
+            'schema'=>1,'authority'=>'SHADOW_LOCAL_GUS_SOURCES_CONFIGURED',
+            'personPresenceMayBeChanged'=>false,
+            'propertyEmptyMayBeCertified'=>false,
+            'configurationChanged'=>!$result['unchanged'],
+            'devicesChanged'=>false,
+            'importedCount'=>$result['count'],
+            'globalObservationEnabled'=>$this->ReadPropertyBoolean('Enabled'),
+            'sources'=>$result['rows'],
+            'warnings'=>[]
+        ],'15/15 LCN-GUS in SHADOW übernommen (nur Lesen). '
+            .'Globale Beobachtung: '
+            .($this->ReadPropertyBoolean('Enabled')?'AN':'AUS – jetzt manuell einschalten'));
     }
 
     public function Refresh(): void

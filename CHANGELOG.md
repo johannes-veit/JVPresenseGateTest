@@ -1,3 +1,14 @@
+# v0.8.19 (Build 100) – 15 vorhandene LCN-GUS automatisch übernehmen
+
+- Die reale SymBox-Inventur vom **13.10.2026** hat **15 LCN-GUS** samt Variablen-ID, Geräteinstanz und Benennung geliefert. Die 6 früheren Einträge sind bestätigt.
+- Besonders wichtig: **EG Wohnen/Küche = #51040**, eigener Typ `MOTION_KITCHEN`; **EG Wohnen Kamin = #42452**, Typ `MOTION_KAMIN` mit dem bewährten Uhr-Filter und Küchenbestätigung.
+- Neue Taste **„2. Alle 15 geprüften LCN-GUS übernehmen (nur SHADOW-Konfiguration)“** in der bereits angelegten `JV Presence Identity Shadow`-Instanz. Kein mühsames manuelles Nachtragen der zusätzlichen neun GUS.
+- Bei Tastendruck werden **alle 15 aktuellen lokalen IPS-Variablen und ihre Elterninstanz/GUID/Name/Typ** nochmals automatisch verglichen. Jede Abweichung sperrt die ganze Sammelübernahme **ohne Teiländerung**.
+- Ausnahmslos nur die **SensorSources-Konfiguration der neuen Shadow-Instanz** wird geändert; selbst bei kompletter Übernahme bleiben `SHADOW Enabled`, P03, P05, LCN, Alarmanlage, Kameras und PresenceCore unangetastet.
+- Bereits eingetragene zusätzliche Licht-, Fahrzeug- und Torbeobachtungen werden unverändert behalten. Wiederholte Sammelübernahme erzeugt keine neuen Konfigurationsschreibvorgänge.
+- Softwaretests für alle 15 IDs, fehlende/widersprüchliche Quellen, vertauschte Küchenkennung, Duplikate, Idempotenz und echte `IPS_SetProperty`/`IPS_ApplyChanges`-Simulation. **Keine erneute P03-Feldprüfung** und keine weitere Hardware erforderlich.
+- Nach Übernahme kann die Shadow-Beobachtung separat eingeschaltet werden. Sie bewertet ausschließlich Hinweise und verändert weder Bewohnerstatus noch Leerstand.
+
 # v0.8.18 (Build 99) – Identitäts-/Anwesenheits-SHADOW ohne Zusatzhardware
 
 - **Keine Wiederholung der bereits am 12.10.2026 erfolgreich abgeschlossenen P03-Gehtests.** Archiviertes P03-Protokoll (2× HOME→LAGER, 2× LAGER→HOME, Straße OUT=RightToLeft, IN=LeftToRight) wird gelesen, ohne Live-Kamera-/IVS-Konfiguration zu ändern.
