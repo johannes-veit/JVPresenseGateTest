@@ -115,11 +115,18 @@ class IPSModule {
     public array $timer=[];
     public array $writes=[];
     public array $buffers=[];
+    public array $attributes=[];
+    public array $messages=[];
     public function Create():void {}
     public function ApplyChanges():void {}
     protected function RegisterPropertyBoolean(string $k,bool $v):void {$this->properties[$k]=$v;}
     protected function RegisterPropertyInteger(string $k,int $v):void {$this->properties[$k]=$v;}
     protected function RegisterPropertyString(string $k,string $v):void {$this->properties[$k]=$v;}
+    protected function RegisterAttributeString(string $k,string $v):void {$this->attributes[$k]=$v;}
+    protected function ReadAttributeString(string $k):string {return (string)($this->attributes[$k]??'');}
+    protected function WriteAttributeString(string $k,string $v):void {$this->attributes[$k]=$v;}
+    protected function RegisterMessage(int $id,int $code):void {$this->messages[$id.':'.$code]=true;}
+    protected function UnregisterMessage(int $id,int $code):void {unset($this->messages[$id.':'.$code]);}
     protected function ReadPropertyString(string $k):string {return (string)($this->properties[$k]??'');}
     protected function RegisterVariableString(string $k,string $n,string $p='',int $o=0):void {$this->values[$k]='';}
     protected function RegisterTimer(string $k,int $ms,string $script):void {$this->timer[$k]=$ms;}
@@ -140,6 +147,7 @@ $module->Create();
 $module->ApplyChanges();
 eq(count($module->values),2,'two variables total');
 eq($module->timer['ReadLocal'],0,'disabled by default: no background polling');
+eq(count($module->messages),0,'disabled default: no local VM_UPDATE subscriptions');
 eq($GLOBALS['readCount'],0,'disabled by default: no external read');
 
 $module->properties['Enabled']=true;
@@ -187,7 +195,8 @@ $module->properties['SensorSources']=json_encode([
   ['Enabled'=>true,'SourceID'=>'tor','Name'=>'Garagentor','Kind'=>'GATE',
    'Zone'=>'PROPERTY_OTHER','VariableID'=>7004]
 ]);
-$module->Refresh();
+$module->ApplyChanges();
+eq(count($module->messages),4,'only selected local source variables subscribed');
 $first=json_decode($module->values['EvidenceJSON'],true);
 eq($first['localSensors']['motionSignals'],[],
    'GUS active at attach does not invent a new event');
@@ -201,13 +210,13 @@ $GLOBALS['meta'][7001]['VariableChanged']=time()-1;
 $module->Refresh();
 $GLOBALS['raw'][7001]=true;
 $GLOBALS['meta'][7001]['VariableChanged']=time();
-$module->Refresh();
+$module->MessageSink(1,7001,10603,[]);
 $one=json_decode($module->values['EvidenceJSON'],true);
 eq($one['localSensors']['zones']['HOME']['activity'],'SINGLE_MOTION_HINT',
    'one independently changed GUS reports weak activity only');
 $GLOBALS['raw'][7002]=true;
 $GLOBALS['meta'][7002]['VariableChanged']=time();
-$module->Refresh();
+$module->MessageSink(2,7002,10603,[]);
 $two=json_decode($module->values['EvidenceJSON'],true);
 eq($two['localSensors']['zones']['HOME']['activity'],'CORROBORATED_MOTION_HINT',
    'two separate GUS inside 60sec report corroborated motion');
@@ -220,6 +229,21 @@ for($i=0;$i<100;$i++)$module->Refresh();
 eq(count($module->writes),$writesAfterMotion,
    '100 fixed LCN snapshots do not create output write storms');
 
+$unchanged=count($module->writes);
+$module->MessageSink(3,7002,10603,[]);
+eq(count($module->writes),$unchanged,
+   'same-value VM_UPDATE cannot generate extra output writes');
+$module->MessageSink(4,53524,10603,[]);
+eq(count($module->writes),$unchanged,
+   'unregistered P03 output ignored as event sender');
+$module->properties['SensorSources']=json_encode([
+    ['Enabled'=>true,'SourceID'=>'flur','Name'=>'Flur','Kind'=>'MOTION',
+     'Zone'=>'HOME','VariableID'=>7001]
+]);
+$module->ApplyChanges();
+eq(count($module->messages),1,'removed LCN sources are unsubscribed on changes');
+eq(isset($module->messages['7001:10603']),true,
+   'remaining subscribed source preserved');
 $module->properties['P03InstanceID']=22222;
 $module->Refresh();
 $wrong=json_decode($module->values['EvidenceJSON'],true);
@@ -251,6 +275,7 @@ eq(in_array('PHONE_SOURCE_INVALID_OR_UNAVAILABLE',$wrong['warnings'],true),true,
 $module->properties['Enabled']=false;
 $module->ApplyChanges();
 eq($module->timer['ReadLocal'],0,'disabling shadow stops timer');
+eq(count($module->messages),0,'disabled instance releases all GUS subscriptions');
 eq(count($module->values),2,'module never creates more than 2 variables');
 $form=json_decode($module->GetConfigurationForm(),true);
 eq(count($form['actions']),1,'one read-only diagnostic button');
