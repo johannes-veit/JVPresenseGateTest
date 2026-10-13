@@ -161,6 +161,8 @@ eq($observed['people']['carina'],'UNKNOWN',
     'identity stays unknown even if phone is away');
 eq($observed['personPresenceMayBeChanged'],false,'P03 and phone cannot alter presence');
 eq($observed['propertyEmptyMayBeCertified'],false,'P03 and phone cannot certify vacancy');
+// First post-baseline sample legitimately changes the baselineInitialized flag.
+$module->Refresh();
 $writeCount=count($module->writes);
 for($i=0;$i<100;$i++)$module->Refresh();
 eq(count($module->writes),$writeCount,'100 unchanged refreshes add zero variable writes');
