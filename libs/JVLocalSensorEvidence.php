@@ -131,10 +131,12 @@ final class JVLocalSensorEvidence
             // Preserve the current source timestamp to prevent replay on
             // repeated polls / when the motion flag stays ON. If the clock
             // steps backwards or an older update arrives, do not replay it.
-            $lastSeen=is_int($seen[$id]??null)?$seen[$id]:0;
+            $knownBefore=is_int($seen[$id]??null);
+            $lastSeen=$knownBefore?$seen[$id]:0;
             if ($at>$lastSeen) $seen[$id]=$at;
             $isMotion=str_starts_with($s['kind'],'MOTION');
-            if ($isMotion && $initialized && $value && $at>$lastSeen
+            // Also baseline newly configured sensors on an already running instance.
+            if ($isMotion && $initialized && $knownBefore && $value && $at>$lastSeen
                 && $at>=$now-self::FRESH_EDGE_TTL) {
                 $readings[$id]['isFreshMotion']=true;
                 $history[]=[
