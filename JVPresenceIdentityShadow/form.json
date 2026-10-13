@@ -2,7 +2,7 @@
   "elements": [
     {
       "type": "Label",
-      "caption": "SHADOW: liest nur vorhandene Symcon-Variablen. Keine Änderungen an P03, P05, Kameras, LCN, Alarmanlage oder PresenceCore. Bewiesene Bewegungsrichtung bedeutet noch nicht bewiesene Personenzahl oder Identität."
+      "caption": "SHADOW: nur vorhandene Daten lesen, niemals Personen-HOME/AWAY schalten. Nach erfolgreicher LCN-Inventur mit einem Klick alle 15 geprüften GUS (inklusive EG Wohnen/Küche) übernehmen; anschließend die separate SHADOW-Beobachtung aktivieren. Keine Änderung an Kameras, LCN, P03/P05, Licht oder Alarmanlage."
     },
     {
       "type": "CheckBox",
@@ -149,6 +149,11 @@
       "type": "Button",
       "caption": "1. Bestehende LCN-Bewegungsmelder-IDs prüfen (nur lesen)",
       "onClick": "JVIDSH_AuditLocalLCNInventory($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "2. Alle 15 geprüften LCN-GUS übernehmen (nur SHADOW-Konfiguration)",
+      "onClick": "JVIDSH_ImportVerifiedLCNGUS($id);"
     },
     {
       "type": "Button",
