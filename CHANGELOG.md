@@ -1,3 +1,13 @@
+# v0.8.20 (Build 101) – Smartphone-Observer automatisch wiederverwenden, P03 live nur lesen
+
+- Der am 13.10.2026 gelieferte Shadow-Bericht bestätigt: alle 15 LCN-GUS aktiv, baselineInitialized=true, warnings=[]. motionSignals=[] bedeutet vorläufig keinen neuen positiven Bewegungsimpuls. Das ist kein Leerstand und kein nachgewiesener Fehler.
+- phone=[]: Die aktuelle Instanz hat noch keine Smartphone-Beobachtung verbunden.
+- Bei PhoneObserverInstanceID=0 sucht der Shadow passiv nach bereits vorhandenen Instanzen des originalen JV Presence Phone Observer über dessen genaue Modul-GUID. Genau eine vorhandene Instanz wird automatisch lesend angeschlossen. Keine neue Instanz, kein Netzwerkpoll, kein Schreiben fremder Konfiguration.
+- Kein vorhandener Phone Observer meldet phoneLink.state=NO_OBSERVER_FOUND; bei mehreren phoneLink.state=AMBIGUOUS_MULTIPLE. Eine manuell eingetragene Instanz-ID hat Vorrang.
+- Aktuelle P03-Zähler aus der bestehenden Hauptinstanz #53879 werden nur gelesen: P03VerifiedTransfers und P03ProofState. Der Zähler zählt verifizierte Richtungsbeweise, niemals Personen. Die erfolgreiche Archivprüfung bleibt unverändert.
+- Individuelle Bewohner-Anwesenheit bleibt UNKNOWN, auch wenn Smartphone am Grundstück erkannt wird. Keine HOME/AWAY-Buchung und keinerlei Änderung an P03/P05/LCN/Kameras/Alarm.
+- Regression: automatische eindeutige Quelle, fehlende oder mehrere Instanzen, manuelle Auswahl, P03-Counter-Änderung, bestehende 15 GUS und fail-closed Grenzen.
+
 # v0.8.19 (Build 100) – 15 vorhandene LCN-GUS automatisch übernehmen
 
 - Die reale SymBox-Inventur vom **13.10.2026** hat **15 LCN-GUS** samt Variablen-ID, Geräteinstanz und Benennung geliefert. Die 6 früheren Einträge sind bestätigt.
