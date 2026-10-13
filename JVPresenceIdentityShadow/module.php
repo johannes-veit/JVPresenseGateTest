@@ -12,6 +12,7 @@ class JVPresenceIdentityShadow extends IPSModule
 {
     private const P03_GUID='{0A7A91CE-3BC1-4B1E-9C11-7B7E973F5C03}';
     private const PHONE_GUID='{B5BF0266-A4D1-40A0-AAC8-97E9C24C4173}';
+    private const VM_UPDATE=10603; // Symcon documented variable-update message
 
     public function Create(): void
     {
@@ -21,6 +22,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterPropertyInteger('P03InstanceID',53879);
         $this->RegisterPropertyInteger('PhoneObserverInstanceID',0);
         $this->RegisterPropertyString('SensorSources','[]');
+        $this->RegisterAttributeString('SensorSubscriptions','[]');
         $this->RegisterVariableString('Status','Identität – SHADOW Status','',0);
         $this->RegisterVariableString('EvidenceJSON','Identität – Nachweise (JSON)','',1);
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
@@ -31,12 +33,76 @@ class JVPresenceIdentityShadow extends IPSModule
     {
         parent::ApplyChanges();
         $this->SetTimerInterval('ReadLocal',$this->ReadPropertyBoolean('Enabled')?60000:0);
+        $this->syncSensorSubscriptions();
         $this->Refresh();
     }
 
     public function GetConfigurationForm(): string
     {
         return (string)file_get_contents(__DIR__.'/form.json');
+    }
+
+    /**
+     * Existing local IP-Symcon variables emit VM_UPDATE on updates. Watching
+     * them avoids missing short GUS impulses between 60-second fallback polls.
+     * Register only validated Boolean/Integer source variables; no new events,
+     * commands or sockets. The subscribed IDs are maintained as an attribute
+     * so stale registrations are removed when configuration changes.
+     */
+    private function syncSensorSubscriptions(): void
+    {
+        $old=json_decode($this->ReadAttributeString('SensorSubscriptions'),true);
+        $old=is_array($old)?$old:[];
+        $old=array_values(array_unique(array_filter($old,
+            static fn($v)=>is_int($v)&&$v>0)));
+        $next=[];
+        if ($this->ReadPropertyBoolean('Enabled')) {
+            $rows=json_decode($this->ReadPropertyString('SensorSources'),true);
+            $cfg=JVLocalSensorEvidence::validate(is_array($rows)?$rows:[]);
+            if ($cfg['errors']===[]) {
+                foreach ($cfg['sources'] as $source) {
+                    $id=$source['variableID'];
+                    try {
+                        if (!IPS_VariableExists($id)) continue;
+                        $meta=IPS_GetVariable($id);
+                        if (!in_array($meta['VariableType']??null,[0,1],true)) continue;
+                        $next[]=$id;
+                    } catch (Throwable $e) {
+                        continue;
+                    }
+                }
+            }
+        }
+        sort($old);sort($next);
+        // RegisterMessage is idempotent; only change actual differences.
+        foreach(array_diff($old,$next) as $id) {
+            try { $this->UnregisterMessage((int)$id,self::VM_UPDATE); }
+            catch (Throwable $e) {}
+        }
+        $registered=array_values(array_intersect($old,$next));
+        foreach(array_diff($next,$old) as $id) {
+            try {
+                $this->RegisterMessage((int)$id,self::VM_UPDATE);
+                $registered[]=(int)$id;
+            } catch(Throwable $e) {
+                // No messages for this source. The local fallback poll remains.
+            }
+        }
+        sort($registered);
+        $this->WriteAttributeString('SensorSubscriptions',
+            json_encode(array_values(array_unique($registered)))?:'[]');
+    }
+
+    public function MessageSink($TimeStamp, $SenderID, $Message, $Data): void
+    {
+        if(!$this->ReadPropertyBoolean('Enabled')
+            || (int)$Message!==self::VM_UPDATE) return;
+        $registered=json_decode($this->ReadAttributeString('SensorSubscriptions'),true);
+        if(!is_array($registered)
+            || !in_array((int)$SenderID,$registered,true)) return;
+        // React immediately to an update to avoid losing a short human
+        // pulse before the next poll. Read only current local Symcon data.
+        $this->Refresh();
     }
 
     public function Refresh(): void
