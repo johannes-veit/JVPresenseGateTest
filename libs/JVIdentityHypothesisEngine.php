@@ -253,7 +253,7 @@ final class JVIdentityHypothesisEngine
         $budget = self::MAX_WORLDS + 1;
         self::enumerateMoves($world, $known, $from, $to, $n, $availableUnknown,
             0, [], $results, $budget);
-        if (count($results) > self::MAX_WORLDS) return null;
+        if ($budget <= 0 || count($results) > self::MAX_WORLDS) return null; // never silently truncate possibilities
         return array_values($results);
     }
 
