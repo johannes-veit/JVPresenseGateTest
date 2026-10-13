@@ -79,8 +79,10 @@ class JVPresenceIdentityShadow extends IPSModule
             try { $this->UnregisterMessage((int)$id,self::VM_UPDATE); }
             catch (Throwable $e) {}
         }
-        $registered=array_values(array_intersect($old,$next));
-        foreach(array_diff($next,$old) as $id) {
+        $registered=[];
+        // Re-register desired IDs even if the attribute still lists them:
+        // after a Symcon service restart the registration must exist again.
+        foreach($next as $id) {
             try {
                 $this->RegisterMessage((int)$id,self::VM_UPDATE);
                 $registered[]=(int)$id;
