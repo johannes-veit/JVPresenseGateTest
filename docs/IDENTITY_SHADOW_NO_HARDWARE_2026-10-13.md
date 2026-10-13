@@ -177,3 +177,31 @@ Regressionstest `tests/JVLocalSensorEvidenceTest.php` plus die erweiterte `tests
 | OG Ankleide | `51583` | `MOTION`, **AUS** |
 
 Alle sechs sind **nur als deaktivierte Vorschläge** vorausgefüllt. Sie sind noch keine aktuelle Live-Bestätigung und dürfen erst nach Prüfung des realen Symcon-Objektpfads und Typs aktiviert werden. Die Küchen-GUS-ID sowie vollständige Licht-/Torausgangs-IDs sind in diesem unvollständigen Export nicht sicher enthalten und werden nicht erfunden. Die vorhandenen P03-Gehtests und Kamera-Exporte müssen dafür **nicht erneut** bereitgestellt werden.
+
+## Reale SymBox-GUS-Inventur am 13.10.2026: 15 von 15 bestätigt
+
+Der Nutzer hat den vollständigen JSON-Bericht des schon installierten `JV Presence Identity Shadow` geliefert: `authority=SHADOW_LOCAL_INVENTORY_ONLY`, `inventoryLimited=false`, sechs bisherige Konfigurationen valide und **15 vorhandene GUS-Statusvariablen** gefunden. Die Kameratests vom 12.10. werden **nicht wiederholt**.
+
+| Bereich | Variable | LCN-Unit | Shadow-Rolle |
+| --- | ---: | ---: | --- |
+| EG Wohnen Kamin | 42452 | 26568 | MOTION_KAMIN |
+| EG Bad | 45510 | 13062 | MOTION |
+| EG Büro | 43605 | 32814 | MOTION |
+| EG Flur | 39155 | 19163 | MOTION |
+| EG Gäste WC | 47271 | 12662 | MOTION |
+| EG Schlafen | 11701 | 34015 | MOTION |
+| EG Wohnen / Küche | 51040 | 53795 | MOTION_KITCHEN |
+| OG Ankleide | 51583 | 52391 | MOTION |
+| OG Ankleide Decke | 25969 | 44672 | MOTION |
+| OG Bad | 16468 | 47236 | MOTION |
+| OG Bad Dusche | 30215 | 37776 | MOTION |
+| OG Bad Waschtisch | 28009 | 49288 | MOTION |
+| OG Flur | 22933 | 56863 | MOTION |
+| OG Schlafen 1 | 38792 | 41644 | MOTION |
+| OG Schlafen 2 | 37461 | 17361 | MOTION |
+
+### Integrierter nächster Schritt, keine neuen Tests
+
+Im bereits angelegten `JV Presence Identity Shadow` nach **Modulupdate auf 0.8.19 Build 100** die neue Taste **„2. Alle 15 geprüften LCN-GUS übernehmen (nur SHADOW-Konfiguration)“** betätigen. Sie liest und prüft alle 15 realen Variablen, Statusnamen, Modul-GUIDs und Elterninstanzen erneut **im Hintergrund dieses einen Klicks**, übernimmt die Konfiguration nur vollständig und lässt externe Module unberührt. Die Shadow-Instanz ist danach weiterhin global AUS, bis ihre **separate** Einstellung `SHADOW-Beobachtung einschalten` vom Nutzer aktiviert und übernommen wird. Damit besteht keine Anwesenheits- oder Alarmfreigabe, nur ein lesender Beobachter.
+
+Prüfergebnis in den bestehenden **zwei** Shadow-Ausgabevariablen, keine weitere je-GUS-Lizenzvariable. Für weitere Sensorquellen Licht/Tor/Fahrzeug wären separate objektbezogene Status-IDs erforderlich; diese werden nicht erfunden.
