@@ -50,6 +50,8 @@ jobs:
           PY
       - name: Smartphone evidence and Symcon lifecycle regression
         run: php tests/JVPhoneEvidenceTest.php
+      - name: Shadow identity and presence invariant simulations
+        run: php tests/JVIdentityHypothesisEngineTest.php
       - name: P03 proof simulations
         run: php tests/P03ProofEngineTest.php
       - name: Independent ONVIF PullPoint event parser and safety tests
