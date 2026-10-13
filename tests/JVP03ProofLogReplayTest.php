@@ -213,6 +213,8 @@ eq($two['localSensors']['zones']['HOME']['activity'],'CORROBORATED_MOTION_HINT',
    'two separate GUS inside 60sec report corroborated motion');
 eq($two['people']['johannes'],'UNKNOWN','two GUS do not identify Johannes');
 eq($two['personPresenceMayBeChanged'],false,'GUS never commands core');
+// Allow the first post-event normalization cycle, then verify stability.
+$module->Refresh();
 $writesAfterMotion=count($module->writes);
 for($i=0;$i<100;$i++)$module->Refresh();
 eq(count($module->writes),$writesAfterMotion,
