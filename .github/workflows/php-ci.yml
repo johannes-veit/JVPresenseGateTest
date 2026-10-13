@@ -54,6 +54,8 @@ jobs:
         run: php tests/JVIdentityHypothesisEngineTest.php
       - name: Replay completed P03 walk test and passive live-source observation
         run: php tests/JVP03ProofLogReplayTest.php
+      - name: Incremental live P03 shadow timeline and existing commissioning baseline
+        run: php tests/JVP03IncrementalTimelineTest.php
       - name: Existing LCN and GUS evidence safety and clock suppression
         run: php tests/JVLocalSensorEvidenceTest.php
       - name: Local-only 24-hour room movement ledger, no phones or headcount
