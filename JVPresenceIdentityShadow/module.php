@@ -1067,16 +1067,30 @@ class JVPresenceIdentityShadow extends IPSModule
         return $snapshots;
     }
 
-    private function readSensorSnapshot(int $id): ?array
+    private function readSensorSnapshot(int $id,bool $indoorHint=false): ?array
     {
         if($id<=0) return null;
         try {
             if(!IPS_VariableExists($id)) return null;
+            if($indoorHint){
+                // Check original Symcon object tree, not just the editable
+                // source display name. Prevent accidently mapping terrace,
+                // driveway, garage or workshop lighting as HOME evidence.
+                $walk=$id;$path='';
+                for($depth=0;$depth<7&&$walk>0;$depth++){
+                    $path.=' '.(string)IPS_GetName($walk);
+                    $obj=IPS_GetObject($walk);
+                    $walk=(int)($obj['ParentID']??0);
+                }
+                if(JVIndoorPresenceHints::isExterior($path))return null;
+            }
             $meta=IPS_GetVariable($id);
             $type=$meta['VariableType']??null;
             $changed=$meta['VariableChanged']??null;
             if(!is_int($type) || !in_array($type,[0,1],true)
-                || !is_int($changed) || $changed<=0) return null;
+                || !is_int($changed)
+                || ($indoorHint?$changed<0:$changed<=0)
+                || $changed>time()+5)return null;
             $value=GetValue($id);
             if(($type===0 && !is_bool($value))
                 || ($type===1 && (!is_int($value)||$value<0))) return null;
