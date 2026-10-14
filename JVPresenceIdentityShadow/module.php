@@ -20,6 +20,14 @@ class JVPresenceIdentityShadow extends IPSModule
     private const P03_GUID='{0A7A91CE-3BC1-4B1E-9C11-7B7E973F5C03}';
     private const PHONE_GUID='{B5BF0266-A4D1-40A0-AAC8-97E9C24C4173}';
     private const VM_UPDATE=10603; // Symcon documented variable-update message
+    private const STORED_STATE_NAMES=[
+        'LocalSensorState',
+        'LocalActivityLedger',
+        'P03IncrementalTimeline',
+        'BoundaryLedger',
+        'ExitCandidateInventory',
+        'GateSignalLedger'
+    ];
 
     public function Create(): void
     {
@@ -42,15 +50,17 @@ class JVPresenceIdentityShadow extends IPSModule
             ['Enabled'=>false,'SourceID'=>'og_ankleide','Name'=>'OG Ankleide (Bestand 06.10.)','Kind'=>'MOTION','Zone'=>'HOME','VariableID'=>51583]
         ], JSON_UNESCAPED_UNICODE) ?: '[]');
         $this->RegisterAttributeString('SensorSubscriptions','[]');
+        // Attributes persist across Symcon / module restarts; buffers DO NOT.
+        // Never add hidden Status variables for storage.
+        foreach(self::STORED_STATE_NAMES as $name)
+            $this->RegisterAttributeString('Persist'.$name,'{}');
         $this->RegisterVariableString('Status','Identität – SHADOW Status','',0);
         $this->RegisterVariableString('EvidenceJSON','Identität – Nachweise (JSON)','',1);
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
         // Re-running Create after a module update must NOT erase a running
         // 24h timeline or a manually approved passive gate inventory.
         // Only initialize buffers that have never been populated.
-        foreach(['LocalSensorState','LocalActivityLedger',
-            'P03IncrementalTimeline','BoundaryLedger',
-            'ExitCandidateInventory','GateSignalLedger'] as $bufferName) {
+        foreach(self::STORED_STATE_NAMES as $bufferName) {
             if($this->GetBuffer($bufferName)==='')
                 $this->SetBuffer($bufferName,'{}');
         }
@@ -59,9 +69,49 @@ class JVPresenceIdentityShadow extends IPSModule
     public function ApplyChanges(): void
     {
         parent::ApplyChanges();
+        // One-time migration of any legacy in-memory state still present
+        // during a hot update. If already lost, do not invent historical data.
+        $this->migrateLegacyShadowBuffers();
         $this->SetTimerInterval('ReadLocal',$this->ReadPropertyBoolean('Enabled')?60000:0);
         $this->syncSensorSubscriptions();
         $this->Refresh();
+    }
+
+    /**
+     * Persistent attributes are canonical. Never rely on GetBuffer surviving
+     * module updates or a restart. A pre-v0.8.29 buffer is migrated only when
+     * the persistent attribute has not yet been populated.
+     */
+    private function readShadowState(string $name): string
+    {
+        $stored=$this->ReadAttributeString('Persist'.$name);
+        if($stored!=='' && $stored!=='{}')return $stored;
+        $legacy=$this->GetBuffer($name);
+        if($legacy!=='' && $legacy!=='{}')return $legacy;
+        return $stored!==''?$stored:'{}';
+    }
+
+    private function writeShadowState(string $name,string $value): void
+    {
+        if($value==='')return;
+        if($this->ReadAttributeString('Persist'.$name)!==$value)
+            $this->WriteAttributeString('Persist'.$name,$value);
+        // Buffer is only a compatibility cache, NEVER source of persistence.
+        if($this->GetBuffer($name)!==$value)
+            $this->SetBuffer($name,$value);
+    }
+
+    private function migrateLegacyShadowBuffers(): void
+    {
+        foreach(self::STORED_STATE_NAMES as $name) {
+            $persistent=$this->ReadAttributeString('Persist'.$name);
+            if($persistent!==''&&$persistent!=='{}')continue;
+            $legacy=$this->GetBuffer($name);
+            if($legacy===''||$legacy==='{}')continue;
+            $decoded=json_decode($legacy,true);
+            if(!is_array($decoded) || $decoded===[])continue;
+            $this->WriteAttributeString('Persist'.$name,$legacy);
+        }
     }
 
     public function GetConfigurationForm(): string
@@ -388,7 +438,7 @@ class JVPresenceIdentityShadow extends IPSModule
         // Retain the metadata-only audit across the 60-second Refresh timer.
         // No Symcon objects or sensor bindings are created or changed.
         $snapshot=json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-        if(is_string($snapshot)) $this->SetBuffer('ExitCandidateInventory',$snapshot);
+        if(is_string($snapshot)) $this->writeShadowState('ExitCandidateInventory',$snapshot);
         $this->publish($result,'Ausgaenge/Kontakte NUR LESEN: '
             .$result['candidateCount'].' priorisierte Statuskandidaten aus '
             .$result['legacyBroadMatchCount'].' groben Namens-Treffern. '
@@ -406,7 +456,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->Refresh();
             return;
         }
-        $inventory=json_decode($this->GetBuffer('ExitCandidateInventory'),true);
+        $inventory=json_decode($this->readShadowState('ExitCandidateInventory'),true);
         if(!is_array($inventory)
             || ($inventory['authority']??'')!=='READ_ONLY_EXIT_SOURCE_CANDIDATES'
             || !is_array($inventory['listedCandidates']??null)) {
@@ -418,11 +468,11 @@ class JVPresenceIdentityShadow extends IPSModule
             ],'Zuerst Button 3: vorhandene Tor-Variablen suchen (nur lesen)');
             return;
         }
-        $prior=json_decode($this->GetBuffer('GateSignalLedger'),true);
+        $prior=json_decode($this->readShadowState('GateSignalLedger'),true);
         if(!is_array($prior))$prior=[];
         $prior['active']=true;
         $next=json_encode($prior,JSON_UNESCAPED_SLASHES);
-        if(is_string($next))$this->SetBuffer('GateSignalLedger',$next);
+        if(is_string($next))$this->writeShadowState('GateSignalLedger',$next);
         $this->Refresh();
     }
 
@@ -451,7 +501,7 @@ class JVPresenceIdentityShadow extends IPSModule
         // The prior completed P03 field test is a baseline, not a live walk.
         // This rolling proof ledger only consumes lines newly appended to
         // the existing P03 Protocol after this observer begins monitoring.
-        $p03Previous=json_decode($this->GetBuffer('P03IncrementalTimeline'),true);
+        $p03Previous=json_decode($this->readShadowState('P03IncrementalTimeline'),true);
         $p03Timeline=JVP03IncrementalTimeline::evaluate(
             $p03Raw??'',is_array($p03Previous)?$p03Previous:[],time()
         );
@@ -463,8 +513,8 @@ class JVPresenceIdentityShadow extends IPSModule
             $newState=json_encode($p03Timeline['next'],
                 JSON_UNESCAPED_SLASHES);
             if(is_string($newState)
-                && $this->GetBuffer('P03IncrementalTimeline')!==$newState) {
-                $this->SetBuffer('P03IncrementalTimeline',$newState);
+                && $this->readShadowState('P03IncrementalTimeline')!==$newState) {
+                $this->writeShadowState('P03IncrementalTimeline',$newState);
             }
         }
         if($p03Timeline['report']['warnings']) {
@@ -515,14 +565,14 @@ class JVPresenceIdentityShadow extends IPSModule
                 $snapshots[$varId]=$this->readSensorSnapshot($varId);
             }
         }
-        $state=json_decode($this->GetBuffer('LocalSensorState'),true);
+        $state=json_decode($this->readShadowState('LocalSensorState'),true);
         $state=is_array($state)?$state:[];
         $sensorData=JVLocalSensorEvidence::evaluate(
             $sourceRows,$snapshots,$state,time());
         $local=$sensorData['report'];
         $newState=json_encode($sensorData['next'],JSON_UNESCAPED_SLASHES);
-        if(is_string($newState) && $this->GetBuffer('LocalSensorState')!==$newState) {
-            $this->SetBuffer('LocalSensorState',$newState);
+        if(is_string($newState) && $this->readShadowState('LocalSensorState')!==$newState) {
+            $this->writeShadowState('LocalSensorState',$newState);
         }
         if($local['warnings']) {
             $warnings=array_merge($warnings,$local['warnings']);
@@ -530,14 +580,14 @@ class JVPresenceIdentityShadow extends IPSModule
         // Retain rolling room-level motion edges across 60s polls. A
         // single PIR can fire repeatedly and multiple PIRs can see one
         // person: these are NOT headcounts or identity evidence.
-        $ledgerState=json_decode($this->GetBuffer('LocalActivityLedger'),true);
+        $ledgerState=json_decode($this->readShadowState('LocalActivityLedger'),true);
         $ledger=JVLocalActivityLedger::evaluate(
             $local['motionSignals'],$local['readings'],
             is_array($ledgerState)?$ledgerState:[],time());
         $ledgerNext=json_encode($ledger['next'],JSON_UNESCAPED_SLASHES);
         if(is_string($ledgerNext)
-            && $this->GetBuffer('LocalActivityLedger')!==$ledgerNext) {
-            $this->SetBuffer('LocalActivityLedger',$ledgerNext);
+            && $this->readShadowState('LocalActivityLedger')!==$ledgerNext) {
+            $this->writeShadowState('LocalActivityLedger',$ledgerNext);
         }
         $activity=$ledger['report'];
         if($activity['warnings']) {
@@ -549,7 +599,7 @@ class JVPresenceIdentityShadow extends IPSModule
         if($houseObservation['warnings']) {
             $warnings=array_merge($warnings,$houseObservation['warnings']);
         }
-        $previousBoundary=json_decode($this->GetBuffer('BoundaryLedger'),true);
+        $previousBoundary=json_decode($this->readShadowState('BoundaryLedger'),true);
         $boundary=JVBoundaryEvidence::evaluate(
             $local['readings'],
             is_array($previousBoundary)?$previousBoundary:[],
@@ -557,15 +607,15 @@ class JVPresenceIdentityShadow extends IPSModule
         );
         $nextBoundary=json_encode($boundary['next'],JSON_UNESCAPED_SLASHES);
         if(is_string($nextBoundary)
-            && $this->GetBuffer('BoundaryLedger')!==$nextBoundary) {
-            $this->SetBuffer('BoundaryLedger',$nextBoundary);
+            && $this->readShadowState('BoundaryLedger')!==$nextBoundary) {
+            $this->writeShadowState('BoundaryLedger',$nextBoundary);
         }
         if($boundary['report']['warnings']) {
             $warnings=array_merge($warnings,$boundary['report']['warnings']);
         }
         // Audit snapshots are explicit scans, not automatic sensor discovery.
         // Invalid/missing snapshots remain null, never an empty-exit assertion.
-        $snapshot=json_decode($this->GetBuffer('ExitCandidateInventory'),true);
+        $snapshot=json_decode($this->readShadowState('ExitCandidateInventory'),true);
         $exitInventory=is_array($snapshot)
             && ($snapshot['authority']??'')==='READ_ONLY_EXIT_SOURCE_CANDIDATES'
             && is_int($snapshot['scannedAt']??null)
@@ -575,7 +625,7 @@ class JVPresenceIdentityShadow extends IPSModule
         // Activated only by the explicit manual read-only button. Never
         // attach a gate variable to SensorSources or any actor callback.
         $gateAudit=null;
-        $gatePrior=json_decode($this->GetBuffer('GateSignalLedger'),true);
+        $gatePrior=json_decode($this->readShadowState('GateSignalLedger'),true);
         if(is_array($gatePrior)&&($gatePrior['active']??false)===true) {
             $gateCandidates=$exitInventory['listedCandidates']??[];
             $gateSnapshots=$this->readGateCandidateSnapshots($gateCandidates);
@@ -585,8 +635,8 @@ class JVPresenceIdentityShadow extends IPSModule
             $gateAudit=$gateResult['report'];
             $gateNext=json_encode($gateResult['next'],JSON_UNESCAPED_SLASHES);
             if(is_string($gateNext)
-                && $this->GetBuffer('GateSignalLedger')!==$gateNext)
-                $this->SetBuffer('GateSignalLedger',$gateNext);
+                && $this->readShadowState('GateSignalLedger')!==$gateNext)
+                $this->writeShadowState('GateSignalLedger',$gateNext);
         }
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
