@@ -96,6 +96,14 @@
                 "value": "LIGHT"
               },
               {
+                "caption": "Innenlicht AN (auch bewegungsgeschaltet)",
+                "value": "LIGHT_INTERIOR"
+              },
+              {
+                "caption": "Fernseher eingeschaltet (nur Hinweis)",
+                "value": "TV_POWER"
+              },
+              {
                 "caption": "Torstatus / Aktivität",
                 "value": "GATE"
               },
@@ -147,6 +155,14 @@
           }
         }
       ]
+    },
+    {
+      "type": "Label",
+      "caption": "INNENLICHT / TV: OG Bad Fenster, OG Flur Fenster, EG Gäste WC und OG Ankleide RGB als LIGHT_INTERIOR auswählen; weitere echte Innenlicht-Statusvariablen ebenso. TV-Ein/Aus als TV_POWER. Button 5 sucht passende vorhandene Variablen (nur Metadaten); die tatsächliche Status-/Intensitätsvariable in der SensorSources-Liste auswählen. Außen-/Terrassen-/Hof-/Garagen- und Werkstattbeleuchtung wird grundsätzlich ausgeschlossen. AN ist ein schwacher Hinweis; AUS niemals Abwesenheit."
+    },
+    {
+      "type": "Label",
+      "caption": "SCHIEBETOR: Die bestehende funktionierende Endlagenanzeige wird aus den bereits beobachteten Eingängen S1=ZU (#56808), S2=AUF (#40678) lesend abgeleitet. AUF, ZU, Zwischenstellung/Fahrt oder widersprüchliche Endlagen dienen ausschließlich als Torstatus-Kontext – niemals als Beweis für eine Person oder ein Verlassen des Grundstücks."
     },
     {
       "type": "Label",
@@ -202,6 +218,11 @@
       "type": "Button",
       "caption": "4. Schiebetor-Eingänge und Endlagen passiv beobachten (nur lesen)",
       "onClick": "JVIDSH_AuditExistingGateSignals($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "5. Bestehende Innenlicht- und TV-Statusvariablen suchen (nur lesen)",
+      "onClick": "JVIDSH_AuditIndoorHintCandidates($id);"
     }
   ]
 }
