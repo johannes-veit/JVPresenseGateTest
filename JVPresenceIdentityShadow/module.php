@@ -5,6 +5,7 @@ require_once dirname(__DIR__).'/libs/JVLocalSensorEvidence.php';
 require_once dirname(__DIR__).'/libs/JVLCNGUSInventory.php';
 require_once dirname(__DIR__).'/libs/JVLocalActivityLedger.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
+require_once dirname(__DIR__).'/libs/JVHomeOccupancyEvidence.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -443,6 +444,12 @@ class JVPresenceIdentityShadow extends IPSModule
         if($activity['warnings']) {
             $warnings=array_merge($warnings,$activity['warnings']);
         }
+        $houseObservation=JVHomeOccupancyEvidence::evaluate(
+            $local,$activity,$p03Timeline['report'],time()
+        );
+        if($houseObservation['warnings']) {
+            $warnings=array_merge($warnings,$houseObservation['warnings']);
+        }
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'personPresenceMayBeChanged'=>false,
@@ -454,6 +461,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'phoneLink'=>$phoneLink,
             'localSensors'=>$local,
             'localActivity'=>$activity,
+            'houseObservation'=>$houseObservation,
             'recentCombinedEvidence'=>$this->combinedShadowEvidence(
                 $p03Timeline['report'],$activity
             ),
@@ -477,6 +485,7 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | GUS-Impulse/24h: '.$activity['totalMotionEdges24h']
             .' | P03-neue Beweise/24h: '
             .array_sum($p03Timeline['report']['directionProofs24h'])
+            .' | Haus: '.$houseObservation['houseStatus']
             .' | '.$phoneDescription
             .' | Personenidentitaet UNBEKANNT';
         if ($warnings) $state.=' | QUELLHINWEIS '.implode(',',array_slice($warnings,0,2));
