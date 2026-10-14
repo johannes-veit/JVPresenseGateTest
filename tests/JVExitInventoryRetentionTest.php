@@ -12,7 +12,17 @@ class IPSModule {
     public function RegisterPropertyBoolean(string $id,bool $value):void {$this->properties[$id]=$value;}
     public function RegisterPropertyInteger(string $id,int $value):void {$this->properties[$id]=$value;}
     public function RegisterPropertyString(string $id,string $value):void {$this->properties[$id]=$value;}
-    public function RegisterAttributeString(string $id,string $value):void {}
+    private array $attributes=[];
+    public function RegisterAttributeString(string $id,string $value):void {
+        if(!array_key_exists($id,$this->attributes))$this->attributes[$id]=$value;
+    }
+    public function ReadAttributeString(string $id):string {
+        return $this->attributes[$id]??'';
+    }
+    public function WriteAttributeString(string $id,string $value):void {
+        $this->attributes[$id]=$value;
+    }
+    public function clearRuntimeBuffers():void {$this->buffers=[];}
     public function RegisterTimer(string $id,int $interval,string $script):void {}
     public function RegisterVariableString(string $id,string $name,string $profile,int $position):void {
         $this->registeredVariables[]=$id;
