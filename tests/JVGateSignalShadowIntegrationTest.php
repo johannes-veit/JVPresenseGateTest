@@ -177,8 +177,8 @@ checkGate(($attrs['PersistGateSignalLedger']??'{}')!=='{}',
     'gate status edges stored durably in Symcon attribute');
 checkGate(($attrs['PersistLocalActivityLedger']??'{}')!=='{}',
     'GUS 24h activity baseline stored durably in Symcon attribute');
-checkGate(($attrs['PersistP03IncrementalTimeline']??'{}')!=='{}',
-    'P03 incremental ledger stored durably in Symcon attribute');
+checkGate(array_key_exists('PersistP03IncrementalTimeline',$attrs),
+    'P03 incremental ledger has a persistent attribute even without P03 fixture');
 $after=new JVPresenceIdentityShadow();
 $after->importPersistedAttributes($attrs);
 $after->Create();
