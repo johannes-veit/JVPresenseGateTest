@@ -6,6 +6,8 @@ require_once dirname(__DIR__).'/libs/JVLCNGUSInventory.php';
 require_once dirname(__DIR__).'/libs/JVLocalActivityLedger.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
 require_once dirname(__DIR__).'/libs/JVHomeOccupancyEvidence.php';
+require_once dirname(__DIR__).'/libs/JVBoundaryEvidence.php';
+require_once dirname(__DIR__).'/libs/JVExitCandidateInventory.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -45,6 +47,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->SetBuffer('LocalSensorState','{}');
         $this->SetBuffer('LocalActivityLedger','{}');
         $this->SetBuffer('P03IncrementalTimeline','{}');
+        $this->SetBuffer('BoundaryLedger','{}');
     }
 
     public function ApplyChanges(): void
@@ -327,6 +330,59 @@ class JVPresenceIdentityShadow extends IPSModule
             .($this->ReadPropertyBoolean('Enabled')?'AN':'AUS – jetzt manuell einschalten'));
     }
 
+    /**
+     * Local, metadata-only candidate scan. Does not read VARIABLE VALUES,
+     * switch devices, bind sources, or change the user's P03/LCN/WLAN.
+     * Names are NOT verified door/gate inputs, merely suggestions.
+     */
+    public function AuditExistingExitCandidates(): void
+    {
+        $items=[];$limited=false;$scanCount=0;$warnings=[];
+        try {
+            $ids=IPS_GetVariableList();
+            if(!is_array($ids)) throw new RuntimeException('INVALID_VARIABLE_LIST');
+            $limited=count($ids)>8000;
+            foreach(array_slice($ids,0,8000) as $rawId) {
+                $id=(int)$rawId;
+                if($id<=0)continue;
+                $scanCount++;
+                try {
+                    $variable=IPS_GetVariable($id);
+                    if(!in_array(($variable['VariableType']??null),[0,1],true))
+                        continue;
+                    $obj=IPS_GetObject($id);
+                    $parentId=(int)($obj['ParentID']??0);
+                    $parentName=$parentId>0?(string)IPS_GetName($parentId):'';
+                    $grandName='';
+                    if($parentId>0) {
+                        $parentObj=IPS_GetObject($parentId);
+                        $grandId=(int)($parentObj['ParentID']??0);
+                        if($grandId>0)$grandName=(string)IPS_GetName($grandId);
+                    }
+                    $items[]=[
+                        'variableId'=>$id,
+                        'type'=>$variable['VariableType'],
+                        'variableName'=>(string)IPS_GetName($id),
+                        'parent'=>$parentName,
+                        'grandparent'=>$grandName
+                    ];
+                } catch(Throwable $e) {
+                    // Read failure does not make an unknown sensor a valid
+                    // exit source. Keep diagnostic as incomplete scan.
+                    $limited=true;
+                }
+            }
+        } catch(Throwable $e) {
+            $warnings[]='EXIT_INVENTORY_UNAVAILABLE';
+        }
+        $result=JVExitCandidateInventory::select($items,$limited);
+        $result['scannedVariables']=$scanCount;
+        $result['warnings']=$warnings;
+        $this->publish($result,'Ausgaenge/Kontakte NUR LESEN: '
+            .$result['candidateCount'].' moegliche Statusvariablen. '
+            .'Keine Zuordnung/Aktivierung; Namen und IDs in Nachweise (JSON).');
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
@@ -450,6 +506,20 @@ class JVPresenceIdentityShadow extends IPSModule
         if($houseObservation['warnings']) {
             $warnings=array_merge($warnings,$houseObservation['warnings']);
         }
+        $previousBoundary=json_decode($this->GetBuffer('BoundaryLedger'),true);
+        $boundary=JVBoundaryEvidence::evaluate(
+            $local['readings'],
+            is_array($previousBoundary)?$previousBoundary:[],
+            $p03Timeline['report'],time()
+        );
+        $nextBoundary=json_encode($boundary['next'],JSON_UNESCAPED_SLASHES);
+        if(is_string($nextBoundary)
+            && $this->GetBuffer('BoundaryLedger')!==$nextBoundary) {
+            $this->SetBuffer('BoundaryLedger',$nextBoundary);
+        }
+        if($boundary['report']['warnings']) {
+            $warnings=array_merge($warnings,$boundary['report']['warnings']);
+        }
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'personPresenceMayBeChanged'=>false,
@@ -462,8 +532,9 @@ class JVPresenceIdentityShadow extends IPSModule
             'localSensors'=>$local,
             'localActivity'=>$activity,
             'houseObservation'=>$houseObservation,
+            'boundaryEvidence'=>$boundary['report'],
             'recentCombinedEvidence'=>$this->combinedShadowEvidence(
-                $p03Timeline['report'],$activity
+                $p03Timeline['report'],$activity,$boundary['report']
             ),
             // No baseline and no group count -> NO person occupancy guesses.
             'people'=>array_fill_keys(array_keys($phones),'UNKNOWN'),
@@ -494,6 +565,10 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | P03-neue Beweise/24h: '
             .array_sum($p03Timeline['report']['directionProofs24h'])
             .' | Haus: '.$houseLabel
+            .' | Grundstuecksausgaenge: '.(
+                $boundary['report']['configuredBoundarySignals']===0
+                ?'noch keine Signale zugeordnet':'Signale beobachtet, Richtung ungeprueft'
+            )
             .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
             .' | Identitaet UNBEKANNT';
@@ -582,7 +657,7 @@ class JVPresenceIdentityShadow extends IPSModule
      * P03 proof may be an unrelated visitor, never an owner identification.
      * Keep the representation bounded inside the existing JSON variable.
      */
-    private function combinedShadowEvidence(array $p03,array $local):array
+    private function combinedShadowEvidence(array $p03,array $local,array $boundary=[]):array
     {
         $out=[];
         foreach(($p03['recentDirectionProofs']??[]) as $row) {
@@ -600,6 +675,17 @@ class JVPresenceIdentityShadow extends IPSModule
                 'sourceID'=>(string)($row['sourceID']??''),
                 'zone'=>(string)($row['zone']??''),
                 'confidence'=>(string)($row['confidence']??''),
+                'personCount'=>'UNKNOWN','identity'=>'UNKNOWN'
+            ];
+        }
+        foreach(($boundary['recentChanges']??[]) as $row) {
+            if(!is_array($row)||!is_int($row['at']??null))continue;
+            $out[]=[
+                'at'=>$row['at'],'kind'=>'BOUNDARY_STATUS_CHANGE',
+                'sourceID'=>(string)($row['sourceID']??''),
+                'sourceKind'=>(string)($row['kind']??''),
+                'state'=>(string)($row['state']??'UNKNOWN'),
+                'direction'=>'UNKNOWN',
                 'personCount'=>'UNKNOWN','identity'=>'UNKNOWN'
             ];
         }
