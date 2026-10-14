@@ -48,6 +48,8 @@ jobs:
               prefixes[prefix]=p
           print('Module loader contracts PASS')
           PY
+      - name: Standalone WLAN Johannes isolation boundary
+        run: php tests/StandaloneWLANBoundaryTest.php
       - name: Smartphone evidence and Symcon lifecycle regression
         run: php tests/JVPhoneEvidenceTest.php
       - name: Shadow identity and presence invariant simulations
