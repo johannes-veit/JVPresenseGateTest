@@ -99,9 +99,28 @@ $raw=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 checkGate(($raw['candidateCount']??null)===7,'find seven from fixture');
 checkGate($GLOBALS['readCalls']===[],'candidate scan reads metadata not values');
 $m->AuditExistingGateSignals();
+// Indoor candidate discovery reads metadata only, never device states,
+// and cannot change the established gate watch or GUS configuration.
+$readsBeforeIndoorScan=count($GLOBALS['readCalls']);
+$m->AuditIndoorHintCandidates();
+$metadataOnly=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($metadataOnly['authority']??null)==='INDOOR_LIGHT_TV_CANDIDATES_METADATA_ONLY',
+    'explicit indoor/TV audit returns metadata inventory');
+checkGate(($metadataOnly['configuredSourcesChanged']??null)===false,
+    'indoor scan never auto-links unknown output IDs');
+checkGate(count($GLOBALS['readCalls'])===$readsBeforeIndoorScan,
+    'indoor scan does not read hardware values');
+$m->Refresh();
+
 $data=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 checkGate(($data['gateSignalAudit']['signalCount']??null)===7,'manual audit samples 7');
 checkGate(($data['gateSignalAudit']['readableSignals']??null)===7,'all 7 read');
+checkGate(($data['gateDisplay']['positionHint']??null)==='ZWISCHENSTELLUNG_ODER_FAHRT',
+    'old gate display mapping handles both end positions false');
+checkGate(($data['gateDisplay']['propertyEmptyMayBeCertified']??null)===false,
+    'gate display cannot assert vacancy');
+checkGate(($data['indoorDeviceHints']['sourceCount']??null)===0,
+    'no new indoor output IDs attached without verification');
 checkGate(($data['gateSignalAudit']['messageSubscriptions']??null)===7,
     'all seven gate candidates observed via existing VM_UPDATE');
 checkGate(count($m->subscriptions)===7,
