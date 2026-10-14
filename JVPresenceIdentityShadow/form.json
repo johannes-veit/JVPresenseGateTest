@@ -92,7 +92,7 @@
                 "value": "MOTION_KITCHEN"
               },
               {
-                "caption": "Licht eingeschaltet",
+                "caption": "Lichtstatus (alt – nur Kontext)",
                 "value": "LIGHT"
               },
               {
