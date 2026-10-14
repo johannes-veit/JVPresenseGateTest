@@ -144,7 +144,7 @@ class IPSModule {
     protected function RegisterPropertyBoolean(string $k,bool $v):void {$this->properties[$k]=$v;}
     protected function RegisterPropertyInteger(string $k,int $v):void {$this->properties[$k]=$v;}
     protected function RegisterPropertyString(string $k,string $v):void {$this->properties[$k]=$v;}
-    protected function RegisterAttributeString(string $k,string $v):void {$this->attributes[$k]=$v;}
+    protected function RegisterAttributeString(string $k,string $v):void {if(!array_key_exists($k,$this->attributes))$this->attributes[$k]=$v;}
     protected function ReadAttributeString(string $k):string {return (string)($this->attributes[$k]??'');}
     protected function WriteAttributeString(string $k,string $v):void {$this->attributes[$k]=$v;}
     protected function RegisterMessage(int $id,int $code):void {$this->messages[$id.':'.$code]=true;}
@@ -531,6 +531,7 @@ $module->ApplyChanges();
 // Shadow integration: archived commissioning is BASELINE, never a current
 // HOME/WORK person event. A newly appended P03 proof appears once.
 $module->buffers['P03IncrementalTimeline']='{}';
+$module->attributes['PersistP03IncrementalTimeline']='{}'; // explicit test-fixture reset
 $module->properties['EnablePhoneIntegration']=false;
 $module->properties['Enabled']=true;
 $GLOBALS['raw'][53524]=$historic;

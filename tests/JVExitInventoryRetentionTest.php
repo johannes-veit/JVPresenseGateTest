@@ -12,7 +12,17 @@ class IPSModule {
     public function RegisterPropertyBoolean(string $id,bool $value):void {$this->properties[$id]=$value;}
     public function RegisterPropertyInteger(string $id,int $value):void {$this->properties[$id]=$value;}
     public function RegisterPropertyString(string $id,string $value):void {$this->properties[$id]=$value;}
-    public function RegisterAttributeString(string $id,string $value):void {}
+    private array $attributes=[];
+    public function RegisterAttributeString(string $id,string $value):void {
+        if(!array_key_exists($id,$this->attributes))$this->attributes[$id]=$value;
+    }
+    public function ReadAttributeString(string $id):string {
+        return $this->attributes[$id]??'';
+    }
+    public function WriteAttributeString(string $id,string $value):void {
+        $this->attributes[$id]=$value;
+    }
+    public function clearRuntimeBuffers():void {$this->buffers=[];}
     public function RegisterTimer(string $id,int $interval,string $script):void {}
     public function RegisterVariableString(string $id,string $name,string $profile,int $position):void {
         $this->registeredVariables[]=$id;
@@ -73,4 +83,11 @@ assertSnapshot(($again['exitCandidateInventory']['candidateCount']??-1)===1,
     'second refresh still retains scan');
 assertSnapshot($m->registeredVariables===['Status','EvidenceJSON'],
     'exactly the two existing Shadow output variables');
+$m->clearRuntimeBuffers();
+$m->Refresh();
+$restarted=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+assertSnapshot(($restarted['exitCandidateInventory']['candidateCount']??null)===1,
+    'erased runtime buffers do NOT erase persistent exit inventory');
+assertSnapshot(($restarted['exitCandidateInventory']['scannedAt']??null)===$initial['scannedAt'],
+    'original scan timestamp survives volatile buffer loss');
 echo "Shadow exit-inventory refresh retention PASS\n";
