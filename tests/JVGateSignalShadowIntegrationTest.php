@@ -7,10 +7,20 @@ class IPSModule {
     private array $values=[];
     public array $registered=[];
     public function Create():void {}
-    public function RegisterPropertyBoolean(string $id,bool $val):void {$this->props[$id]=$val;}
-    public function RegisterPropertyInteger(string $id,int $val):void {$this->props[$id]=$val;}
-    public function RegisterPropertyString(string $id,string $val):void {$this->props[$id]=$val;}
-    public function RegisterAttributeString(string $id,string $val):void {}
+    public function RegisterPropertyBoolean(string $id,bool $val):void {if(!array_key_exists($id,$this->props))$this->props[$id]=$val;}
+    public function RegisterPropertyInteger(string $id,int $val):void {if(!array_key_exists($id,$this->props))$this->props[$id]=$val;}
+    public function RegisterPropertyString(string $id,string $val):void {if(!array_key_exists($id,$this->props))$this->props[$id]=$val;}
+    private array $attributes=[];
+    public function RegisterAttributeString(string $id,string $value):void {
+        if(!array_key_exists($id,$this->attributes))$this->attributes[$id]=$value;
+    }
+    public function ReadAttributeString(string $id):string {
+        return $this->attributes[$id]??'';
+    }
+    public function WriteAttributeString(string $id,string $value):void {
+        $this->attributes[$id]=$value;
+    }
+    public function clearRuntimeBuffers():void {$this->buffers=[];}
     public function RegisterTimer(string $id,int $v,string $script):void {}
     public function RegisterVariableString(string $id,string $name,string $profile,int $position):void {
         $this->registered[]=$id;$this->values[$id]='';
