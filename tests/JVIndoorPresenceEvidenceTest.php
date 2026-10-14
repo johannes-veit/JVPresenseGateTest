@@ -91,6 +91,21 @@ must($house['personPresenceMayBeChanged']===false
     && $house['propertyEmptyMayBeCertified']===false
     && $house['alarmMayBeControlled']===false,
     'device hints cannot change presence or alarms');
+// A sleeping TV's missing optional status must not suppress 15 valid GUS.
+$optionalUnknown=$localGus;
+$optionalUnknown['warnings']=['INVALID_SNAPSHOT:tv'];
+$optionalUnknown['readings']['tv']['state']='UNKNOWN';
+$stillHealthy=JVHomeOccupancyEvidence::evaluate(
+    $optionalUnknown,$activity,$p03,$now,$hint);
+must($stillHealthy['sourcesHealthy']===true,
+    'unreachable optional TV does not invalidate 15 healthy motion sensors');
+$gusUnknown=$optionalUnknown;
+$gusUnknown['warnings'][]='INVALID_SNAPSHOT:gus_2';
+$gusUnknown['readings']['gus_2']['state']='UNKNOWN';
+$notHealthy=JVHomeOccupancyEvidence::evaluate(
+    $gusUnknown,$activity,$p03,$now,$hint);
+must($notHealthy['sourcesHealthy']===false,
+    'unreadable GUS still fails closed, unlike optional lights');
 $quiet=JVHomeOccupancyEvidence::evaluate($localGus,$activity,$p03,$now,$zero);
 must($quiet['houseStatus']==='HOUSE_QUIET_NO_ABSENCE_PROOF',
     'quiet plus devices OFF never means empty');
