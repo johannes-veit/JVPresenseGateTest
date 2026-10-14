@@ -21,6 +21,8 @@ class IPSModule {
         $this->attributes[$id]=$value;
     }
     public function clearRuntimeBuffers():void {$this->buffers=[];}
+    public function exportPersistedAttributes():array{return $this->attributes;}
+    public function importPersistedAttributes(array $data):void{$this->attributes=$data;}
     public function RegisterTimer(string $id,int $v,string $script):void {}
     public function RegisterVariableString(string $id,string $name,string $profile,int $position):void {
         $this->registered[]=$id;$this->values[$id]='';
@@ -164,19 +166,46 @@ checkGate(($secondTimed['gateSignalAudit']['gateOpenOrClosedCertified']??null)==
     'still no certified physical gate position');
 
 
-// A module update calling Create again must NOT reset existing chronologies.
-$gateLedgerBefore=$m->GetBuffer('GateSignalLedger');
-$m->SetBuffer('LocalActivityLedger','{"startedAt":1792005197,"events":[{"at":1792005200}]}');
-$m->SetBuffer('P03IncrementalTimeline','{"marker":"keep-p03-log-baseline"}');
-$m->SetBuffer('ExitCandidateInventory','{"marker":"keep-candidate-scan"}');
-$m->Create();
-checkGate($m->GetBuffer('GateSignalLedger')===$gateLedgerBefore,
-    'upgrade preserves gate status edge history');
-checkGate(str_contains($m->GetBuffer('LocalActivityLedger'),'1792005197'),
-    'upgrade preserves LCN 24h motion history');
-checkGate(str_contains($m->GetBuffer('P03IncrementalTimeline'),'keep-p03-log-baseline'),
-    'upgrade preserves P03 direction baseline');
-checkGate(str_contains($m->GetBuffer('ExitCandidateInventory'),'keep-candidate-scan'),
-    'upgrade preserves last manual search without re-running discovery');
+// A new PHP module object after a Symcon/service restart must recover the
+// previous scan, opt-in gate watch, GUS baseline, P03 timeline and gate edges.
+// Runtime buffers are intentionally NOT copied to the replacement object.
+$beforeRestart=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+$attrs=$m->exportPersistedAttributes();
+checkGate(($attrs['PersistExitCandidateInventory']??'{}')!=='{}',
+    'inventory stored durably in Symcon attribute');
+checkGate(($attrs['PersistGateSignalLedger']??'{}')!=='{}',
+    'gate status edges stored durably in Symcon attribute');
+checkGate(($attrs['PersistLocalActivityLedger']??'{}')!=='{}',
+    'GUS 24h activity baseline stored durably in Symcon attribute');
+checkGate(($attrs['PersistP03IncrementalTimeline']??'{}')!=='{}',
+    'P03 incremental ledger stored durably in Symcon attribute');
+$after=new JVPresenceIdentityShadow();
+$after->importPersistedAttributes($attrs);
+$after->Create();
+$after->setProp('Enabled',true);
+$after->setProp('SensorSources','[]');
+$after->setProp('P03InstanceID',0);
+$after->Refresh();
+$afterRestart=json_decode((string)$after->GetValue('EvidenceJSON'),true);
+checkGate(($afterRestart['exitCandidateInventory']['candidateCount']??null)===7,
+    'new module object finds inventory without rescan');
+checkGate(($afterRestart['gateSignalAudit']['signalCount']??null)===7,
+    'opt-in passive gate audit active after complete restart');
+checkGate(($afterRestart['gateSignalAudit']['newStatusEdgesThisRead']??null)===0,
+    'restarting does not invent a fresh gate edge');
+checkGate(count($afterRestart['gateSignalAudit']['recentStatusEdges']??[])>=1,
+    'historical status chronology survives full restart');
+checkGate(($afterRestart['localActivity']['startedAt']??null)
+    ===($beforeRestart['localActivity']['startedAt']??null),
+    'GUS observer startedAt survives complete restart');
+checkGate($after->registered===['Status','EvidenceJSON'],
+    'no additional Shadow variables after instance restart');
+// Also test reentrant Create on an existing instance: registered attributes
+// must never be rewritten with blank defaults.
+$attrsBeforeSecondCreate=$after->exportPersistedAttributes();
+$after->clearRuntimeBuffers();
+$after->Create();
+checkGate($after->exportPersistedAttributes()===$attrsBeforeSecondCreate,
+    'reentrant Create does not reset any persistent attribute');
 
 echo "Gate Shadow integration / no-actions / path-revalidation PASS\n";
