@@ -64,6 +64,8 @@ jobs:
         run: php tests/JVLocalActivityLedgerTest.php
       - name: Anonymous home occupancy and absent-vs-quiet safety simulations
         run: php tests/JVHomeOccupancyEvidenceTest.php
+      - name: Property boundary signal health and exit variable metadata discovery
+        run: php tests/JVBoundaryEvidenceTest.php
       - name: Fifteen verified real LCN GUS inventory imports and collision protection
         run: php tests/JVLCNGUSInventoryTest.php
       - name: P03 proof simulations

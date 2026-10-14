@@ -102,6 +102,10 @@
               {
                 "caption": "Fahrzeugstatus",
                 "value": "VEHICLE"
+              },
+              {
+                "caption": "Tür-/Kontaktstatus (Richtung noch unbekannt)",
+                "value": "CONTACT"
               }
             ]
           }
@@ -146,6 +150,10 @@
     },
     {
       "type": "Label",
+      "caption": "Tor-, Tür-, Kontakt- und Fahrzeugvariablen zunächst über die neue NUR-LESEN-Inventur finden. Gefundene Namen/IDs sind nur Kandidaten: erst nach fachlicher Prüfung einzeln als CONTACT, GATE oder VEHICLE zuordnen. ACTIVE/INACTIVE ist KEIN sicherer Beleg für offen/geschlossen, hinein/hinaus oder Personenzahl."
+    },
+    {
+      "type": "Label",
       "caption": "EG Wohnen Kamin: 25.–35. Minute jeder Stunde wird ignoriert; außerhalb davon nur zusammen mit einem Küchen-Bewegungsimpuls innerhalb von 60 Sekunden stärker bewertet. Stille, ausgeschaltete Lichter, geschlossenes Tor oder fehlendes Fahrzeug beweisen ausdrücklich keine Abwesenheit. Nach Start gibt es eine sichere Beobachtungs-Baseline, keine erfundenen alten Bewegungen."
     },
     {
@@ -163,6 +171,10 @@
     {
       "type": "Label",
       "caption": "Anwesenheitskontrolle ohne WLAN: houseObservation wertet 15 LCN-GUS und neue P03-Richtungsbeweise gemeinsam aus. Bewegung (1 GUS) = Hinweis, zwei verschiedene GUS = gestuetzter Hinweis; P03 HOME-LAGER ist KEINE Grundstuecksabwesenheit. Nach 30 Minuten ohne neue GUS nur 'Ruhig', niemals 'Abwesend'. Kein Alarm schalten, keine neuen Variablen."
+    },
+    {
+      "type": "Label",
+      "caption": "boundaryEvidence überwacht ausschließlich ausdrücklich ausgewählte bestehende Tür-/Tor-/Fahrzeug-Statusänderungen. Alle Ausgänge und die Bewegungsrichtung bleiben ohne lückenlose Prüfung UNBESTÄTIGT; niemals automatisch Abwesenheit oder Alarm schalten."
     }
   ],
   "actions": [
@@ -180,6 +192,11 @@
       "type": "Button",
       "caption": "Bestehende Nachweise anzeigen (nur lesen)",
       "onClick": "JVIDSH_Refresh($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "3. Bestehende Tor-, Tür- und Fahrzeug-Variablen suchen (nur lesen)",
+      "onClick": "JVIDSH_AuditExistingExitCandidates($id);"
     }
   ]
 }

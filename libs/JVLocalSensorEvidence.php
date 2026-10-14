@@ -12,7 +12,7 @@ declare(strict_types=1);
 final class JVLocalSensorEvidence
 {
     public const SCHEMA = 1;
-    public const KINDS = ['MOTION','MOTION_KAMIN','MOTION_KITCHEN','LIGHT','GATE','VEHICLE'];
+    public const KINDS = ['MOTION','MOTION_KAMIN','MOTION_KITCHEN','LIGHT','GATE','VEHICLE','CONTACT'];
     public const ZONES = ['HOME','WORK','PROPERTY_OTHER'];
     private const LIMIT=64;
     private const HISTORY_TTL=180;
@@ -98,6 +98,7 @@ final class JVLocalSensorEvidence
         $lights=[];
         $gates=[];
         $vehicles=[];
+        $contacts=[];
         foreach($config['sources'] as $s) {
             $id=$s['id'];$snapshot=$snapshots[$s['variableID']]??null;
             $value=null;$at=0;$valid=false;
@@ -127,6 +128,7 @@ final class JVLocalSensorEvidence
             if ($s['kind']==='LIGHT') $lights[$id]=$value?'ON':'OFF';
             if ($s['kind']==='GATE') $gates[$id]=$value?'ACTIVE':'INACTIVE';
             if ($s['kind']==='VEHICLE') $vehicles[$id]=$value?'ACTIVE':'INACTIVE';
+            if ($s['kind']==='CONTACT') $contacts[$id]=$value?'ACTIVE':'INACTIVE';
 
             // Preserve the current source timestamp to prevent replay on
             // repeated polls / when the motion flag stays ON. If the clock
@@ -233,7 +235,7 @@ final class JVLocalSensorEvidence
                 && count($lights)===count(array_filter($config['sources'],
                     static fn($s)=>$s['kind']==='LIGHT'))
                 && !in_array('ON',$lights,true),
-            'gates'=>$gates,'vehicles'=>$vehicles,
+            'gates'=>$gates,'vehicles'=>$vehicles,'contacts'=>$contacts,
             'warnings'=>array_values(array_unique($warnings))
         ];
         return ['report'=>$report,'next'=>[
@@ -251,7 +253,7 @@ final class JVLocalSensorEvidence
             'readings'=>[],'zones'=>[],
             'motionSignals'=>[],
             'configuredLights'=>[],'allConfiguredLightsOff'=>false,
-            'gates'=>[],'vehicles'=>[],
+            'gates'=>[],'vehicles'=>[],'contacts'=>[],
             'warnings'=>$warnings
         ];
     }
