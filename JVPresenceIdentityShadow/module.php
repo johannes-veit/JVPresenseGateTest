@@ -8,6 +8,7 @@ require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
 require_once dirname(__DIR__).'/libs/JVHomeOccupancyEvidence.php';
 require_once dirname(__DIR__).'/libs/JVBoundaryEvidence.php';
 require_once dirname(__DIR__).'/libs/JVExitCandidateInventory.php';
+require_once dirname(__DIR__).'/libs/JVGateSignalAudit.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -49,6 +50,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->SetBuffer('P03IncrementalTimeline','{}');
         $this->SetBuffer('BoundaryLedger','{}');
         $this->SetBuffer('ExitCandidateInventory','{}');
+        $this->SetBuffer('GateSignalLedger','{}');
     }
 
     public function ApplyChanges(): void
@@ -390,6 +392,37 @@ class JVPresenceIdentityShadow extends IPSModule
             .'Keine Zuordnung/Aktivierung; Namen und IDs in Nachweise (JSON).');
     }
 
+    /**
+     * Begin PASSIVE observation of previously inventoried Schiebetor inputs.
+     * No gate commands, no configuration edits, no new output variables.
+     * The existing 60s SHADOW read now tracks only existing Boolean values.
+     */
+    public function AuditExistingGateSignals(): void
+    {
+        if(!$this->ReadPropertyBoolean('Enabled')) {
+            $this->Refresh();
+            return;
+        }
+        $inventory=json_decode($this->GetBuffer('ExitCandidateInventory'),true);
+        if(!is_array($inventory)
+            || ($inventory['authority']??'')!=='READ_ONLY_EXIT_SOURCE_CANDIDATES'
+            || !is_array($inventory['listedCandidates']??null)) {
+            $this->publish([
+                'schema'=>1,'authority'=>'READ_ONLY_GATE_SIGNAL_SNAPSHOTS',
+                'error'=>'EXIT_INVENTORY_REQUIRED',
+                'personPresenceMayBeChanged'=>false,
+                'propertyEmptyMayBeCertified'=>false
+            ],'Zuerst Button 3: vorhandene Tor-Variablen suchen (nur lesen)');
+            return;
+        }
+        $prior=json_decode($this->GetBuffer('GateSignalLedger'),true);
+        if(!is_array($prior))$prior=[];
+        $prior['active']=true;
+        $next=json_encode($prior,JSON_UNESCAPED_SLASHES);
+        if(is_string($next))$this->SetBuffer('GateSignalLedger',$next);
+        $this->Refresh();
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
@@ -536,6 +569,22 @@ class JVPresenceIdentityShadow extends IPSModule
             && is_int($snapshot['candidateCount']??null)
             && is_array($snapshot['listedCandidates']??null)
             ? $snapshot : null;
+        // Activated only by the explicit manual read-only button. Never
+        // attach a gate variable to SensorSources or any actor callback.
+        $gateAudit=null;
+        $gatePrior=json_decode($this->GetBuffer('GateSignalLedger'),true);
+        if(is_array($gatePrior)&&($gatePrior['active']??false)===true) {
+            $gateCandidates=$exitInventory['listedCandidates']??[];
+            $gateSnapshots=$this->readGateCandidateSnapshots($gateCandidates);
+            $gateResult=JVGateSignalAudit::evaluate(
+                $gateCandidates,$gateSnapshots,$gatePrior,time()
+            );
+            $gateAudit=$gateResult['report'];
+            $gateNext=json_encode($gateResult['next'],JSON_UNESCAPED_SLASHES);
+            if(is_string($gateNext)
+                && $this->GetBuffer('GateSignalLedger')!==$gateNext)
+                $this->SetBuffer('GateSignalLedger',$gateNext);
+        }
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'personPresenceMayBeChanged'=>false,
@@ -550,6 +599,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'houseObservation'=>$houseObservation,
             'boundaryEvidence'=>$boundary['report'],
             'exitCandidateInventory'=>$exitInventory,
+            'gateSignalAudit'=>$gateAudit,
             'recentCombinedEvidence'=>$this->combinedShadowEvidence(
                 $p03Timeline['report'],$activity,$boundary['report']
             ),
@@ -593,6 +643,9 @@ class JVPresenceIdentityShadow extends IPSModule
                     .' Namens-Treffern (NICHT zugeordnet)'
                     .(!empty($exitInventory['symconScanLimited'])?' – Teilsuche':'')
                 :'')
+            .($gateAudit!==null
+                ?' | Torwerte: '.$gateAudit['readableSignals'].'/'
+                    .$gateAudit['signalCount'].' nur lesen':'')
             .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
             .' | Identitaet UNBEKANNT';
@@ -739,6 +792,42 @@ class JVPresenceIdentityShadow extends IPSModule
      * missing, wrong-type or future-dated metadata stays UNKNOWN. NEVER
      * trigger a module action or interpret integer counter deltas as humans.
      */
+    /**
+     * Only read already discovered Boolean Schiebetor status candidates.
+     * Confirm the Symcon object tree still matches the inventory snapshot
+     * so recycled/reparented IDs are never read as a trusted gate state.
+     */
+    private function readGateCandidateSnapshots(array $candidates): array
+    {
+        $snapshots=[];$used=[];
+        foreach($candidates as $row) {
+            if(count($used)>=16)break;
+            if(!is_array($row)
+                || ($row['grandparent']??null)!=='Schiebetor_Logik'
+                || ($row['type']??null)!=='Boolean'
+                || !is_int($row['variableId']??null)
+                || $row['variableId']<=0)continue;
+            $id=$row['variableId'];
+            if(isset($used[$id]))continue;
+            $used[$id]=true;
+            try {
+                if(!IPS_VariableExists($id))continue;
+                $o=IPS_GetObject($id);
+                $p=(int)($o['ParentID']??0);
+                if($p<=0 || IPS_GetName($id)!==($row['name']??null)
+                    || IPS_GetName($p)!==($row['parent']??null))continue;
+                $parentObj=IPS_GetObject($p);
+                $grandId=(int)($parentObj['ParentID']??0);
+                if($grandId<=0 || IPS_GetName($grandId)!=='Schiebetor_Logik')
+                    continue;
+                $snapshots[$id]=$this->readSensorSnapshot($id);
+            } catch(Throwable $e) {
+                // Invalid source stays UNKNOWN; NEVER repair external objects.
+            }
+        }
+        return $snapshots;
+    }
+
     private function readSensorSnapshot(int $id): ?array
     {
         if($id<=0) return null;
