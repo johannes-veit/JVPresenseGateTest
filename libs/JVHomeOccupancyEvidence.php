@@ -98,10 +98,21 @@ final class JVHomeOccupancyEvidence
         if(!is_array($lWarnings)||!is_array($aWarnings)||!is_array($pWarnings)) {
             $out['warnings'][]='INPUT_WARNINGS_INVALID';return $out;
         }
+        // Optional lights / sleeping TVs may be temporarily unreadable.
+        // Do NOT invalidate otherwise healthy LCN movement coverage because
+        // an optional operational device is offline. Keep its own warnings.
+        $criticalLocalWarnings=array_values(array_filter($lWarnings,
+            static function($warning)use($readings):bool{
+                if(!is_string($warning))return true;
+                if(!str_starts_with($warning,'INVALID_SNAPSHOT:'))return true;
+                $id=substr($warning,strlen('INVALID_SNAPSHOT:'));
+                $kind=$readings[$id]['kind']??null;
+                return !in_array($kind,['LIGHT_INTERIOR','TV_POWER'],true);
+            }));
         $out['sourcesHealthy']=$out['baselineEstablished']
             && $validHomeGUS>=self::REQUIRED_HOME_GUS
             && $missingHomeGUS===0
-            && !$lWarnings && !$aWarnings && !$pWarnings;
+            && !$criticalLocalWarnings && !$aWarnings && !$pWarnings;
         if(!$out['sourcesHealthy']) {
             $out['warnings'][]='SENSOR_COVERAGE_OR_HEALTH_INCOMPLETE';
         }
