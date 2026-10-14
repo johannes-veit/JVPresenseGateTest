@@ -70,6 +70,10 @@ jobs:
         run: php tests/JVExitCandidateInventoryPrecisionTest.php
       - name: Exit metadata audit remains available after 60s Shadow refresh
         run: php tests/JVExitInventoryRetentionTest.php
+      - name: Read-only Schiebetor state snapshots and deduplicated status edges
+        run: php tests/JVGateSignalAuditTest.php
+      - name: Schiebetor Shadow activation, exact ID path verification and no writes
+        run: php tests/JVGateSignalShadowIntegrationTest.php
       - name: Fifteen verified real LCN GUS inventory imports and collision protection
         run: php tests/JVLCNGUSInventoryTest.php
       - name: P03 proof simulations
