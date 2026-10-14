@@ -1,3 +1,12 @@
+# v0.8.25 (Build 106) – Manuellen Ausgangsvariablen-Scan über Shadow-Refresh hinaus erhalten
+
+- Diagnose aus v0.8.24 konkretisiert: Alle 15 LCN-GUS sind gültig, aber 0 **neue** Impulse nach der Start-Baseline sind noch kein Anwesenheits-/Abwesenheitsnachweis. P03 meldet 4 historische Richtungsbeweise, aber keine neuen Live-Übergänge; der letzte gespeicherte P03-Beweisstatus lautet „Mastkamera-Stream abgebrochen“ und kann ohne neue Streamprüfung nicht als aktuelle Verbindungsmessung interpretiert werden.
+- Der Button „3. Bestehende Tor-, Tür- und Fahrzeug-Variablen suchen (nur lesen)“ legt die **Metadaten-Inventur** zusätzlich als Buffer der bestehenden Shadow-Instanz ab. Vorher wurde ihr Ergebnis durch den normalen 60-Sekunden-Refresh im EvidenceJSON überschrieben.
+- Nach dem nächsten Refresh bleibt die letzte gezielte Inventur einschließlich Name, VariableID, Kandidatenzahl, Scanzeitpunkt und Hinweis auf Teilsuche im neuen Feld `exitCandidateInventory` des **bestehenden** EvidenceJSON sichtbar; vor dem ersten Scan ist dieses Feld `null`.
+- Kandidaten werden nur aufgrund von Namen als Vorschläge aufgeführt und **nicht** automatisch als Kontakte/Tore/Fahrzeuge verknüpft. Ohne bestätigte Zuordnung bleibt `boundaryEvidence.configuredBoundarySignals=0`. Ein Inventurtreffer bescheinigt weder Überwachung eines Ausgangs noch eine Richtung.
+- Keine zusätzlichen Symcon-Variablen, keine autoerzeugten Kategorien/Ereignisse, keine WLAN-Integration, keine Alarmsteuerung und keine Änderungen an P03/P05, LCN, Kamera oder produktiven Modulen.
+- Zusätzlicher Mock-Test prüft den Button, zwei aufeinanderfolgende Refreshes, die unveränderte Scanzeit, 0 automatisch zugeordnete Quellen und genau zwei bestehende Shadow-Ausgabevariablen.
+
 # v0.8.24 (Build 105) – Grundstücksausgänge: vorhandene Tür-/Tor-/Fahrzeugvariablen entdecken und passiv auswerten
 
 - Die bereits erfolgreich abgeschlossene P03-Abnahme und die 15 LCN-Bewegungsmelder bleiben unverändert. WLAN/Smartphone ist weiterhin vollständig separat und standardmäßig aus.
