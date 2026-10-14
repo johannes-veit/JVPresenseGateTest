@@ -171,7 +171,7 @@ sameB($list['listedCandidates'][0]['directionVerified'],false,
 $huge=[];
 for($i=1;$i<=100;$i++)$huge[]=[
     'variableId'=>$i,'type'=>0,'variableName'=>'Status',
-    'parent'=>'Tor'.$i,'grandparent'=>'Hof'
+    'parent'=>'Garagentor '.$i,'grandparent'=>'Hof'
 ];
 $limit=JVExitCandidateInventory::select($huge,true);
 sameB($limit['candidateCount'],100,'counts all within candidate scan');
