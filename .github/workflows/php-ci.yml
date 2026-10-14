@@ -62,6 +62,8 @@ jobs:
         run: php tests/JVLocalSensorEvidenceTest.php
       - name: Local-only 24-hour room movement ledger, no phones or headcount
         run: php tests/JVLocalActivityLedgerTest.php
+      - name: Anonymous home occupancy and absent-vs-quiet safety simulations
+        run: php tests/JVHomeOccupancyEvidenceTest.php
       - name: Fifteen verified real LCN GUS inventory imports and collision protection
         run: php tests/JVLCNGUSInventoryTest.php
       - name: P03 proof simulations

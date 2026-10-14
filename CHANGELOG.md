@@ -1,3 +1,13 @@
+# v0.8.23 (Build 104) – Anwesenheits-/Abwesenheitskontrolle aus P03 und 15 LCN-GUS (ohne WLAN)
+
+- Neuer rein lesender `JVHomeOccupancyEvidence`-Kern kombiniert die bereits angebundenen **15 Haus-Bewegungsmelder** mit **neuen P03-Richtungsbeweisen**. Kein weiterer Gehtest und keine zusätzlichen Geräte.
+- Im vorhandenen `EvidenceJSON` erscheint `houseObservation` mit Zuständen `HOUSE_MOVEMENT_CORROBORATED` (unterschiedliche GUS), `HOUSE_MOVEMENT_HINT` (einzelner Bewegungsimpuls), `HOME_ENTRY_DIRECTION_HINT` (LAGER→HOME), `HOME_EXIT_DIRECTION_HINT` (HOME→LAGER), `HOUSE_QUIET_NO_ABSENCE_PROOF` und `UNKNOWN`.
+- In der bestehenden SHADOW-Statuszeile werden diese Hinweise kompakt auf Deutsch angezeigt. Das Modell erkennt niemals namentlich Johannes oder Carina und zählt weder Bewegungen noch P03-Beweise als Personen.
+- **Haus→Lager ist ausdrücklich kein Verlassen des Grundstücks.** Andere Bewohner oder Gäste können weiterhin im Haus sein. Auch **30 Minuten oder 10 Stunden Ruhe** beweisen keine Abwesenheit (Schlaf, stilles Arbeiten etc.).
+- Gesundheitsprüfung: Baseline sowie alle 15 gültigen GUS nötig; defekte/fehlende Sensoren, P03-Loglücken oder ungültige Zeitstempel führen zu `UNKNOWN` statt zu Leerstandsbehauptungen.
+- `absenceControlState=NOT_CERTIFIED`, `propertyEmptyMayBeCertified=false`, `alarmMayBeControlled=false` bleiben zwingend. **Keine** produktiven Änderungen an LCN, P03, Kamera, Alarmanlage, PresenceCore oder den separaten WLAN-Objekten.
+- Nur zwei schon bestehende Shadow-Ausgabevariablen. Tests simulieren Ruhe/Schlaf, falsch erkannte Bewegungen, P03-IN/OUT, mehrere GUS, zusätzliche noch anwesende Personen, 14/15 GUS, ungültige Quellen und Datenschutzgrenze. Smartphone/WLAN bleibt vollständig separater Entwicklungszweig.
+
 # v0.8.22 (Build 103) – Live-P03-Richtungsbeweise und LCN-GUS in einer SHADOW-Chronik
 
 - Die vom Nutzer am 12.10.2026 bereits vollständig bestätigten P03-Gehtests (2× OUT/2× IN) bleiben als historische Baseline. Bei Start der neuen Chronik werden alle bisherigen P03-Protokolle **nicht** als neue Bewegungen nachgebucht. Keine Wiederholung der Feldtests.

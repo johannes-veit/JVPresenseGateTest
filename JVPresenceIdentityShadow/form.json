@@ -159,6 +159,10 @@
     {
       "type": "Label",
       "caption": "Fortlaufende GUS-Raumübersicht: localActivity zeigt pro Melder die letzten registrierten Bewegungsimpulse aus einem rollenden 24-Stunden-Fenster, ohne alte Ereignisse mehrfach zu zählen. Bewegung ≠ Personenanzahl; Ruhe ≠ Abwesenheit."
+    },
+    {
+      "type": "Label",
+      "caption": "Anwesenheitskontrolle ohne WLAN: houseObservation wertet 15 LCN-GUS und neue P03-Richtungsbeweise gemeinsam aus. Bewegung (1 GUS) = Hinweis, zwei verschiedene GUS = gestuetzter Hinweis; P03 HOME-LAGER ist KEINE Grundstuecksabwesenheit. Nach 30 Minuten ohne neue GUS nur 'Ruhig', niemals 'Abwesend'. Kein Alarm schalten, keine neuen Variablen."
     }
   ],
   "actions": [

@@ -5,6 +5,7 @@ require_once dirname(__DIR__).'/libs/JVLocalSensorEvidence.php';
 require_once dirname(__DIR__).'/libs/JVLCNGUSInventory.php';
 require_once dirname(__DIR__).'/libs/JVLocalActivityLedger.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
+require_once dirname(__DIR__).'/libs/JVHomeOccupancyEvidence.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -443,6 +444,12 @@ class JVPresenceIdentityShadow extends IPSModule
         if($activity['warnings']) {
             $warnings=array_merge($warnings,$activity['warnings']);
         }
+        $houseObservation=JVHomeOccupancyEvidence::evaluate(
+            $local,$activity,$p03Timeline['report'],time()
+        );
+        if($houseObservation['warnings']) {
+            $warnings=array_merge($warnings,$houseObservation['warnings']);
+        }
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'personPresenceMayBeChanged'=>false,
@@ -454,6 +461,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'phoneLink'=>$phoneLink,
             'localSensors'=>$local,
             'localActivity'=>$activity,
+            'houseObservation'=>$houseObservation,
             'recentCombinedEvidence'=>$this->combinedShadowEvidence(
                 $p03Timeline['report'],$activity
             ),
@@ -472,13 +480,23 @@ class JVPresenceIdentityShadow extends IPSModule
                 :($phoneLink['state']==='MANUAL_LINK'
                     ?'Telefon-Observer #'.$phoneInst
                     :'Telefon-Observer '.$phoneLink['state']));
+        $houseLabel=[
+            'HOUSE_MOVEMENT_CORROBORATED'=>'Bewegung bestaetigt',
+            'HOUSE_MOVEMENT_HINT'=>'Bewegungshinweis',
+            'HOME_ENTRY_DIRECTION_HINT'=>'Zugang aus Lager erkannt',
+            'HOME_EXIT_DIRECTION_HINT'=>'Weg ins Lager erkannt',
+            'HOUSE_QUIET_NO_ABSENCE_PROOF'=>'Ruhig (nicht leer bewiesen)',
+            'UNKNOWN'=>'Ungeklaert'
+        ][$houseObservation['houseStatus']]??'Ungeklaert';
         $state='P03-Archiv: OUT '.$out.' / IN '.$in.' (Richtungsbeweise); '
             .$street.' | LCN Haus: '.$homeHint
             .' | GUS-Impulse/24h: '.$activity['totalMotionEdges24h']
             .' | P03-neue Beweise/24h: '
             .array_sum($p03Timeline['report']['directionProofs24h'])
+            .' | Haus: '.$houseLabel
+            .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
-            .' | Personenidentitaet UNBEKANNT';
+            .' | Identitaet UNBEKANNT';
         if ($warnings) $state.=' | QUELLHINWEIS '.implode(',',array_slice($warnings,0,2));
         $this->publish($report,$state);
     }
