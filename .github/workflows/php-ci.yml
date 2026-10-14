@@ -66,6 +66,8 @@ jobs:
         run: php tests/JVHomeOccupancyEvidenceTest.php
       - name: Property boundary signal health and exit variable metadata discovery
         run: php tests/JVBoundaryEvidenceTest.php
+      - name: Prioritized exit-status candidate filter and false-positive regression
+        run: php tests/JVExitCandidateInventoryPrecisionTest.php
       - name: Exit metadata audit remains available after 60s Shadow refresh
         run: php tests/JVExitInventoryRetentionTest.php
       - name: Fifteen verified real LCN GUS inventory imports and collision protection
