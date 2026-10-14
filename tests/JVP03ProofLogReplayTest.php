@@ -114,6 +114,9 @@ function IPS_GetInstanceListByModuleID(string $guid):array {
 function IPS_GetChildrenIDs(int $id):array {
     return $GLOBALS['unitChildren'][$id]??[];
 }
+function IPS_GetVariableList():array {
+    return $GLOBALS['candidateVariableList']??[];
+}
 function IPS_GetObject(int $id):array {
     return $GLOBALS['objects'][$id]??throw new RuntimeException('no object');
 }
@@ -588,4 +591,110 @@ eq(count($module->values),2,
 
 $module->properties['Enabled']=false;
 $module->ApplyChanges();
+
+// Property-boundary inventory only reads existing object metadata, NEVER
+// variable values and NEVER creates a second WLAN/project category.
+$GLOBALS['meta'][8888]=['VariableType'=>0,'VariableChanged'=>time()-10];
+$GLOBALS['meta'][8889]=['VariableType'=>0,'VariableChanged'=>time()-10];
+$GLOBALS['meta'][8890]=['VariableType'=>0,'VariableChanged'=>time()-10];
+$GLOBALS['meta'][8891]=['VariableType'=>0,'VariableChanged'=>time()-10];
+$GLOBALS['objects'][8888]=['ParentID'=>9901];
+$GLOBALS['objects'][8889]=['ParentID'=>9902];
+$GLOBALS['objects'][8890]=['ParentID'=>9903];
+$GLOBALS['objects'][8891]=['ParentID'=>9904];
+$GLOBALS['objects'][9901]=['ParentID'=>9911];
+$GLOBALS['objects'][9902]=['ParentID'=>9911];
+$GLOBALS['objects'][9903]=['ParentID'=>9911];
+$GLOBALS['objects'][9904]=['ParentID'=>9911];
+$GLOBALS['names'][8888]='Status';
+$GLOBALS['names'][8889]='Status';
+$GLOBALS['names'][8890]='WLAN erreichbar';
+$GLOBALS['names'][8891]='Status';
+$GLOBALS['names'][9901]='Garagentor Hof';
+$GLOBALS['names'][9902]='Haustür Kontakt';
+$GLOBALS['names'][9903]='WLAN Johannes';
+$GLOBALS['names'][9904]='Bewegungsmelder Büro';
+$GLOBALS['names'][9911]='EG / Hof';
+$GLOBALS['candidateVariableList']=[8888,8889,8890,8891];
+$readsBeforeAudit=$GLOBALS['readCount'];
+$propsBeforeAudit=$module->properties;
+$writesBeforeAudit=count($GLOBALS['shadowPropertyWrites']);
+$module->AuditExistingExitCandidates();
+$inventory=json_decode($module->values['EvidenceJSON'],true);
+eq($inventory['authority'],'READ_ONLY_EXIT_SOURCE_CANDIDATES',
+    'new read-only access variable metadata scan');
+eq($inventory['candidateCount'],2,
+    'inventory finds existing gate and door but not WLAN/GUS');
+eq(array_column($inventory['listedCandidates'],'variableId'),[8888,8889],
+    'metadata candidate IDs are exact, no guessed source IDs');
+eq($inventory['configurationChanged'],false,
+    'metadata scan does not alter any observer settings');
+eq($inventory['devicesChanged'],false,
+    'metadata scan does not actuate door/gate');
+eq($GLOBALS['readCount'],$readsBeforeAudit,
+    'read-only inventory reads no device values');
+eq($module->properties,$propsBeforeAudit,
+    'source configuration is unchanged after scan');
+eq(count($GLOBALS['shadowPropertyWrites']),$writesBeforeAudit,
+    'inventory does not invoke IPS_SetProperty');
+eq(count($module->values),2,
+    'no new Symcon variables created by inventory');
+
+// Only explicitly chosen existing contact/gate/vehicle signals can be read,
+// and after first baseline they are still status hints, NEVER exits.
+$sourceConfig=json_decode($module->properties['SensorSources'],true);
+$sourceConfig[]=['Enabled'=>true,'SourceID'=>'front_door','Name'=>'Haustür Kontakt',
+    'Kind'=>'CONTACT','Zone'=>'HOME','VariableID'=>8889];
+$sourceConfig[]=['Enabled'=>true,'SourceID'=>'yard_gate','Name'=>'Garagentor Hof',
+    'Kind'=>'GATE','Zone'=>'PROPERTY_OTHER','VariableID'=>8888];
+$module->properties['SensorSources']=json_encode($sourceConfig);
+$GLOBALS['raw'][8888]=false;
+$GLOBALS['raw'][8889]=false;
+$module->properties['Enabled']=true;
+$module->ApplyChanges();
+$initialBoundary=json_decode($module->values['EvidenceJSON'],true);
+eq($initialBoundary['boundaryEvidence']['configuredBoundarySignals'],2,
+    'two existing boundary status variables can be observed');
+eq($initialBoundary['boundaryEvidence']['boundaryChanges24h'],0,
+    'no contact movement invented when attaching new sources');
+eq($initialBoundary['boundaryEvidence']['coverageState'],'PARTIAL_UNVERIFIED',
+    'selected garage and door do not certify complete property exits');
+eq($initialBoundary['houseObservation']['observedHomeGUS'],15,
+    '15 house GUS preserved when adding two read-only sources');
+eq($initialBoundary['phoneLink']['state'],'DISABLED_SEPARATE_PROJECT',
+    'boundary observation does not activate WLAN');
+
+$GLOBALS['raw'][8889]=true;
+$GLOBALS['meta'][8889]['VariableChanged']=time();
+$module->MessageSink(1,8889,10603,[]);
+$changedBoundary=json_decode($module->values['EvidenceJSON'],true);
+eq($changedBoundary['boundaryEvidence']['boundaryChanges24h'],1,
+    'real door status update appears once');
+eq($changedBoundary['boundaryEvidence']['lastBoundaryChangeAt'],time(),
+    'door status timestamp reflected');
+eq($changedBoundary['boundaryEvidence']['exitDirectionCertified'],false,
+    'Boolean door status cannot prove exit direction');
+eq($changedBoundary['boundaryEvidence']['propertyEmptyMayBeCertified'],false,
+    'door event never books away');
+eq($changedBoundary['boundaryEvidence']['alarmMayBeControlled'],false,
+    'gate/door evidence never arms alarm');
+eq($changedBoundary['houseObservation']['absenceControlState'],'NOT_CERTIFIED',
+    'house absence remains uncertified even with door state transition');
+$boundaryEvents=array_values(array_filter(
+    $changedBoundary['recentCombinedEvidence'],
+    static fn($row)=>($row['kind']??'')==='BOUNDARY_STATUS_CHANGE'
+));
+eq(count($boundaryEvents),1,
+    'boundary contact appears in combined read-only chronology');
+eq($boundaryEvents[0]['direction'],'UNKNOWN',
+    'contact event gets no invented IN/OUT direction');
+$module->MessageSink(1,8889,10603,[]);
+$repeatBoundary=json_decode($module->values['EvidenceJSON'],true);
+eq($repeatBoundary['boundaryEvidence']['boundaryChanges24h'],1,
+    'same contact update not counted twice');
+eq(count($module->values),2,
+    'no further Symcon variables after boundary integration');
+$module->properties['Enabled']=false;
+$module->ApplyChanges();
+
 echo "P03 historic replay & passive shadow PASS ($checks assertions)\n";
