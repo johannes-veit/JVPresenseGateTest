@@ -590,7 +590,7 @@ class JVPresenceIdentityShadow extends IPSModule
                 ?' | Ausgangssuche: '.$exitInventory['candidateCount']
                     .' Statuskandidaten aus '
                     .($exitInventory['legacyBroadMatchCount']??'?')
-                    .' Namens-Treffern (NICHT zugeordnet)
+                    .' Namens-Treffern (NICHT zugeordnet)'
                     .(!empty($exitInventory['symconScanLimited'])?' – Teilsuche':'')
                 :'')
             .' | Abwesenheit: NICHT BESTAETIGT'
