@@ -77,7 +77,7 @@ final class JVIndoorHintInventory
 
     private static function norm(string $x):string
     {
-        $x=mb_strtolower($x);
+        $x=strtolower($x);
         return strtr($x,['ä'=>'ae','ö'=>'oe','ü'=>'ue','ß'=>'ss','/'=>' ','-'=>' ']);
     }
 }
