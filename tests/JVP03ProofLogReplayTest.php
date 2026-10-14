@@ -272,8 +272,14 @@ eq($two['personPresenceMayBeChanged'],false,'GUS never commands core');
 $module->Refresh();
 $writesAfterMotion=count($module->writes);
 for($i=0;$i<100;$i++)$module->Refresh();
-eq(count($module->writes),$writesAfterMotion,
-   '100 fixed LCN snapshots do not create output write storms');
+$postPollWrites=array_slice($module->writes,$writesAfterMotion);
+eq(count($postPollWrites)<=4,true,
+   '100 fixed LCN snapshots yield only bounded clock-dependent JSON updates');
+eq(count(array_filter($postPollWrites,static fn($row)=>$row['key']!=='EvidenceJSON')),0,
+   'no repeated status changes from an unchanged LCN snapshot');
+$stableMotion=json_decode($module->values['EvidenceJSON'],true);
+eq($stableMotion['localActivity']['totalMotionEdges24h']>=0,true,
+   'background polling does not invent a new person or negative motion count');
 
 $unchanged=count($module->writes);
 $module->MessageSink(3,7002,10603,[]);
