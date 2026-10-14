@@ -127,7 +127,10 @@ checkGate(count($m->subscriptions)===7,
     'seven passive subscriptions, no new Symcon event objects');
 checkGate(($data['gateSignalAudit']['newStatusEdgesThisRead']??null)===0,
     'no fake event on activation');
-checkGate(count($GLOBALS['readCalls'])===7,'no other device values read');
+checkGate(count($GLOBALS['readCalls'])===14
+    && count(array_diff($GLOBALS['readCalls'],[
+        40678,56808,13257,20724,31597,49204,50300
+    ]))===0,'only original seven gate candidates read across two refreshes');
 checkGate($m->registered===['Status','EvidenceJSON'],
     'unchanged two Shadow variables');
 checkGate(($data['boundaryEvidence']['configuredBoundarySignals']??null)===0,
