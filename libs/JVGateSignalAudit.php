@@ -23,6 +23,8 @@ final class JVGateSignalAudit
             'observedAt'=>$now,
             'signalCount'=>0,
             'readableSignals'=>0,
+            'timedSignals'=>0,
+            'untimedSignals'=>0,
             'signals'=>[],
             'newStatusEdgesThisRead'=>0,
             'recentStatusEdges'=>[],
@@ -70,21 +72,38 @@ final class JVGateSignalAudit
             $monitored[$id]=true;
             $report['signalCount']++;
             $snapshot=$snapshots[$id]??null;
-            $valid=is_array($snapshot)
+            // VariableChanged means last VALUE CHANGE, not last update.
+            // It may be zero for an otherwise readable Boolean that has not
+            // changed since creation. Show that raw value, but never treat it
+            // as a timed edge or a certified live physical gate signal.
+            $raw=is_array($snapshot)
                 && ($snapshot['type']??null)===0
-                && is_bool($snapshot['value']??null)
-                && is_int($snapshot['changedAt']??null)
-                && $snapshot['changedAt']>0
-                && $snapshot['changedAt']<=$now+5;
+                && is_bool($snapshot['value']??null);
+            $changed=$snapshot['changedAt']??null;
+            $timed=$raw && is_int($changed)
+                && $changed>0 && $changed<=$now+5;
+            $untimed=$raw && ($changed===null || $changed===0);
+            $valid=$timed||$untimed;
+            $readState=$timed?'OK':($untimed?'VALUE_ONLY_UNTIMED':'UNKNOWN');
             $value=$valid?$snapshot['value']:null;
-            $at=$valid?$snapshot['changedAt']:null;
+            $at=$timed?$changed:null;
+            $updated=$snapshot['updatedAt']??null;
+            if(!is_int($updated)||$updated<=0||$updated>$now+5)
+                $updated=null;
+            $reason=is_array($snapshot)&&is_string($snapshot['errorCode']??null)
+                ?$snapshot['errorCode']:($untimed?'NO_CHANGE_TIMESTAMP':
+                    ($timed?'NONE':'READ_OR_METADATA_INVALID'));
             $report['signals'][]=[
                 'variableId'=>$id,
                 'name'=>$entry['name'],
                 'parent'=>$entry['parent'],
                 'currentValue'=>$value,
                 'variableChangedAt'=>$at,
-                'readState'=>$valid?'OK':'UNKNOWN',
+                'variableUpdatedAt'=>$updated,
+                'secondsSinceValueChanged'=>$at!==null?max(0,$now-$at):null,
+                'secondsSinceLastUpdate'=>$updated!==null?max(0,$now-$updated):null,
+                'readState'=>$readState,
+                'diagnosticCode'=>$reason,
                 'physicalFunctionConfirmed'=>false,
                 'trueMeansOpenOrClosed'=>'UNKNOWN'
             ];
@@ -93,6 +112,14 @@ final class JVGateSignalAudit
                 continue;
             }
             $report['readableSignals']++;
+            if($untimed) {
+                $report['untimedSignals']++;
+                $report['warningCodes'][]='VALUE_UNTIMED:'.$id;
+                // Clear any previous seen state. On the next legitimate
+                // timestamp, use it only as baseline, not a new movement.
+                continue;
+            }
+            $report['timedSignals']++;
             $last=$seen[$id]??null;
             $nextSeen[$id]=['at'=>$at,'value'=>$value];
             // One physical input can be exported through several alias IDs:
