@@ -83,4 +83,11 @@ assertSnapshot(($again['exitCandidateInventory']['candidateCount']??-1)===1,
     'second refresh still retains scan');
 assertSnapshot($m->registeredVariables===['Status','EvidenceJSON'],
     'exactly the two existing Shadow output variables');
+$m->clearRuntimeBuffers();
+$m->Refresh();
+$restarted=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+assertSnapshot(($restarted['exitCandidateInventory']['candidateCount']??null)===1,
+    'erased runtime buffers do NOT erase persistent exit inventory');
+assertSnapshot(($restarted['exitCandidateInventory']['scannedAt']??null)===$initial['scannedAt'],
+    'original scan timestamp survives volatile buffer loss');
 echo "Shadow exit-inventory refresh retention PASS\n";
