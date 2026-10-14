@@ -160,8 +160,8 @@ $list=JVExitCandidateInventory::select([
 ]);
 sameB($list['candidateCount'],3,
       'metadata scan finds garage door car but not GUS WLAN strings');
-sameB(array_column($list['listedCandidates'],'variableId'),[100,101,102],
-      'sorted de-duplicated candidate IDs');
+sameB(array_column($list['listedCandidates'],'variableId'),[101,100,102],
+      'higher priority door contact before generic status, no duplicates');
 sameB($list['configurationChanged'],false,'candidate scan never saves sources');
 sameB($list['devicesChanged'],false,'candidate scan never switches devices');
 sameB($list['candidatesAreNotVerifiedExitRoutes'],true,
