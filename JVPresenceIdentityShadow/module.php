@@ -480,14 +480,23 @@ class JVPresenceIdentityShadow extends IPSModule
                 :($phoneLink['state']==='MANUAL_LINK'
                     ?'Telefon-Observer #'.$phoneInst
                     :'Telefon-Observer '.$phoneLink['state']));
+        $houseLabel=[
+            'HOUSE_MOVEMENT_CORROBORATED'=>'Bewegung bestaetigt',
+            'HOUSE_MOVEMENT_HINT'=>'Bewegungshinweis',
+            'HOME_ENTRY_DIRECTION_HINT'=>'Zugang aus Lager erkannt',
+            'HOME_EXIT_DIRECTION_HINT'=>'Weg ins Lager erkannt',
+            'HOUSE_QUIET_NO_ABSENCE_PROOF'=>'Ruhig (nicht leer bewiesen)',
+            'UNKNOWN'=>'Ungeklaert'
+        ][$houseObservation['houseStatus']]??'Ungeklaert';
         $state='P03-Archiv: OUT '.$out.' / IN '.$in.' (Richtungsbeweise); '
             .$street.' | LCN Haus: '.$homeHint
             .' | GUS-Impulse/24h: '.$activity['totalMotionEdges24h']
             .' | P03-neue Beweise/24h: '
             .array_sum($p03Timeline['report']['directionProofs24h'])
-            .' | Haus: '.$houseObservation['houseStatus']
+            .' | Haus: '.$houseLabel
+            .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
-            .' | Personenidentitaet UNBEKANNT';
+            .' | Identitaet UNBEKANNT';
         if ($warnings) $state.=' | QUELLHINWEIS '.implode(',',array_slice($warnings,0,2));
         $this->publish($report,$state);
     }
