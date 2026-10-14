@@ -8,6 +8,7 @@ class IPSModule {
     public array $registered=[];
     public array $subscriptions=[];
     public function Create():void {}
+    public function ApplyChanges():void {}
     public function RegisterPropertyBoolean(string $id,bool $val):void {if(!array_key_exists($id,$this->props))$this->props[$id]=$val;}
     public function RegisterPropertyInteger(string $id,int $val):void {if(!array_key_exists($id,$this->props))$this->props[$id]=$val;}
     public function RegisterPropertyString(string $id,string $val):void {if(!array_key_exists($id,$this->props))$this->props[$id]=$val;}
