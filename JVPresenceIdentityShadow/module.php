@@ -9,6 +9,9 @@ require_once dirname(__DIR__).'/libs/JVHomeOccupancyEvidence.php';
 require_once dirname(__DIR__).'/libs/JVBoundaryEvidence.php';
 require_once dirname(__DIR__).'/libs/JVExitCandidateInventory.php';
 require_once dirname(__DIR__).'/libs/JVGateSignalAudit.php';
+require_once dirname(__DIR__).'/libs/JVIndoorPresenceHints.php';
+require_once dirname(__DIR__).'/libs/JVIndoorHintInventory.php';
+require_once dirname(__DIR__).'/libs/JVGateDisplayHint.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -26,7 +29,8 @@ class JVPresenceIdentityShadow extends IPSModule
         'P03IncrementalTimeline',
         'BoundaryLedger',
         'ExitCandidateInventory',
-        'GateSignalLedger'
+        'GateSignalLedger',
+        'IndoorHintInventory'
     ];
 
     public function Create(): void
@@ -548,6 +552,52 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->Refresh();
     }
 
+    /**
+     * Inspect ONLY variable metadata for indoor lighting and television
+     * candidates. No values read, no SensorSources changes, no automation.
+     */
+    public function AuditIndoorHintCandidates(): void
+    {
+        $entries=[];$limited=false;$count=0;
+        try {
+            $ids=IPS_GetVariableList();
+            if(!is_array($ids))throw new RuntimeException('INVALID_LIST');
+            $limited=count($ids)>8000;
+            foreach(array_slice($ids,0,8000) as $rawId){
+                $id=(int)$rawId;
+                if($id<=0)continue;
+                $count++;
+                try {
+                    $meta=IPS_GetVariable($id);
+                    if(!in_array($meta['VariableType']??null,[0,1],true))continue;
+                    $obj=IPS_GetObject($id);
+                    $pid=(int)($obj['ParentID']??0);
+                    $parent=$pid>0?(string)IPS_GetName($pid):'';
+                    $grand='';
+                    if($pid>0){
+                        $po=IPS_GetObject($pid);
+                        $g=(int)($po['ParentID']??0);
+                        if($g>0)$grand=(string)IPS_GetName($g);
+                    }
+                    $entries[]=[
+                        'variableId'=>$id,
+                        'type'=>$meta['VariableType'],
+                        'variableName'=>(string)IPS_GetName($id),
+                        'parent'=>$parent,'grandparent'=>$grand
+                    ];
+                }catch(Throwable $e){$limited=true;}
+            }
+        }catch(Throwable $e){$limited=true;}
+        $result=JVIndoorHintInventory::select($entries,$limited);
+        $result['scannedVariables']=$count;
+        $result['scannedAt']=time();
+        $json=json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        if(is_string($json))$this->writeShadowState('IndoorHintInventory',$json);
+        $this->publish($result,'Innenlicht/TV NUR LESEN: '
+            .$result['candidateCount'].' Statuskandidaten; IDs einzeln prüfen '
+            .'und ausschließlich in SensorSources zuordnen. Außenlicht ausgeschlossen.');
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
@@ -634,7 +684,10 @@ class JVPresenceIdentityShadow extends IPSModule
         if ($config['errors']===[]) {
             foreach($config['sources'] as $source) {
                 $varId=$source['variableID'];
-                $snapshots[$varId]=$this->readSensorSnapshot($varId);
+                $isIndoor=in_array($source['kind'],['LIGHT_INTERIOR','TV_POWER'],true);
+                $snapshots[$varId]=$this->readSensorSnapshot(
+                    $varId,$isIndoor
+                );
             }
         }
         $state=json_decode($this->readShadowState('LocalSensorState'),true);
@@ -665,8 +718,11 @@ class JVPresenceIdentityShadow extends IPSModule
         if($activity['warnings']) {
             $warnings=array_merge($warnings,$activity['warnings']);
         }
+        // Explicitly selected, existing indoor output statuses and TVs.
+        // Multiple motion-triggered lamps are NOT independent GUS proofs.
+        $indoorHints=JVIndoorPresenceHints::evaluate($local['readings'],time());
         $houseObservation=JVHomeOccupancyEvidence::evaluate(
-            $local,$activity,$p03Timeline['report'],time()
+            $local,$activity,$p03Timeline['report'],time(),$indoorHints
         );
         if($houseObservation['warnings']) {
             $warnings=array_merge($warnings,$houseObservation['warnings']);
@@ -714,6 +770,13 @@ class JVPresenceIdentityShadow extends IPSModule
                 && $this->readShadowState('GateSignalLedger')!==$gateNext)
                 $this->writeShadowState('GateSignalLedger',$gateNext);
         }
+        $gateDisplay=JVGateDisplayHint::evaluate($gateAudit);
+        $insideScan=json_decode($this->readShadowState('IndoorHintInventory'),true);
+        $indoorInventory=is_array($insideScan)
+            && ($insideScan['authority']??'')==='INDOOR_LIGHT_TV_CANDIDATES_METADATA_ONLY'
+            ?$insideScan:null;
+        // Existing gate display is context only, NOT a verified exit route.
+        $boundary['report']['existingGateDisplay']=$gateDisplay;
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'personPresenceMayBeChanged'=>false,
@@ -729,6 +792,9 @@ class JVPresenceIdentityShadow extends IPSModule
             'boundaryEvidence'=>$boundary['report'],
             'exitCandidateInventory'=>$exitInventory,
             'gateSignalAudit'=>$gateAudit,
+            'gateDisplay'=>$gateDisplay,
+            'indoorDeviceHints'=>$indoorHints,
+            'indoorHintInventory'=>$indoorInventory,
             'recentCombinedEvidence'=>$this->combinedShadowEvidence(
                 $p03Timeline['report'],$activity,$boundary['report']
             ),
@@ -752,6 +818,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'HOUSE_MOVEMENT_HINT'=>'Bewegungshinweis',
             'HOME_ENTRY_DIRECTION_HINT'=>'Zugang aus Lager erkannt',
             'HOME_EXIT_DIRECTION_HINT'=>'Weg ins Lager erkannt',
+            'HOME_DEVICE_ON_HINT'=>'Innenlicht/TV Hinweis',
             'HOUSE_QUIET_NO_ABSENCE_PROOF'=>'Ruhig (nicht leer bewiesen)',
             'UNKNOWN'=>'Ungeklaert'
         ][$houseObservation['houseStatus']]??'Ungeklaert';
@@ -775,6 +842,8 @@ class JVPresenceIdentityShadow extends IPSModule
             .($gateAudit!==null
                 ?' | Torwerte: '.$gateAudit['readableSignals'].'/'
                     .$gateAudit['signalCount'].' nur lesen':'')
+            .' | Schiebetor: '.$gateDisplay['positionHint']
+            .' | Innenlicht/TV AN: '.$indoorHints['onCount']
             .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
             .' | Identitaet UNBEKANNT';
@@ -998,16 +1067,30 @@ class JVPresenceIdentityShadow extends IPSModule
         return $snapshots;
     }
 
-    private function readSensorSnapshot(int $id): ?array
+    private function readSensorSnapshot(int $id,bool $indoorHint=false): ?array
     {
         if($id<=0) return null;
         try {
             if(!IPS_VariableExists($id)) return null;
+            if($indoorHint){
+                // Check original Symcon object tree, not just the editable
+                // source display name. Prevent accidently mapping terrace,
+                // driveway, garage or workshop lighting as HOME evidence.
+                $walk=$id;$path='';
+                for($depth=0;$depth<7&&$walk>0;$depth++){
+                    $path.=' '.(string)IPS_GetName($walk);
+                    $obj=IPS_GetObject($walk);
+                    $walk=(int)($obj['ParentID']??0);
+                }
+                if(JVIndoorPresenceHints::isExterior($path))return null;
+            }
             $meta=IPS_GetVariable($id);
             $type=$meta['VariableType']??null;
             $changed=$meta['VariableChanged']??null;
             if(!is_int($type) || !in_array($type,[0,1],true)
-                || !is_int($changed) || $changed<=0) return null;
+                || !is_int($changed)
+                || ($indoorHint?$changed<0:$changed<=0)
+                || $changed>time()+5)return null;
             $value=GetValue($id);
             if(($type===0 && !is_bool($value))
                 || ($type===1 && (!is_int($value)||$value<0))) return null;

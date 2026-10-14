@@ -99,16 +99,38 @@ $raw=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 checkGate(($raw['candidateCount']??null)===7,'find seven from fixture');
 checkGate($GLOBALS['readCalls']===[],'candidate scan reads metadata not values');
 $m->AuditExistingGateSignals();
+// Indoor candidate discovery reads metadata only, never device states,
+// and cannot change the established gate watch or GUS configuration.
+$readsBeforeIndoorScan=count($GLOBALS['readCalls']);
+$m->AuditIndoorHintCandidates();
+$metadataOnly=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($metadataOnly['authority']??null)==='INDOOR_LIGHT_TV_CANDIDATES_METADATA_ONLY',
+    'explicit indoor/TV audit returns metadata inventory');
+checkGate(($metadataOnly['configuredSourcesChanged']??null)===false,
+    'indoor scan never auto-links unknown output IDs');
+checkGate(count($GLOBALS['readCalls'])===$readsBeforeIndoorScan,
+    'indoor scan does not read hardware values');
+$m->Refresh();
+
 $data=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 checkGate(($data['gateSignalAudit']['signalCount']??null)===7,'manual audit samples 7');
 checkGate(($data['gateSignalAudit']['readableSignals']??null)===7,'all 7 read');
+checkGate(($data['gateDisplay']['positionHint']??null)==='ZWISCHENSTELLUNG_ODER_FAHRT',
+    'old gate display mapping handles both end positions false');
+checkGate(($data['gateDisplay']['propertyEmptyMayBeCertified']??null)===false,
+    'gate display cannot assert vacancy');
+checkGate(($data['indoorDeviceHints']['sourceCount']??null)===0,
+    'no new indoor output IDs attached without verification');
 checkGate(($data['gateSignalAudit']['messageSubscriptions']??null)===7,
     'all seven gate candidates observed via existing VM_UPDATE');
 checkGate(count($m->subscriptions)===7,
     'seven passive subscriptions, no new Symcon event objects');
 checkGate(($data['gateSignalAudit']['newStatusEdgesThisRead']??null)===0,
     'no fake event on activation');
-checkGate(count($GLOBALS['readCalls'])===7,'no other device values read');
+checkGate(count($GLOBALS['readCalls'])===14
+    && count(array_diff($GLOBALS['readCalls'],[
+        40678,56808,13257,20724,31597,49204,50300
+    ]))===0,'only original seven gate candidates read across two refreshes');
 checkGate($m->registered===['Status','EvidenceJSON'],
     'unchanged two Shadow variables');
 checkGate(($data['boundaryEvidence']['configuredBoundarySignals']??null)===0,

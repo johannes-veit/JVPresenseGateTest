@@ -30,7 +30,7 @@ final class JVHomeOccupancyEvidence
      * future-dated or truncated data fails to UNKNOWN.
      */
     public static function evaluate(
-        array $local,array $activity,array $p03,int $now
+        array $local,array $activity,array $p03,int $now,array $indoorHints=[]
     ):array {
         $out=[
             'schema'=>self::SCHEMA,
@@ -53,9 +53,16 @@ final class JVHomeOccupancyEvidence
             'lastP03Direction'=>null,
             'lastP03DirectionAt'=>null,
             'recentP03Direction'=>null,
+            'indoorDevicesOn'=>0,
+            'indoorDeviceHintLevel'=>'NONE',
             'reasons'=>[],
             'warnings'=>[]
         ];
+        if(($indoorHints['authority']??null)==='INDOOR_DEVICE_HINTS_ONLY'
+            && ($indoorHints['schema']??null)===1){
+            $out['indoorDevicesOn']=max(0,(int)($indoorHints['onCount']??0));
+            $out['indoorDeviceHintLevel']=$indoorHints['hintLevel']??'NONE';
+        }
         if($now<=0) {
             $out['warnings'][]='INVALID_CLOCK';return $out;
         }
@@ -91,10 +98,21 @@ final class JVHomeOccupancyEvidence
         if(!is_array($lWarnings)||!is_array($aWarnings)||!is_array($pWarnings)) {
             $out['warnings'][]='INPUT_WARNINGS_INVALID';return $out;
         }
+        // Optional lights / sleeping TVs may be temporarily unreadable.
+        // Do NOT invalidate otherwise healthy LCN movement coverage because
+        // an optional operational device is offline. Keep its own warnings.
+        $criticalLocalWarnings=array_values(array_filter($lWarnings,
+            static function($warning)use($readings):bool{
+                if(!is_string($warning))return true;
+                if(!str_starts_with($warning,'INVALID_SNAPSHOT:'))return true;
+                $id=substr($warning,strlen('INVALID_SNAPSHOT:'));
+                $kind=$readings[$id]['kind']??null;
+                return !in_array($kind,['LIGHT_INTERIOR','TV_POWER'],true);
+            }));
         $out['sourcesHealthy']=$out['baselineEstablished']
             && $validHomeGUS>=self::REQUIRED_HOME_GUS
             && $missingHomeGUS===0
-            && !$lWarnings && !$aWarnings && !$pWarnings;
+            && !$criticalLocalWarnings && !$aWarnings && !$pWarnings;
         if(!$out['sourcesHealthy']) {
             $out['warnings'][]='SENSOR_COVERAGE_OR_HEALTH_INCOMPLETE';
         }
@@ -190,6 +208,11 @@ final class JVHomeOccupancyEvidence
             $out['houseStatus']='HOME_ENTRY_DIRECTION_HINT';
             $out['houseStatusDetail']='P03 meldet Richtung Lager nach Haus; keine Identität oder Personenzahl';
             $out['reasons'][]='P03_WORK_TO_HOME';
+        } elseif($out['indoorDeviceHintLevel']==='WEAK_INDOOR_DEVICE_ON'
+            && $out['indoorDevicesOn']>0) {
+            $out['houseStatus']='HOME_DEVICE_ON_HINT';
+            $out['houseStatusDetail']='Innenlicht oder TV eingeschaltet: schwacher Hinweis, auch automatischer Betrieb möglich';
+            $out['reasons'][]='INDOOR_LIGHT_OR_TV_ON_NOT_INDEPENDENT_MOTION';
         } elseif($out['recentP03Direction']==='HOME_TO_LAGER') {
             $out['houseStatus']='HOME_EXIT_DIRECTION_HINT';
             $out['houseStatusDetail']='P03 meldet Richtung Haus nach Lager; andere Hausbewohner bleiben möglich';
