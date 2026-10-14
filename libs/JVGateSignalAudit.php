@@ -80,8 +80,8 @@ final class JVGateSignalAudit
             $at=$valid?$snapshot['changedAt']:null;
             $report['signals'][]=[
                 'variableId'=>$id,
-                'name'=>mb_substr($entry['name'],0,100),
-                'parent'=>mb_substr($entry['parent'],0,100),
+                'name'=>$entry['name'],
+                'parent'=>$entry['parent'],
                 'currentValue'=>$value,
                 'variableChangedAt'=>$at,
                 'readState'=>$valid?'OK':'UNKNOWN',
@@ -108,7 +108,7 @@ final class JVGateSignalAudit
             if($at<$now-self::MAX_EDGE_AGE)continue;
             $events[]=[
                 'variableId'=>$id,
-                'name'=>mb_substr($entry['name'],0,100),
+                'name'=>$entry['name'],
                 'at'=>$at,'value'=>$value,
                 'physicalFunctionConfirmed'=>false,
                 'humanDirection'=>'UNKNOWN'
