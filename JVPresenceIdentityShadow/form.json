@@ -197,6 +197,11 @@
       "type": "Button",
       "caption": "3. Bestehende Tor-, Tür- und Fahrzeug-Variablen suchen (nur lesen)",
       "onClick": "JVIDSH_AuditExistingExitCandidates($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "4. Schiebetor-Eingänge und Endlagen passiv beobachten (nur lesen)",
+      "onClick": "JVIDSH_AuditExistingGateSignals($id);"
     }
   ]
 }
