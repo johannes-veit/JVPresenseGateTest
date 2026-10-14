@@ -810,19 +810,60 @@ class JVPresenceIdentityShadow extends IPSModule
             $id=$row['variableId'];
             if(isset($used[$id]))continue;
             $used[$id]=true;
+
+            // Always return a coded outcome for every candidate. Do not
+            // expose PHP exception messages or perform any device action.
+            $failure=static fn(string $code):array=>['errorCode'=>$code];
             try {
-                if(!IPS_VariableExists($id))continue;
-                $o=IPS_GetObject($id);
-                $p=(int)($o['ParentID']??0);
-                if($p<=0 || IPS_GetName($id)!==($row['name']??null)
-                    || IPS_GetName($p)!==($row['parent']??null))continue;
-                $parentObj=IPS_GetObject($p);
-                $grandId=(int)($parentObj['ParentID']??0);
-                if($grandId<=0 || IPS_GetName($grandId)!=='Schiebetor_Logik')
-                    continue;
-                $snapshots[$id]=$this->readSensorSnapshot($id);
+                if(!IPS_VariableExists($id)) {
+                    $snapshots[$id]=$failure('VARIABLE_NOT_FOUND');continue;
+                }
+                $object=IPS_GetObject($id);
+                $parentId=(int)($object['ParentID']??0);
+                if(IPS_GetName($id)!==($row['name']??null)) {
+                    $snapshots[$id]=$failure('VARIABLE_NAME_CHANGED');continue;
+                }
+                if($parentId<=0
+                    || IPS_GetName($parentId)!==($row['parent']??null)) {
+                    $snapshots[$id]=$failure('PARENT_PATH_CHANGED');continue;
+                }
+                $parent=IPS_GetObject($parentId);
+                $grandId=(int)($parent['ParentID']??0);
+                if($grandId<=0
+                    || IPS_GetName($grandId)!=='Schiebetor_Logik') {
+                    $snapshots[$id]=$failure('GRANDPARENT_PATH_CHANGED');continue;
+                }
+                $meta=IPS_GetVariable($id);
+                if(($meta['VariableType']??null)!==0) {
+                    $snapshots[$id]=$failure('NOT_BOOLEAN');continue;
+                }
+                $changed=$meta['VariableChanged']??null;
+                if($changed!==null && !is_int($changed)) {
+                    $snapshots[$id]=$failure('INVALID_CHANGED_TIMESTAMP');continue;
+                }
+                if(is_int($changed)
+                    && ($changed<0 || $changed>time()+5)) {
+                    $snapshots[$id]=$failure('INVALID_CHANGED_TIMESTAMP');continue;
+                }
+                $updated=$meta['VariableUpdated']??null;
+                if($updated!==null && (!is_int($updated)
+                    || $updated<0 || $updated>time()+5)) {
+                    $snapshots[$id]=$failure('INVALID_UPDATED_TIMESTAMP');continue;
+                }
+                $value=GetValue($id);
+                if(!is_bool($value)) {
+                    $snapshots[$id]=$failure('NOT_BOOLEAN_VALUE');continue;
+                }
+                $snapshots[$id]=[
+                    'type'=>0,
+                    'value'=>$value,
+                    'changedAt'=>$changed,
+                    'updatedAt'=>$updated,
+                    'errorCode'=>($changed===null||$changed===0)
+                        ?'NO_CHANGE_TIMESTAMP':'NONE'
+                ];
             } catch(Throwable $e) {
-                // Invalid source stays UNKNOWN; NEVER repair external objects.
+                $snapshots[$id]=$failure('METADATA_READ_EXCEPTION');
             }
         }
         return $snapshots;
