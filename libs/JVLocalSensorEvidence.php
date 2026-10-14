@@ -12,7 +12,7 @@ declare(strict_types=1);
 final class JVLocalSensorEvidence
 {
     public const SCHEMA = 1;
-    public const KINDS = ['MOTION','MOTION_KAMIN','MOTION_KITCHEN','LIGHT','GATE','VEHICLE','CONTACT'];
+    public const KINDS = ['MOTION','MOTION_KAMIN','MOTION_KITCHEN','LIGHT','LIGHT_INTERIOR','TV_POWER','GATE','VEHICLE','CONTACT'];
     public const ZONES = ['HOME','WORK','PROPERTY_OTHER'];
     private const LIMIT=64;
     private const HISTORY_TTL=180;
@@ -50,6 +50,11 @@ final class JVLocalSensorEvidence
                 $errors[]='INVALID_SPECIAL_ZONE:'.$id;
                 continue;
             }
+            // Outside lighting is never indoor presence evidence. Skip only
+            // the rejected optional row; keep all validated GUS running.
+            if(in_array($kind,['LIGHT_INTERIOR','TV_POWER'],true)
+                && ($zone!=='HOME' || JVIndoorPresenceHints::isExterior($name)))
+                continue;
             if (isset($ids[$id]) || isset($vars[$var])) {
                 $errors[]='DUPLICATE_SOURCE_OR_VARIABLE:'.$id;
                 continue;
@@ -102,11 +107,13 @@ final class JVLocalSensorEvidence
         foreach($config['sources'] as $s) {
             $id=$s['id'];$snapshot=$snapshots[$s['variableID']]??null;
             $value=null;$at=0;$valid=false;
+            $operational=in_array($s['kind'],['LIGHT_INTERIOR','TV_POWER'],true);
             if (is_array($snapshot)
                 && is_int($snapshot['type']??null)
                 && in_array($snapshot['type'],[0,1],true)
                 && is_int($snapshot['changedAt']??null)
-                && ($snapshot['changedAt']>0)
+                && ($operational ? $snapshot['changedAt']>=0
+                    :$snapshot['changedAt']>0)
                 && ($snapshot['changedAt']<=$now+5)
                 && (($snapshot['type']===0 && is_bool($snapshot['value']??null))
                     || ($snapshot['type']===1 && is_int($snapshot['value']??null)
@@ -118,7 +125,7 @@ final class JVLocalSensorEvidence
             $readings[$id]=[
                 'name'=>$s['name'],'kind'=>$s['kind'],'zone'=>$s['zone'],
                 'state'=>$valid?($value?'ACTIVE':'INACTIVE'):'UNKNOWN',
-                'changedAt'=>$valid?$at:null,
+                'changedAt'=>$valid&&$at>0?$at:null,
                 'isFreshMotion'=>false
             ];
             if (!$valid) {
