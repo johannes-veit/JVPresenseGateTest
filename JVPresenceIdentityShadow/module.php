@@ -57,13 +57,6 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterVariableString('Status','Identität – SHADOW Status','',0);
         $this->RegisterVariableString('EvidenceJSON','Identität – Nachweise (JSON)','',1);
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
-        // Re-running Create after a module update must NOT erase a running
-        // 24h timeline or a manually approved passive gate inventory.
-        // Only initialize buffers that have never been populated.
-        foreach(self::STORED_STATE_NAMES as $bufferName) {
-            if($this->GetBuffer($bufferName)==='')
-                $this->SetBuffer($bufferName,'{}');
-        }
     }
 
     public function ApplyChanges(): void
