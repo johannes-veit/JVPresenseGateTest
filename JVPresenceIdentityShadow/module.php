@@ -48,6 +48,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->SetBuffer('LocalActivityLedger','{}');
         $this->SetBuffer('P03IncrementalTimeline','{}');
         $this->SetBuffer('BoundaryLedger','{}');
+        $this->SetBuffer('ExitCandidateInventory','{}');
     }
 
     public function ApplyChanges(): void
@@ -378,6 +379,11 @@ class JVPresenceIdentityShadow extends IPSModule
         $result=JVExitCandidateInventory::select($items,$limited);
         $result['scannedVariables']=$scanCount;
         $result['warnings']=$warnings;
+        $result['scannedAt']=time();
+        // Retain the metadata-only audit across the 60-second Refresh timer.
+        // No Symcon objects or sensor bindings are created or changed.
+        $snapshot=json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        if(is_string($snapshot)) $this->SetBuffer('ExitCandidateInventory',$snapshot);
         $this->publish($result,'Ausgaenge/Kontakte NUR LESEN: '
             .$result['candidateCount'].' moegliche Statusvariablen. '
             .'Keine Zuordnung/Aktivierung; Namen und IDs in Nachweise (JSON).');
@@ -520,6 +526,15 @@ class JVPresenceIdentityShadow extends IPSModule
         if($boundary['report']['warnings']) {
             $warnings=array_merge($warnings,$boundary['report']['warnings']);
         }
+        // Audit snapshots are explicit scans, not automatic sensor discovery.
+        // Invalid/missing snapshots remain null, never an empty-exit assertion.
+        $snapshot=json_decode($this->GetBuffer('ExitCandidateInventory'),true);
+        $exitInventory=is_array($snapshot)
+            && ($snapshot['authority']??'')==='READ_ONLY_EXIT_SOURCE_CANDIDATES'
+            && is_int($snapshot['scannedAt']??null)
+            && is_int($snapshot['candidateCount']??null)
+            && is_array($snapshot['listedCandidates']??null)
+            ? $snapshot : null;
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'personPresenceMayBeChanged'=>false,
@@ -533,6 +548,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'localActivity'=>$activity,
             'houseObservation'=>$houseObservation,
             'boundaryEvidence'=>$boundary['report'],
+            'exitCandidateInventory'=>$exitInventory,
             'recentCombinedEvidence'=>$this->combinedShadowEvidence(
                 $p03Timeline['report'],$activity,$boundary['report']
             ),
@@ -569,6 +585,11 @@ class JVPresenceIdentityShadow extends IPSModule
                 $boundary['report']['configuredBoundarySignals']===0
                 ?'noch keine Signale zugeordnet':'Signale beobachtet, Richtung ungeprueft'
             )
+            .($exitInventory!==null
+                ?' | Ausgangssuche: '.$exitInventory['candidateCount']
+                    .' Namenskandidaten (NICHT zugeordnet)'
+                    .(!empty($exitInventory['symconScanLimited'])?' – Teilsuche':'')
+                :'')
             .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
             .' | Identitaet UNBEKANNT';
