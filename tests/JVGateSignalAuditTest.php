@@ -80,4 +80,50 @@ $less=JVGateSignalAudit::evaluate($unplug,$baseline,$noReplay['next'],$now+12);
 gateAssert(count(array_filter($less['report']['recentStatusEdges'],
     static fn($evt)=>$evt['variableId']===40678)),0,
     'removed candidate drops its old historical edges');
+
+// A Boolean with VariableChanged=0 is readable, but an UNTIMERED VALUE,
+// not a new edge and not proof of freshness or a physical limit switch.
+$noChange=$baseline;
+$noChange[40678]=['type'=>0,'value'=>false,'changedAt'=>0,
+    'updatedAt'=>$now+11,'errorCode'=>'NO_CHANGE_TIMESTAMP'];
+$untimed=JVGateSignalAudit::evaluate($rows,$noChange,$less['next'],$now+13);
+gateAssert($untimed['report']['readableSignals'],7,
+    'raw Boolean with changed=0 is readable');
+gateAssert($untimed['report']['timedSignals'],6,
+    'only six have a valid last-change time');
+gateAssert($untimed['report']['untimedSignals'],1,
+    'separate count for value-only sources');
+gateAssert($untimed['report']['signals'][0]['readState'],'VALUE_ONLY_UNTIMED',
+    'do not mark value with missing timestamp as fully timed');
+gateAssert($untimed['report']['signals'][0]['currentValue'],false,
+    'raw Boolean visible even when never changed');
+gateAssert($untimed['report']['signals'][0]['variableChangedAt'],null,
+    'changed=0 is not a real timestamp');
+gateAssert($untimed['report']['signals'][0]['variableUpdatedAt'],$now+11,
+    'VariableUpdated is recorded distinctly');
+gateAssert($untimed['report']['newStatusEdgesThisRead'],0,
+    'no edge from untimed snapshot');
+$noChange[40678]=['type'=>0,'value'=>true,'changedAt'=>$now+14];
+$firstTimed=JVGateSignalAudit::evaluate($rows,$noChange,$untimed['next'],$now+14);
+gateAssert($firstTimed['report']['newStatusEdgesThisRead'],0,
+    'first timed value after untimed baseline cannot create an event');
+$noChange[40678]=['type'=>0,'value'=>false,'changedAt'=>$now+15];
+$secondTimed=JVGateSignalAudit::evaluate($rows,$noChange,$firstTimed['next'],$now+15);
+gateAssert($secondTimed['report']['newStatusEdgesThisRead'],1,
+    'subsequent actual timed edge is registered once');
+$missing=$noChange;
+$missing[49204]=['errorCode'=>'PARENT_PATH_CHANGED'];
+$badPath=JVGateSignalAudit::evaluate($rows,$missing,$secondTimed['next'],$now+16);
+gateAssert($badPath['report']['signals'][2]['diagnosticCode'],
+    'PARENT_PATH_CHANGED','explicit reason displayed for unreadable source');
+gateAssert($badPath['report']['signals'][2]['currentValue'],null,
+    'untrusted external variable values never passed through');
+$recentOld=$baseline;
+$recentOld[20724]=['type'=>0,'value'=>true,'changedAt'=>$now-600000];
+$old=JVGateSignalAudit::evaluate($rows,$recentOld,$badPath['next'],$now+17);
+gateAssert($old['report']['signals'][5]['secondsSinceValueChanged'],600017,
+    'old last change is recorded as an age, not declared dead');
+gateAssert($old['report']['signals'][5]['readState'],'OK',
+    'old last change alone is not proof of offline source');
+
 echo "Read-only Schiebetor signal snapshots and edge ledger PASS ($count assertions)\n";
