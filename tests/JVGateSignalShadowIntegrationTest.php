@@ -153,4 +153,20 @@ checkGate(($secondTimed['gateSignalAudit']['newStatusEdgesThisRead']??null)===1,
 checkGate(($secondTimed['gateSignalAudit']['gateOpenOrClosedCertified']??null)===false,
     'still no certified physical gate position');
 
+
+// A module update calling Create again must NOT reset existing chronologies.
+$gateLedgerBefore=$m->GetBuffer('GateSignalLedger');
+$m->SetBuffer('LocalActivityLedger','{"startedAt":1792005197,"events":[{"at":1792005200}]}');
+$m->SetBuffer('P03IncrementalTimeline','{"marker":"keep-p03-log-baseline"}');
+$m->SetBuffer('ExitCandidateInventory','{"marker":"keep-candidate-scan"}');
+$m->Create();
+checkGate($m->GetBuffer('GateSignalLedger')===$gateLedgerBefore,
+    'upgrade preserves gate status edge history');
+checkGate(str_contains($m->GetBuffer('LocalActivityLedger'),'1792005197'),
+    'upgrade preserves LCN 24h motion history');
+checkGate(str_contains($m->GetBuffer('P03IncrementalTimeline'),'keep-p03-log-baseline'),
+    'upgrade preserves P03 direction baseline');
+checkGate(str_contains($m->GetBuffer('ExitCandidateInventory'),'keep-candidate-scan'),
+    'upgrade preserves last manual search without re-running discovery');
+
 echo "Gate Shadow integration / no-actions / path-revalidation PASS\n";
