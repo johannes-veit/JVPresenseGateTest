@@ -1,3 +1,13 @@
+# v0.8.24 (Build 105) – Grundstücksausgänge: vorhandene Tür-/Tor-/Fahrzeugvariablen entdecken und passiv auswerten
+
+- Die bereits erfolgreich abgeschlossene P03-Abnahme und die 15 LCN-Bewegungsmelder bleiben unverändert. WLAN/Smartphone ist weiterhin vollständig separat und standardmäßig aus.
+- **Einmalbutton** in der bestehenden Instanz `JV Presence Identity Shadow`: „3. Bestehende Tor-, Tür- und Fahrzeug-Variablen suchen (nur lesen)“. Durchsucht die SymBox-Variablenliste (max. 8000 Variablen) nur nach Namen/Elternpfaden und Bool-/Integer-Typen, liefert *Kandidaten* und deren aktuelle IDs im bestehenden `EvidenceJSON` **ohne** Objekt-/Wertänderung. Inventur ist keine Sensorzuordnung; Namen beweisen nicht, dass ein Ausgang überwacht wird.
+- Erweiterung der freiwillig auswählbaren Quelltypen um `CONTACT` für vorhandene Boolean-/Integer-Türkontakte. Bereits bekannte `GATE`- und `VEHICLE`-Statusvariablen können ebenfalls passiv beobachtet werden. Es erfolgt **keine automatische Zuordnung** oder Aktivierung, keine angenommene `ACTIVE = OPEN`-Polarität und keine IN/OUT-Richtung.
+- Neue reine PHP-Komponente `JVBoundaryEvidence` zeigt in `boundaryEvidence` aktuellen Quellenstatus, Tür-/Tor-/Fahrzeugstatusänderungen der letzten 24 Stunden, ausdrücklich noch ungeklärte Ausgangs-Abdeckung und den letzten P03-Haus↔Lager-Richtungsnachweis. Zusätzliche Einträge fließen in die bestehende `recentCombinedEvidence` ein. Kein doppeltes Zählen unveränderter Zustände, keine neuen Symcon-Variablen, nur bestehende Buffer.
+- Fester Sicherheitsvertrag: `allExitRoutesVerified=false`, `exitDirectionCertified=false`, `propertyEmptyMayBeCertified=false`, `alarmMayBeControlled=false`, `personPresenceMayBeChanged=false`. Selbst Türkontakt + Tor + Fahrzeug + P03 beweisen weder die Identität noch eine vollständige Abreise aller Bewohner/Gäste.
+- Tests umfassen Start-Baseline, neue Tür- und Torstatusänderungen, 24h-Rollover, Quellenwechsel, ungültige Typen und Zeitstempel, begrenzte Objektsuche, falsche WLAN-Kandidaten sowie Symcon-Mock mit 15 GUS und zwei unveränderten Shadow-Ausgabevariablen.
+- Keine P03-/LCN-/Alarmaktionen und keine neuen WLAN-/Anwesenheitsobjekte.
+
 # v0.8.23 (Build 104) – Anwesenheits-/Abwesenheitskontrolle aus P03 und 15 LCN-GUS (ohne WLAN)
 
 - Neuer rein lesender `JVHomeOccupancyEvidence`-Kern kombiniert die bereits angebundenen **15 Haus-Bewegungsmelder** mit **neuen P03-Richtungsbeweisen**. Kein weiterer Gehtest und keine zusätzlichen Geräte.
