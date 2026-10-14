@@ -531,6 +531,7 @@ $module->ApplyChanges();
 // Shadow integration: archived commissioning is BASELINE, never a current
 // HOME/WORK person event. A newly appended P03 proof appears once.
 $module->buffers['P03IncrementalTimeline']='{}';
+$module->attributes['PersistP03IncrementalTimeline']='{}'; // explicit test-fixture reset
 $module->properties['EnablePhoneIntegration']=false;
 $module->properties['Enabled']=true;
 $GLOBALS['raw'][53524]=$historic;
