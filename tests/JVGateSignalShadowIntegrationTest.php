@@ -114,4 +114,43 @@ checkGate(($invalid['gateSignalAudit']['signals'][0]['readState']??null)==='UNKN
     'invalid object never trusted as real gate');
 checkGate(count($GLOBALS['readCalls'])===$readsBefore+6,
     'reparented ID not read');
+
+// Field-like scenario: both input:2 and the Shelly input:2 alias have
+// valid Boolean values, but VariableChanged=0 (never seen change).
+$GLOBALS['gateDevices'][40678]['parent']='input:2';
+$GLOBALS['gateDevices'][40678]['changed']=0;
+$GLOBALS['gateDevices'][49204]['changed']=0;
+$m->Refresh();
+$notChanged=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($notChanged['gateSignalAudit']['readableSignals']??null)===7,
+    'both previously unknown inputs now read as raw Boolean values');
+checkGate(($notChanged['gateSignalAudit']['timedSignals']??null)===5,
+    'five valid source last-change timestamps');
+checkGate(($notChanged['gateSignalAudit']['untimedSignals']??null)===2,
+    'two sources have no last-change timestamp');
+checkGate(($notChanged['gateSignalAudit']['signals'][0]['readState']??null)
+    ==='VALUE_ONLY_UNTIMED',
+    'raw state shown without pretending to have a change date');
+checkGate(($notChanged['gateSignalAudit']['signals'][5]['diagnosticCode']??null)
+    ==='NO_CHANGE_TIMESTAMP',
+    'second input has explicit no-change-timestamp diagnosis');
+checkGate(($notChanged['gateSignalAudit']['newStatusEdgesThisRead']??null)===0,
+    'untimed sources do not generate false gate motions');
+// On the FIRST timed transition following unknown time, use baseline only.
+$GLOBALS['gateDevices'][40678]['changed']=time()+1;
+$GLOBALS['gateDevices'][40678]['value']=false;
+$m->Refresh();
+$firstTimed=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($firstTimed['gateSignalAudit']['newStatusEdgesThisRead']??null)===0,
+    'first trusted timestamp after no-change state is baseline only');
+// Later change of same ID can become an edge (still not physical proof).
+$GLOBALS['gateDevices'][40678]['changed']=time()+2;
+$GLOBALS['gateDevices'][40678]['value']=true;
+$m->Refresh();
+$secondTimed=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($secondTimed['gateSignalAudit']['newStatusEdgesThisRead']??null)===1,
+    'second timed transition is seen as raw state edge');
+checkGate(($secondTimed['gateSignalAudit']['gateOpenOrClosedCertified']??null)===false,
+    'still no certified physical gate position');
+
 echo "Gate Shadow integration / no-actions / path-revalidation PASS\n";
