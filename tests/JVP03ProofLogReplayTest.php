@@ -625,8 +625,8 @@ eq($inventory['authority'],'READ_ONLY_EXIT_SOURCE_CANDIDATES',
     'new read-only access variable metadata scan');
 eq($inventory['candidateCount'],2,
     'inventory finds existing gate and door but not WLAN/GUS');
-eq(array_column($inventory['listedCandidates'],'variableId'),[8888,8889],
-    'metadata candidate IDs are exact, no guessed source IDs');
+eq(array_column($inventory['listedCandidates'],'variableId'),[8889,8888],
+    'door contact ranked before generic gate status, exact existing IDs');
 eq($inventory['configurationChanged'],false,
     'metadata scan does not alter any observer settings');
 eq($inventory['devicesChanged'],false,
