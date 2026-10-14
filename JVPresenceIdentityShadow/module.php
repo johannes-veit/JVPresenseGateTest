@@ -50,6 +50,7 @@ class JVPresenceIdentityShadow extends IPSModule
             ['Enabled'=>false,'SourceID'=>'og_ankleide','Name'=>'OG Ankleide (Bestand 06.10.)','Kind'=>'MOTION','Zone'=>'HOME','VariableID'=>51583]
         ], JSON_UNESCAPED_UNICODE) ?: '[]');
         $this->RegisterAttributeString('SensorSubscriptions','[]');
+        $this->RegisterAttributeString('GateSubscriptions','[]');
         // Attributes persist across Symcon / module restarts; buffers DO NOT.
         // Never add hidden Status variables for storage.
         foreach(self::STORED_STATE_NAMES as $name)
@@ -67,6 +68,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->migrateLegacyShadowBuffers();
         $this->SetTimerInterval('ReadLocal',$this->ReadPropertyBoolean('Enabled')?60000:0);
         $this->syncSensorSubscriptions();
+        $this->syncGateSubscriptions();
         $this->Refresh();
     }
 
@@ -165,13 +167,88 @@ class JVPresenceIdentityShadow extends IPSModule
             json_encode(array_values(array_unique($registered)))?:'[]');
     }
 
+    /**
+     * Optional, passive VM_UPDATE watches for the seven inventoried Boolean
+     * Schiebetor status variables. No Symcon event objects are created, no
+     * commands, actions, sensor auto-linking or changes to foreign modules.
+     * Re-register on ApplyChanges because VM_UPDATE hooks are runtime state.
+     */
+    private function syncGateSubscriptions(): void
+    {
+        $old=json_decode($this->ReadAttributeString('GateSubscriptions'),true);
+        $old=is_array($old)?array_values(array_unique(array_filter(
+            $old,static fn($id)=>is_int($id)&&$id>0))):[];
+        $existingGus=json_decode($this->ReadAttributeString('SensorSubscriptions'),true);
+        $gus=is_array($existingGus)?$existingGus:[];
+        $next=[];
+        $gate=json_decode($this->readShadowState('GateSignalLedger'),true);
+        $inventory=json_decode($this->readShadowState('ExitCandidateInventory'),true);
+        if($this->ReadPropertyBoolean('Enabled')
+            && is_array($gate) && ($gate['active']??false)===true
+            && is_array($inventory)
+            && ($inventory['authority']??'')==='READ_ONLY_EXIT_SOURCE_CANDIDATES'
+            && is_array($inventory['listedCandidates']??null)) {
+            foreach(array_slice($inventory['listedCandidates'],0,16) as $row) {
+                if(!is_array($row)||!is_int($row['variableId']??null)
+                    || $row['variableId']<=0
+                    || ($row['type']??null)!=='Boolean'
+                    || ($row['grandparent']??null)!=='Schiebetor_Logik')continue;
+                $id=$row['variableId'];
+                try {
+                    if(!IPS_VariableExists($id))continue;
+                    $meta=IPS_GetVariable($id);
+                    if(($meta['VariableType']??null)!==0)continue;
+                    $o=IPS_GetObject($id);
+                    $pid=(int)($o['ParentID']??0);
+                    if($pid<=0 || IPS_GetName($id)!==($row['name']??null)
+                        || IPS_GetName($pid)!==($row['parent']??null))continue;
+                    $p=IPS_GetObject($pid);
+                    $grandId=(int)($p['ParentID']??0);
+                    if($grandId<=0
+                        || IPS_GetName($grandId)!=='Schiebetor_Logik')continue;
+                    $next[]=$id;
+                } catch(Throwable $e) {
+                    // A broken source stays unobserved. Never try to repair it.
+                }
+            }
+        }
+        $next=array_values(array_unique($next));
+        sort($next);
+        foreach(array_diff($old,$next) as $id) {
+            // Do not remove GUS's independent subscription to the same ID.
+            if(in_array($id,$gus,true))continue;
+            try {$this->UnregisterMessage((int)$id,self::VM_UPDATE);}
+            catch(Throwable $e){}
+        }
+        $subscribed=[];
+        foreach($next as $id) {
+            if(in_array($id,$gus,true)) {
+                $subscribed[]=$id;continue;
+            }
+            try {
+                $this->RegisterMessage((int)$id,self::VM_UPDATE);
+                $subscribed[]=$id;
+            } catch(Throwable $e) {
+                // 60s periodic sampling remains available and unaltered.
+            }
+        }
+        sort($subscribed);
+        $value=json_encode($subscribed)?:'[]';
+        if($this->ReadAttributeString('GateSubscriptions')!==$value)
+            $this->WriteAttributeString('GateSubscriptions',$value);
+    }
+
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data): void
     {
         if(!$this->ReadPropertyBoolean('Enabled')
             || (int)$Message!==self::VM_UPDATE) return;
         $registered=json_decode($this->ReadAttributeString('SensorSubscriptions'),true);
-        if(!is_array($registered)
-            || !in_array((int)$SenderID,$registered,true)) return;
+        $gateRegistered=json_decode($this->ReadAttributeString('GateSubscriptions'),true);
+        $isGus=is_array($registered)
+            && in_array((int)$SenderID,$registered,true);
+        $isGate=is_array($gateRegistered)
+            && in_array((int)$SenderID,$gateRegistered,true);
+        if(!$isGus && !$isGate)return;
         // React immediately to an update to avoid losing a short human
         // pulse before the next poll. Read only current local Symcon data.
         $this->Refresh();
@@ -432,6 +509,7 @@ class JVPresenceIdentityShadow extends IPSModule
         // No Symcon objects or sensor bindings are created or changed.
         $snapshot=json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
         if(is_string($snapshot)) $this->writeShadowState('ExitCandidateInventory',$snapshot);
+        $this->syncGateSubscriptions();
         $this->publish($result,'Ausgaenge/Kontakte NUR LESEN: '
             .$result['candidateCount'].' priorisierte Statuskandidaten aus '
             .$result['legacyBroadMatchCount'].' groben Namens-Treffern. '
@@ -466,6 +544,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $prior['active']=true;
         $next=json_encode($prior,JSON_UNESCAPED_SLASHES);
         if(is_string($next))$this->writeShadowState('GateSignalLedger',$next);
+        $this->syncGateSubscriptions();
         $this->Refresh();
     }
 
@@ -626,6 +705,10 @@ class JVPresenceIdentityShadow extends IPSModule
                 $gateCandidates,$gateSnapshots,$gatePrior,time()
             );
             $gateAudit=$gateResult['report'];
+            $subscriptions=json_decode($this->ReadAttributeString('GateSubscriptions'),true);
+            $gateAudit['messageSubscriptions']=is_array($subscriptions)
+                ?count($subscriptions):0;
+            $gateAudit['observationMode']='VM_UPDATE_WITH_60S_FALLBACK';
             $gateNext=json_encode($gateResult['next'],JSON_UNESCAPED_SLASHES);
             if(is_string($gateNext)
                 && $this->readShadowState('GateSignalLedger')!==$gateNext)

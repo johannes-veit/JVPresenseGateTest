@@ -6,7 +6,9 @@ class IPSModule {
     private array $props=[];
     private array $values=[];
     public array $registered=[];
+    public array $subscriptions=[];
     public function Create():void {}
+    public function ApplyChanges():void {}
     public function RegisterPropertyBoolean(string $id,bool $val):void {if(!array_key_exists($id,$this->props))$this->props[$id]=$val;}
     public function RegisterPropertyInteger(string $id,int $val):void {if(!array_key_exists($id,$this->props))$this->props[$id]=$val;}
     public function RegisterPropertyString(string $id,string $val):void {if(!array_key_exists($id,$this->props))$this->props[$id]=$val;}
@@ -24,6 +26,13 @@ class IPSModule {
     public function exportPersistedAttributes():array{return $this->attributes;}
     public function importPersistedAttributes(array $data):void{$this->attributes=$data;}
     public function RegisterTimer(string $id,int $v,string $script):void {}
+    public function SetTimerInterval(string $id,int $v):void {}
+    public function RegisterMessage(int $id,int $message):void {
+        $this->subscriptions[$id.'|'.$message]=true;
+    }
+    public function UnregisterMessage(int $id,int $message):void {
+        unset($this->subscriptions[$id.'|'.$message]);
+    }
     public function RegisterVariableString(string $id,string $name,string $profile,int $position):void {
         $this->registered[]=$id;$this->values[$id]='';
     }
@@ -93,6 +102,10 @@ $m->AuditExistingGateSignals();
 $data=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 checkGate(($data['gateSignalAudit']['signalCount']??null)===7,'manual audit samples 7');
 checkGate(($data['gateSignalAudit']['readableSignals']??null)===7,'all 7 read');
+checkGate(($data['gateSignalAudit']['messageSubscriptions']??null)===7,
+    'all seven gate candidates observed via existing VM_UPDATE');
+checkGate(count($m->subscriptions)===7,
+    'seven passive subscriptions, no new Symcon event objects');
 checkGate(($data['gateSignalAudit']['newStatusEdgesThisRead']??null)===0,
     'no fake event on activation');
 checkGate(count($GLOBALS['readCalls'])===7,'no other device values read');
@@ -166,6 +179,26 @@ checkGate(($secondTimed['gateSignalAudit']['gateOpenOrClosedCertified']??null)==
     'still no certified physical gate position');
 
 
+// Gate input update is captured immediately even between the timer ticks.
+$lastReadCount=count($GLOBALS['readCalls']);
+$m->MessageSink(1,99999,10603,[]);
+checkGate(count($GLOBALS['readCalls'])===$lastReadCount,
+    'unknown sender never triggers gate status reads');
+$m->MessageSink(2,56808,10604,[]);
+checkGate(count($GLOBALS['readCalls'])===$lastReadCount,
+    'unrelated message type ignored');
+$GLOBALS['gateDevices'][56808]['changed']=time()+3;
+$GLOBALS['gateDevices'][56808]['value']=true;
+$m->MessageSink(3,56808,10603,[]);
+$event=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($event['gateSignalAudit']['newStatusEdgesThisRead']??null)===1,
+    'VM_UPDATE captures event without waiting for next 60s poll');
+checkGate(($event['gateSignalAudit']['recentStatusEdges'][0]['variableId']??null)===56808,
+    'correct original input ID recorded, no made-up gate direction');
+$m->MessageSink(4,56808,10603,[]);
+$repeat=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($repeat['gateSignalAudit']['newStatusEdgesThisRead']??null)===0,
+    'duplicate update message does not create a duplicate status edge');
 // A new PHP module object after a Symcon/service restart must recover the
 // previous scan, opt-in gate watch, GUS baseline, P03 timeline and gate edges.
 // Runtime buffers are intentionally NOT copied to the replacement object.
@@ -185,6 +218,9 @@ $after->Create();
 $after->setProp('Enabled',true);
 $after->setProp('SensorSources','[]');
 $after->setProp('P03InstanceID',0);
+$after->ApplyChanges();
+checkGate(count($after->subscriptions)===7,
+    'ApplyChanges re-registers VM_UPDATE for all seven saved inputs');
 $after->Refresh();
 $afterRestart=json_decode((string)$after->GetValue('EvidenceJSON'),true);
 checkGate(($afterRestart['exitCandidateInventory']['candidateCount']??null)===7,
@@ -207,5 +243,12 @@ $after->clearRuntimeBuffers();
 $after->Create();
 checkGate($after->exportPersistedAttributes()===$attrsBeforeSecondCreate,
     'reentrant Create does not reset any persistent attribute');
+$after->setProp('Enabled',false);
+$after->ApplyChanges();
+checkGate(count($after->subscriptions)===0,
+    'disabling Shadow unregisters seven passive gate subscriptions');
+checkGate($after->registered===['Status','EvidenceJSON',
+    'Status','EvidenceJSON'],
+    'still exactly two output identifiers after simulated module reload');
 
 echo "Gate Shadow integration / no-actions / path-revalidation PASS\n";
