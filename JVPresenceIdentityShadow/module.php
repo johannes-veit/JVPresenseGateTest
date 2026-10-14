@@ -385,7 +385,8 @@ class JVPresenceIdentityShadow extends IPSModule
         $snapshot=json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
         if(is_string($snapshot)) $this->SetBuffer('ExitCandidateInventory',$snapshot);
         $this->publish($result,'Ausgaenge/Kontakte NUR LESEN: '
-            .$result['candidateCount'].' moegliche Statusvariablen. '
+            .$result['candidateCount'].' priorisierte Statuskandidaten aus '
+            .$result['legacyBroadMatchCount'].' groben Namens-Treffern. '
             .'Keine Zuordnung/Aktivierung; Namen und IDs in Nachweise (JSON).');
     }
 
@@ -587,7 +588,9 @@ class JVPresenceIdentityShadow extends IPSModule
             )
             .($exitInventory!==null
                 ?' | Ausgangssuche: '.$exitInventory['candidateCount']
-                    .' Namenskandidaten (NICHT zugeordnet)'
+                    .' Statuskandidaten aus '
+                    .($exitInventory['legacyBroadMatchCount']??'?')
+                    .' Namens-Treffern (NICHT zugeordnet)'
                     .(!empty($exitInventory['symconScanLimited'])?' – Teilsuche':'')
                 :'')
             .' | Abwesenheit: NICHT BESTAETIGT'
