@@ -564,6 +564,27 @@ eq($repeat['p03LiveTimeline']['newDirectionProofsThisRead'],0,
     'unchanged P03 protocol has zero new entries');
 eq($repeat['localSensors']['sourceCount'],15,
     'new P03 timeline cannot remove existing GUS');
+eq($repeat['houseObservation']['observedHomeGUS'],15,
+    'house evaluator retains fifteen existing LCN motion sensors');
+eq($repeat['houseObservation']['sourcesHealthy'],true,
+    'house sensor report valid without new camera or WLAN checks');
+eq($repeat['houseObservation']['recentP03Direction'],'HOME_TO_LAGER',
+    'real appended P03 OUT appears as current directional house hint');
+eq($repeat['houseObservation']['houseStatus'],'HOME_EXIT_DIRECTION_HINT',
+    'someone walking HOME to WORK does not certify the house empty');
+eq($repeat['houseObservation']['propertyEmptyMayBeCertified'],false,
+    'leaving house toward storage cannot establish property absence');
+eq($repeat['houseObservation']['alarmMayBeControlled'],false,
+    'read-only home observation cannot arm existing alarm');
+eq($repeat['houseObservation']['personCount'],'UNKNOWN',
+    'even 15 GUS and P03 cannot count people');
+eq($repeat['houseObservation']['absenceControlState'],'NOT_CERTIFIED',
+    'there is still no automatic AWAY certainty');
+eq($repeat['phoneLink']['state'],'DISABLED_SEPARATE_PROJECT',
+    'WLAN project remains completely separate');
+eq(count($module->values),2,
+    'home observation extends existing JSON with zero new variables');
+
 
 $module->properties['Enabled']=false;
 $module->ApplyChanges();
