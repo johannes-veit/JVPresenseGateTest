@@ -247,7 +247,7 @@ verifyDiag(!str_contains($originalForm,'ExpansionPanel') ||
     !str_contains($originalForm,'P03 Socket-Diagnose – Bericht'),
     'diagnostic report expansions removed without removing ordinary settings');
 $onClicks=array_column($ui['actions']??[],'onClick');
-verifyDiag(in_array('JVP03MC_DiagnoseP03Connections($id);',$onClicks,true),'one-click button wired to diagnosis method');
+verifyDiag(in_array('JVP03MC_DiagnoseP03Connections($id, false);',$onClicks,true),'one-click button wired to diagnosis method');
 // Read-only IPC-HFW5442E-ZE model-config audit: replace transport with
 // camera-local simulated GETs. No camera / foreign module write is possible.
 class SimulatedIPC5442Main extends JVPresenceP03MultiCamera
