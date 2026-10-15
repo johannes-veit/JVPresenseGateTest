@@ -24,9 +24,12 @@ $gate=['schema'=>1,'authority'=>'EXISTING_SCHIEBETOR_DISPLAY_HINT_ONLY',
     'positionHint'=>'ZU','endZu'=>true,'endAuf'=>false];
 $indoor=['schema'=>1,'authority'=>'INDOOR_DEVICE_HINTS_ONLY',
     'sourceCount'=>0,'onCount'=>0];
-$evaluate=static fn($w=$wlan,$h=$home,$p=$p03,$b=$boundary,
-    $g=$gate,$i=$indoor):array=>
-    JVCombinedPresenceEvidence::evaluate($w,$h,$p,$b,$g,$i,$now);
+$evaluate=static fn(?array $w=null,?array $h=null,?array $p=null,
+    ?array $b=null,?array $g=null,?array $i=null):array=>
+    JVCombinedPresenceEvidence::evaluate(
+        $w??$wlan,$h??$home,$p??$p03,$b??$boundary,
+        $g??$gate,$i??$indoor,$now
+    );
 // Snapshot 15 Oct 2026: 2 devices, house last motion 940 sec ago.
 // Do NOT upgrade this to active physical home presence.
 $a=$evaluate();
