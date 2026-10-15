@@ -1129,11 +1129,52 @@ verifyDiag($GLOBALS['writes']===[],
 $ui2=json_decode($instance->GetConfigurationForm(),true);
 verifyDiag(!in_array('JVP03MC_DiagnoseP03Ownership($id);',
     array_column($ui2['actions']??[],'onClick'),true)
-    && count($ui2['actions']??[])===11
+    && count($ui2['actions']??[])===13
     && in_array('JVP03MC_StartTerraceInBackupOnly($id);',
         array_column($ui2['actions']??[],'onClick'),true)
     && in_array('JVP03MC_StartStreetDirectionOnly($id);',
         array_column($ui2['actions']??[],'onClick'),true),
     'main UI includes safe street-only learning, preserving existing commands');
 
+// Same ChatGPT report object for every future test. It must never touch
+// cameras, restart observers, arm production or reset past 4 transfers.
+$GLOBALS['instances'][57215]=[
+    'ConnectionID'=>9001,'InstanceStatus'=>102,
+    'ModuleInfo'=>['ModuleID'=>'{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}']
+];
+$GLOBALS['instances'][27938]=[
+    'ConnectionID'=>9002,'InstanceStatus'=>102,
+    'ModuleInfo'=>['ModuleID'=>'{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}']
+];
+$chat=new JVPresenceP03MultiCamera();
+$chat->properties['ChatGPTTestScenario']='TWO_SIDE_BY_SIDE';
+$chat->attributes['AuxJVEventCounterVarID']=42076;
+$chat->attributes['AuxWorkEventCounterVarID']=34838;
+$chat->attributes['AuxJVStreamVarID']=54893;
+$chat->attributes['AuxWorkStreamVarID']=51090;
+$chat->values['P03VerifiedTransfers']=4;
+$chat->values['P03ProofState']='MASTKAMERAS LIVE';
+$startJV=$GLOBALS['variables'][42076];
+$chat->StartChatGPTTestCapture();
+verifyDiag(($chat->attributes['ChatGPTTestBaseline']??'')!=='{}',
+    'baseline persisted after marking current passive test');
+verifyDiag(str_contains((string)$chat->values['ChatGPTTestResult'],
+    'Zwei Personen nebeneinander'),'selected test printed in same variable');
+verifyDiag(str_contains((string)$chat->values['ChatGPTTestResult'],
+    'Verifizierte Uebergaenge: 4 | Delta: +0'),
+    'ChatGPT report never books a new zone transition');
+$GLOBALS['variables'][42076]=$startJV+1;
+$chat->RefreshChatGPTTestResult();
+verifyDiag(str_contains((string)$chat->values['ChatGPTTestResult'],
+    'Human-Zaehler='.($startJV+1).' | Delta: +1'),
+    'one new JV human event appears as exactly one event not a counted person');
+verifyDiag($chat->values['P03VerifiedTransfers']===4
+    &&($chat->attributes['TestActive']??false)===false
+    &&($chat->attributes['ProductionEnabled']??false)===false,
+    'ChatGPT buttons do not arm P03 or reset historical proof count');
+verifyDiag(!str_contains((string)$chat->values['ChatGPTTestResult'],'secret-jv')
+    &&!str_contains((string)$chat->values['ChatGPTTestResult'],'secret-work'),
+    'copyable test result never exposes camera passwords');
+$GLOBALS['variables'][42076]=$startJV;
+verifyDiag($GLOBALS['writes']===[],'report buttons never modify cameras or foreign modules');
 echo "P03 READ-ONLY CONNECTION DIAGNOSIS TEST PASSED\n";
