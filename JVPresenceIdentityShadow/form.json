@@ -86,6 +86,61 @@
       ]
     },
     {
+      "type": "ExpansionPanel",
+      "caption": "EgiGeoZone Johannes – Android Zuhause-Geofence 150 m (nur lesen)",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Johannes' EgiGeoZone ist separat eingerichtet: Hauptinstanz #35965, Smartphone-Dummy #50000, Boolean TestGeoZone #41869 und Unix Timestamp #28055. Der Radius 150 m ist eine Angabe aus der Smartphone-App und wird von Symcon NICHT ausgelesen oder per GPS nachgerechnet. Boolean AN = App meldet das Smartphone innerhalb der Zone; AUS = App meldet außerhalb. Fehlende/alte oder verspaetete Ereignisse sind UNKNOWN, niemals Nachweis für menschliche Abwesenheit. Nur zwei bestehende Werte lesen; Latitude #42608 und Longitude #12243 bleiben ungelesen."
+        },
+        {
+          "type": "CheckBox",
+          "name": "EnableJohannesEgiGeoZone",
+          "caption": "EgiGeoZone Johannes als schwachen Geräte-Standorthinweis NUR LESEN (Opt-in)"
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "JohannesEgiInstanceID",
+          "caption": "EgiGeoZone Hauptinstanz (bekannt #35965)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "JohannesEgiDeviceID",
+          "caption": "EgiGeoZone Smartphone Johannes – Dummy (bekannt #50000)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "JohannesEgiZoneVariableID",
+          "caption": "Zuhause-Geofence TestGeoZone Boolean (bekannt #41869)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "JohannesEgiTimestampID",
+          "caption": "Timestamp der letzten EgiGeoZone Aktivität Unix Integer (bekannt #28055)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "JohannesEgiRadiusMeters",
+          "caption": "Radius IN DER ANDROID-APP eingestellt (150 m; nur beschreibende Angabe)",
+          "minimum": 50,
+          "maximum": 10000
+        },
+        {
+          "type": "Label",
+          "caption": "Ausgabe ohne zusätzliche Symcon-Variablen: EvidenceJSON.johannesEgiGeoZone, combinedPresenceEvidence.johannesGeofenceContext und johannesWlanGeofenceCrossCheck. Auch bei WLAN-/Geofence-Übereinstimmung bleibt PERSON HOME/AWAY unbewiesen. Standortkoordinaten werden nicht gelesen oder ausgegeben. Bei fehlender Aktualisierung nach 6 Stunden wird das Geofence-Ereignis als veraltet markiert, nicht als Abwesenheit. Weder EgiGeoZone noch WLAN-Skripte oder P03 werden verändert."
+        }
+      ]
+    },
+    {
       "type": "Label",
       "caption": "NEUE GEMEINSAME BEWERTUNG: Die bestehende EvidenceJSON enthält jetzt combinedPresenceEvidence und houseObservation.combinedContextStatus. Frische WLAN-Handys + aktuelle GUS-Bewegung liefern einen anonymen kombinierten Haus-Aktivitätshinweis. Handys ohne frische GUS-Bewegung bestätigen nur Geräte im WLAN. P03 Haus↔Lager ist KEIN Grundstücksausgang, Schiebetor ZU/AUF keine Personenrichtung. Wenn Handys offline und das Haus ruhig sind, listet absenceReview fehlende Nachweise; keine automatische Abwesenheit und kein Alarm."
     },

@@ -18,7 +18,7 @@ final class JVCombinedPresenceEvidence
 
     public static function evaluate(
         array $wlan,array $home,array $p03,array $boundary,
-        array $gate,array $indoor,int $now
+        array $gate,array $indoor,int $now,array $geofence=[]
     ):array {
         $data=[
             'schema'=>self::SCHEMA,
@@ -47,6 +47,12 @@ final class JVCombinedPresenceEvidence
             'indoorReadOnlySourceCount'=>0,
             'indoorOnCount'=>0,
             'indoorDevicesOffProveAbsence'=>false,
+            'johannesGeofenceContext'=>'DISABLED_OR_UNVERIFIED',
+            'johannesGeofenceRadiusMeters'=>null,
+            'johannesGeofenceLastEventAgeSeconds'=>null,
+            'johannesWlanGeofenceCrossCheck'=>'NOT_AVAILABLE',
+            'geofenceDeviceNotHuman'=>true,
+            'geofenceOutsideNeverCertifiesAbsence'=>true,
             'absenceReview'=>[
                 'status'=>'INSUFFICIENT_EVIDENCE',
                 'mayDeclareAway'=>false,
@@ -113,6 +119,36 @@ final class JVCombinedPresenceEvidence
         $data['indoorReadOnlySourceCount']=is_int($sourceN)&&$sourceN>=0?$sourceN:0;
         $data['indoorOnCount']=is_int($on)&&$on>=0&&$on<=$data['indoorReadOnlySourceCount']
             ?$on:0;
+        // EgiGeoZone is an Android handset geofence event, not a person,
+        // property-boundary crossing, measured distance or continuous GPS.
+        // Only explicitly enabled, schema-authorized, recent events can
+        // enrich the context. Never use it to assert individual HOME/AWAY.
+        $geoAuthorized=($geofence['schema']??null)===1
+            &&($geofence['authority']??null)==='EXISTING_JOHANNES_EGIGEOZONE_READ_ONLY'
+            &&($geofence['enabled']??null)===true
+            &&($geofence['validatedSource']??null)===true
+            &&($geofence['radiusVerifiedViaSymcon']??true)===false
+            &&is_int($geofence['radiusMetersConfiguredInPhoneApp']??null);
+        $geoInside=$geoAuthorized &&($geofence['insideRecent']??null)===true
+            &&($geofence['outsideRecent']??null)===false;
+        $geoOutside=$geoAuthorized &&($geofence['outsideRecent']??null)===true
+            &&($geofence['insideRecent']??null)===false;
+        $johannesWlan=($wlan['people']['johannes']['recentMacEvidence']??false)===true;
+        if($geoAuthorized){
+            $data['johannesGeofenceRadiusMeters']=$geofence['radiusMetersConfiguredInPhoneApp'];
+            $data['johannesGeofenceLastEventAgeSeconds']=$geofence['lastEventAgeSeconds'];
+            $data['johannesGeofenceContext']=$geoInside
+                ?'JOHANNES_PHONE_REPORTED_WITHIN_HOME_GEOFENCE'
+                :($geoOutside?'JOHANNES_PHONE_REPORTED_OUTSIDE_HOME_GEOFENCE'
+                    :'GEOFENCE_EVENT_TOO_OLD_OR_INVALID_NOT_CURRENT');
+            $data['johannesWlanGeofenceCrossCheck']=$geoInside
+                ?($johannesWlan?'GEOFENCE_AND_WLAN_PHONE_NEAR_HOME'
+                    :'GEOFENCE_IN_WLAN_NOT_CONFIRMED')
+                :($geoOutside
+                    ?($johannesWlan?'WLAN_ON_GEOFENCE_OUT_REVIEW_ONLY'
+                        :'GEOFENCE_OUT_WLAN_NOT_CONFIRMED_NOT_ABSENCE')
+                    :'STALE_GEOFENCE_NOT_USED');
+        }
         if($count>0&&$recent) {
             $data['status']=$strong
                 ?'HOUSE_ACTIVITY_WITH_WLAN_DEVICE_CORROBORATED'
@@ -125,11 +161,18 @@ final class JVCombinedPresenceEvidence
             $data['status']='HOUSE_ACTIVITY_WITHOUT_FRESH_WLAN';
             $data['description']='GUS-Bewegung im Haus trotz fehlendem aktuellem WLAN-Handy-Nachweis. Das Handy darf nicht als abwesende Person gelten.';
         }elseif($count>0){
-            $data['status']='WLAN_DEVICES_ONLY_NO_RECENT_HOME_MOTION';
-            $data['description']='Smartphone(s) im WLAN, aber keine aktuelle bestätigte Hausbewegung. Auch liegengebliebene Handys möglich.';
+            $data['status']=$geoInside&&$johannesWlan
+                ?'JOHANNES_WLAN_GEOFENCE_DEVICE_NEAR_HOME_NO_RECENT_MOTION'
+                :'WLAN_DEVICES_ONLY_NO_RECENT_HOME_MOTION';
+            $data['description']=$geoInside&&$johannesWlan
+                ?'Johannes Smartphone via WLAN und gemeldetem 150-m-Geofence nahe Haus; keine aktuelle GUS-Bewegung. Telefon ist kein Personenbeweis.'
+                :'Smartphone(s) im WLAN, aber keine aktuelle bestätigte Hausbewegung. Auch liegengebliebene Handys möglich.';
         }elseif($data['p03RecentDirection']==='LAGER_TO_HOME'){
             $data['status']='P03_HOME_ENTRY_DIRECTION_ONLY';
             $data['description']='Frischer P03-Richtungsnachweis Lager nach Haus, ohne Identität oder Personenzahl.';
+        }elseif($geoInside){
+            $data['status']='JOHANNES_GEOFENCE_PHONE_NEAR_HOME_ONLY';
+            $data['description']='EgiGeoZone hat das Smartphone innerhalb des Zuhause-Geofences gemeldet, ohne aktuellen WLAN-/GUS-Nachweis. Keine Bewohneridentitaet oder sichere Anwesenheit.';
         }elseif($data['indoorOnCount']>0){
             $data['status']='INDOOR_DEVICE_ON_WEAK_HINT';
             $data['description']='Innenlicht oder TV aktiv; auch automatischer Betrieb möglich. Keine sichere Personenerkennung.';
@@ -145,6 +188,8 @@ final class JVCombinedPresenceEvidence
             $data['description']='Zurzeit kein gemeinsam verifizierter Aufenthaltsnachweis. Abwesenheit ist nicht bestätigt.';
         }
         $missing=[];
+        if($geoInside)
+            $missing[]='JOHANNES_GEOFENCE_PHONE_NEAR_HOME_NOT_ABSENCE';
         if(!$wlanActive)$missing[]='WLAN_PHONE_OBSERVATION_DISABLED';
         elseif($count>0)$missing[]='WLAN_DEVICES_STILL_CONFIRMED';
         if(!$healthy)$missing[]='LCN_FULL_COVERAGE_NOT_VERIFIED';

@@ -82,6 +82,7 @@ function IPS_GetVariable(int $id):array{
         'VariableChanged'=>$GLOBALS['gateDevices'][$id]['changed']];
 }
 function IPS_GetObject(int $id):array{
+    if($id===50000)return ['ParentID'=>35965];
     if(isset($GLOBALS['gateDevices'][$id]))return ['ParentID'=>
         $GLOBALS['gateDevices'][$id]['pairedParent']??($id+100000)];
     if($id>=100000&&isset($GLOBALS['gateDevices'][$id-100000]))
@@ -544,4 +545,91 @@ checkGate(($disabled['existingWlanSmartphones']['enabled']??null)===false
     'disabling WLAN read avoids touching any phone source');
 checkGate(($disabled['phoneLink']['state']??null)==='DISABLED_SEPARATE_PROJECT',
     'legacy phone observer still remains disabled');
+
+// Real installed EgiGeoZone: #35965 / dummy #50000 / TestGeoZone #41869
+// / Timestamp #28055. Raw latitude #42608 and longitude #12243 MUST NOT
+// be read. Opt-in preserves all existing phone/P03/gate integrations.
+$now=time();
+$GLOBALS['gateDevices'][41869]=[
+    'name'=>'TestGeoZone','parent'=>'Smartphone Johannes',
+    'type'=>0,'value'=>true,'changed'=>$now-18,
+    'pairedParent'=>50000];
+$GLOBALS['gateDevices'][28055]=[
+    'name'=>'Timestamp','parent'=>'Smartphone Johannes',
+    'type'=>1,'value'=>$now-35,'changed'=>$now-35,
+    'pairedParent'=>50000];
+$GLOBALS['gateDevices'][42608]=[
+    'name'=>'Latitude','parent'=>'Smartphone Johannes',
+    'type'=>2,'value'=>49.0,'changed'=>$now-20,
+    'pairedParent'=>50000];
+$GLOBALS['gateDevices'][12243]=[
+    'name'=>'Longitude','parent'=>'Smartphone Johannes',
+    'type'=>2,'value'=>6.0,'changed'=>$now-20,
+    'pairedParent'=>50000];
+$geoMod=new JVPresenceIdentityShadow();
+$geoMod->Create();
+$geoMod->setProp('Enabled',true);
+$geoMod->setProp('P03InstanceID',0);
+$geoMod->setProp('SensorSources','[]');
+$geoMod->setProp('EnableExistingWLANHints',true);
+$geoMod->setProp('EnableJohannesEgiGeoZone',true);
+$readsBefore=count($GLOBALS['readCalls']);
+$geoMod->Refresh();
+$geo=json_decode((string)$geoMod->GetValue('EvidenceJSON'),true);
+checkGate(($geo['johannesEgiGeoZone']['state']??null)
+    ==='RECENT_INSIDE_150M_DEVICE_HINT'
+    &&($geo['johannesEgiGeoZone']['radiusMetersConfiguredInPhoneApp']??null)===150,
+    'read real existing inside state and app-reported 150 m radius');
+checkGate(($geo['combinedPresenceEvidence']['johannesWlanGeofenceCrossCheck']??null)
+    ==='GEOFENCE_AND_WLAN_PHONE_NEAR_HOME'
+    &&($geo['combinedPresenceEvidence']['status']??null)
+    ==='JOHANNES_WLAN_GEOFENCE_DEVICE_NEAR_HOME_NO_RECENT_MOTION',
+    'two independent Johannes phone device channels agree, no GUS needed');
+checkGate(($geo['people']['johannes']??null)==='UNKNOWN'
+    &&($geo['combinedPresenceEvidence']['personPresenceMayBeChanged']??null)===false
+    &&($geo['combinedPresenceEvidence']['absenceReview']['mayArmAlarm']??null)===false,
+    'geofence cannot set identity, person location, property vacancy or alarm');
+$readGeo=array_slice($GLOBALS['readCalls'],$readsBefore);
+checkGate(in_array(41869,$readGeo,true)&&in_array(28055,$readGeo,true),
+    'only opt-in existing Boolean and Unix timestamp read');
+checkGate(!in_array(42608,$readGeo,true)&&!in_array(12243,$readGeo,true),
+    'sensitive raw latitude/longitude never read');
+$GLOBALS['gateDevices'][41869]['value']=false;
+$geoMod->Refresh();
+$geoOut=json_decode((string)$geoMod->GetValue('EvidenceJSON'),true);
+checkGate(($geoOut['johannesEgiGeoZone']['outsideRecent']??null)===true
+    &&($geoOut['combinedPresenceEvidence']['johannesWlanGeofenceCrossCheck']??null)
+    ==='WLAN_ON_GEOFENCE_OUT_REVIEW_ONLY'
+    &&($geoOut['people']['johannes']??null)==='UNKNOWN',
+    'geofence outside while WLAN on: conflict only, never human away');
+$GLOBALS['gateDevices'][28055]['value']=$now-22000;
+$geoMod->Refresh();
+$staleGeo=json_decode((string)$geoMod->GetValue('EvidenceJSON'),true);
+checkGate(($staleGeo['johannesEgiGeoZone']['outsideRecent']??true)===false
+    &&($staleGeo['johannesEgiGeoZone']['state']??null)
+    ==='STALE_OUTSIDE_NOT_LIVE_ABSENCE',
+    'old outside events never certify person absent');
+$GLOBALS['gateDevices'][28055]['value']=$now-20;
+$GLOBALS['gateDevices'][41869]['pairedParent']=50001; // actual Symcon ParentID moves
+$readsBefore=count($GLOBALS['readCalls']);
+$geoMod->Refresh();
+$badGeo=json_decode((string)$geoMod->GetValue('EvidenceJSON'),true);
+checkGate(($badGeo['johannesEgiGeoZone']['state']??null)==='SOURCE_NOT_VERIFIED',
+    'moved/reused EgiGeoZone source fails closed');
+$readBad=array_slice($GLOBALS['readCalls'],$readsBefore);
+checkGate(!in_array(41869,$readBad,true)&&!in_array(28055,$readBad,true),
+    'invalid EgiGeoZone ID paths never read source values');
+$geoMod->setProp('EnableJohannesEgiGeoZone',false);
+$readsBefore=count($GLOBALS['readCalls']);
+$geoMod->Refresh();
+$disabledGeo=json_decode((string)$geoMod->GetValue('EvidenceJSON'),true);
+checkGate(($disabledGeo['johannesEgiGeoZone']['state']??null)==='DISABLED'
+    &&($disabledGeo['combinedPresenceEvidence']['johannesGeofenceContext']??null)
+    ==='DISABLED_OR_UNVERIFIED',
+    'geo opt-out leaves previous WLAN/GUS status unchanged');
+checkGate(!in_array(41869,array_slice($GLOBALS['readCalls'],$readsBefore),true)
+    &&!in_array(28055,array_slice($GLOBALS['readCalls'],$readsBefore),true),
+    'disabled geofence reads zero smartphone geo values');
+checkGate($geoMod->registered===['Status','EvidenceJSON'],
+    'EgiGeoZone opt-in creates no new Symcon variables');
 echo "Gate Shadow integration / initialization 101->102, failure 201 recovery PASS\n";

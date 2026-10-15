@@ -88,6 +88,8 @@ jobs:
         run: php tests/JVGateSignalShadowIntegrationTest.php
       - name: Two existing WLAN smartphone scripts and 660-second standby safety
         run: php tests/JVExistingWlanPhoneHintsTest.php
+      - name: Existing EgiGeoZone Johannes 150m inside/outside/stale safety
+        run: php tests/JVJohannesEgiGeoZoneHintsTest.php
       - name: Combined anonymous WLAN GUS P03 gate indoor occupancy evaluation
         run: php tests/JVCombinedPresenceEvidenceTest.php
       - name: Fifteen verified real LCN GUS inventory imports and collision protection
