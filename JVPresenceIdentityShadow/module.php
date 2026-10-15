@@ -732,7 +732,7 @@ class JVPresenceIdentityShadow extends IPSModule
                     if(!is_string($raw)||strlen($raw)>8192)continue;
                     $reads[]=[
                         'ip'=>$ip,'ageSeconds'=>max(0,time()-$updated),
-                        'raw'=>$raw
+                        'updatedAt'=>$updated,'raw'=>$raw
                     ];
                 }catch(Throwable $e){}
             }
