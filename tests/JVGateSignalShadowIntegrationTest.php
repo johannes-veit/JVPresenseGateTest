@@ -185,6 +185,14 @@ checkGate(($data['personPresenceMayBeChanged']??null)===false,
 checkGate(($data['cameraCapabilityPriority']['cameraPriorityForStreet'][0]??null)
     ==='WORK_LEFT_IPC_STREET_IVS',
     'known installed WORK_LEFT IPC prioritized for street IVS');
+checkGate(($data['p03MastHealth']['authority']??null)
+    ==='P03_EXISTING_MAST_OBSERVER_HEALTH_ONLY',
+    'read-only P03 mast source diagnostics present in existing Shadow JSON');
+checkGate(($data['p03MastHealth']['bothMastsLive']??null)===false,
+    'test fixture without P03 Aux connections never claims live streams');
+checkGate(($data['p03MastHealth']['camerasContacted']??null)===false,
+    'no camera CGI calls or camera smart-plan changes');
+
 checkGate(($data['cameraCapabilityPriority']['installedCameras']['JV_TERRASSE']['model']??null)
     ==='IPC-PDW3849-A180-AS-PV',
     'the exact already known TiOC model is reported');

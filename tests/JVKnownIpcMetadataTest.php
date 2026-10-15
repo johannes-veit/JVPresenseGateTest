@@ -12,7 +12,7 @@ $r=JVKnownIpcMetadata::evaluate([
  ['instanceId'=>211,'ip'=>'192.168.107.98','label'=>'Torhalle Strasse Kamera'],
  ['instanceId'=>213,'ip'=>'192.168.107.97','label'=>'Torhalle Einfahrt'],
  ['instanceId'=>217,'ip'=>'192.168.107.96','label'=>'JV rechts','eventVariableId'=>42117],
- ['instanceId'=>219,'ip'=>'192.168.107.99','label'=>'Werkstatt rechts'],
+ ['instanceId'=>219,'ip'=>'192.168.107.99','label'=>'P03 – Lagerplatz Werkstatt links'],
  ['instanceId'=>225,'ip'=>'192.168.107.94','label'=>'WORK_LEFT'],
  ['instanceId'=>229,'ip'=>'192.168.107.110','label'=>'TiOC Terrasse'],
  ['instanceId'=>231,'ip'=>'192.168.107.196','label'=>'andere noch unbekannt'],
@@ -34,6 +34,8 @@ chkExtra($r['otherIpcCandidates'][2]['ip']==='192.168.107.96',
     'spare JV right suitable for review without touching current JV left');
 chkExtra($r['otherIpcCandidates'][3]['ip']==='192.168.107.99',
     'spare WORK right suitable for review without touching main WORK left');
+chkExtra($r['otherIpcCandidates'][3]['roleNameConflictNeedsReview']===true,
+    'IP historically WORK RIGHT but configured Symcon instance named left; review before use');
 chkExtra($r['otherIpcCandidates'][2]['peopleCountingSupportedByModel']===true,
     'older HFW5442 inventory is only model-conditional capability');
 chkExtra($r['otherIpcCandidates'][2]['modelReadFromCameraNow']===false,
@@ -147,4 +149,28 @@ chkExtra($bad['camerasWithFreshIvSHumanHint']===0
     &&$bad['supplementaryHumanHint']===false,
     'reject stale, bad JSON and car IVS event');
 chkExtra($bad['alarmMayBeControlled']===false,'no alarms ever controlled');
+require_once dirname(__DIR__).'/libs/JVP03SourceHealth.php';
+$mast=[
+ 'JV_LEFT'=>['instanceId'=>57215,'guidVerified'=>true,'host'=>'192.168.107.95',
+     'role'=>'JV_LEFT','streamOK'=>true,
+     'diagnostic'=>['rxAge'=>8,'streaming'=>true]],
+ 'WORK_LEFT'=>['instanceId'=>27938,'guidVerified'=>true,'host'=>'192.168.107.94',
+     'role'=>'WORK_LEFT','streamOK'=>true,
+     'diagnostic'=>['rxAge'=>8,'streaming'=>true]]
+];
+$mh=JVP03SourceHealth::evaluate($mast,'BLOCKIERT',time());
+chkExtra($mh['bothMastsLive']===true,'both observers show fresh camera RX');
+chkExtra($mh['finding']==='P03_MAIN_BLOCKED_DESPITE_LIVE_AUX_STREAMS',
+ 'main P03 blocked despite both mast streams live');
+$mast['WORK_LEFT']['diagnostic']['rxAge']=600;
+$mh=JVP03SourceHealth::evaluate($mast,'BLOCKIERT',time());
+chkExtra($mh['mastObservers']['WORK_LEFT']['streamState']==='STALE_CAMERA_RX',
+ 'old StreamOK true does not override stale reception');
+$mast['WORK_LEFT']['host']='192.168.107.99';
+$mh=JVP03SourceHealth::evaluate($mast,'BLOCKIERT',time());
+chkExtra($mh['mastObservers']['WORK_LEFT']['sourceVerified']===false,
+ 'a mislabeled or repointed mast host must not be trusted');
+chkExtra($mh['propertyEmptyMayBeCertified']===false
+ && $mh['camerasContacted']===false,'diagnosis cannot act or assert absence');
+
 echo "Additional Dahua IPC candidates, safe street precedence, metadata only PASS ($checks)\n";
