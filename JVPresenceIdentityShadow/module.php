@@ -11,6 +11,7 @@ require_once dirname(__DIR__).'/libs/JVExitCandidateInventory.php';
 require_once dirname(__DIR__).'/libs/JVGateSignalAudit.php';
 require_once dirname(__DIR__).'/libs/JVIndoorPresenceHints.php';
 require_once dirname(__DIR__).'/libs/JVIndoorHintInventory.php';
+require_once dirname(__DIR__).'/libs/JVIndoorAutoReadHints.php';
 require_once dirname(__DIR__).'/libs/JVGateDisplayHint.php';
 require_once dirname(__DIR__).'/libs/JVParallelPassageGuard.php';
 require_once dirname(__DIR__).'/libs/JVCameraCapabilityPriority.php';
@@ -62,6 +63,9 @@ class JVPresenceIdentityShadow extends IPSModule
         // Exact pairs come from the user's independently working WLAN
         // Johannes v1.2 and WLAN Carina v1.5. Manual opt-in; no script writes.
         $this->RegisterPropertyBoolean('EnableExistingWLANHints',false);
+        // Explicit opt-in: only read 3-level verified existing Boolean status
+        // objects found through manual indoor metadata audit (button 5).
+        $this->RegisterPropertyBoolean('EnableAutoIndoorReadOnlyHints',false);
         $this->RegisterPropertyInteger('JohannesWLANBoolID',19980);
         $this->RegisterPropertyInteger('JohannesWLANLastContactID',26497);
         $this->RegisterPropertyInteger('CarinaWLANBoolID',38430);
@@ -1070,7 +1074,18 @@ class JVPresenceIdentityShadow extends IPSModule
         }
         // Explicitly selected, existing indoor output statuses and TVs.
         // Multiple motion-triggered lamps are NOT independent GUS proofs.
-        $indoorHints=JVIndoorPresenceHints::evaluate($local['readings'],time());
+        $autoIndoorEnabled=$this->ReadPropertyBoolean('EnableAutoIndoorReadOnlyHints');
+        $autoIndoor=$autoIndoorEnabled
+            ?$this->readAutoIndoorHintSnapshots($config['sources'])
+            :JVIndoorAutoReadHints::evaluate([],[],time());
+        $autoIndoor['enabled']=$autoIndoorEnabled;
+        // Explicit manual SensorSources remain authoritative and are never
+        // modified. The automatic inputs are separate weak read-only hints.
+        $indoorHints=JVIndoorPresenceHints::evaluate(
+            $local['readings']+$autoIndoor['readings'],time()
+        );
+        $autoIndoorSummary=$autoIndoor;
+        unset($autoIndoorSummary['readings']);
         $houseObservation=JVHomeOccupancyEvidence::evaluate(
             $local,$activity,$p03Timeline['report'],time(),$indoorHints
         );
@@ -1208,6 +1223,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'gateSignalAudit'=>$gateAudit,
             'gateDisplay'=>$gateDisplay,
             'indoorDeviceHints'=>$indoorHints,
+            'indoorAutoRead'=>$autoIndoorSummary,
             'indoorHintInventory'=>$indoorInventory,
             'recentCombinedEvidence'=>$this->combinedShadowEvidence(
                 $p03Timeline['report'],$activity,$boundary['report']
@@ -1270,6 +1286,9 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | Zaehlkameraprioritaet: IPC WizMind (kein Live-Count bestaetigt)'
             .' | Schiebetor: '.$gateDisplay['positionHint']
             .' | Innenlicht/TV AN: '.$indoorHints['onCount']
+            .' | Auto-Innenlicht: '.($autoIndoorEnabled
+                ?$autoIndoor['readableCount'].'/'.$autoIndoor['candidateCount'].' nur lesen'
+                :'AUS')
             .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
             .' | Kombiniert: '.$combined['status']
@@ -1518,6 +1537,51 @@ class JVPresenceIdentityShadow extends IPSModule
             }
         }
         return $snapshots;
+    }
+
+
+    /**
+     * Optional low-cost 60s passive sampling of existing light status
+     * variables, derived ONLY from button 5's persisted metadata inventory.
+     * Fail closed when a variable ID is recycled, moved or type changed.
+     * No action execution, no Symcon object creation, no device writes.
+     */
+    private function readAutoIndoorHintSnapshots(array $configuredSources):array
+    {
+        $configuredIds=[];
+        foreach($configuredSources as $source){
+            if(is_int($source['variableID']??null))
+                $configuredIds[]=$source['variableID'];
+        }
+        $inventory=json_decode($this->readShadowState('IndoorHintInventory'),true);
+        $selected=JVIndoorAutoReadHints::select(
+            is_array($inventory)?$inventory:null,$configuredIds
+        );
+        $snapshots=[];
+        foreach($selected as $row){
+            $id=$row['variableId'];
+            $snapshots[$id]=['valid'=>false];
+            try{
+                if(!IPS_VariableExists($id))continue;
+                if(IPS_GetName($id)!==$row['name'])continue;
+                $obj=IPS_GetObject($id);
+                $parentId=(int)($obj['ParentID']??0);
+                if($parentId<=0||IPS_GetName($parentId)!==$row['parent'])continue;
+                $parentObj=IPS_GetObject($parentId);
+                $grandId=(int)($parentObj['ParentID']??0);
+                if($grandId<=0||IPS_GetName($grandId)!==$row['grandparent'])continue;
+                $meta=IPS_GetVariable($id);
+                $changed=$meta['VariableChanged']??null;
+                if(($meta['VariableType']??null)!==0
+                    ||!is_int($changed)||$changed<0||$changed>time()+5)continue;
+                $value=GetValue($id);
+                if(!is_bool($value))continue;
+                $snapshots[$id]=[
+                    'valid'=>true,'value'=>$value,'changedAt'=>$changed
+                ];
+            }catch(Throwable $ignored){}
+        }
+        return JVIndoorAutoReadHints::evaluate($selected,$snapshots,time());
     }
 
     private function readSensorSnapshot(int $id,bool $indoorHint=false): ?array
