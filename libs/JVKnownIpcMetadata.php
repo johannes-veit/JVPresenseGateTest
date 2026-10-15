@@ -11,23 +11,51 @@ final class JVKnownIpcMetadata
 {
     private const KNOWN=[
         '192.168.107.92'=>['role'=>'FARB_CONTAINER','place'=>'Farbcontainer',
-            'priority'=>4,'model'=>'UNKNOWN'],
+            'priority'=>4,'model'=>'IPC-HFW5442E-ZE'],
         '192.168.107.94'=>['role'=>'WORK_LEFT_P03','place'=>'Lagerplatz Werkstatt links (aktuelle P03)',
             'priority'=>9,'model'=>'IPC-HFW5442E-ZE'],
         '192.168.107.95'=>['role'=>'JV_LEFT_P03','place'=>'Lagerplatz JV links (aktuelle P03)',
             'priority'=>9,'model'=>'IPC-HFW5442E-ZE'],
         '192.168.107.96'=>['role'=>'JV_RIGHT_CANDIDATE','place'=>'Lagerplatz JV rechts',
             'priority'=>2,'model'=>'IPC-HFW5442E-ZE'],
-        '192.168.107.97'=>['role'=>'TORHALLE_EINFAHRT_CANDIDATE','place'=>'Torhalle Einfahrt',
-            'priority'=>1,'model'=>'UNKNOWN'],
+        '192.168.107.97'=>['role'=>'TORHALLE_EINFAHRT_CANDIDATE','place'=>'neben Torhalle Einfahrt',
+            'priority'=>1,'model'=>'IPC-HFW5442E-ZE'],
         '192.168.107.98'=>['role'=>'TORHALLE_STRASSE_CANDIDATE','place'=>'Torhalle Strasse',
-            'priority'=>0,'model'=>'UNKNOWN'],
+            'priority'=>0,'model'=>'IPC-HFW5442E-ZE'],
         '192.168.107.99'=>['role'=>'WORK_RIGHT_CANDIDATE','place'=>'Lagerplatz Werkstatt rechts',
             'priority'=>3,'model'=>'IPC-HFW5442E-ZE'],
         '192.168.107.110'=>['role'=>'TIOC_JV_TERRASSE','place'=>'JV Terrasse',
             'priority'=>8,'model'=>'IPC-PDW3849-A180-AS-PV'],
         '192.168.107.111'=>['role'=>'TIOC_JV_HOF_GARAGE','place'=>'JV Hof Garage',
             'priority'=>8,'model'=>'IPC-PDW3849-A180-AS-PV']
+    ];
+
+    /**
+     * User-supplied SmartPSS snapshot 2026-10-15 lists all nine cameras as
+     * Online, and identifies seven exact HFW5442E-ZE + two PDW3849-A180-AS-PV.
+     *
+     * Six cameras also have individual TCP/IP dialogs confirming the IP.
+     * For Farbcontainer, Torhalle Strasse and neben Torhalle Einfahrt the
+     * MODEL is proven by SmartPSS name; the address remains a historical
+     * assignment until a camera TCP/IP dialog is supplied.
+     *
+     * SmartPSS Online does NOT mean reachable from IP-Symcon/SymBox.
+     */
+    private const SMARTPSS_IP_CONFIRMED=[
+        '192.168.107.94'=>true,'192.168.107.95'=>true,
+        '192.168.107.96'=>true,'192.168.107.99'=>true,
+        '192.168.107.110'=>true,'192.168.107.111'=>true
+    ];
+    private const SMARTPSS_NAME_CONFIRMED=[
+        '192.168.107.92'=>'Farbcontainer',
+        '192.168.107.94'=>'Lagerplatz Werkstatt links',
+        '192.168.107.95'=>'Lagerplatz JV links',
+        '192.168.107.96'=>'Lagerplatz JV rechts',
+        '192.168.107.97'=>'neben Torhalle Einfahrt',
+        '192.168.107.98'=>'Torhalle Straße',
+        '192.168.107.99'=>'Lagerplatz Werkstatt rechts',
+        '192.168.107.110'=>'JV Terrasse',
+        '192.168.107.111'=>'JV Hof Garage'
     ];
 
     public static function knownAddresses():array{return array_keys(self::KNOWN);}
@@ -100,6 +128,13 @@ final class JVKnownIpcMetadata
                 'ip'=>$ip,'historicalRole'=>$known['role'],
                 'historicalLocation'=>$known['place'],
                 'modelFromPreviousInventory'=>$known['model'],
+                'modelVerifiedFromSmartPSSScreenshot'=>true,
+                'smartPssDeviceName'=>self::SMARTPSS_NAME_CONFIRMED[$ip],
+                'smartPssModelSnapshotDate'=>'2026-10-15',
+                'smartPssOnlineAtSnapshot'=>true,
+                'smartPssOnlineDoesNotProveSymBoxConnectivity'=>true,
+                'ipConfirmedBySmartPSSTcpIpDialog'=>
+                    isset(self::SMARTPSS_IP_CONFIRMED[$ip]),
                 'modelReadFromCameraNow'=>false,
                 'configuredSymconInstanceIds'=>array_slice(
                     array_map('intval',array_keys($instances)),0,10),
@@ -159,6 +194,16 @@ final class JVKnownIpcMetadata
             'schema'=>1,'authority'=>'ADDITIONAL_IPC_METADATA_ONLY',
             'auditStatus'=>'INSTANCES_SCANNED_READ_ONLY',
             'ipAddressesAreHistoricalHints'=>true,
+            'smartPssScreenshotModelCount'=>9,
+            'smartPssSnapshotOnlineDeviceCount'=>10,
+            'smartPssHfw5442Count'=>7,
+            'smartPssTiocPdW3849Count'=>2,
+            'smartPssVtoDevicesExcludedFromCounting'=>1,
+            'smartPssIpDialogsConfirmed'=>count(self::SMARTPSS_IP_CONFIRMED),
+            'smartPssOtherThreeIpDialogsStillRequired'=>[
+                'Farbcontainer','Torhalle Straße','neben Torhalle Einfahrt'
+            ],
+            'smartPssOnlineDoesNotVerifySymBoxEventStream'=>true,
             'priorityIsByLikelyViewNotAccuracy'=>true,
             'unconfirmedModelMayNotUsePeopleCounting'=>true,
             'sourceConnectedForHumanCounting'=>false,

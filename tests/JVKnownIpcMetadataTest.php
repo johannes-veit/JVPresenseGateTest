@@ -44,8 +44,33 @@ chkExtra(($r['otherIpcCandidates'][2]['existingP03AuxEventSources'][0]['eventVar
     ===42117,'reuse only existing observer IVS event variable by exact metadata ID');
 chkExtra($r['otherIpcCandidates'][2]['existingP03AuxEventSources'][0]['peopleCountVerified']
     ===false,'observer event cannot count people');
-chkExtra($r['otherIpcCandidates'][0]['peopleCountingSupportedByModel']==='NOT_VERIFIED',
-    'Torhalle camera model remains unknown, cannot assert counting');
+chkExtra($r['otherIpcCandidates'][0]['peopleCountingSupportedByModel']===true,
+    'SmartPSS confirms Torhalle Strasse IPC-HFW5442E-ZE model has hardware counting feature');
+chkExtra($r['otherIpcCandidates'][1]['peopleCountingSupportedByModel']===true,
+    'SmartPSS confirms neben Torhalle Einfahrt camera model');
+chkExtra($r['otherIpcCandidates'][4]['peopleCountingSupportedByModel']===true,
+    'SmartPSS confirms Farbcontainer camera model');
+chkExtra($r['otherIpcCandidates'][0]['modelVerifiedFromSmartPSSScreenshot']===true,
+    'model proven in user screenshots rather than guessed from historical IP');
+chkExtra($r['otherIpcCandidates'][0]['ipConfirmedBySmartPSSTcpIpDialog']===false,
+    'exact Torhalle Strasse IP not shown in TCP-IP screenshot');
+chkExtra($r['otherIpcCandidates'][1]['ipConfirmedBySmartPSSTcpIpDialog']===false,
+    'exact Torhalle Einfahrt IP not shown in TCP-IP screenshot');
+chkExtra($r['otherIpcCandidates'][4]['ipConfirmedBySmartPSSTcpIpDialog']===false,
+    'exact Farbcontainer IP not shown in TCP-IP screenshot');
+chkExtra($r['otherIpcCandidates'][2]['ipConfirmedBySmartPSSTcpIpDialog']===true,
+    'JV RIGHT .96 exact IP confirmed from SmartPSS TCP-IP dialog');
+chkExtra($r['otherIpcCandidates'][3]['ipConfirmedBySmartPSSTcpIpDialog']===true,
+    'WORK RIGHT .99 exact IP confirmed from SmartPSS TCP-IP dialog');
+chkExtra($r['smartPssHfw5442Count']===7
+    &&$r['smartPssTiocPdW3849Count']===2
+    &&$r['smartPssSnapshotOnlineDeviceCount']===10
+    &&$r['smartPssVtoDevicesExcludedFromCounting']===1,
+    '10 SmartPSS online: 7 WizMind 5442, 2 TiOC, 1 VTO, no VTO headcount');
+chkExtra($r['smartPssIpDialogsConfirmed']===6,
+    'only six exact IP-to-camera dialogs confirmed');
+chkExtra($r['smartPssOnlineDoesNotVerifySymBoxEventStream']===true,
+    'SmartPSS online does not heal broken P03 SymBox stream');
 chkExtra($r['otherIpcCandidates'][5]['historicalRole']==='UNIDENTIFIED_IPC_OR_DEVICE',
     'other VLAN107 device must be verified as camera');
 chkExtra($r['otherIpcCandidates'][5]['configuredSymconInstanceCount']===2,
@@ -78,6 +103,18 @@ chkExtra($cam['additionalIpcCandidatesConfiguredInSymcon'][0]['viewVerified']===
     'camera view not proven just by name');
 chkExtra($cam['additionalIpcPeopleCountingCanBeUsedNow']===false,
     'no automatic counting even if people-counting-capable hardware exists');
+chkExtra(count($cam['candidateEvaluationOrderForDedicatedPeopleCounting'])===6,
+    'five named and one unknown device candidate only, none is live counter');
+chkExtra($cam['candidateEvaluationOrderForDedicatedPeopleCounting'][0]['historicalRole']
+    ==='TORHALLE_STRASSE_CANDIDATE','street camera review first');
+chkExtra($cam['candidateEvaluationOrderForDedicatedPeopleCounting'][0]['modelVerifiedInSmartPSS']
+    ===true,'model known via SmartPSS even without Symcon installation');
+chkExtra($cam['candidateEvaluationOrderForDedicatedPeopleCounting'][0]['ipConfirmedInSmartPSSDialog']
+    ===false,'street camera historical IP awaits direct validation');
+chkExtra($cam['candidateEvaluationOrderForDedicatedPeopleCounting'][0]['usableToCountTwoSideBySide']
+    ===false,'do not activate counting based on model evidence');
+chkExtra($cam['recommendedFirstCameraCanCountNow']===false,
+    'selection cannot claim per-person operation without field test');
 chkExtra($cam['liveStreetExitPersonCount']==='UNKNOWN'
     &&$cam['propertyEmptyMayBeCertified']===false,
     'no inventing resident/property exits');

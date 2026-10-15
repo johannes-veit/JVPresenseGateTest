@@ -219,7 +219,7 @@
     },
     {
       "type": "Label",
-      "caption": "WEITERE IPC: Neue rein lesende Instanz-Inventur sucht Namen vorhandener Kamera-/ONVIF-Instanzen. Treffer sind nur Kandidaten und belegen weder zusätzliche physische Kameras noch aktives People Counting. Erst nach Sichtfeld-/Smart-Plan-Prüfung andere IPC für die Zählung priorisieren. Die aktuelle P03-Störung bleibt vorrangig; keine Kamera-Netzwerkabfragen oder Änderungen."
+      "caption": "WEITERE IPC – SmartPSS-Sichtprüfung 15.10.2026: Sieben IPC-HFW5442E-ZE (Farbcontainer, Lagerplatz JV links/rechts, Lagerplatz Werkstatt links/rechts, Torhalle Straße, neben Torhalle Einfahrt), zwei TiOC IPC-PDW3849-A180-AS-PV (JV Terrasse und Hof/Garage) und eine VTO; 10/10 Geräte Online in SmartPSS. Einzelne TCP/IP-Dialoge bestätigen .94/.95/.96/.99/.110/.111. Historische Zuordnungen .92/.97/.98 müssen per SmartPSS-TCP/IP noch bestätigt werden. Eine höhere Zähl-Eignung für Torhalle Straße / Einfahrt setzt Sichtfeld, Smart-Plan und echte +2-Zähldaten im Praxistest voraus. SmartPSS Online belegt NICHT SymBox-Eventstream. Button 6 erneuert vorhandene lokale Instanz-Zuordnung nur lesend."
     }
   ],
   "actions": [

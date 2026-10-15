@@ -32,12 +32,32 @@ final class JVCameraCapabilityPriority
             ||str_contains($proofState,'abgebrochen');
         $numb=($optionalCountTelemetry['authority']??'')==='DAHUA_NUMBERSTAT_DIAGNOSTIC_ONLY';
         $other=[];
+        $countingCandidateReview=[];
         if(is_array($additionalIpcInventory)
             && ($additionalIpcInventory['authority']??null)==='ADDITIONAL_IPC_METADATA_ONLY'
             && is_array($additionalIpcInventory['otherIpcCandidates']??null)){
             foreach(array_slice($additionalIpcInventory['otherIpcCandidates'],0,40) as $row){
-                if(!is_array($row)
-                    ||($row['configuredInSymcon']??false)!==true)continue;
+                if(!is_array($row))continue;
+                $countingCandidateReview[]=[
+                    'historicalRole'=>(string)($row['historicalRole']??'UNKNOWN'),
+                    'historicalIP'=>(string)($row['ip']??''),
+                    'model'=>$row['modelFromPreviousInventory']??'UNKNOWN',
+                    'modelVerifiedInSmartPSS'=>
+                        ($row['modelVerifiedFromSmartPSSScreenshot']??false)===true,
+                    'ipConfirmedInSmartPSSDialog'=>
+                        ($row['ipConfirmedBySmartPSSTcpIpDialog']??false)===true,
+                    'listedOnlineInSmartPSSSnapshot'=>
+                        ($row['smartPssOnlineAtSnapshot']??false)===true,
+                    'confirmedInExistingSymconInstance'=>
+                        ($row['configuredInSymcon']??false)===true,
+                    'actualLiveEventSourceVerified'=>false,
+                    'actualViewCrossesPropertyBoundary'=>'UNKNOWN',
+                    'currentPeopleCountingSmartPlan'=>'UNKNOWN',
+                    'usableToCountTwoSideBySide'=>false,
+                    'countingPriorityMustNotBecomeActiveAutomatically'=>true,
+                    'suggestedReviewOrder'=>(int)($row['priorityRank']??99)
+                ];
+                if(($row['configuredInSymcon']??false)!==true)continue;
                 $role=(string)($row['historicalRole']??'');
                 $location=(string)($row['historicalLocation']??'');
                 $other[]=[
@@ -45,6 +65,10 @@ final class JVCameraCapabilityPriority
                     'historicalRole'=>$role,
                     'location'=>$location,
                     'modelCandidate'=>$row['modelFromPreviousInventory']??'UNKNOWN',
+                    'modelVerifiedFromSmartPSS'=>
+                        ($row['modelVerifiedFromSmartPSSScreenshot']??false)===true,
+                    'ipConfirmedBySmartPSSTcpIpDialog'=>
+                        ($row['ipConfirmedBySmartPSSTcpIpDialog']??false)===true,
                     'configuredSymconInstanceIds'=>$row['configuredSymconInstanceIds']??[],
                     'possibleUse'=>str_contains($role,'STRASSE')
                         ?'PROPERTY_STREET_DIRECTION_AND_COUNTING_IF_CAMERA_AND_VIEW_VERIFIED'
@@ -64,6 +88,13 @@ final class JVCameraCapabilityPriority
             'additionalIpcMetadataAuditAvailable'=>is_array($additionalIpcInventory)
                 &&($additionalIpcInventory['authority']??null)==='ADDITIONAL_IPC_METADATA_ONLY',
             'additionalIpcCandidatesConfiguredInSymcon'=>$other,
+            // Review order only: Torhalle Strasse, then Einfahrt, then
+            // other spare IPCs. View, IP and active counting still unknown.
+            'candidateEvaluationOrderForDedicatedPeopleCounting'=>$countingCandidateReview,
+            'recommendedFirstCameraToInspect'=>'TORHALLE_STRASSE_CANDIDATE',
+            'recommendedFirstCameraCanCountNow'=>false,
+            'smartPssModelEvidenceAvailable'=>is_array($additionalIpcInventory)
+                &&($additionalIpcInventory['smartPssHfw5442Count']??0)===7,
             'additionalIpcPeopleCountingCanBeUsedNow'=>false,
             'additionalIpcFirstCheck'=>'MODEL_THEN_VIEW_THEN_SMART_PLAN_THEN_SAFE_EVENT_STREAM',
             'cameraPriorityForHouseToWork'=>[
