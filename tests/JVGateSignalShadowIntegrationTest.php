@@ -137,6 +137,12 @@ checkGate(($data['boundaryEvidence']['configuredBoundarySignals']??null)===0,
     'candidate audit does not bind physical sensors');
 checkGate(($data['personPresenceMayBeChanged']??null)===false,
     'no presence writes');
+checkGate(($data['parallelPersonPassage']['individualPeopleCount']??null)==='UNKNOWN',
+    'gate state and P03 diagnostic never count the house residents');
+checkGate(($data['parallelPersonPassage']['propertyEmptyMayBeCertified']??null)===false,
+    'a single camera event cannot mean two residents gone');
+checkGate(($data['boundaryEvidence']['individualsOrEntireGroupExitedCertified']??null)===false,
+    'gate status and street learning do not certify entire group crossing');
 checkGate(($data['propertyEmptyMayBeCertified']??null)===false,
     'no absence certification');
 $GLOBALS['gateDevices'][40678]['changed']=time();
