@@ -15,6 +15,7 @@ require_once dirname(__DIR__).'/libs/JVGateDisplayHint.php';
 require_once dirname(__DIR__).'/libs/JVParallelPassageGuard.php';
 require_once dirname(__DIR__).'/libs/JVCameraCapabilityPriority.php';
 require_once dirname(__DIR__).'/libs/JVDahuaNumberStatEvidence.php';
+require_once dirname(__DIR__).'/libs/JVAdditionalIPCInventory.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -33,7 +34,8 @@ class JVPresenceIdentityShadow extends IPSModule
         'BoundaryLedger',
         'ExitCandidateInventory',
         'GateSignalLedger',
-        'IndoorHintInventory'
+        'IndoorHintInventory',
+        'AdditionalIPCInventory'
     ];
 
     public function Create(): void
@@ -605,6 +607,41 @@ class JVPresenceIdentityShadow extends IPSModule
             .'und ausschließlich in SensorSources zuordnen. Außenlicht ausgeschlossen.');
     }
 
+    /**
+     * Metadata-only scan of already existing Symcon INSTANCES which might
+     * represent additional IPC cameras. Never read secrets or connect to
+     * IP addresses, reconfigure any camera or modify foreign modules.
+     */
+    public function AuditOtherIPCCandidates(): void
+    {
+        $entries=[];$limited=false;$scanned=0;
+        try {
+            $ids=IPS_GetInstanceList();
+            if(!is_array($ids))throw new RuntimeException('NO_LIST');
+            $limited=count($ids)>3000;
+            foreach(array_slice($ids,0,3000) as $raw){
+                $id=(int)$raw;if($id<=0)continue;$scanned++;
+                try{
+                    $o=IPS_GetObject($id);
+                    $parentId=(int)($o['ParentID']??0);
+                    $entries[]=[
+                        'instanceId'=>$id,
+                        'name'=>(string)IPS_GetName($id),
+                        'parent'=>$parentId>0?(string)IPS_GetName($parentId):''
+                    ];
+                }catch(Throwable $e){$limited=true;}
+            }
+        }catch(Throwable $e){$limited=true;}
+        $result=JVAdditionalIPCInventory::evaluate($entries,$limited);
+        $result['scannedInstances']=$scanned;
+        $result['scannedAt']=time();
+        $json=json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        if(is_string($json))$this->writeShadowState('AdditionalIPCInventory',$json);
+        $this->publish($result,'Weitere IPCs: '.$result['candidateCount']
+            .' Instanznamen-Kandidaten (nur lesen, nicht aktiv zugeordnet). '
+            .'Kameramodell, Smart-Plan und tatsächliche Sicht auf Straßenausgang separat prüfen.');
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
@@ -796,6 +833,10 @@ class JVPresenceIdentityShadow extends IPSModule
         }
         $gateDisplay=JVGateDisplayHint::evaluate($gateAudit);
         $insideScan=json_decode($this->readShadowState('IndoorHintInventory'),true);
+        $otherCamScan=json_decode($this->readShadowState('AdditionalIPCInventory'),true);
+        $otherCameraInventory=is_array($otherCamScan)
+            && ($otherCamScan['authority']??'')==='ADDITIONAL_IPC_LOCAL_METADATA_ONLY'
+            ?$otherCamScan:null;
         $indoorInventory=is_array($insideScan)
             && ($insideScan['authority']??'')==='INDOOR_LIGHT_TV_CANDIDATES_METADATA_ONLY'
             ?$insideScan:null;
@@ -820,6 +861,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'p03LiveTimeline'=>$p03Timeline['report'],
             'parallelPersonPassage'=>$parallelPassage,
             'cameraCapabilityPriority'=>$cameraCapability,
+            'additionalIPCInventory'=>$otherCameraInventory,
             'numberStatEvidence'=>$numberStat,
             'phone'=>$phones,
             'phoneLink'=>$phoneLink,
