@@ -32,8 +32,30 @@ cpAssert($cap['installedCameras']['WORK_LEFT']['peopleCountingHardwareCapable'],
     true,'Dahua confirms native people counting potential');
 cpAssert($cap['installedCameras']['WORK_LEFT']['simultaneousIVSAndPeopleCountingProven'],
     false,'switchable Smart Plan cannot be assumed concurrent');
-cpAssert($cap['installedCameras']['JV_TERRASSE']['peopleCountingHardwareCapable'],
-    'NOT_VERIFIED','TiOC exact model cannot be guessed');
+cpAssert($cap['installedCameras']['JV_TERRASSE']['model'],
+    'IPC-PDW3849-A180-AS-PV','previously verified exact 180-degree TiOC model');
+cpAssert($cap['installedCameras']['JV_HOF_GARAGE']['model'],
+    'IPC-PDW3849-A180-AS-PV','second installed TiOC model known');
+cpAssert($cap['installedCameras']['JV_TERRASSE']['smdVersion'],'4.0',
+    'actual TiOC supports SMD 4.0');
+cpAssert($cap['installedCameras']['JV_TERRASSE']['stitchedPanoramaHorizontalDegrees'],180,
+    'stitched wide panorama improves possible group coverage');
+cpAssert($cap['installedCameras']['JV_TERRASSE']['ivsSupportsHumanClassification'],true,
+    'actual TiOC IVS human and vehicle classes supported');
+cpAssert($cap['installedCameras']['JV_TERRASSE']['independentPeopleCountingAdvertised'],false,
+    'manufacturer does not advertise native People Counting on installed TiOC');
+cpAssert($cap['installedCameras']['JV_TERRASSE']['groupOfTwoIndividuallyDetected'],
+    'NOT_VERIFIED','wide coverage is not proof of two separate humans');
+cpAssert($cap['installedCameras']['JV_HOF_GARAGE']['installedViewActuallyCoversCrossing'],
+    'NOT_VERIFIED','garage panorama cannot automatically verify street exit');
+cpAssert($cap['cameraPriorityForPossibleGroupInFrame'][0],
+    'JV_TERRASSE_TIOC_PANORAMA_IF_PATH_COVERED',
+    'TiOC panorama preferred for supplementary group image if path covered');
+cpAssert($cap['panoramaCameraDoesNotCertifyExactlyTwoPeople'],true,
+    'SMD IVS panorama does not certify an exact group count');
+cpAssert($cap['cameraPriorityForIndividualCounting'][1],
+    'NO_INSTALLED_TIOC_COUNTING_MODE_ADVERTISED',
+    'do not enable imaginary TiOC counting mode');
 cpAssert($cap['streetDirectionMappingKnown'],true,
     'prior street orientation is learned');
 cpAssert($cap['liveStreetPeopleCounterConnected'],false,
