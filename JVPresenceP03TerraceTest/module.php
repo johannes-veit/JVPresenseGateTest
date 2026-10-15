@@ -475,6 +475,11 @@ class JVPresenceP03MultiCamera extends IPSModule
                         'LERNEN 0/4 – WORK_LEFT Street LIVE | OUT → IN → OUT → IN');
                     $this->appendProtocol('P03 STRASSE: WORK_LEFT-LIVE bestaetigt, Richtungserfassung bereit.');
                 }
+                // A past dropout blocks pending two-mast evidence. The
+                // recovered LIVE state must ALSO release ONLY the old,
+                // now-obsolete dropout label after independent validation.
+                // No previous IVS event or transfer is reconstructed.
+                $this->reconcileRecoveredP03MastStreams();
                 $this->refreshProductionState();
                 $this->refreshReadyState();
                 return;
@@ -1642,6 +1647,9 @@ class JVPresenceP03MultiCamera extends IPSModule
     public function P03MastHealthTimer(): void
     {
         $this->checkP03MastHealth(false);
+        // Reconciliation on the 15-second health tick also covers a missed
+        // VM_UPDATE after a brief reconnect or a module restart.
+        $this->reconcileRecoveredP03MastStreams();
         $this->appendP03TestWireTraceIfDue();
         // Every 30 s: read-only observer snapshots with fresh timestamps;
         // never restart a healthy stream for lack of person detections.
@@ -4425,6 +4433,59 @@ class JVPresenceP03MultiCamera extends IPSModule
         } catch (Throwable $e) {
             return 0;
         }
+    }
+
+    /**
+     * Fix v0.8.39 stale P03ProofState after a temporary mast disconnect.
+     *
+     * Only the EXACT historic transient dropout string may be replaced.
+     * Both original observer/socket chains and their recent camera RX are
+     * independently verified. A StreamOK Boolean or old count alone is
+     * never sufficient. No camera requests or third-party writes.
+     *
+     * An observed disconnect already deleted pending P03HumanEvents. We
+     * never replay old events, rearm test/production, reset counters or
+     * book a HOME/LAGER transfer merely because the streams recovered.
+     */
+    private function reconcileRecoveredP03MastStreams(): void
+    {
+        if((string)$this->GetValue('P03ProofState')
+            !=='BLOCKIERT – Mastkamera-Stream abgebrochen')return;
+        if(!$this->p03AuxStreamsReady())return;
+
+        foreach([
+            ['observer'=>'AuxJVInstanceID','role'=>self::AUX_JV_ROLE,
+                'host'=>'AuxJVHost'],
+            ['observer'=>'AuxWorkInstanceID','role'=>self::AUX_WORK_ROLE,
+                'host'=>'AuxWorkHost']
+        ] as $camera) {
+            $id=$this->ReadAttributeInteger((string)$camera['observer']);
+            $raw=$this->p03AuxDiagnostic($id,'ObserverStatus');
+            if($raw==='' || strlen($raw)>8192)return;
+            $status=json_decode($raw,true);
+            if(!is_array($status)
+                ||($status['role']??null)!==$camera['role']
+                ||($status['host']??null)!==trim(
+                    $this->ReadPropertyString((string)$camera['host']))
+                ||($status['streamOK']??null)!==true
+                ||($status['streaming']??null)!==true
+                ||($status['parentOpen']??null)!==true
+                ||($status['parentExclusive']??null)!==true
+                ||($status['configReady']??null)!==true
+                ||($status['authPending']??null)!==false
+                ||($status['authBlocked']??null)!==false
+                ||!is_int($status['rxAge']??null)
+                ||$status['rxAge']<0
+                ||$status['rxAge']>25)return;
+        }
+        $this->SetValue('P03ProofState',
+            'MASTKAMERAS LIVE – neue IVS-Menschenereignisse abwarten; '
+            .'kein rückwirkender Übergang');
+        $this->appendProtocol('P03 MASTKAMERA-STREAMS WIEDER LIVE: '
+            .'zwei echte Observer mit aktuellen Kameraempfangsdaten und '
+            .'exklusiven Sockets geprüft. Alter Dropout-Status entfernt. '
+            .'Keine alten IVS-Events, keine Personenzählung, '
+            .'kein nachträglicher HOME/LAGER-Übergang.');
     }
 
     private function p03AuxStreamsReady(): bool
