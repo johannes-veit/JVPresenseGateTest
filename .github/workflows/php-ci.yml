@@ -90,6 +90,8 @@ jobs:
         run: php tests/JVExistingWlanPhoneHintsTest.php
       - name: Existing EgiGeoZone Johannes 150m inside/outside/stale safety
         run: php tests/JVJohannesEgiGeoZoneHintsTest.php
+      - name: Existing Carina iOS Geofency source metadata, stale and no-away safety
+        run: php tests/JVCarinaGeofencyHintsTest.php
       - name: Combined anonymous WLAN GUS P03 gate indoor occupancy evaluation
         run: php tests/JVCombinedPresenceEvidenceTest.php
       - name: Fifteen verified real LCN GUS inventory imports and collision protection
