@@ -85,6 +85,7 @@ function IPS_GetVariable(int $id):array{
 function IPS_GetObject(int $id):array{
     if($id===50000)return ['ParentID'=>35965];
     if($id===62000)return ['ParentID'=>61000];
+    if($id===45439)return ['ParentID'=>48903];
     if(isset($GLOBALS['gateDevices'][$id]))return ['ParentID'=>
         $GLOBALS['gateDevices'][$id]['pairedParent']??($id+100000)];
     if($id>=100000&&isset($GLOBALS['gateDevices'][$id-100000]))
@@ -117,6 +118,7 @@ function GetValue(int $id):mixed{
 // This is invoked only inside P03's optional lookup try/catch.
 function IPS_GetInstance(int $id):array{
     if($id===61000)return ['ModuleInfo'=>['ModuleID'=>'{0100CA50-D2DA-11E4-8830-0800200C9A66}']];
+    if($id===48903)return ['ModuleInfo'=>['ModuleID'=>'{0100CA50-D2DA-11E4-8830-0800200C9A66}']];
     throw new RuntimeException('no P03 fixture');
 }
 function IPS_GetInstanceList():array{return [8001,8002,8003,8004,8005];}
@@ -754,4 +756,83 @@ checkGate(!in_array(63000,array_slice($GLOBALS['readCalls'],$readsBefore),true)
     &&!in_array(63001,array_slice($GLOBALS['readCalls'],$readsBefore),true)
     &&$carGeoMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
     'disabled Geofency reads no values and creates no Symcon output variables');
+
+// Actual confirmed Carina live IDs: #48903 / #45439 / #39169 / #45666.
+// No separate metadata audit is needed after update; default properties
+// must already link these objects, but only after strict live verification.
+$now=time();
+$GLOBALS['gateDevices'][39169]=[
+    'name'=>'Zuhause','parent'=>'Device','type'=>0,
+    'pairedParent'=>45439,'value'=>true,
+    'changed'=>$now-20,'updated'=>$now-20
+];
+$GLOBALS['gateDevices'][45666]=[
+    'name'=>'Timestamp','parent'=>'Device','type'=>1,
+    'pairedParent'=>45439,'value'=>$now-30,
+    'changed'=>$now-30,'updated'=>$now-20
+];
+$GLOBALS['gateDevices'][36910]=[
+    'name'=>'Current Latitude','parent'=>'Device','type'=>2,
+    'pairedParent'=>45439,'value'=>0.0,'changed'=>$now-20
+];
+$GLOBALS['gateDevices'][51224]=[
+    'name'=>'Current Longitude','parent'=>'Device','type'=>2,
+    'pairedParent'=>45439,'value'=>0.0,'changed'=>$now-20
+];
+$GLOBALS['gateDevices'][41869]['pairedParent']=50000;
+$GLOBALS['gateDevices'][41869]['name']='Zuhause';
+$GLOBALS['gateDevices'][41869]['value']=true;
+$GLOBALS['gateDevices'][28055]['value']=$now-20;
+$GLOBALS['gateDevices'][38430]['name']='WLAN anwesend';
+$GLOBALS['gateDevices'][38430]['value']=true;
+$GLOBALS['gateDevices'][10760]['value']=$now-10;
+$real=new JVPresenceIdentityShadow();
+$real->Create();
+$real->setProp('Enabled',true);
+$real->setProp('SensorSources','[]');
+$real->setProp('P03InstanceID',0);
+$real->setProp('EnableExistingWLANHints',true);
+$real->setProp('EnableJohannesEgiGeoZone',true);
+$real->setProp('EnableCarinaGeofencyHints',true);
+$readsBefore=count($GLOBALS['readCalls']);
+$real->Refresh();
+$live=json_decode((string)$real->GetValue('EvidenceJSON'),true);
+checkGate(($live['johannesEgiGeoZone']['state']??null)
+    ==='RECENT_INSIDE_150M_DEVICE_HINT',
+    'actual Johannes variable name Zuhause is now recognized');
+checkGate(($live['carinaGeofency']['state']??null)
+    ==='RECENT_INSIDE_HOME_GEOFENCE_DEVICE_HINT',
+    'actual Carina known IDs work WITHOUT the optional Button 7 metadata scan');
+checkGate($real->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)'
+    &&$real->GetValue('CarinaPresence')==='ANWESEND (Handyhinweis)',
+    'both requested human-readable status variables show handset hints');
+checkGate(($live['people']['carina']??null)==='UNKNOWN'
+    &&($live['people']['johannes']??null)==='UNKNOWN'
+    &&($live['propertyEmptyMayBeCertified']??null)===false,
+    'device-hint display never claims humans physically located');
+$readLive=array_slice($GLOBALS['readCalls'],$readsBefore);
+checkGate(!in_array(36910,$readLive,true)&&!in_array(51224,$readLive,true),
+    'new Carina display does not read real GPS coordinates');
+$GLOBALS['gateDevices'][39169]['updated']=$now-1000;
+$GLOBALS['gateDevices'][45666]['updated']=$now-3;
+$readsBefore=count($GLOBALS['readCalls']);
+$real->Refresh();
+$unrelated=json_decode((string)$real->GetValue('EvidenceJSON'),true);
+checkGate(($unrelated['carinaGeofency']['selectionStatus']??null)
+    ==='OTHER_GEOFENCE_TIMESTAMP',
+    'an office geofence update does not freshen the Zuhause zone');
+checkGate($real->GetValue('CarinaPresence')
+    ==='WLAN ZUHAUSE (Geofence unbestätigt)',
+    'other zone timestamp cannot falsely create a positive home geofence');
+$unrelatedReads=array_slice($GLOBALS['readCalls'],$readsBefore);
+checkGate(!in_array(39169,$unrelatedReads,true)
+    &&!in_array(45666,$unrelatedReads,true),
+    'other-zone timestamp case does not read Geofency values');
+$real->setProp('Enabled',false);
+$real->Refresh();
+checkGate($real->GetValue('JohannesPresence')==='NICHT BESTÄTIGT'
+    &&$real->GetValue('CarinaPresence')==='NICHT BESTÄTIGT',
+    'disabled instance immediately clears earlier positive phone displays');
+checkGate($real->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
+    'exactly two additional user-requested instance variables');
 echo "Gate Shadow integration / initialization 101->102, failure 201 recovery PASS\n";
