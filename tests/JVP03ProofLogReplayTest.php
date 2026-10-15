@@ -526,6 +526,12 @@ eq(($GLOBALS['readById'][60001]??0),$readsBeforePhoneOff,
 eq($off['people'],[],'no person objects from disconnected phones');
 eq($off['localSensors']['sourceCount'],15,
    'disabling phones never disables 15 local GUS');
+eq(($off['parallelPersonPassage']['individualPeopleCount']??null),'UNKNOWN',
+    'live P03 proof does not prove exactly one vs two people side by side');
+eq(($off['parallelPersonPassage']['propertyEmptyMayBeCertified']??null),false,
+    'even shared exit must not certify empty premises');
+eq(($off['parallelPersonPassage']['liveStreetPersonExitCountAvailable']??null),false,
+    'street direction training alone is not actual street crossing evidence');
 eq($off['localActivity']['personCountCertified'],false,
    'motion events do not morph into human numbers');
 eq($off['localActivity']['propertyEmptyMayBeCertified'],false,
