@@ -991,6 +991,15 @@ class JVPresenceIdentityShadow extends IPSModule
             $timeMeta=IPS_GetVariable($timestamp);
             if(($zoneMeta['VariableType']??null)!==0
                 ||($timeMeta['VariableType']??null)!==1)return $snapshot;
+            // EgiGeoZone Timestamp, like Geofency, may represent a later
+            // event at ANOTHER location. Compare Symcon update metadata
+            // before treating it as a fresh Zuhause event.
+            $zoneUpdated=$zoneMeta['VariableUpdated']??null;
+            $timestampUpdated=$timeMeta['VariableUpdated']??null;
+            if(is_int($zoneUpdated)&&$zoneUpdated>0
+                &&is_int($timestampUpdated)&&$timestampUpdated>0
+                &&abs($timestampUpdated-$zoneUpdated)>60)
+                return $snapshot;
             $value=GetValue($zone);
             $at=GetValue($timestamp);
             if(!is_bool($value)||!is_int($at))return $snapshot;
