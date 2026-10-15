@@ -32,6 +32,23 @@ final class JVAdditionalIpcInventory
 
     public static function knownAddresses():array{return array_keys(self::KNOWN);}
 
+    private static function eventSources(array $instances):array
+    {
+        $sources=[];
+        foreach($instances as $id=>$data){
+            $var=$data['eventVariableId']??0;
+            if(is_int($var)&&$var>0)$sources[]=[
+                'instanceId'=>(int)$id,'eventVariableId'=>$var,
+                'eventSource'=>'EXISTING_P03_AUX_LAST_IVS_EVENT',
+                'cameraEventDataVerified'=>false,
+                'peopleCountVerified'=>false
+            ];
+            if(count($sources)>=8)break;
+        }
+        return $sources;
+    }
+
+
     /**
      * @param array<int,array{instanceId:int,ip:string,label:string}> $entries
      */
@@ -49,7 +66,12 @@ final class JVAdditionalIpcInventory
             $matched[$ip]??=[];
             // Never expose credentials or serials, only human-readable names.
             $label=trim((string)($e['label']??''));
-            $matched[$ip][$id]=substr($label,0,100);
+            $eventVariableId=$e['eventVariableId']??0;
+            $matched[$ip][$id]=[
+                'label'=>substr($label,0,100),
+                'eventVariableId'=>is_int($eventVariableId)
+                    &&$eventVariableId>0?$eventVariableId:0
+            ];
         }
         $candidates=[];
         $existing=[];
@@ -69,6 +91,7 @@ final class JVAdditionalIpcInventory
                     array_map('intval',array_keys($instances)),0,10),
                 'configuredSymconInstanceCount'=>count($instances),
                 'configuredInSymcon'=>count($instances)>0,
+                'existingP03AuxEventSources'=>self::eventSources($instances),
                 'cameraCurrentlyOnline'=>'UNKNOWN',
                 'cameraVideoCoversStreetExit'=>'UNKNOWN',
                 'liveCountingMode'=>'NOT_VERIFIED',
@@ -100,6 +123,7 @@ final class JVAdditionalIpcInventory
                     array_map('intval',array_keys($instances)),0,10),
                 'configuredSymconInstanceCount'=>count($instances),
                 'configuredInSymcon'=>true,
+                'existingP03AuxEventSources'=>self::eventSources($instances),
                 'cameraCurrentlyOnline'=>'UNKNOWN',
                 'cameraVideoCoversStreetExit'=>'UNKNOWN',
                 'liveCountingMode'=>'NOT_VERIFIED',
