@@ -82,6 +82,20 @@ final class JVKnownIpcMetadata
                 ?'P03_MAST':(str_starts_with($known['role'],'TIOC_')
                     ?'TIOC_PANORAMA':'OTHER_IPC');
             $instances=$matched[$ip]??[];
+            $labels=array_values(array_filter(array_map(
+                static fn($x)=>is_array($x)?(string)($x['label']??''):'',
+                $instances
+            ),static fn($x)=>$x!==''));
+            $roleNameConflict=false;
+            if($type==='OTHER_IPC'
+                && str_contains($known['role'],'RIGHT')){
+                foreach($labels as $name){
+                    if(preg_match('/(?:links|\\bleft\\b)/iu',$name)
+                        && !preg_match('/(?:rechts|\\bright\\b)/iu',$name)){
+                        $roleNameConflict=true;break;
+                    }
+                }
+            }
             $row=[
                 'ip'=>$ip,'historicalRole'=>$known['role'],
                 'historicalLocation'=>$known['place'],
@@ -90,6 +104,8 @@ final class JVKnownIpcMetadata
                 'configuredSymconInstanceIds'=>array_slice(
                     array_map('intval',array_keys($instances)),0,10),
                 'configuredSymconInstanceCount'=>count($instances),
+                'configuredInstanceNames'=>array_slice($labels,0,10),
+                'roleNameConflictNeedsReview'=>$roleNameConflict,
                 'configuredInSymcon'=>count($instances)>0,
                 'existingP03AuxEventSources'=>self::eventSources($instances),
                 'cameraCurrentlyOnline'=>'UNKNOWN',
