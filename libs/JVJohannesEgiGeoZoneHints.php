@@ -20,7 +20,7 @@ final class JVJohannesEgiGeoZoneHints
             'authority'=>'EXISTING_JOHANNES_EGIGEOZONE_READ_ONLY',
             'enabled'=>$enabled,
             'state'=>$enabled?'SOURCE_NOT_VERIFIED':'DISABLED',
-            'zoneName'=>'TestGeoZone',
+            'zoneName'=>'Zuhause',
             'radiusMetersConfiguredInPhoneApp'=>$radiusMeters,
             'radiusVerifiedViaSymcon'=>false,
             'radiusIsAppSettingNotMeasuredDistance'=>true,

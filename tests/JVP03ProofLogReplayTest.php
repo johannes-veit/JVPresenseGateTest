@@ -185,7 +185,7 @@ $GLOBALS['shadowPropertyWrites']=[];
 $GLOBALS['shadowApplyCalls']=[];
 $module->Create();
 $module->ApplyChanges();
-eq(count($module->values),2,'two variables total');
+eq(count($module->values),4,'two variables total');
 eq($module->timer['ReadLocal'],0,'disabled by default: no background polling');
 eq(count($module->messages),0,'disabled default: no local VM_UPDATE subscriptions');
 eq($GLOBALS['readCount'],0,'disabled by default: no external read');
@@ -333,7 +333,7 @@ $module->properties['Enabled']=false;
 $module->ApplyChanges();
 eq($module->timer['ReadLocal'],0,'disabling shadow stops timer');
 eq(count($module->messages),0,'disabled instance releases all GUS subscriptions');
-eq(count($module->values),2,'module never creates more than 2 variables');
+eq(count($module->values),4,'module registers only original outputs plus two requested status variables');
 $form=json_decode($module->GetConfigurationForm(),true);
 eq(count($form['actions']),8,'eight read-only audit, import and discovery operations including Carina Geofency');
 // A one-click LCN inventory must work even with Shadow DISABLED and
@@ -603,7 +603,7 @@ eq($repeat['houseObservation']['absenceControlState'],'NOT_CERTIFIED',
     'there is still no automatic AWAY certainty');
 eq($repeat['phoneLink']['state'],'DISABLED_SEPARATE_PROJECT',
     'WLAN project remains completely separate');
-eq(count($module->values),2,
+eq(count($module->values),4,
     'home observation extends existing JSON with zero new variables');
 
 
@@ -655,8 +655,8 @@ eq($module->properties,$propsBeforeAudit,
     'source configuration is unchanged after scan');
 eq(count($GLOBALS['shadowPropertyWrites']),$writesBeforeAudit,
     'inventory does not invoke IPS_SetProperty');
-eq(count($module->values),2,
-    'no new Symcon variables created by inventory');
+eq(count($module->values),4,
+    'metadata-only inventory creates no additional Symcon variables beyond the two explicitly requested displays');
 
 // Only explicitly chosen existing contact/gate/vehicle signals can be read,
 // and after first baseline they are still status hints, NEVER exits.
@@ -710,7 +710,7 @@ $module->MessageSink(1,8889,10603,[]);
 $repeatBoundary=json_decode($module->values['EvidenceJSON'],true);
 eq($repeatBoundary['boundaryEvidence']['boundaryChanges24h'],1,
     'same contact update not counted twice');
-eq(count($module->values),2,
+eq(count($module->values),4,
     'no further Symcon variables after boundary integration');
 $module->properties['Enabled']=false;
 $module->ApplyChanges();
