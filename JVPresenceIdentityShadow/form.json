@@ -17,6 +17,23 @@
       "maximum": 2147483647
     },
     {
+      "type": "Label",
+      "caption": "PERSONENZÄHLUNG / KAMERAPRIORITÄT: WORK_LEFT (IPC-HFW5442E-ZE) ist primär für die Straßengrenze, JV_LEFT und WORK_LEFT gemeinsam für Haus↔Lager; TiOC Terrasse nur ergänzend. IVS-Ereignisse zählen keine Personen. Die IPC unterstützt einen separaten People-Counting-Smart-Plan; dieser darf keinesfalls automatisch IVS abschalten. numberStatEvidence und cameraCapabilityPriority zeigen nur Diagnose, keine bestätigte Grundstücksabwesenheit."
+    },
+    {
+      "type": "CheckBox",
+      "name": "EnableCountTelemetryRead",
+      "caption": "Optional vorhandene IPC-NumberStat-Diagnosevariable passiv lesen (erst bei verifizierter zusätzlicher Zählkamera freigeben)"
+    },
+    {
+      "type": "SelectVariable",
+      "name": "CountTelemetryVariableID",
+      "caption": "Bestehende STRING-Variable mit Dahua CGI NumberStat-Rohereignis (0 = keine)",
+      "validVariableTypes": [
+        3
+      ]
+    },
+    {
       "type": "CheckBox",
       "name": "EnablePhoneIntegration",
       "caption": "Smartphone/WLAN später optional verbinden – aktuell AUS lassen"

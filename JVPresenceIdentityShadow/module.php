@@ -13,6 +13,8 @@ require_once dirname(__DIR__).'/libs/JVIndoorPresenceHints.php';
 require_once dirname(__DIR__).'/libs/JVIndoorHintInventory.php';
 require_once dirname(__DIR__).'/libs/JVGateDisplayHint.php';
 require_once dirname(__DIR__).'/libs/JVParallelPassageGuard.php';
+require_once dirname(__DIR__).'/libs/JVCameraCapabilityPriority.php';
+require_once dirname(__DIR__).'/libs/JVDahuaNumberStatEvidence.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -40,6 +42,10 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterPropertyBoolean('Enabled',false);
         // Known owner installation ID; verify GUID before EVERY read.
         $this->RegisterPropertyInteger('P03InstanceID',53879);
+        // Explicit opt-in only AFTER a separate verified IPC People Counting
+        // source is available. Never request/switch camera Smart Plans.
+        $this->RegisterPropertyBoolean('EnableCountTelemetryRead',false);
+        $this->RegisterPropertyInteger('CountTelemetryVariableID',0);
         // WLAN/Smartphone is developed in a separate project. NEVER read it
         // until the user explicitly authorizes a future opt-in.
         $this->RegisterPropertyBoolean('EnablePhoneIntegration',false);
@@ -730,6 +736,16 @@ class JVPresenceIdentityShadow extends IPSModule
         $parallelPassage=JVParallelPassageGuard::evaluate(
             $p03Timeline['report'],$p03['street'],time()
         );
+        $counterRaw=null;$counterAge=-1;
+        if($this->ReadPropertyBoolean('EnableCountTelemetryRead')) {
+            $data=$this->readExistingCountTelemetry(
+                $this->ReadPropertyInteger('CountTelemetryVariableID')
+            );
+            $counterRaw=$data['raw'];$counterAge=$data['age'];
+        }
+        $numberStat=JVDahuaNumberStatEvidence::decode(
+            $counterRaw,$counterAge
+        );
         $houseObservation['parallelPersonPassage']=$parallelPassage['status'];
         $houseObservation['concurrentPeopleMayBeUndercounted']=true;
         if($houseObservation['warnings']) {
@@ -786,6 +802,14 @@ class JVPresenceIdentityShadow extends IPSModule
         // Existing gate display is context only, NOT a verified exit route.
         $boundary['report']['existingGateDisplay']=$gateDisplay;
         $boundary['report']['parallelPersonPassage']=$parallelPassage['status'];
+        $cameraCapability=JVCameraCapabilityPriority::evaluate(
+            $p03Timeline['report'],$this->readP03LiveCounters(),
+            $p03['street'],$numberStat
+        );
+        // A counting-capable IPC in active IVS mode has NO confirmed human
+        // count; no camera model or counter snapshot changes this.
+        $parallelPassage['individualPeopleCount']='UNKNOWN';
+        $parallelPassage['cameraCountCapabilityPriority']='IPC_WIZMIND_FIRST_WHEN_PEOPLE_COUNTING_VERIFIED';
         $boundary['report']['individualsOrEntireGroupExitedCertified']=false;
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
@@ -795,6 +819,8 @@ class JVPresenceIdentityShadow extends IPSModule
             'p03Live'=>$this->readP03LiveCounters(),
             'p03LiveTimeline'=>$p03Timeline['report'],
             'parallelPersonPassage'=>$parallelPassage,
+            'cameraCapabilityPriority'=>$cameraCapability,
+            'numberStatEvidence'=>$numberStat,
             'phone'=>$phones,
             'phoneLink'=>$phoneLink,
             'localSensors'=>$local,
@@ -854,6 +880,7 @@ class JVPresenceIdentityShadow extends IPSModule
                 ?' | Torwerte: '.$gateAudit['readableSignals'].'/'
                     .$gateAudit['signalCount'].' nur lesen':'')
             .' | Gruppenpassage: PERSONENZAHL UNBEKANNT'
+            .' | Zaehlkameraprioritaet: IPC WizMind (kein Live-Count bestaetigt)'
             .' | Schiebetor: '.$gateDisplay['positionHint']
             .' | Innenlicht/TV AN: '.$indoorHints['onCount']
             .' | Abwesenheit: NICHT BESTAETIGT'
@@ -978,6 +1005,28 @@ class JVPresenceIdentityShadow extends IPSModule
         }
         usort($out,static fn($a,$b)=>$b['at']<=>$a['at']);
         return array_slice($out,0,20);
+    }
+
+    /**
+     * Read-only optional STRING variable chosen by the user, containing an
+     * already delivered Dahua NumberStat event. No camera connection or
+     * password, no event object, no Subscribe/SmartPlan mutation.
+     */
+    private function readExistingCountTelemetry(int $id):array
+    {
+        $none=['raw'=>null,'age'=>-1];
+        if($id<=0)return $none;
+        try {
+            if(!IPS_VariableExists($id))return $none;
+            $meta=IPS_GetVariable($id);
+            if(($meta['VariableType']??null)!==3)return $none;
+            $updated=$meta['VariableUpdated']??null;
+            if(!is_int($updated)||$updated<=0||$updated>time()+5)
+                return $none;
+            $val=GetValue($id);
+            if(!is_string($val)||strlen($val)>8192)return $none;
+            return ['raw'=>$val,'age'=>max(0,time()-$updated)];
+        }catch(Throwable $e){return $none;}
     }
 
     private function readLocalVariable(int $instanceId,string $guid,string $ident): ?string

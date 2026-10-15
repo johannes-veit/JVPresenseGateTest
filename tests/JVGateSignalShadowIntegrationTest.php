@@ -137,6 +137,14 @@ checkGate(($data['boundaryEvidence']['configuredBoundarySignals']??null)===0,
     'candidate audit does not bind physical sensors');
 checkGate(($data['personPresenceMayBeChanged']??null)===false,
     'no presence writes');
+checkGate(($data['cameraCapabilityPriority']['cameraPriorityForStreet'][0]??null)
+    ==='WORK_LEFT_IPC_STREET_IVS',
+    'known installed WORK_LEFT IPC prioritized for street IVS');
+checkGate(($data['cameraCapabilityPriority']['installedCameras']['JV_TERRASSE']['peopleCountingHardwareCapable']??null)
+    ==='NOT_VERIFIED',
+    'unknown specific TiOC cannot be promoted to headcount camera');
+checkGate(($data['numberStatEvidence']['status']??null)==='NOT_CONNECTED',
+    'never contact counting camera without opt-in or existing local source');
 checkGate(($data['parallelPersonPassage']['individualPeopleCount']??null)==='UNKNOWN',
     'gate state and P03 diagnostic never count the house residents');
 checkGate(($data['parallelPersonPassage']['propertyEmptyMayBeCertified']??null)===false,
