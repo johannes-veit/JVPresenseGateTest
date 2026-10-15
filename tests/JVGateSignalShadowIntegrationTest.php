@@ -246,6 +246,10 @@ checkGate(($data['parallelPersonPassage']['propertyEmptyMayBeCertified']??null)=
     'a single camera event cannot mean two residents gone');
 checkGate(($data['boundaryEvidence']['individualsOrEntireGroupExitedCertified']??null)===false,
     'gate status and street learning do not certify entire group crossing');
+checkGate(($data['combinedPresenceEvidence']['authority']??null)==='ANONYMOUS_COMBINED_CONTEXT_ONLY',
+    'combined diagnostic correctly attached');
+checkGate(($data['combinedPresenceEvidence']['alarmMayBeControlled']??null)===false,
+    'fusion has no alarm control');
 checkGate(($data['propertyEmptyMayBeCertified']??null)===false,
     'no absence certification');
 $GLOBALS['gateDevices'][40678]['changed']=time();
