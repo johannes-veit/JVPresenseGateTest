@@ -18,6 +18,7 @@ require_once dirname(__DIR__).'/libs/JVDahuaNumberStatEvidence.php';
 require_once dirname(__DIR__).'/libs/JVAdditionalIPCInventory.php';
 require_once dirname(__DIR__).'/libs/JVKnownIpcMetadata.php';
 require_once dirname(__DIR__).'/libs/JVSupplementaryIpcEvidence.php';
+require_once dirname(__DIR__).'/libs/JVP03SourceHealth.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -744,6 +745,77 @@ class JVPresenceIdentityShadow extends IPSModule
         return JVSupplementaryIpcEvidence::evaluate($records);
     }
 
+    /**
+     * Only two current P03 mast Aux observers are examined, each by exact
+     * module GUID + configured role + current camera host. This is NOT a
+     * Camera CGI call; even diagnostics use only already local IPS state.
+     */
+    private function readP03MastObserverHealth():array
+    {
+        $result=[];
+        foreach([
+            'JV_LEFT'=>['id'=>57215,'host'=>'192.168.107.95'],
+            'WORK_LEFT'=>['id'=>27938,'host'=>'192.168.107.94']
+        ] as $role=>$expected) {
+            $id=$expected['id'];
+            $row=['instanceId'=>$id,'guidVerified'=>false,
+                'role'=>'UNKNOWN','host'=>'UNKNOWN',
+                'streamOK'=>null,'diagnostic'=>[]];
+            try{
+                if(!IPS_InstanceExists($id)){$result[$role]=$row;continue;}
+                $inst=IPS_GetInstance($id);
+                if(strcasecmp(
+                    (string)($inst['ModuleInfo']['ModuleID']??''),self::AUX_GUID
+                )!==0){$result[$role]=$row;continue;}
+                $conf=IPS_GetConfiguration($id);
+                if(!is_string($conf)||strlen($conf)>65536){
+                    $result[$role]=$row;continue;
+                }
+                $props=json_decode($conf,true);
+                if(!is_array($props)){$result[$role]=$row;continue;}
+                $host=$props['CameraHost']??null;
+                $actualRole=$props['Role']??null;
+                if($host!==$expected['host']||$actualRole!==$role){
+                    $result[$role]=$row;continue;
+                }
+                $row['guidVerified']=true;
+                $row['role']=$actualRole;
+                $row['host']=$host;
+                $var=@IPS_GetObjectIDByIdent('StreamOK',$id);
+                if(is_int($var)&&$var>0&&IPS_VariableExists($var)){
+                    $meta=IPS_GetVariable($var);
+                    $obj=IPS_GetObject($var);
+                    if(($meta['VariableType']??null)===0
+                        &&(int)($obj['ParentID']??0)===$id) {
+                        $val=GetValue($var);
+                        if(is_bool($val))$row['streamOK']=$val;
+                    }
+                }
+                // Public existing P03 Aux API explicitly provides a read-only
+                // in-memory ObserverStatus. Do not call polling/handshake.
+                if(function_exists('JVP03AUX_ReadP03Diagnostic')){
+                    $raw=JVP03AUX_ReadP03Diagnostic($id,'ObserverStatus');
+                    if(is_string($raw)&&strlen($raw)<=8192){
+                        $diag=json_decode($raw,true);
+                        if(is_array($diag)
+                            &&($diag['role']??null)===$role
+                            &&($diag['host']??null)===$host){
+                            $safe=[];
+                            foreach(['rxAge','streaming','authBlocked',
+                                'authPending','parentOpen','configReady'] as $key){
+                                if(array_key_exists($key,$diag))
+                                    $safe[$key]=$diag[$key];
+                            }
+                            $row['diagnostic']=$safe;
+                        }
+                    }
+                }
+            }catch(Throwable $e){}
+            $result[$role]=$row;
+        }
+        return $result;
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
@@ -941,6 +1013,11 @@ class JVPresenceIdentityShadow extends IPSModule
             &&($extraScan['authority']??'')==='ADDITIONAL_IPC_METADATA_ONLY'
             ?$extraScan:null;
         $extraIpcEvidence=$this->readSupplementaryIpcEvidence($qualifiedIpc);
+        $mastHealth=JVP03SourceHealth::evaluate(
+            $this->readP03MastObserverHealth(),
+            (string)($this->readP03LiveCounters()['proofState']??''),
+            time()
+        );
         $otherCameraInventory=is_array($otherCamScan)
             && ($otherCamScan['authority']??'')==='ADDITIONAL_IPC_LOCAL_METADATA_ONLY'
             ?$otherCamScan:null;
@@ -965,6 +1042,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'propertyEmptyMayBeCertified'=>false,
             'p03'=>$p03,
             'p03Live'=>$this->readP03LiveCounters(),
+            'p03MastHealth'=>$mastHealth,
             'p03LiveTimeline'=>$p03Timeline['report'],
             'parallelPersonPassage'=>$parallelPassage,
             'cameraCapabilityPriority'=>$cameraCapability,
