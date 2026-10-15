@@ -21,6 +21,10 @@
       "caption": "PERSONENZÄHLUNG / KAMERAPRIORITÄT: WORK_LEFT IPC-HFW5442E-ZE hat Vorrang an der Straßen-IVS; JV_LEFT + WORK_LEFT gemeinsam für Haus↔Lager. Bereits bekannte TiOC: JV Terrasse und JV Hof/Garage jeweils IPC-PDW3849-A180-AS-PV (180° Panorama, 2×4 MP, SMD 4.0, IVS Mensch/Fahrzeug). Diese Panorama-Kameras können, falls der Weg im Sichtfeld liegt, eine mögliche Gruppe zusätzlich erkennen, haben laut Modell-Datenblatt aber keine eigenständige People-Counting-Funktion. Ein 180°-Bild beweist keine Anzahl von zwei Personen. Die IPC besitzt einen separaten People-Counting-Smart-Plan, der die laufenden P03-IVS-Funktionen nicht verdrängen darf. Optionaler NumberStat-Diagnose-Link bleibt AUS."
     },
     {
+      "type": "Label",
+      "caption": "LIVE-STÖRUNG P03: p03MastHealth liest ausschließlich lokale P03-Aux-Diagnosen der bereits geprüften Observer JV_LEFT #57215 / 192.168.107.95 und WORK_LEFT #27938 / 192.168.107.94. Anzeige unterscheidet Stream DOWN, AUTH_BLOCKED, STALE_CAMERA_RX, LIVE_RX und Haupt-P03 weiterhin BLOCKIERT trotz zweier LIVE-Observer. Keine Kamera-Verbindung oder Reparatur. Zusatz-IP .99: P03-Instanzname Werkstatt links widerspricht historischer Zuordnung Werkstatt rechts; vor Einsatz physische Zuordnung prüfen. WLAN-Integration bleibt bis zur getrennten Freigabe deaktiviert."
+    },
+    {
       "type": "CheckBox",
       "name": "EnableCountTelemetryRead",
       "caption": "Optional vorhandene IPC-NumberStat-Diagnosevariable passiv lesen (erst bei verifizierter zusätzlicher Zählkamera freigeben)"
