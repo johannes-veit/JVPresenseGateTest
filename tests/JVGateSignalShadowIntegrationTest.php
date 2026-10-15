@@ -610,7 +610,7 @@ checkGate(($staleGeo['johannesEgiGeoZone']['outsideRecent']??true)===false
     ==='STALE_OUTSIDE_NOT_LIVE_ABSENCE',
     'old outside events never certify person absent');
 $GLOBALS['gateDevices'][28055]['value']=$now-20;
-$GLOBALS['gateDevices'][41869]['parent']='Fremde Instanz';
+$GLOBALS['gateDevices'][41869]['pairedParent']=50001; // actual Symcon ParentID moves
 $readsBefore=count($GLOBALS['readCalls']);
 $geoMod->Refresh();
 $badGeo=json_decode((string)$geoMod->GetValue('EvidenceJSON'),true);
