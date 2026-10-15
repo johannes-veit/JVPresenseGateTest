@@ -154,6 +154,20 @@ checkGate(($data['qualifiedAdditionalIPCInventory']['otherIpcFoundInSymcon']??nu
     'qualified IPC metadata persists through periodic Refresh');
 checkGate(($data['cameraCapabilityPriority']['additionalIpcCandidatesConfiguredInSymcon'][0]['ip']??null)
     ==='192.168.107.98','existing street IPC candidate leads supplemental list');
+checkGate(($data['qualifiedAdditionalIPCInventory']['smartPssHfw5442Count']??null)===7
+    &&($data['qualifiedAdditionalIPCInventory']['smartPssTiocPdW3849Count']??null)===2,
+    'nine real SmartPSS camera model counts included without altering Symcon');
+checkGate(($data['qualifiedAdditionalIPCInventory']['otherIpcCandidates'][0]['modelFromPreviousInventory']??null)
+    ==='IPC-HFW5442E-ZE','Torhalle Strasse now confirmed IPC model in screenshot');
+checkGate(($data['qualifiedAdditionalIPCInventory']['otherIpcCandidates'][0]['ipConfirmedBySmartPSSTcpIpDialog']??null)
+    ===false,'historical .98 IP not invented as screenshot verified');
+checkGate(($data['cameraCapabilityPriority']['candidateEvaluationOrderForDedicatedPeopleCounting'][0]['historicalRole']??null)
+    ==='TORHALLE_STRASSE_CANDIDATE',
+    'Torhalle Street reviewed before any other dedicated count candidate');
+checkGate(($data['cameraCapabilityPriority']['recommendedFirstCameraCanCountNow']??null)
+    ===false,'no people count merely because model matches');
+checkGate(($data['qualifiedAdditionalIPCInventory']['smartPssOnlineDoesNotVerifySymBoxEventStream']??null)
+    ===true,'SmartPSS online not a working SymBox camera stream');
 checkGate(($data['supplementaryIpcEventEvidence']['numberOfPeople']??null)==='UNKNOWN',
     'without preexisting extra IPC AUX event strings no people count invented');
 checkGate(($data['supplementaryIpcEventEvidence']['supplementaryHumanHint']??null)===false,
