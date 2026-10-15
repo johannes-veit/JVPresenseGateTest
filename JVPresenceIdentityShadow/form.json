@@ -141,6 +141,52 @@
       ]
     },
     {
+      "type": "ExpansionPanel",
+      "caption": "Geofency Carina – iPhone Zuhause-Geofence (nur lesen)",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Carinas iOS-App Geofency überträgt bereits WebHook-Ereignisse an die bestehende Geofency-Instanz. Diese SHADOW-Erweiterung erfasst NUR vorhandene Boolean-Zonenstatus und den Unix-Timestamp. Zuerst Button 7 (unten) drücken: Er findet die tatsächlichen Symcon-IDs ohne Werte zu lesen. Geofency legt unter der Modulinstanz für jedes Smartphone ein Gerät namens 'Device' an; deshalb niemals unbekannte IDs von Johannes für Carina übernehmen."
+        },
+        {
+          "type": "CheckBox",
+          "name": "EnableCarinaGeofencyHints",
+          "caption": "Carinas vorhandenen Geofency-Zonenstatus NUR LESEN (Opt-in, standardmäßig AUS)"
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "CarinaGeofencyDeviceID",
+          "caption": "Carina Geofency: gefundene Device-Instanz-ID (zunächst 0)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "CarinaGeofencyZoneVarID",
+          "caption": "Carina: Boolean-ID der Zuhause-Zone aus Button 7 (zunächst 0)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "CarinaGeofencyTimestampID",
+          "caption": "Carina: Unix-Timestamp-Variable aus Button 7 (zunächst 0)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "TextBox",
+          "name": "CarinaGeofencyZoneName",
+          "caption": "Exakter Name der Carina Zuhause-Zone (Standard Zuhause)"
+        },
+        {
+          "type": "Label",
+          "caption": "Bei einer eindeutigen, explizit nach Carina benannten Geräteinstanz kann SHADOW die Quelle automatisch wiedererkennen. Ist das Geofency-Gerät nur als 'Device' bezeichnet oder sind mehrere Smartphones vorhanden, müssen die 3 IDs aus Button 7 explizit eingesetzt werden. Beim Lesen wird die Geofency-Modul-GUID, die Gerätezuordnung, der exakte Zonenname und Timestamp-Datentyp immer erneut geprüft. Nur Ereignisse der letzten 6 Stunden zählen als frische Telefonmeldungen. Kein Anwesenheits-/Abwesenheitsbeweis, keine Veränderung von Apps, Haken, IP-Symcon-Instanzen, P03, LCN, Licht, Alarm und WLAN."
+        }
+      ]
+    },
+    {
       "type": "Label",
       "caption": "NEUE GEMEINSAME BEWERTUNG: Die bestehende EvidenceJSON enthält jetzt combinedPresenceEvidence und houseObservation.combinedContextStatus. Frische WLAN-Handys + aktuelle GUS-Bewegung liefern einen anonymen kombinierten Haus-Aktivitätshinweis. Handys ohne frische GUS-Bewegung bestätigen nur Geräte im WLAN. P03 Haus↔Lager ist KEIN Grundstücksausgang, Schiebetor ZU/AUF keine Personenrichtung. Wenn Handys offline und das Haus ruhig sind, listet absenceReview fehlende Nachweise; keine automatische Abwesenheit und kein Alarm."
     },
@@ -373,6 +419,11 @@
       "type": "Button",
       "caption": "6. Weitere vorhandene IPC-/Kamerainstanzen suchen (nur lesen)",
       "onClick": "JVIDSH_AuditOtherIPCCandidates($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "7. Carinas Geofency-Instanz und Zuhause-Variablen suchen (nur Metadaten lesen)",
+      "onClick": "JVIDSH_AuditCarinaGeofencyCandidates($id);"
     }
   ],
   "status": [

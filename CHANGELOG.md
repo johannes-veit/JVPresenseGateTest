@@ -1,3 +1,13 @@
+# v0.8.47 (Build 128) – Carina iPhone Geofency: bestehende Symcon-Ereignisse nur lesen
+
+- Carinas bereits funktionierende Geofency-iOS-App kann nun in der bestehenden `JV Presence Identity SHADOW` #32969 mit Johannes' EgiGeoZone, WLAN beider Smartphones, 15 LCN-GUS, P03, Tor und Licht verknüpft werden. Die Geofency-App und der Symcon-Webhook werden **nicht verändert**.
+- Die konkreten Carina-IDs sind **noch nicht bekannt**; keine willkürliche Annahme. **Button 7** listet die tatsächlichen Geofency-Geräte, Boolean-Zonenvariablen und Unix-`Timestamp`-Variablen nur aus vorhandenen IP-Symcon-Metadaten auf. Geofency legt unter dem Modul eine Smartphone-Instanz mit dem generischen Namen `Device` an; deshalb müssen bei anonymem Gerät die drei geprüften IDs manuell übernommen werden. Erst nach eindeutiger Zuordnung darf Opt-in aktiviert werden (standardmäßig AUS).
+- Strenge Prüfung von original Geofency Modul-GUID `{0100CA50-D2DA-11E4-8830-0800200C9A66}`, Originalinstanz, Geräteparent, Boolean-Name aus Zuhause-Zone, Unix-Timestamp und Typ bei jedem Lesen. Bei unvollständigen / wiederverwendeten / verschobenen IDs **fail closed** und keine falsche Anwesenheit.
+- Geräteereignisse älter als 6 Stunden `STALE`. Frisches Geofency IN/AUS nur iPhone-Geofence-Hinweis (der iPhone-Radius wird nicht aus Symcon übernommen). Fehlende Apps / fehlende Updates, iPhone-Standby und AUSSEN sind **kein** Beweis, dass Carina das Haus oder Grundstück verlassen hat.
+- `EvidenceJSON.carinaGeofency`, `carinaGeofencyInventory`, `combinedPresenceEvidence.carinaGeofencyContext`, `carinaWlanGeofencyCrossCheck` und kombinierter Status für WLAN + Geofences Johannes/Carina. Keine zusätzliche Symcon-Ausgabevariable, Kategorie, Instanz, Event, Timer oder dauerhafte Diagnose-Objekte.
+- Ausgeschlossen: Auslesen von Latitude, Longitude, CurrentLatitude, CurrentLongitude und anderen GPS-Werten; Senden von Requests oder Geofency-Konfiguration; Änderung von P03/P05, fremden WLAN-/Kamera-/Licht-/Alarmmodulen, oder `HOME/AWAY`/Alarm. Personenanzahl und Identitäten aus Gerätehinweisen bleiben unbekannt.
+- Tests: echte Modul-GUID, keine Personen-Schlussfolgerung, sichere manuelle ID-Auswahl, Metadata-only-Scan, falsch zugeordnete Eltern-ID, frisches/stales IN/AUS, iPhone-GPS-Privacy, WLAN-Widerspruch, Opt-in/Opt-out, Regression Johannes.
+
 # v0.8.46 (Build 127) – Johannes EgiGeoZone Zuhause 150 m mit WLAN kombinieren (NUR LESEN)
 
 - Android EgiGeoZone vom Nutzer bereits eingerichtet: Symcon EgiGeoZone #35965, Geräte-Dummy #50000, Boolean `TestGeoZone` #41869, Unix-`Timestamp` #28055. 150 m Radius ist die **vom Nutzer in der Android-App konfigurierte Angabe**; diese ist im Symcon Modul nicht über die gelesenen Variablen verifiziert oder als gemessene Entfernung verfügbar.

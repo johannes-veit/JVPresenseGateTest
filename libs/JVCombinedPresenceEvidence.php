@@ -18,7 +18,7 @@ final class JVCombinedPresenceEvidence
 
     public static function evaluate(
         array $wlan,array $home,array $p03,array $boundary,
-        array $gate,array $indoor,int $now,array $geofence=[]
+        array $gate,array $indoor,int $now,array $geofence=[],array $carinaGeofency=[]
     ):array {
         $data=[
             'schema'=>self::SCHEMA,
@@ -47,6 +47,10 @@ final class JVCombinedPresenceEvidence
             'indoorReadOnlySourceCount'=>0,
             'indoorOnCount'=>0,
             'indoorDevicesOffProveAbsence'=>false,
+            'carinaGeofencyContext'=>'DISABLED_OR_UNVERIFIED',
+            'carinaWlanGeofencyCrossCheck'=>'NOT_AVAILABLE',
+            'bothPhoneGeofencesNearHome'=>false,
+            'carinaGeofencyOutsideNeverCertifiesAbsence'=>true,
             'johannesGeofenceContext'=>'DISABLED_OR_UNVERIFIED',
             'johannesGeofenceRadiusMeters'=>null,
             'johannesGeofenceLastEventAgeSeconds'=>null,
@@ -149,6 +153,34 @@ final class JVCombinedPresenceEvidence
                         :'GEOFENCE_OUT_WLAN_NOT_CONFIRMED_NOT_ABSENCE')
                     :'STALE_GEOFENCE_NOT_USED');
         }
+        // Carina iPhone Geofency is an event-backed handset location flag.
+        // Do not treat it as a continuously measured location or proof
+        // that Carina is physically inside/outside the property.
+        $carinaAuthorized=($carinaGeofency['schema']??null)===1
+            &&($carinaGeofency['authority']??null)==='EXISTING_CARINA_GEOFENCY_READ_ONLY'
+            &&($carinaGeofency['enabled']??null)===true
+            &&($carinaGeofency['validatedSource']??null)===true;
+        $carinaInside=$carinaAuthorized
+            &&($carinaGeofency['insideRecent']??null)===true
+            &&($carinaGeofency['outsideRecent']??null)===false;
+        $carinaOutside=$carinaAuthorized
+            &&($carinaGeofency['outsideRecent']??null)===true
+            &&($carinaGeofency['insideRecent']??null)===false;
+        $carinaWlan=($wlan['people']['carina']['recentMacEvidence']??false)===true;
+        if($carinaAuthorized){
+            $data['carinaGeofencyContext']=$carinaInside
+                ?'CARINA_PHONE_REPORTED_INSIDE_HOME_GEOFENCE'
+                :($carinaOutside?'CARINA_PHONE_REPORTED_OUTSIDE_HOME_GEOFENCE'
+                    :'CARINA_GEOFENCY_STALE_OR_INVALID');
+            $data['carinaWlanGeofencyCrossCheck']=$carinaInside
+                ?($carinaWlan?'GEOFENCY_AND_WLAN_CARINA_PHONE_NEAR_HOME'
+                    :'GEOFENCY_IN_WLAN_NOT_CONFIRMED')
+                :($carinaOutside
+                    ?($carinaWlan?'WLAN_ON_GEOFENCY_OUT_REVIEW_ONLY'
+                        :'GEOFENCY_OUT_WLAN_NOT_CONFIRMED_NOT_ABSENCE')
+                    :'STALE_GEOFENCY_NOT_USED');
+        }
+        $data['bothPhoneGeofencesNearHome']=$geoInside&&$carinaInside;
         if($count>0&&$recent) {
             $data['status']=$strong
                 ?'HOUSE_ACTIVITY_WITH_WLAN_DEVICE_CORROBORATED'
@@ -161,15 +193,26 @@ final class JVCombinedPresenceEvidence
             $data['status']='HOUSE_ACTIVITY_WITHOUT_FRESH_WLAN';
             $data['description']='GUS-Bewegung im Haus trotz fehlendem aktuellem WLAN-Handy-Nachweis. Das Handy darf nicht als abwesende Person gelten.';
         }elseif($count>0){
-            $data['status']=$geoInside&&$johannesWlan
+            $data['status']=$geoInside&&$carinaInside&&$johannesWlan&&$carinaWlan
+                ?'BOTH_PHONES_WLAN_AND_GEOFENCE_NEAR_HOME_NO_MOTION'
+                :($carinaInside&&$carinaWlan
+                    ?'CARINA_WLAN_GEOFENCY_DEVICE_NEAR_HOME_NO_RECENT_MOTION'
+                    :($geoInside&&$johannesWlan
                 ?'JOHANNES_WLAN_GEOFENCE_DEVICE_NEAR_HOME_NO_RECENT_MOTION'
-                :'WLAN_DEVICES_ONLY_NO_RECENT_HOME_MOTION';
-            $data['description']=$geoInside&&$johannesWlan
-                ?'Johannes Smartphone via WLAN und gemeldetem 150-m-Geofence nahe Haus; keine aktuelle GUS-Bewegung. Telefon ist kein Personenbeweis.'
-                :'Smartphone(s) im WLAN, aber keine aktuelle bestätigte Hausbewegung. Auch liegengebliebene Handys möglich.';
+                :'WLAN_DEVICES_ONLY_NO_RECENT_HOME_MOTION'));
+            $data['description']=$geoInside&&$carinaInside&&$johannesWlan&&$carinaWlan
+                ?'Beide Smartphones über WLAN und frische App-Geofences nahe Zuhause gemeldet; keine aktuelle GUS-Bewegung. Keine Personenidentität bewiesen.'
+                :($carinaInside&&$carinaWlan
+                    ?'Carinas iPhone via WLAN und Geofency nahe Zuhause gemeldet; ohne aktuelle GUS-Bewegung. Kein sicherer Personennachweis.'
+                    :($geoInside&&$johannesWlan
+                        ?'Johannes Smartphone via WLAN und gemeldetem 150-m-Geofence nahe Haus; keine aktuelle GUS-Bewegung. Telefon ist kein Personenbeweis.'
+                        :'Smartphone(s) im WLAN, aber keine aktuelle bestätigte Hausbewegung. Auch liegengebliebene Handys möglich.'));
         }elseif($data['p03RecentDirection']==='LAGER_TO_HOME'){
             $data['status']='P03_HOME_ENTRY_DIRECTION_ONLY';
             $data['description']='Frischer P03-Richtungsnachweis Lager nach Haus, ohne Identität oder Personenzahl.';
+        }elseif($carinaInside){
+            $data['status']='CARINA_GEOFENCY_PHONE_NEAR_HOME_ONLY';
+            $data['description']='Geofency hat das iPhone in der Zuhause-Zone gemeldet, ohne aktuelle GUS-/WLAN-Bestaetigung. Keine sichere Personenerkennung.';
         }elseif($geoInside){
             $data['status']='JOHANNES_GEOFENCE_PHONE_NEAR_HOME_ONLY';
             $data['description']='EgiGeoZone hat das Smartphone innerhalb des Zuhause-Geofences gemeldet, ohne aktuellen WLAN-/GUS-Nachweis. Keine Bewohneridentitaet oder sichere Anwesenheit.';
@@ -190,6 +233,8 @@ final class JVCombinedPresenceEvidence
         $missing=[];
         if($geoInside)
             $missing[]='JOHANNES_GEOFENCE_PHONE_NEAR_HOME_NOT_ABSENCE';
+        if($carinaInside)
+            $missing[]='CARINA_GEOFENCY_PHONE_NEAR_HOME_NOT_ABSENCE';
         if(!$wlanActive)$missing[]='WLAN_PHONE_OBSERVATION_DISABLED';
         elseif($count>0)$missing[]='WLAN_DEVICES_STILL_CONFIRMED';
         if(!$healthy)$missing[]='LCN_FULL_COVERAGE_NOT_VERIFIED';
