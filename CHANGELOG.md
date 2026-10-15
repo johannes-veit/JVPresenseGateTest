@@ -1,3 +1,11 @@
+# v0.8.49 (Build 130) – Korrekte Bestandsmigration von Carinas 0.8.47-ID-Feldern
+
+- Nach einer IP-Symcon-Modulaktualisierung behalten bestehende Instanzen die zuletzt gespeicherten Property-Werte. In `0.8.47` waren `CarinaGeofencyDeviceID`, `CarinaGeofencyZoneVarID` und `CarinaGeofencyTimestampID` standardmäßig **0**. Das bloße Ändern der Default-Werte in 0.8.48 füllt diese drei bestehenden Properties nicht nachträglich.
+- Ohne benutzerseitige Einstellungen zu überschreiben, verwendet SHADOW **nur bei exakt drei weiterhin gespeicherten Nullen** und dem geprüften ursprünglichen Hauptmodul #48903 / Zuhause-Zonennamen die im Symcon-Screenshot bestätigten tatsächlichen Geofency-IDs: Device #45439, Zuhause Boolean #39169, Timestamp #45666. Vor jedem einzelnen Wertlesen ist weiterhin die Original-Geofency-GUID, Elternstruktur, exakter Variablenname, Typ und Zeitstempel-Konsistenz zwingend zu prüfen.
+- Gemischte/unvollständige Werte (z.B. 0, 39169, 0) werden **nicht** automatisch ergänzt. Kein `IPS_SetProperty`, kein `IPS_ApplyChanges`, kein Variablenneuanlegen, kein Fremdmodul verändern. Bereits manuell gültig eingetragene Werte behalten Vorrang.
+- Zusätzlicher PHP-Regressionstest simuliert die echten Alt-Werte 0/0/0 nach Update und erwartet beide `ANWESEND (Handyhinweis)`-Statusanzeigen nur bei frischen, widerspruchsfreien Quellen. Falsche/mischte IDs bleiben gesperrt.
+- Alle Sicherheitseigenschaften und Prüfungen von 0.8.48 (Johannes EgiGeoZone Zuhause-Name, Geofency-Zeitstempel für richtige Zone, P03, GUS, WLAN, Licht, Schiebetor, keine Personenzahl/Abwesenheit/Alarm) bleiben bestehen.
+
 # v0.8.48 (Build 129) – Gesamtprüfung, Johannes & Carina Statusanzeige und echte Geofence-IDs
 
 - **Wichtig: echte Symcon-Screenshots 15.10.2026:** Johannes EgiGeoZone #35965 → Device #50000 → `Zuhause` Boolean #41869, `Timestamp` Integer #28055. v0.8.46/47 erwarteten fälschlich den alten Variablennamen `TestGeoZone`; das blockierte Johannes' Geofence trotz tatsächlich vorhandener Statusvariable. Korrigiert auf `Zuhause`, exakter Name zusätzlich als Moduleigenschaft.

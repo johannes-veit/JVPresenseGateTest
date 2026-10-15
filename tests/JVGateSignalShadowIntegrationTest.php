@@ -855,4 +855,42 @@ checkGate($real->GetValue('JohannesPresence')==='NICHT BESTÄTIGT'
     'disabled instance immediately clears earlier positive phone displays');
 checkGate($real->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
     'exactly two additional user-requested instance variables');
+
+// Live upgrade path from 0.8.47: the three Carina IDs are persisted as
+// zeros even when v0.8.48+ registers nonzero defaults! Reading must
+// transparently use verified screenshot IDs without writing module props.
+$GLOBALS['gateDevices'][39169]['updated']=$now-15;
+$GLOBALS['gateDevices'][45666]['updated']=$now-15;
+$legacy=new JVPresenceIdentityShadow();
+$legacy->Create();
+$legacy->setProp('Enabled',true);
+$legacy->setProp('SensorSources','[]');
+$legacy->setProp('P03InstanceID',0);
+$legacy->setProp('EnableExistingWLANHints',true);
+$legacy->setProp('EnableJohannesEgiGeoZone',true);
+$legacy->setProp('EnableCarinaGeofencyHints',true);
+$legacy->setProp('CarinaGeofencyDeviceID',0);
+$legacy->setProp('CarinaGeofencyZoneVarID',0);
+$legacy->setProp('CarinaGeofencyTimestampID',0);
+$readsBefore=count($GLOBALS['readCalls']);
+$legacy->Refresh();
+$zeroUpgrade=json_decode((string)$legacy->GetValue('EvidenceJSON'),true);
+checkGate(($zeroUpgrade['carinaGeofency']['state']??null)
+    ==='RECENT_INSIDE_HOME_GEOFENCE_DEVICE_HINT',
+    'legacy persisted 0/0/0 resolves to verified real Carina IDs by safe read-only fallback');
+checkGate($legacy->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)'
+    &&$legacy->GetValue('CarinaPresence')==='ANWESEND (Handyhinweis)',
+    'legacy upgrades show both user-requested display states without manual IDs');
+$readsLegacy=array_slice($GLOBALS['readCalls'],$readsBefore);
+checkGate(in_array(39169,$readsLegacy,true)&&in_array(45666,$readsLegacy,true)
+    &&!in_array(36910,$readsLegacy,true)&&!in_array(51224,$readsLegacy,true),
+    'fallback reads only already-verified Geofency Boolean and Unix timestamp');
+$legacy->setProp('CarinaGeofencyZoneVarID',99999);
+$legacy->Refresh();
+$wrongMix=json_decode((string)$legacy->GetValue('EvidenceJSON'),true);
+checkGate(($wrongMix['carinaGeofency']['state']??null)==='SOURCE_NOT_VERIFIED',
+    'partial/incorrect old IDs are never silently repaired with a mixed source');
+checkGate($legacy->GetValue('CarinaPresence')
+    ==='WLAN ZUHAUSE (Geofence unbestätigt)',
+    'bad source mapping remains non-authoritative and never claims person AWAY');
 echo "Gate Shadow integration / initialization 101->102, failure 201 recovery PASS\n";

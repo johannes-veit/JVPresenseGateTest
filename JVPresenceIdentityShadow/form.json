@@ -156,6 +156,10 @@
       "items": [
         {
           "type": "Label",
+          "caption": "Bestandsupdate 0.8.49: Falls bei einer schon vorhandenen SHADOW-Instanz die drei Carina-ID-Felder weiterhin 0/0/0 anzeigen, verwendet die reine Leseauswertung automatisch die geprüften realen IDs #45439 / #39169 / #45666 (nur unter original Geofency #48903 und mit exakter Zuhause-Variable). Die gespeicherten 0-Einstellungen bleiben unverändert. Mischwerte oder falsche IDs werden NICHT automatisch ergänzt."
+        },
+        {
+          "type": "Label",
           "caption": "Live-Symcon-Screenshot geprüft: Geofency-Instanz #48903, Device-Dummy #45439, Zuhause Boolean #39169 und Timestamp Integer #45666. Diese vier IDs sind jetzt vorbelegt, sodass Button 7 optional ist. Bei Versionsupdate bestehende Konfiguration prüfen. Nur lesen, keine Koordinaten oder Aktionen."
         },
         {
