@@ -78,16 +78,60 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
     }
 
+    /**
+     * Symcon starts a new instance in IS_CREATING (101). A failing initial
+     * ApplyChanges can leave 101 behind even while subsequent timer/button
+     * calls continue to update the existing output variables.
+     *
+     * Complete ALL local initialization stages before acknowledging ACTIVE.
+     * An exception is reported as a genuine module error (201), not hidden
+     * by setting 102. Never reset any attributes or recreate the instance.
+     */
     public function ApplyChanges(): void
     {
-        parent::ApplyChanges();
-        // One-time migration of any legacy in-memory state still present
-        // during a hot update. If already lost, do not invent historical data.
-        $this->migrateLegacyShadowBuffers();
-        $this->SetTimerInterval('ReadLocal',$this->ReadPropertyBoolean('Enabled')?60000:0);
-        $this->syncSensorSubscriptions();
-        $this->syncGateSubscriptions();
-        $this->Refresh();
+        $step='PARENT_APPLY_CHANGES';
+        try {
+            parent::ApplyChanges();
+            $step='RESTORE_PERSISTENT_SHADOW_STATE';
+            // Restore prior observations without clearing the existing ledgers.
+            $this->migrateLegacyShadowBuffers();
+            $step='CONFIGURE_READ_ONLY_TIMER';
+            $this->SetTimerInterval(
+                'ReadLocal',$this->ReadPropertyBoolean('Enabled')?60000:0
+            );
+            $step='RECONNECT_EXISTING_GUS_SUBSCRIPTIONS';
+            $this->syncSensorSubscriptions();
+            $step='RECONNECT_EXISTING_GATE_SUBSCRIPTIONS';
+            $this->syncGateSubscriptions();
+            $step='INITIAL_READ_ONLY_REFRESH';
+            $this->Refresh();
+            $step='SET_ACTIVE_STATUS';
+            // Only after the successful complete bootstrap: clear a stuck
+            // IS_CREATING=101 left by an earlier, incomplete initialization.
+            if($this->SetStatus(102)===false)
+                throw new RuntimeException('SYSCON_STATUS_TRANSITION_REJECTED');
+        } catch(Throwable $e) {
+            // A real bootstrap error must NOT be disguised as "active".
+            // 201 is local to this module and does not touch other instances.
+            try {$this->SetTimerInterval('ReadLocal',0);}
+            catch(Throwable $ignored){}
+            try {$this->SetStatus(201);}
+            catch(Throwable $ignored){}
+            // Do not expose credentials or foreign module data in messages.
+            try {
+                $this->SendDebug(
+                    'ShadowInitialization',
+                    'FAILED_STEP='.$step.'; EXCEPTION_CLASS='.get_class($e),
+                    0
+                );
+            }catch(Throwable $ignored){}
+            try {
+                $this->SetValue(
+                    'Status',
+                    'SHADOW Initialisierung fehlgeschlagen: '.$step
+                );
+            }catch(Throwable $ignored){}
+        }
     }
 
     /**
