@@ -176,7 +176,7 @@
           "maximum": 2147483647
         },
         {
-          "type": "ValidationTextBox",
+          "type": "TextBox",
           "name": "CarinaGeofencyZoneName",
           "caption": "Exakter Name der Carina Zuhause-Zone (Standard Zuhause)"
         },
