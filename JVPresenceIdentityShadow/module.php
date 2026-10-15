@@ -673,7 +673,8 @@ class JVPresenceIdentityShadow extends IPSModule
                             }
                         }catch(Throwable $e){}
                         $matched[]=['instanceId'=>$id,'ip'=>$cameraIP,
-                            'label'=>'','eventVariableId'=>$eventVariableId];
+                            'label'=>substr((string)IPS_GetName($id),0,100),
+                            'eventVariableId'=>$eventVariableId];
                     }catch(Throwable $e){}
                 }catch(Throwable $e){$limited=true;}
             }
