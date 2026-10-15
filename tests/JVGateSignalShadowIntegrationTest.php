@@ -84,6 +84,21 @@ function GetValue(int $id):mixed{
 }
 // This is invoked only inside P03's optional lookup try/catch.
 function IPS_GetInstance(int $id):array{throw new RuntimeException('no P03 fixture');}
+// Existing local Symcon configurations only. Passwords are deliberately
+// present in fixtures to verify they are never published or forwarded.
+function IPS_GetInstanceList():array{return [8001,8002,8003,8004,8005];}
+function IPS_GetConfiguration(int $id):string{
+    return match($id){
+        8001=>json_encode(['Host'=>'192.168.107.98',
+            'Password'=>'PRIVATE_CAMERA_PASSWORD_NEVER_OUTPUT']),
+        8002=>json_encode(['CameraHost'=>'192.168.107.96',
+            'Password'=>'HIDDEN_ANOTHER_SECRET']),
+        8003=>json_encode(['Host'=>'192.168.107.95']),
+        8004=>json_encode(['Host'=>'192.168.107.111']),
+        8005=>json_encode(['Host'=>'192.168.103.45']),
+        default=>'{}'
+    };
+}
 
 require_once dirname(__DIR__).'/JVPresenceIdentityShadow/module.php';
 function checkGate(bool $true,string $name):void{
@@ -99,6 +114,26 @@ $raw=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 checkGate(($raw['candidateCount']??null)===7,'find seven from fixture');
 checkGate($GLOBALS['readCalls']===[],'candidate scan reads metadata not values');
 $m->AuditExistingGateSignals();
+// Manual extra IPC audit must only read local Symcon configuration metadata,
+// preserve protected mast sources, and never read camera values/passwords.
+$beforeExtraAudit=count($GLOBALS['readCalls']);
+$m->AuditAdditionalIpcCameras();
+$ipcMeta=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($ipcMeta['authority']??null)==='ADDITIONAL_IPC_METADATA_ONLY',
+    'IPC metadata audit uses its own read-only authority');
+checkGate(($ipcMeta['otherIpcFoundInSymcon']??null)===2,
+    'both Torhalle Straße and JV-right extra IPC IPs discovered');
+checkGate(($ipcMeta['otherIpcCandidates'][0]['ip']??null)==='192.168.107.98',
+    'street-side additional IPC candidate ranked first');
+checkGate(($ipcMeta['cameraNetworkConnectionsPerformed']??null)===false
+    &&($ipcMeta['cameraSettingsChanged']??null)===false,
+    'IPC audit creates no network requests or camera modifications');
+checkGate(!str_contains(json_encode($ipcMeta),
+    'PRIVATE_CAMERA_PASSWORD_NEVER_OUTPUT')
+    && !str_contains(json_encode($ipcMeta),'HIDDEN_ANOTHER_SECRET'),
+    'scanner never exports authentication secrets');
+checkGate(count($GLOBALS['readCalls'])===$beforeExtraAudit,
+    'IPC audit reads no existing camera variable values');
 // Indoor candidate discovery reads metadata only, never device states,
 // and cannot change the established gate watch or GUS configuration.
 $readsBeforeIndoorScan=count($GLOBALS['readCalls']);
@@ -113,6 +148,14 @@ checkGate(count($GLOBALS['readCalls'])===$readsBeforeIndoorScan,
 $m->Refresh();
 
 $data=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($data['additionalIpcInventory']['otherIpcFoundInSymcon']??null)===2,
+    'camera inventory persisted across Refresh without losing existing state');
+checkGate(($data['cameraCapabilityPriority']['additionalIpcCandidatesConfiguredInSymcon'][0]['ip']??null)==='192.168.107.98',
+    'additional street IPC prioritized in camera capability report');
+checkGate(($data['additionalIpcEventEvidence']['supplementaryHumanHint']??null)===false,
+    'no existing P03 Aux observer for other IPC means no fabricated human proof');
+checkGate(($data['additionalIpcEventEvidence']['numberOfPeople']??null)==='UNKNOWN',
+    'no per-person counts invented from camera inventory');
 checkGate(($data['gateSignalAudit']['signalCount']??null)===7,'manual audit samples 7');
 checkGate(($data['gateSignalAudit']['readableSignals']??null)===7,'all 7 read');
 checkGate(($data['gateDisplay']['positionHint']??null)==='ZWISCHENSTELLUNG_ODER_FAHRT',
