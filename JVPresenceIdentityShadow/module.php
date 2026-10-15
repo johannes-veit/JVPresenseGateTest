@@ -12,6 +12,7 @@ require_once dirname(__DIR__).'/libs/JVGateSignalAudit.php';
 require_once dirname(__DIR__).'/libs/JVIndoorPresenceHints.php';
 require_once dirname(__DIR__).'/libs/JVIndoorHintInventory.php';
 require_once dirname(__DIR__).'/libs/JVGateDisplayHint.php';
+require_once dirname(__DIR__).'/libs/JVParallelPassageGuard.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -724,6 +725,13 @@ class JVPresenceIdentityShadow extends IPSModule
         $houseObservation=JVHomeOccupancyEvidence::evaluate(
             $local,$activity,$p03Timeline['report'],time(),$indoorHints
         );
+        // Two residents can cross simultaneously: a single P03 line event
+        // must never become a single person or an empty-house assertion.
+        $parallelPassage=JVParallelPassageGuard::evaluate(
+            $p03Timeline['report'],$p03['street'],time()
+        );
+        $houseObservation['parallelPersonPassage']=$parallelPassage['status'];
+        $houseObservation['concurrentPeopleMayBeUndercounted']=true;
         if($houseObservation['warnings']) {
             $warnings=array_merge($warnings,$houseObservation['warnings']);
         }
@@ -777,6 +785,8 @@ class JVPresenceIdentityShadow extends IPSModule
             ?$insideScan:null;
         // Existing gate display is context only, NOT a verified exit route.
         $boundary['report']['existingGateDisplay']=$gateDisplay;
+        $boundary['report']['parallelPersonPassage']=$parallelPassage['status'];
+        $boundary['report']['individualsOrEntireGroupExitedCertified']=false;
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'personPresenceMayBeChanged'=>false,
@@ -784,6 +794,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'p03'=>$p03,
             'p03Live'=>$this->readP03LiveCounters(),
             'p03LiveTimeline'=>$p03Timeline['report'],
+            'parallelPersonPassage'=>$parallelPassage,
             'phone'=>$phones,
             'phoneLink'=>$phoneLink,
             'localSensors'=>$local,
@@ -842,6 +853,7 @@ class JVPresenceIdentityShadow extends IPSModule
             .($gateAudit!==null
                 ?' | Torwerte: '.$gateAudit['readableSignals'].'/'
                     .$gateAudit['signalCount'].' nur lesen':'')
+            .' | Gruppenpassage: PERSONENZAHL UNBEKANNT'
             .' | Schiebetor: '.$gateDisplay['positionHint']
             .' | Innenlicht/TV AN: '.$indoorHints['onCount']
             .' | Abwesenheit: NICHT BESTAETIGT'
