@@ -1045,7 +1045,9 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->writeShadowState('LocalActivityLedger',$ledgerNext);
         }
         $activity=$ledger['report'];
-        $wlanMotionHint=(int)($activity['totalMotionEdges24h']??0)>0;
+        $wlanMotionHint=is_int($activity['lastMotionAt']??null)
+            &&$activity['lastMotionAt']<=time()
+            &&$activity['lastMotionAt']>=time()-600;
         // A motion in the past 24h only increases CONTEXT, never certifies
         // that the handset's owner is physically at home now.
         $wlan=JVExistingWlanPhoneHints::evaluate(
