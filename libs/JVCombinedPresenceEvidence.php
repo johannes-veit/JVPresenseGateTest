@@ -200,9 +200,13 @@ final class JVCombinedPresenceEvidence
                     :($geoInside&&$johannesWlan
                 ?'JOHANNES_WLAN_GEOFENCE_DEVICE_NEAR_HOME_NO_RECENT_MOTION'
                 :'WLAN_DEVICES_ONLY_NO_RECENT_HOME_MOTION'));
-            $data['description']=$geoInside&&$johannesWlan
-                ?'Johannes Smartphone via WLAN und gemeldetem 150-m-Geofence nahe Haus; keine aktuelle GUS-Bewegung. Telefon ist kein Personenbeweis.'
-                :'Smartphone(s) im WLAN, aber keine aktuelle bestätigte Hausbewegung. Auch liegengebliebene Handys möglich.';
+            $data['description']=$geoInside&&$carinaInside&&$johannesWlan&&$carinaWlan
+                ?'Beide Smartphones über WLAN und frische App-Geofences nahe Zuhause gemeldet; keine aktuelle GUS-Bewegung. Keine Personenidentität bewiesen.'
+                :($carinaInside&&$carinaWlan
+                    ?'Carinas iPhone via WLAN und Geofency nahe Zuhause gemeldet; ohne aktuelle GUS-Bewegung. Kein sicherer Personennachweis.'
+                    :($geoInside&&$johannesWlan
+                        ?'Johannes Smartphone via WLAN und gemeldetem 150-m-Geofence nahe Haus; keine aktuelle GUS-Bewegung. Telefon ist kein Personenbeweis.'
+                        :'Smartphone(s) im WLAN, aber keine aktuelle bestätigte Hausbewegung. Auch liegengebliebene Handys möglich.'));
         }elseif($data['p03RecentDirection']==='LAGER_TO_HOME'){
             $data['status']='P03_HOME_ENTRY_DIRECTION_ONLY';
             $data['description']='Frischer P03-Richtungsnachweis Lager nach Haus, ohne Identität oder Personenzahl.';
