@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once dirname(__DIR__).'/libs/JVAdditionalIpcInventory.php';
 require_once dirname(__DIR__).'/libs/JVCameraCapabilityPriority.php';
+require_once dirname(__DIR__).'/libs/JVAdditionalIpcEventEvidence.php';
 $checks=0;
 function chkExtra(bool $ok,string $msg):void{
     global $checks;$checks++;
@@ -10,7 +11,7 @@ function chkExtra(bool $ok,string $msg):void{
 $r=JVAdditionalIpcInventory::evaluate([
  ['instanceId'=>211,'ip'=>'192.168.107.98','label'=>'Torhalle Strasse Kamera'],
  ['instanceId'=>213,'ip'=>'192.168.107.97','label'=>'Torhalle Einfahrt'],
- ['instanceId'=>217,'ip'=>'192.168.107.96','label'=>'JV rechts'],
+ ['instanceId'=>217,'ip'=>'192.168.107.96','label'=>'JV rechts','eventVariableId'=>42117],
  ['instanceId'=>219,'ip'=>'192.168.107.99','label'=>'Werkstatt rechts'],
  ['instanceId'=>225,'ip'=>'192.168.107.94','label'=>'WORK_LEFT'],
  ['instanceId'=>229,'ip'=>'192.168.107.110','label'=>'TiOC Terrasse'],
@@ -37,6 +38,10 @@ chkExtra($r['otherIpcCandidates'][2]['peopleCountingSupportedByModel']===true,
     'older HFW5442 inventory is only model-conditional capability');
 chkExtra($r['otherIpcCandidates'][2]['modelReadFromCameraNow']===false,
     'no live model claim from metadata');
+chkExtra(($r['otherIpcCandidates'][2]['existingP03AuxEventSources'][0]['eventVariableId']??null)
+    ===42117,'reuse only existing observer IVS event variable by exact metadata ID');
+chkExtra($r['otherIpcCandidates'][2]['existingP03AuxEventSources'][0]['peopleCountVerified']
+    ===false,'observer event cannot count people');
 chkExtra($r['otherIpcCandidates'][0]['peopleCountingSupportedByModel']==='NOT_VERIFIED',
     'Torhalle camera model remains unknown, cannot assert counting');
 chkExtra($r['otherIpcCandidates'][5]['historicalRole']==='UNIDENTIFIED_IPC_OR_DEVICE',
@@ -79,4 +84,45 @@ chkExtra($none['otherIpcFoundInSymcon']===0,
     'no Symcon candidates must not trigger a live camera claim');
 chkExtra($none['otherIpcCandidates'][0]['configuredInSymcon']===false,
     'historical list clearly distinguished from detected instances');
+
+$ivs=[[
+ 'code'=>'CrossLineDetection','action'=>'Start',
+ 'decision'=>'STAIR_HUMAN_START_COUNTED','rejectionReason'=>'MATCHED_FILTER',
+ 'payloadHuman'=>true,'classification'=>'Human',
+ 'eventId'=>49,'objectId'=>9,'time'=>'19:30:03'
+]];
+$evt=JVAdditionalIpcEventEvidence::evaluate([
+ ['ip'=>'192.168.107.96','raw'=>json_encode($ivs),'ageSeconds'=>5],
+]);
+chkExtra($evt['sourceCount']===1&&$evt['camerasWithFreshIvSHumanHint']===1,
+    'existing passive IVS array yields at most a context hint');
+chkExtra($evt['supplementaryHumanHint']===true,
+    'recent verified Human IVS is supplementary only');
+chkExtra($evt['numberOfPeople']==='UNKNOWN'
+    &&$evt['propertyExitCount']==='UNKNOWN'
+    &&$evt['propertyEmptyMayBeCertified']===false,
+    'one or several events from a camera do not certify a human count or exit');
+chkExtra($evt['freshIvSHumanHints'][0]['humanEventDateUnverified']===true,
+    'time-only legacy P03 event never becomes a proven today timestamp');
+$two=JVAdditionalIpcEventEvidence::evaluate([
+ ['ip'=>'192.168.107.96','raw'=>json_encode($ivs),'ageSeconds'=>3],
+ ['ip'=>'192.168.107.99','raw'=>json_encode($ivs),'ageSeconds'=>3]
+]);
+chkExtra($two['camerasWithFreshIvSHumanHint']===2
+    &&$two['numberOfPeople']==='UNKNOWN',
+    'two cameras may see same person so never infer two humans');
+$bad=JVAdditionalIpcEventEvidence::evaluate([
+ ['ip'=>'192.168.107.96','raw'=>json_encode($ivs),'ageSeconds'=>220],
+ ['ip'=>'192.168.107.99','raw'=>'not JSON','ageSeconds'=>3],
+ ['ip'=>'192.168.107.98','raw'=>json_encode([[
+  'code'=>'CrossLineDetection','action'=>'Start',
+  'decision'=>'STAIR_IVS_NOT_MAPPED_OR_NOT_HUMAN',
+  'rejectionReason'=>'NOT_HUMAN','payloadHuman'=>false,
+  'classification'=>'Vehicle'
+ ]]),'ageSeconds'=>3],
+]);
+chkExtra($bad['camerasWithFreshIvSHumanHint']===0
+    &&$bad['supplementaryHumanHint']===false,
+    'reject stale, bad JSON and car IVS event');
+chkExtra($bad['alarmMayBeControlled']===false,'no alarms ever controlled');
 echo "Additional Dahua IPC candidates, safe street precedence, metadata only PASS ($checks)\n";
