@@ -80,6 +80,8 @@ jobs:
         run: php tests/JVExitInventoryRetentionTest.php
       - name: Indoor motion lights, TV power, legacy gate display and outside exclusions
         run: php tests/JVIndoorPresenceEvidenceTest.php
+      - name: Strict existing 21 Boolean indoor light statuses, no false positives
+        run: php tests/JVIndoorAutoReadHintsTest.php
       - name: Read-only Schiebetor state snapshots and deduplicated status edges
         run: php tests/JVGateSignalAuditTest.php
       - name: Schiebetor Shadow activation, exact ID path verification and no writes

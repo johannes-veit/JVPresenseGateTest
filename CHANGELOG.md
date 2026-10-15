@@ -1,3 +1,13 @@
+# v0.8.45 (Build 126) – 21 bestehende Hauslicht-Statusmeldungen automatisch und NUR LESEN
+
+- Grundlage: reale Symcon-Inventur vom 15.10.2026, 872 Variable-Metadaten geprüft, 48 Innenlicht-Kandidaten, 32 Außentreffer ausgeschlossen, **21** eindeutige Boolean-`Status`-Kandidaten unter `Licht` / `Licht RGB`. **Keine** TV-Statusvariable gefunden. 27 weitere Treffer enthalten u. a. Helligkeit/Intensität, Jalousierelais, Fenster- und Fahrstatus und werden nicht automatisch gelesen.
+- Neue `EnableAutoIndoorReadOnlyHints`-Checkbox, **standardmäßig AUS**. Nach Button 5 liest die bestehende SHADOW-Instanz nur dann automatisch die 21 qualifizierten `Status`-Boolean-Variablen im vorhandenen 60-Sekunden-Zyklus. **Keine manuelle Eingabe von 21 SensorSources-Zeilen nötig.**
+- Strenge Prüfung beim **jedem** Lesen auf Variable-ID, Boolean-Typ, exakten Variablennamen, aktuelle Eltern- und Großelternkategorie und Zeitstempel. Bei ID-Wiederverwendung, Umbennenung, Verschiebung, Typwechsel und Teilinventur: **fail closed, kein GetValue für ungültige Objekte**. Bestehende manuell konfigurierte VariableIDs werden zur Vermeidung von Doppelzählung ausgeschlossen.
+- Status AN und RGB AN sind **nur schwache anonyme Gerätehinweise**. Bewegungsgekoppelte Lichter zählen **nicht** als unabhängige GUS-Personenbeweise; AUS beweist nie Abwesenheit. Es werden keine Personenanzahl, Bewohneridentitäten oder Grundstücksaustritte zertifiziert und niemals automatische HOME/AWAY- oder Alarmaktionen ausgeführt.
+- Ausgabe in den **bestehenden** zwei SHADOW-Variablen (`indoorAutoRead`, `indoorDeviceHints` und `combinedPresenceEvidence` in EvidenceJSON). Ohne Opt-in verhalten sich Version 0.8.44 und 0.8.45 gleich.
+- Kein Eingriff in P03/P05, 15 LCN-GUS, die WLAN-Skripte Johannes/Carina, TV, Alarmsystem, Schiebetor, Lichtschaltung, Kameras, Timer, Kategorien oder externe Instanzen. Keine neuen Symcon-Variablen, Instanzen, Skripte oder Verbindungen.
+- CI: Selektor prüft bewährte Hauslicht-IDs, Jalousie-/Fenster-/Helligkeits-Fehltreffer, Dubletten, fehlerhafte Snapshots und Sicherheitsflags. Integration prüft Opt-in, reales Statuslesen und reparented-ID-Sperre.
+
 # v0.8.44 (Build 125) – Gemeinsame WLAN/LCN/P03/Tor-/Innenlicht-Kontextbewertung im bestehenden Identity-SHADOW
 
 - Aktuelle Quelle vom 15.10.2026: 2 WLAN-Smartphones (Johannes/Carina jeweils frischer MAC-Kontakt), **15** funktionierende LCN-GUS, letzte Hausbewegung beim Beispiel **941 Sekunden** her, P03 beide echten Mast-Observer LIVE ohne Blockade, **vier historische** Richtungsnachweise, Schiebetor ZU, derzeit **keine** Innenlicht-/TV-Quellen zugeordnet. Hausbewohnerzahl / Haus leer weiter **UNKNOWN**.

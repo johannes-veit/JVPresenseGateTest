@@ -85,8 +85,8 @@ function IPS_GetObject(int $id):array{
     if(isset($GLOBALS['gateDevices'][$id]))return ['ParentID'=>
         $GLOBALS['gateDevices'][$id]['pairedParent']??($id+100000)];
     if($id>=100000&&isset($GLOBALS['gateDevices'][$id-100000]))
-        return ['ParentID'=>200000];
-    if($id===200000)return ['ParentID'=>0];
+        return ['ParentID'=>$GLOBALS['gateDevices'][$id-100000]['grandParentID']??200000];
+    if($id===200000||$id===200001)return ['ParentID'=>0];
     if($id>=8001&&$id<=8005)return ['ParentID'=>300000];
     if($id===300000)return ['ParentID'=>0];
     throw new RuntimeException('object unknown');
@@ -96,6 +96,7 @@ function IPS_GetName(int $id):string{
     if($id>=100000&&isset($GLOBALS['gateDevices'][$id-100000]))
         return $GLOBALS['gateDevices'][$id-100000]['parent'];
     if($id===200000)return 'Schiebetor_Logik';
+    if($id===200001)return 'Licht';
     if($id===300000)return 'Vorhandene Dahua-Kameras';
     if($id===8001)return 'Dahua Kamera Torhalle Strasse';
     if($id===8002)return 'Dahua Kamera JV rechts';
@@ -155,6 +156,13 @@ checkGate(!str_contains(json_encode($camScan),'PRIVATE_CAMERA_PASSWORD_NEVER_OUT
     'never print Symcon camera passwords');
 checkGate(count($GLOBALS['readCalls'])===$readsBeforeCameraAudit,
     'camera scan never reads camera device variables');
+// Test one genuine read-only indoor Boolean status while gate evidence
+// and other device sources remain untouched.
+$GLOBALS['gateDevices'][39745]=[
+    'name'=>'Status','parent'=>'OG Bad Fenster',
+    'grandParentID'=>200001,'type'=>0,
+    'value'=>true,'changed'=>$now-9
+];
 // Indoor candidate discovery reads metadata only, never device states,
 // and cannot change the established gate watch or GUS configuration.
 $readsBeforeIndoorScan=count($GLOBALS['readCalls']);
@@ -252,6 +260,33 @@ checkGate(($data['combinedPresenceEvidence']['alarmMayBeControlled']??null)===fa
     'fusion has no alarm control');
 checkGate(($data['propertyEmptyMayBeCertified']??null)===false,
     'no absence certification');
+// Opt-in indoor light simulation starts only AFTER baseline regression counts.
+$m->setProp('EnableAutoIndoorReadOnlyHints',true);
+$m->Refresh();
+$withLight=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($withLight['indoorAutoRead']['candidateCount']??null)===1
+    &&($withLight['indoorAutoRead']['readableCount']??null)===1,
+    'opt-in reads just one strictly whitelisted existing status');
+checkGate(($withLight['indoorDeviceHints']['onCount']??null)===1
+    &&($withLight['combinedPresenceEvidence']['personPresenceMayBeChanged']??null)===false,
+    'existing light ON is weak only, no occupancy or alarm action');
+$GLOBALS['gateDevices'][39745]['parent']='OG Bad Fenster GEÄNDERT';
+$readsBefore=count($GLOBALS['readCalls']);
+$m->Refresh();
+$moved=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($moved['indoorAutoRead']['readableCount']??null)===0
+    &&($moved['indoorDeviceHints']['onCount']??null)===0,
+    'reparented status fails closed');
+checkGate(!in_array(39745,array_slice($GLOBALS['readCalls'],$readsBefore),true),
+    'wrong-path variable value never read');
+$m->setProp('EnableAutoIndoorReadOnlyHints',false);
+$m->Refresh();
+$disabledLight=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($disabledLight['indoorAutoRead']['enabled']??null)===false
+    &&($disabledLight['indoorDeviceHints']['onCount']??null)===0,
+    'opt-out preserves original SHADOW behavior');
+
+
 $GLOBALS['gateDevices'][40678]['changed']=time();
 $GLOBALS['gateDevices'][40678]['value']=true;
 $m->Refresh();
