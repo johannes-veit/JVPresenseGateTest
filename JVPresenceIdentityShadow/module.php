@@ -16,6 +16,8 @@ require_once dirname(__DIR__).'/libs/JVParallelPassageGuard.php';
 require_once dirname(__DIR__).'/libs/JVCameraCapabilityPriority.php';
 require_once dirname(__DIR__).'/libs/JVDahuaNumberStatEvidence.php';
 require_once dirname(__DIR__).'/libs/JVAdditionalIPCInventory.php';
+require_once dirname(__DIR__).'/libs/JVKnownIpcMetadata.php';
+require_once dirname(__DIR__).'/libs/JVSupplementaryIpcEvidence.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -25,6 +27,7 @@ require_once dirname(__DIR__).'/libs/JVAdditionalIPCInventory.php';
 class JVPresenceIdentityShadow extends IPSModule
 {
     private const P03_GUID='{0A7A91CE-3BC1-4B1E-9C11-7B7E973F5C03}';
+    private const AUX_GUID='{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}';
     private const PHONE_GUID='{B5BF0266-A4D1-40A0-AAC8-97E9C24C4173}';
     private const VM_UPDATE=10603; // Symcon documented variable-update message
     private const STORED_STATE_NAMES=[
@@ -35,7 +38,8 @@ class JVPresenceIdentityShadow extends IPSModule
         'ExitCandidateInventory',
         'GateSignalLedger',
         'IndoorHintInventory',
-        'AdditionalIPCInventory'
+        'AdditionalIPCInventory',
+        'SupplementalIpcMetadata'
     ];
 
     public function Create(): void
@@ -614,7 +618,7 @@ class JVPresenceIdentityShadow extends IPSModule
      */
     public function AuditOtherIPCCandidates(): void
     {
-        $entries=[];$limited=false;$scanned=0;
+        $entries=[];$matched=[];$limited=false;$scanned=0;
         try {
             $ids=IPS_GetInstanceList();
             if(!is_array($ids))throw new RuntimeException('NO_LIST');
@@ -629,6 +633,47 @@ class JVPresenceIdentityShadow extends IPSModule
                         'name'=>(string)IPS_GetName($id),
                         'parent'=>$parentId>0?(string)IPS_GetName($parentId):''
                     ];
+                    // Qualify known VLAN107 camera hosts through narrowly
+                    // allowlisted existing Symcon configuration properties.
+                    // Never output or forward an entire configuration or
+                    // credentials. No direct network connections are made.
+                    try{
+                        $conf=IPS_GetConfiguration($id);
+                        if(!is_string($conf)||strlen($conf)>262144)continue;
+                        $props=json_decode($conf,true);
+                        if(!is_array($props))continue;
+                        $cameraIP=null;
+                        foreach($props as $key=>$value){
+                            if(!is_string($key)||!is_string($value)
+                                ||!in_array(strtolower($key),[
+                                'host','hostname','ip','ipaddress',
+                                'cameraip','camerahost','serverip',
+                                'address','server','url'],true))continue;
+                            if(preg_match('/(?<![0-9])192\\.168\\.107\\.([0-9]{1,3})(?![0-9])/',
+                                $value,$match)){
+                                $last=(int)$match[1];
+                                if($last>=1&&$last<=254){
+                                    $cameraIP='192.168.107.'.$last;
+                                    break;
+                                }
+                            }
+                        }
+                        if($cameraIP===null)continue;
+                        $eventVariableId=0;
+                        try{
+                            $inst=IPS_GetInstance($id);
+                            if(strcasecmp((string)($inst['ModuleInfo']['ModuleID']??''),
+                                self::AUX_GUID)===0){
+                                $vid=@IPS_GetObjectIDByIdent('LastIVSEvent',$id);
+                                if(is_int($vid)&&$vid>0&&IPS_VariableExists($vid)
+                                    &&(IPS_GetVariable($vid)['VariableType']??null)===3
+                                    &&(int)(IPS_GetObject($vid)['ParentID']??0)===$id)
+                                    $eventVariableId=$vid;
+                            }
+                        }catch(Throwable $e){}
+                        $matched[]=['instanceId'=>$id,'ip'=>$cameraIP,
+                            'label'=>'','eventVariableId'=>$eventVariableId];
+                    }catch(Throwable $e){}
                 }catch(Throwable $e){$limited=true;}
             }
         }catch(Throwable $e){$limited=true;}
@@ -637,9 +682,66 @@ class JVPresenceIdentityShadow extends IPSModule
         $result['scannedAt']=time();
         $json=json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
         if(is_string($json))$this->writeShadowState('AdditionalIPCInventory',$json);
+        $qualified=JVKnownIpcMetadata::evaluate($matched,$limited);
+        $qualified['symconInstancesScanned']=$scanned;
+        $qualified['scannedAt']=time();
+        $qualifiedJson=json_encode($qualified,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        if(is_string($qualifiedJson))
+            $this->writeShadowState('SupplementalIpcMetadata',$qualifiedJson);
+        $result['qualifiedOtherIpcCandidates']=$qualified['otherIpcCandidates'];
+        $result['qualifiedOtherIpcFoundInSymcon']=$qualified['otherIpcFoundInSymcon'];
+        $result['qualifiedAuditIsNetworkFree']=true;
         $this->publish($result,'Weitere IPCs: '.$result['candidateCount']
             .' Instanznamen-Kandidaten (nur lesen, nicht aktiv zugeordnet). '
             .'Kameramodell, Smart-Plan und tatsächliche Sicht auf Straßenausgang separat prüfen.');
+    }
+
+    /**
+     * Consume only existing, explicitly qualified P03 Aux LastIVSEvent audit
+     * strings from other IPCs. An event is NOT a human count or street exit.
+     */
+    private function readSupplementaryIpcEvidence(?array $inventory):array
+    {
+        $records=[];
+        if(!is_array($inventory)||!is_array($inventory['otherIpcCandidates']??null))
+            return JVSupplementaryIpcEvidence::evaluate([]);
+        foreach(array_slice($inventory['otherIpcCandidates'],0,16) as $camera){
+            if(!is_array($camera)||!is_string($camera['ip']??null))continue;
+            $ip=$camera['ip'];
+            foreach(array_slice($camera['existingP03AuxEventSources']??[],0,8) as $src){
+                if(count($records)>=16)break 2;
+                if(!is_array($src)||!is_int($src['instanceId']??null)
+                    ||!is_int($src['eventVariableId']??null))continue;
+                $id=$src['instanceId'];$vid=$src['eventVariableId'];
+                if($id<=0||$vid<=0)continue;
+                try{
+                    $inst=IPS_GetInstance($id);
+                    if(strcasecmp((string)($inst['ModuleInfo']['ModuleID']??''),
+                        self::AUX_GUID)!==0)continue;
+                    $conf=IPS_GetConfiguration($id);
+                    if(!is_string($conf)||strlen($conf)>262144)continue;
+                    $props=json_decode($conf,true);
+                    if(!is_array($props)
+                        ||(string)($props['CameraHost']??'')!==$ip)continue;
+                    $actual=@IPS_GetObjectIDByIdent('LastIVSEvent',$id);
+                    if($actual!==$vid||!IPS_VariableExists($vid))continue;
+                    $meta=IPS_GetVariable($vid);
+                    $obj=IPS_GetObject($vid);
+                    if(($meta['VariableType']??null)!==3
+                        ||(int)($obj['ParentID']??0)!==$id)continue;
+                    $updated=$meta['VariableUpdated']??null;
+                    if(!is_int($updated)||$updated<1||$updated>time()+5)
+                        continue;
+                    $value=GetValue($vid);
+                    if(!is_string($value)||strlen($value)>8192)continue;
+                    $records[]=[
+                        'ip'=>$ip,'ageSeconds'=>max(0,time()-$updated),
+                        'updatedAt'=>$updated,'raw'=>$value
+                    ];
+                }catch(Throwable $e){}
+            }
+        }
+        return JVSupplementaryIpcEvidence::evaluate($records);
     }
 
     public function Refresh(): void
@@ -834,6 +936,11 @@ class JVPresenceIdentityShadow extends IPSModule
         $gateDisplay=JVGateDisplayHint::evaluate($gateAudit);
         $insideScan=json_decode($this->readShadowState('IndoorHintInventory'),true);
         $otherCamScan=json_decode($this->readShadowState('AdditionalIPCInventory'),true);
+        $extraScan=json_decode($this->readShadowState('SupplementalIpcMetadata'),true);
+        $qualifiedIpc=is_array($extraScan)
+            &&($extraScan['authority']??'')==='ADDITIONAL_IPC_METADATA_ONLY'
+            ?$extraScan:null;
+        $extraIpcEvidence=$this->readSupplementaryIpcEvidence($qualifiedIpc);
         $otherCameraInventory=is_array($otherCamScan)
             && ($otherCamScan['authority']??'')==='ADDITIONAL_IPC_LOCAL_METADATA_ONLY'
             ?$otherCamScan:null;
@@ -845,7 +952,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $boundary['report']['parallelPersonPassage']=$parallelPassage['status'];
         $cameraCapability=JVCameraCapabilityPriority::evaluate(
             $p03Timeline['report'],$this->readP03LiveCounters(),
-            $p03['street'],$numberStat
+            $p03['street'],$numberStat,$qualifiedIpc
         );
         // A counting-capable IPC in active IVS mode has NO confirmed human
         // count; no camera model or counter snapshot changes this.
@@ -862,6 +969,8 @@ class JVPresenceIdentityShadow extends IPSModule
             'parallelPersonPassage'=>$parallelPassage,
             'cameraCapabilityPriority'=>$cameraCapability,
             'additionalIPCInventory'=>$otherCameraInventory,
+            'qualifiedAdditionalIPCInventory'=>$qualifiedIpc,
+            'supplementaryIpcEventEvidence'=>$extraIpcEvidence,
             'numberStatEvidence'=>$numberStat,
             'phone'=>$phones,
             'phoneLink'=>$phoneLink,
