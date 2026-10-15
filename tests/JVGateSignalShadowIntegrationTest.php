@@ -174,30 +174,7 @@ checkGate(($metadataOnly['configuredSourcesChanged']??null)===false,
     'indoor scan never auto-links unknown output IDs');
 checkGate(count($GLOBALS['readCalls'])===$readsBeforeIndoorScan,
     'indoor scan does not read hardware values');
-$m->setProp('EnableAutoIndoorReadOnlyHints',true);
 $m->Refresh();
-$withLight=json_decode((string)$m->GetValue('EvidenceJSON'),true);
-checkGate(($withLight['indoorAutoRead']['candidateCount']??null)===1
-    &&($withLight['indoorAutoRead']['readableCount']??null)===1,
-    'opt-in reads just one strictly whitelisted existing status');
-checkGate(($withLight['indoorDeviceHints']['onCount']??null)===1
-    &&($withLight['combinedPresenceEvidence']['personPresenceMayBeChanged']??null)===false,
-    'existing light ON is weak only, no occupancy or alarm action');
-$GLOBALS['gateDevices'][39745]['parent']='OG Bad Fenster GEÄNDERT';
-$readsBefore=count($GLOBALS['readCalls']);
-$m->Refresh();
-$moved=json_decode((string)$m->GetValue('EvidenceJSON'),true);
-checkGate(($moved['indoorAutoRead']['readableCount']??null)===0
-    &&($moved['indoorDeviceHints']['onCount']??null)===0,
-    'reparented status fails closed');
-checkGate(!in_array(39745,array_slice($GLOBALS['readCalls'],$readsBefore),true),
-    'wrong-path variable value never read');
-$m->setProp('EnableAutoIndoorReadOnlyHints',false);
-$m->Refresh();
-$disabledLight=json_decode((string)$m->GetValue('EvidenceJSON'),true);
-checkGate(($disabledLight['indoorAutoRead']['enabled']??null)===false
-    &&($disabledLight['indoorDeviceHints']['onCount']??null)===0,
-    'opt-out preserves original SHADOW behavior');
 
 $data=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 checkGate(($data['qualifiedAdditionalIPCInventory']['otherIpcFoundInSymcon']??null)===2,
@@ -283,6 +260,33 @@ checkGate(($data['combinedPresenceEvidence']['alarmMayBeControlled']??null)===fa
     'fusion has no alarm control');
 checkGate(($data['propertyEmptyMayBeCertified']??null)===false,
     'no absence certification');
+// Opt-in indoor light simulation starts only AFTER baseline regression counts.
+$m->setProp('EnableAutoIndoorReadOnlyHints',true);
+$m->Refresh();
+$withLight=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($withLight['indoorAutoRead']['candidateCount']??null)===1
+    &&($withLight['indoorAutoRead']['readableCount']??null)===1,
+    'opt-in reads just one strictly whitelisted existing status');
+checkGate(($withLight['indoorDeviceHints']['onCount']??null)===1
+    &&($withLight['combinedPresenceEvidence']['personPresenceMayBeChanged']??null)===false,
+    'existing light ON is weak only, no occupancy or alarm action');
+$GLOBALS['gateDevices'][39745]['parent']='OG Bad Fenster GEÄNDERT';
+$readsBefore=count($GLOBALS['readCalls']);
+$m->Refresh();
+$moved=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($moved['indoorAutoRead']['readableCount']??null)===0
+    &&($moved['indoorDeviceHints']['onCount']??null)===0,
+    'reparented status fails closed');
+checkGate(!in_array(39745,array_slice($GLOBALS['readCalls'],$readsBefore),true),
+    'wrong-path variable value never read');
+$m->setProp('EnableAutoIndoorReadOnlyHints',false);
+$m->Refresh();
+$disabledLight=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($disabledLight['indoorAutoRead']['enabled']??null)===false
+    &&($disabledLight['indoorDeviceHints']['onCount']??null)===0,
+    'opt-out preserves original SHADOW behavior');
+
+
 $GLOBALS['gateDevices'][40678]['changed']=time();
 $GLOBALS['gateDevices'][40678]['value']=true;
 $m->Refresh();
