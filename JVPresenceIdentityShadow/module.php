@@ -14,6 +14,7 @@ require_once dirname(__DIR__).'/libs/JVIndoorHintInventory.php';
 require_once dirname(__DIR__).'/libs/JVGateDisplayHint.php';
 require_once dirname(__DIR__).'/libs/JVParallelPassageGuard.php';
 require_once dirname(__DIR__).'/libs/JVCameraCapabilityPriority.php';
+require_once dirname(__DIR__).'/libs/JVAdditionalIpcInventory.php';
 require_once dirname(__DIR__).'/libs/JVDahuaNumberStatEvidence.php';
 
 /**
@@ -33,7 +34,8 @@ class JVPresenceIdentityShadow extends IPSModule
         'BoundaryLedger',
         'ExitCandidateInventory',
         'GateSignalLedger',
-        'IndoorHintInventory'
+        'IndoorHintInventory',
+        'AdditionalIpcInventory'
     ];
 
     public function Create(): void
@@ -605,6 +607,66 @@ class JVPresenceIdentityShadow extends IPSModule
             .'und ausschließlich in SensorSources zuordnen. Außenlicht ausgeschlossen.');
     }
 
+    /**
+     * DISCOVERY ONLY: inspect Symcon instance metadata/configuration to find
+     * additional Dahua IPCs already configured in VLAN107. Does not connect
+     * to any camera, execute actions, create variables, read passwords into
+     * output, request auth or modify any foreign module.
+     */
+    public function AuditAdditionalIpcCameras(): void
+    {
+        $found=[];$limited=false;$scanned=0;$errors=0;
+        try{
+            $instances=IPS_GetInstanceList();
+            if(!is_array($instances))throw new RuntimeException('INVALID_INSTANCE_LIST');
+            if(count($instances)>2000)$limited=true;
+            foreach(array_slice($instances,0,2000) as $rawId){
+                $id=(int)$rawId;
+                if($id<=0)continue;
+                $scanned++;
+                try{
+                    $conf=IPS_GetConfiguration($id);
+                    if(!is_string($conf)||strlen($conf)>262144)continue;
+                    $parsed=json_decode($conf,true);
+                    if(!is_array($parsed))continue;
+                    // Only these exact host/IP property names can contribute
+                    // a device locator. Never copy arbitrary config/credentials
+                    // into a report or log.
+                    $ip=null;
+                    foreach($parsed as $key=>$val){
+                        if(!is_string($key)||!is_string($val)
+                            ||!in_array(strtolower($key),[
+                              'host','hostname','ip','ipaddress','cameraip',
+                              'camerahost','serverip','address','server','url'
+                            ],true))continue;
+                        if(preg_match('/(?<![0-9])192\\.168\\.107\\.([0-9]{1,3})(?![0-9])/D',
+                            $val,$m)){
+                            $oct=(int)$m[1];
+                            if($oct>=1&&$oct<=254){
+                                $ip='192.168.107.'.$oct;break;
+                            }
+                        }
+                    }
+                    if($ip!==null)$found[]=[
+                        'instanceId'=>$id,'ip'=>$ip,'label'=>''
+                    ];
+                }catch(Throwable $e){$errors++;}
+            }
+        }catch(Throwable $e){$limited=true;$errors++;}
+        $result=JVAdditionalIpcInventory::evaluate($found,$limited);
+        $result['symconInstancesScanned']=$scanned;
+        $result['symconMetadataErrors']=$errors;
+        $result['scannedAt']=time();
+        if($errors>0)$result['warnings'][]='SOME_INSTANCE_METADATA_UNREADABLE';
+        if($scanned===0)$result['warnings'][]='NO_SYMCON_INSTANCES_SCANNED';
+        $encoded=json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        if(is_string($encoded))$this->writeShadowState('AdditionalIpcInventory',$encoded);
+        $this->publish($result,
+            'Weitere IPC – nur Symcon-Konfiguration gelesen: '
+            .$result['otherIpcFoundInSymcon'].' zusätzliche IP-Kandidaten erkannt. '
+            .'Keine Kamera kontaktiert und keine Einstellungen verändert.');
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
@@ -802,9 +864,13 @@ class JVPresenceIdentityShadow extends IPSModule
         // Existing gate display is context only, NOT a verified exit route.
         $boundary['report']['existingGateDisplay']=$gateDisplay;
         $boundary['report']['parallelPersonPassage']=$parallelPassage['status'];
+        $ipcScan=json_decode($this->readShadowState('AdditionalIpcInventory'),true);
+        $additionalIpcInventory=is_array($ipcScan)
+            && ($ipcScan['authority']??'')==='ADDITIONAL_IPC_METADATA_ONLY'
+            ?$ipcScan:null;
         $cameraCapability=JVCameraCapabilityPriority::evaluate(
             $p03Timeline['report'],$this->readP03LiveCounters(),
-            $p03['street'],$numberStat
+            $p03['street'],$numberStat,$additionalIpcInventory
         );
         // A counting-capable IPC in active IVS mode has NO confirmed human
         // count; no camera model or counter snapshot changes this.
@@ -820,6 +886,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'p03LiveTimeline'=>$p03Timeline['report'],
             'parallelPersonPassage'=>$parallelPassage,
             'cameraCapabilityPriority'=>$cameraCapability,
+            'additionalIpcInventory'=>$additionalIpcInventory,
             'numberStatEvidence'=>$numberStat,
             'phone'=>$phones,
             'phoneLink'=>$phoneLink,
@@ -881,6 +948,9 @@ class JVPresenceIdentityShadow extends IPSModule
                     .$gateAudit['signalCount'].' nur lesen':'')
             .' | Gruppenpassage: PERSONENZAHL UNBEKANNT'
             .' | Zaehlkameraprioritaet: IPC WizMind (kein Live-Count bestaetigt)'
+            .($additionalIpcInventory!==null
+                ?' | weitere IPC: '.$additionalIpcInventory['otherIpcFoundInSymcon']
+                    .' aus Symcon-Metadaten (keine Live-Pruefung)':'')
             .' | Schiebetor: '.$gateDisplay['positionHint']
             .' | Innenlicht/TV AN: '.$indoorHints['onCount']
             .' | Abwesenheit: NICHT BESTAETIGT'
