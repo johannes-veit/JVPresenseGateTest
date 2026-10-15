@@ -60,6 +60,22 @@ final class JVAdditionalIpcEventEvidence
                     ||in_array(strtolower((string)($event['classification']??'')),
                         ['human','person','pedestrian'],true);
                 if(!$human)continue;
+                // Existing P03 Aux LastIVSEvent saves only HH:MM:SS. An
+                // unrelated later camera event can update that array. Only
+                // trust a Human row if its HH:MM:SS is synchronized with
+                // the actual Symcon variable update time (same observer
+                // system clock, 10s tolerance). Still not person identity.
+                $updatedAt=$x['updatedAt']??null;
+                $eventClock=$event['time']??null;
+                if(!is_int($updatedAt)||$updatedAt<=0
+                    ||!is_string($eventClock)
+                    ||!preg_match('/^([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$/D',
+                        $eventClock,$mt))continue;
+                $eventSeconds=(int)$mt[1]*3600+(int)$mt[2]*60+(int)$mt[3];
+                $updatedSeconds=(int)date('G',$updatedAt)*3600
+                    +(int)date('i',$updatedAt)*60+(int)date('s',$updatedAt);
+                $delta=abs($eventSeconds-$updatedSeconds);
+                if(min($delta,86400-$delta)>10)continue;
                 $found=true;break;
             }
             if($found)$report['freshIvSHumanHints'][]=[
