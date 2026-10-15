@@ -18,7 +18,7 @@
     },
     {
       "type": "Label",
-      "caption": "PERSONENZÄHLUNG / KAMERAPRIORITÄT: WORK_LEFT (IPC-HFW5442E-ZE) ist primär für die Straßengrenze, JV_LEFT und WORK_LEFT gemeinsam für Haus↔Lager; TiOC Terrasse nur ergänzend. IVS-Ereignisse zählen keine Personen. Die IPC unterstützt einen separaten People-Counting-Smart-Plan; dieser darf keinesfalls automatisch IVS abschalten. numberStatEvidence und cameraCapabilityPriority zeigen nur Diagnose, keine bestätigte Grundstücksabwesenheit."
+      "caption": "PERSONENZÄHLUNG / KAMERAPRIORITÄT: WORK_LEFT IPC-HFW5442E-ZE hat Vorrang an der Straßen-IVS; JV_LEFT + WORK_LEFT gemeinsam für Haus↔Lager. Bereits bekannte TiOC: JV Terrasse und JV Hof/Garage jeweils IPC-PDW3849-A180-AS-PV (180° Panorama, 2×4 MP, SMD 4.0, IVS Mensch/Fahrzeug). Diese Panorama-Kameras können, falls der Weg im Sichtfeld liegt, eine mögliche Gruppe zusätzlich erkennen, haben laut Modell-Datenblatt aber keine eigenständige People-Counting-Funktion. Ein 180°-Bild beweist keine Anzahl von zwei Personen. Die IPC besitzt einen separaten People-Counting-Smart-Plan, der die laufenden P03-IVS-Funktionen nicht verdrängen darf. Optionaler NumberStat-Diagnose-Link bleibt AUS."
     },
     {
       "type": "CheckBox",
