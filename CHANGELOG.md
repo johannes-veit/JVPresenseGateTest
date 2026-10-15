@@ -1,3 +1,12 @@
+# v0.8.41 (Build 122) – P03-Diagnosebutton: Symcon-ArgumentCountError dauerhaft verhindert
+
+- Fehler bei Bedienung von P03-Hauptinstanz #53879, Button **„1. Verbindungen und Personenerkennung prüfen (Bericht #35115)”**: `Fatal error: Too few arguments to function JVP03MC_DiagnoseP03Connections(), 1 passed … exactly 2 expected` in `__generated.inc.php`. **Ursache:** Das Formular rief den generierten Symcon-Wrapper `JVP03MC_DiagnoseP03Connections($id);` mit nur einer Angabe auf, obwohl die öffentliche Instanzmethode `DiagnoseP03Connections(bool $automatic = false)` zwei Wrapper-Argumente (`InstanceID`, `automatic`) besitzt. Der Default-Wert der PHP-Instanzmethode ist beim generierten Wrapper nicht automatisch wirksam.
+- Korrektur in `JVPresenceP03TerraceTest/form.json`: Button 1 führt jetzt **`JVP03MC_DiagnoseP03Connections($id, false);`** aus. `false` erzwingt den normalen manuellen, ausschließlich lesenden Bericht #35115. Andere automatische interne Aufrufe `$this->DiagnoseP03Connections(true)` und `$this->DiagnoseP03Connections()` bleiben unverändert.
+- Die anderen **zehn** P03-Buttons benötigen laut tatsächlicher öffentlicher Methodensignatur keine zusätzlichen Parameter und bleiben unverändert.
+- Der bestehende CI-Test `P03RegistrationLifecycleTest.php` prüft jetzt **jeden** der elf `onClick`-Callbacks gegen die Methodensignatur, und eine negative Regression stellt sicher, dass der alte einparametrige Wrapperaufruf abgewiesen wird.
+- Keine Kamera-/Socket-/IVS-/P03-Beweislogik geändert, keine Test-/Produktionsumschaltung oder Rücksetzung des vierfachen Übergangszählers, keine zusätzlichen Symcon-Objekte, keine Änderung der Shadow-Instanz.
+- Nach Aktualisierung des bestehenden Moduls auf **0.8.41 Build 122** erneut Button 1 drücken, Bericht **#35115** senden. Nicht Button 5 drücken – dieser startet einen neuen Test und kann die bisherigen vier Richtungsnachweise zurücksetzen.
+
 # v0.8.40 (Build 121) – P03 Mastkamera-Stream-Wiederherstellung statt dauerhaftem alten BLOCKIERT-Text
 
 - Nutzerbefund: P03-Hauptinstanz #53879, GUID {0A7A91CE-3BC1-4B1E-9C11-7B7E973F5C03}, von diesem Repository korrekt unter `JVPresenceP03TerraceTest/module.php` bereitgestellt, nicht unter `JVPresenceP03Test`. P03ProofState #38544 zeigte `BLOCKIERT – Mastkamera-Stream abgebrochen`, obwohl beide Mast-Observer #57215/#27938 StreamOK=true mit Update 4 s und bestätigtem RX-Alter von etwa 2 s zeigten. Human-Zähler unverändert 54/36, insgesamt vier alte Transfers.
