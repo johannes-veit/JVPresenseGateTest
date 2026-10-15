@@ -1656,6 +1656,15 @@ class JVPresenceP03MultiCamera extends IPSModule
         // VM_UPDATE after a brief reconnect or a module restart.
         $this->reconcileRecoveredP03MastStreams();
         $this->appendP03TestWireTraceIfDue();
+        // No extra timer/objects: update the SAME copyable result variable
+        // while a ChatGPT observation window has been marked.
+        if($this->ReadAttributeString('ChatGPTTestBaseline')!=='{}'){
+            try{$this->RefreshChatGPTTestResult();}
+            catch(Throwable $e){
+                $this->SendDebug('P03 ChatGPT Result',
+                    'Report read failed: '.get_class($e),0);
+            }
+        }
         // Every 30 s: read-only observer snapshots with fresh timestamps;
         // never restart a healthy stream for lack of person detections.
         $now = time();
