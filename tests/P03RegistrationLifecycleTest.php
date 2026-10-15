@@ -86,7 +86,7 @@ lifecycleAssert(is_array($form) && count($form['actions']??[])===11,
 $commands=array_column($form['actions'],'onClick');
 foreach ([
     'JVP03MC_ConfigureTerraceMonitor($id);',
-    'JVP03MC_DiagnoseP03Connections($id);',
+    'JVP03MC_DiagnoseP03Connections($id, false);',
     'JVP03MC_DiagnoseIPC5442Configuration($id);',
     'JVP03MC_AuditCameraConfiguration($id);',
     'JVP03MC_DiagnoseIPC5442AllValues($id);',
@@ -100,6 +100,44 @@ foreach ([
     lifecycleAssert(in_array($command,$commands,true),
         'essential P03 test/production safety command remains visible: '.$command);
 }
+/**
+ * PHP methods accept omitted optional arguments, but generated IP-Symcon
+ * wrapper functions in __generated.inc.php require all declared parameters.
+ * Therefore the ConfigurationForm onClick must include EVERY method
+ * argument explicitly after the mandatory $id. Actual user regression:
+ * JVP03MC_DiagnoseP03Connections($id) gave ArgumentCountError 1/2.
+ */
+function p03GeneratedWrapperArityOK(string $callback,string $source):bool
+{
+    if(!preg_match('/^JVP03MC_([A-Za-z_][A-Za-z0-9_]*)\\(\\$id(?:,\\s*(.*))?\\);$/D',
+        $callback,$called))return false;
+    $method=$called[1];
+    if(!preg_match('/\\bpublic function\\s+'.preg_quote($method,'/').
+        '\\s*\\(([^)]*)\\)/',$source,$declared))return false;
+    preg_match_all('/\\$[A-Za-z_][A-Za-z0-9_]*/',$declared[1],$params);
+    $provided=isset($called[2])&&trim($called[2])!==''
+        ?array_map('trim',explode(',',$called[2])):[];
+    if(in_array('',$provided,true))return false;
+    return count($params[0])===count($provided);
+}
+foreach($commands as $command){
+    lifecycleAssert(
+        p03GeneratedWrapperArityOK((string)$command,$main),
+        'P03 generated wrapper gets every method argument: '.$command
+    );
+}
+lifecycleAssert(
+    !p03GeneratedWrapperArityOK('JVP03MC_DiagnoseP03Connections($id);',$main)
+    &&p03GeneratedWrapperArityOK(
+        'JVP03MC_DiagnoseP03Connections($id, false);',$main
+    ),
+    'actual 1/2 argument regression rejected, explicit false accepted'
+);
+lifecycleAssert(
+    substr_count((string)$main,
+        'public function DiagnoseP03Connections(bool $automatic = false): void')===1,
+    'automatic diagnostics default remains unchanged inside main P03 code'
+);
 lifecycleAssert(!in_array('JVP03MC_SwitchToVerifiedLeftCameras($id);',$commands,true)
     && !in_array('JVP03MC_RepairP03ClientSockets($id);',$commands,true),
     'completed migrations and repetitive emergency repair buttons removed from live UI');

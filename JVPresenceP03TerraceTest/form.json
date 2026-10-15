@@ -70,7 +70,7 @@
     {
       "type": "Button",
       "caption": "1. Verbindungen und Personenerkennung prüfen (Bericht #35115)",
-      "onClick": "JVP03MC_DiagnoseP03Connections($id);"
+      "onClick": "JVP03MC_DiagnoseP03Connections($id, false);"
     },
     {
       "type": "Button",
