@@ -23,6 +23,7 @@ require_once dirname(__DIR__).'/libs/JVP03SourceHealth.php';
 require_once dirname(__DIR__).'/libs/JVExistingWlanPhoneHints.php';
 require_once dirname(__DIR__).'/libs/JVJohannesEgiGeoZoneHints.php';
 require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
+require_once dirname(__DIR__).'/libs/JVResidentPresenceDisplay.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 
 /**
@@ -82,12 +83,18 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterPropertyInteger('JohannesEgiZoneVariableID',41869);
         $this->RegisterPropertyInteger('JohannesEgiTimestampID',28055);
         $this->RegisterPropertyInteger('JohannesEgiRadiusMeters',150);
+        // Verified 15.10.2026 live screenshot: the installed Boolean is
+        // called "Zuhause", NOT the historical "TestGeoZone".
+        $this->RegisterPropertyString('JohannesEgiZoneName','Zuhause');
         // Optional Carina iPhone Geofency: no unknown IDs guessed. A metadata
         // audit first identifies the real Geofency device/Boolean/Timestamp.
         $this->RegisterPropertyBoolean('EnableCarinaGeofencyHints',false);
-        $this->RegisterPropertyInteger('CarinaGeofencyDeviceID',0);
-        $this->RegisterPropertyInteger('CarinaGeofencyZoneVarID',0);
-        $this->RegisterPropertyInteger('CarinaGeofencyTimestampID',0);
+        // Verified real iPhone Geofency source from 15.10. screenshot.
+        // Direct exact-ID validation makes another scan unnecessary.
+        $this->RegisterPropertyInteger('CarinaGeofencyInstanceID',48903);
+        $this->RegisterPropertyInteger('CarinaGeofencyDeviceID',45439);
+        $this->RegisterPropertyInteger('CarinaGeofencyZoneVarID',39169);
+        $this->RegisterPropertyInteger('CarinaGeofencyTimestampID',45666);
         $this->RegisterPropertyString('CarinaGeofencyZoneName','Zuhause');
         // Historical LCN snapshot (06.10.2026). Candidates DISABLED until
         // current live source/path/type verification; never silently activate.
@@ -107,6 +114,10 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->RegisterAttributeString('Persist'.$name,'{}');
         $this->RegisterVariableString('Status','Identität – SHADOW Status','',0);
         $this->RegisterVariableString('EvidenceJSON','Identität – Nachweise (JSON)','',1);
+        // Two requested read-only string displays. FALSE Boolean would
+        // misleadingly mean "person absent" even when phone is asleep.
+        $this->RegisterVariableString('JohannesPresence','Johannes anwesend','',2);
+        $this->RegisterVariableString('CarinaPresence','Carina anwesend','',3);
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
     }
 
@@ -162,6 +173,7 @@ class JVPresenceIdentityShadow extends IPSModule
                     'Status',
                     'SHADOW Initialisierung fehlgeschlagen: '.$step
                 );
+                $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
             }catch(Throwable $ignored){}
         }
     }
@@ -949,7 +961,7 @@ class JVPresenceIdentityShadow extends IPSModule
 
 
     /**
-     * EgiGeoZone v0.8.46: use ONLY existing #41869 TestGeoZone Boolean and
+     * EgiGeoZone: existing #41869 Zuhause Boolean, not TestGeoZone. Use
      * #28055 Timestamp Integer under known device #50000 / Egi #35965.
      * No latitude/longitude reads, no webhook setup or module actions.
      * An incorrect/recycled object ID fails closed BEFORE any value read.
@@ -973,7 +985,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $timestampObject=IPS_GetObject($timestamp);
             if(($zoneObject['ParentID']??null)!==$device
                 ||($timestampObject['ParentID']??null)!==$device
-                ||IPS_GetName($zone)!=='TestGeoZone'
+                ||IPS_GetName($zone)!==$this->ReadPropertyString('JohannesEgiZoneName')
                 ||IPS_GetName($timestamp)!=='Timestamp')return $snapshot;
             $zoneMeta=IPS_GetVariable($zone);
             $timeMeta=IPS_GetVariable($timestamp);
@@ -1035,51 +1047,63 @@ class JVPresenceIdentityShadow extends IPSModule
             .'IDs in EvidenceJSON ansehen; danach SHADOW erneuern.');
     }
 
-    /** Read only selected existing device status and its last event. */
+    /**
+     * Carina's real Geofency IDs were supplied on 15.10.2026. Exact IDs
+     * can be used without scanning the entire Symcon tree first. Device ID,
+     * root module GUID, names, types, and timestamp source are revalidated
+     * before GetValue on every 60 s SHADOW refresh.
+     */
     private function readCarinaGeofencySnapshot():array
     {
-        $none=['verified'=>false,'inside'=>null,'timestamp'=>null,'zoneName'=>null];
-        $cached=json_decode($this->readShadowState('CarinaGeofencyInventory'),true);
-        $chosen=JVCarinaGeofencyHints::select(
-            is_array($cached)?$cached:null,
-            $this->ReadPropertyInteger('CarinaGeofencyDeviceID'),
-            $this->ReadPropertyInteger('CarinaGeofencyZoneVarID'),
-            $this->ReadPropertyInteger('CarinaGeofencyTimestampID'),
-            $this->ReadPropertyString('CarinaGeofencyZoneName')
-        );
-        $none['selectionStatus']=$chosen['status'];
-        $selected=$chosen['selected'];
-        if(!is_array($selected))return $none;
-        $root=$selected['rootID'];$device=$selected['deviceID'];
-        $zone=$selected['zoneID'];$timestamp=$selected['timestampID'];
+        $none=['verified'=>false,'inside'=>null,'timestamp'=>null,
+            'zoneName'=>null,'selectionStatus'=>'NOT_VERIFIED'];
+        $root=$this->ReadPropertyInteger('CarinaGeofencyInstanceID');
+        $device=$this->ReadPropertyInteger('CarinaGeofencyDeviceID');
+        $zone=$this->ReadPropertyInteger('CarinaGeofencyZoneVarID');
+        $timestamp=$this->ReadPropertyInteger('CarinaGeofencyTimestampID');
+        $zoneName=$this->ReadPropertyString('CarinaGeofencyZoneName');
+        // Previously unknown IDs can still be inventoried with Button 7,
+        // but neither a stale inventory nor a device name alone is trusted.
+        if($root<=0||$device<=0||$zone<=0||$timestamp<=0
+            ||count(array_unique([$root,$device,$zone,$timestamp]))!==4
+            ||$zoneName===''||strlen($zoneName)>120)return $none;
         try{
-            if($root<=0||$device<=0||$zone<=0||$timestamp<=0
-                ||$zone===$timestamp
-                ||!IPS_VariableExists($zone)||!IPS_VariableExists($timestamp))
+            if(!IPS_VariableExists($zone)||!IPS_VariableExists($timestamp))
                 return $none;
             $info=IPS_GetInstance($root);
             if(strcasecmp((string)($info['ModuleInfo']['ModuleID']??''),
                 JVCarinaGeofencyHints::GEOFENCY_GUID)!==0)return $none;
             if((int)(IPS_GetObject($device)['ParentID']??0)!==$root
-                ||IPS_GetName($device)!==$selected['deviceName']
                 ||(int)(IPS_GetObject($zone)['ParentID']??0)!==$device
                 ||(int)(IPS_GetObject($timestamp)['ParentID']??0)!==$device
-                ||IPS_GetName($zone)!==$selected['zoneName']
+                ||IPS_GetName($zone)!==$zoneName
                 ||IPS_GetName($timestamp)!=='Timestamp')return $none;
             $v=IPS_GetVariable($zone);$t=IPS_GetVariable($timestamp);
             if(($v['VariableType']??null)!==0
                 ||($t['VariableType']??null)!==1)return $none;
+            // Geofency Timestamp is for ANY location event. When Symcon
+            // reports both update times, they must belong to the SAME
+            // event, not a later office/geofence update.
+            $zoneUpdated=$v['VariableUpdated']??null;
+            $timestampUpdated=$t['VariableUpdated']??null;
+            if(is_int($zoneUpdated)&&$zoneUpdated>0
+                &&is_int($timestampUpdated)&&$timestampUpdated>0
+                &&abs($timestampUpdated-$zoneUpdated)>60){
+                $none['selectionStatus']='OTHER_GEOFENCE_TIMESTAMP';
+                return $none;
+            }
             $inside=GetValue($zone);$when=GetValue($timestamp);
             if(!is_bool($inside)||!is_int($when))return $none;
             return ['verified'=>true,'inside'=>$inside,
-                'timestamp'=>$when,'zoneName'=>$selected['zoneName'],
-                'selectionStatus'=>$chosen['status']];
+                'timestamp'=>$when,'zoneName'=>$zoneName,
+                'selectionStatus'=>'EXACT_SOURCE_IDS_VERIFIED'];
         }catch(Throwable $ignored){return $none;}
     }
 
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
+            $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
             $this->publish([
                 'schema'=>1,'authority'=>'SHADOW_DISABLED',
                 'personPresenceMayBeChanged'=>false,
@@ -1359,6 +1383,11 @@ class JVPresenceIdentityShadow extends IPSModule
         $houseObservation['geofenceOutsideCannotCertifyAway']=true;
         $houseObservation['carinaGeofencyContext']=$combined['carinaGeofencyContext'];
         $houseObservation['carinaWlanGeofencyCrossCheck']=$combined['carinaWlanGeofencyCrossCheck'];
+        // Device-derived per-resident display is NEVER a physical
+        // identification or permission for alarm/presence commands.
+        $residentDisplay=JVResidentPresenceDisplay::evaluate(
+            $wlan,$egi,$carinaGeo
+        );
         // Existing gate display is context only, NOT a verified exit route.
         $boundary['report']['existingGateDisplay']=$gateDisplay;
         $boundary['report']['parallelPersonPassage']=$parallelPassage['status'];
@@ -1390,6 +1419,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'existingWlanSmartphones'=>$wlan,
             'johannesEgiGeoZone'=>$egi,
             'carinaGeofency'=>$carinaGeo,
+            'residentDisplay'=>$residentDisplay,
             'carinaGeofencyInventory'=>json_decode($this->readShadowState('CarinaGeofencyInventory'),true),
             'localSensors'=>$local,
             'localActivity'=>$activity,
@@ -1481,6 +1511,10 @@ class JVPresenceIdentityShadow extends IPSModule
             )
             .' | Identitaet UNBEKANNT';
         if ($warnings) $state.=' | QUELLHINWEIS '.implode(',',array_slice($warnings,0,2));
+        $this->setResidentDisplayValues(
+            $residentDisplay['people']['johannes']['display'],
+            $residentDisplay['people']['carina']['display']
+        );
         $this->publish($report,$state);
     }
 
@@ -1798,6 +1832,15 @@ class JVPresenceIdentityShadow extends IPSModule
         } catch(Throwable $e) {
             return null;
         }
+    }
+
+    /** Write only our TWO requested SHADOW display variables. */
+    private function setResidentDisplayValues(string $johannes,string $carina):void
+    {
+        if($this->GetValue('JohannesPresence')!==$johannes)
+            $this->SetValue('JohannesPresence',$johannes);
+        if($this->GetValue('CarinaPresence')!==$carina)
+            $this->SetValue('CarinaPresence',$carina);
     }
 
     private function publish(array $report,string $status): void
