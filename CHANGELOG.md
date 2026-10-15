@@ -1,3 +1,11 @@
+# v0.8.35 (Build 116) – Weitere vorhandene IPC-Kameras sicher suchen und für Personenzählung qualifizieren
+
+- Aktueller SHADOW-Praxisexport 15.10.2026: P03-ProofState BLOCKIERT – Mastkamera-Stream abgebrochen; keine neuen P03-Richtungsbeweise, 15 GUS gesund, 381 Bewegungsereignisse im noch unvollständigen 24h-Zeitraum; 7 Torwerte lesbar, Endlage ZU; Innenlicht/TV bislang NICHT verknüpft; NumberStat nicht verbunden. Fehler zuerst an bestehender P03-Quelle beheben, ohne Fremdmodule zu verändern.
+- Bei weiteren IPCs wird **nicht** aus früheren IP-Adressen oder Kamera-Namen auf aktive Kameras geschlossen. Frühere Testzuordnungen JV_RIGHT .96/WORK_RIGHT .99 sind kein verifizierter aktueller Gerätebestand.
+- Neuer Button 6 **„Weitere vorhandene IPC-/Kamerainstanzen suchen (nur lesen)”** scannt ausschließlich Metadaten vorhandener Symcon-Instanzen (ID, Name und Parent-Name), keine Konfigurationspasswörter, Werte, IP-Requests oder Kamerakommandos. Rein funktionaler, begrenzter Filter liefert `additionalIPCInventory` mit vorläufigen Kamera-Kandidaten und `mayBePrioritizedForCounting=false` für alle.
+- Eine weitere separate echte IPC-HFW5442E-ZE könnte (nach gesondertem Nachweis von Modell/Firmware, Sicht auf die Straßengrenze und People-Counting-Smart-Plan) ein besserer dedizierter Zähler sein als die vorhandene TiOC IPC-PDW3849-A180-AS-PV. Die beiden produktiv im P03 genutzten IPC-Mastkameras behalten ihre IVS-Regeln; **kein** automatischer Smart-Plan-Wechsel, keine Kamera oder Symcon-Objekte neu angelegt, keine Personenzahl- oder Abwesenheitsbehauptung.
+- Zusätzliche Mock-Sicherheitstests und CI; 7 Konfigurationsaktionen, nur zwei bestehende SHADOW-Ausgabevariablen.
+
 # v0.8.34 (Build 115) – Korrektur: exakt bekannte TiOC-Kameras und Priorität bei gemeinsamer Bewegung
 
 - Die zuvor als „TiOC-Modell unbekannt“ bezeichneten zwei Bestandskameras wurden bereits in einer früheren technischen Abstimmung vom 05.10.2026 identifiziert: **JV Terrasse und JV Hof/Garage sind beide Dahua IPC-PDW3849-A180-AS-PV**. Fehlerhafte Modellannahme v0.8.33 ersetzt. Die konkrete Firmware bleibt noch ohne Prüfung unbekannt.
