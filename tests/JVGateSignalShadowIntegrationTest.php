@@ -246,6 +246,10 @@ checkGate(($data['parallelPersonPassage']['propertyEmptyMayBeCertified']??null)=
     'a single camera event cannot mean two residents gone');
 checkGate(($data['boundaryEvidence']['individualsOrEntireGroupExitedCertified']??null)===false,
     'gate status and street learning do not certify entire group crossing');
+checkGate(($data['combinedPresenceEvidence']['authority']??null)==='ANONYMOUS_COMBINED_CONTEXT_ONLY',
+    'combined diagnostic correctly attached');
+checkGate(($data['combinedPresenceEvidence']['alarmMayBeControlled']??null)===false,
+    'fusion has no alarm control');
 checkGate(($data['propertyEmptyMayBeCertified']??null)===false,
     'no absence certification');
 $GLOBALS['gateDevices'][40678]['changed']=time();
@@ -449,6 +453,14 @@ $wlanMod->setProp('P03InstanceID',0);
 $wlanMod->setProp('EnableExistingWLANHints',true);
 $wlanMod->Refresh();
 $wlanData=json_decode((string)$wlanMod->GetValue('EvidenceJSON'),true);
+checkGate(($wlanData['combinedPresenceEvidence']['freshWlanDeviceCount']??null)===2,
+    'both verified existing WLAN phones visible in combined context');
+checkGate(($wlanData['combinedPresenceEvidence']['status']??null)
+    ==='WLAN_DEVICES_ONLY_NO_RECENT_HOME_MOTION',
+    'unmapped GUS means WLAN alone cannot claim house occupancy');
+checkGate(($wlanData['houseObservation']['combinedContextStatus']??null)
+    ==='WLAN_DEVICES_ONLY_NO_RECENT_HOME_MOTION',
+    'house observation retains old state while adding context');
 checkGate(($wlanData['existingWlanSmartphones']['freshMacConfirmedDeviceCount']??null)===2,
     'MAC verified actual Johannes and Carina booleans + Unix contact times');
 checkGate(($wlanData['existingWlanSmartphones']['people']['johannes']['recentMacEvidence']??false)===true

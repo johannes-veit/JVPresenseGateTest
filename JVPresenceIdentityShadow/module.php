@@ -20,6 +20,7 @@ require_once dirname(__DIR__).'/libs/JVKnownIpcMetadata.php';
 require_once dirname(__DIR__).'/libs/JVSupplementaryIpcEvidence.php';
 require_once dirname(__DIR__).'/libs/JVP03SourceHealth.php';
 require_once dirname(__DIR__).'/libs/JVExistingWlanPhoneHints.php';
+require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -1155,6 +1156,15 @@ class JVPresenceIdentityShadow extends IPSModule
         $indoorInventory=is_array($insideScan)
             && ($insideScan['authority']??'')==='INDOOR_LIGHT_TV_CANDIDATES_METADATA_ONLY'
             ?$insideScan:null;
+        // Context-only fusion. Does NOT overwrite houseObservation.houseStatus
+        // or any person presence/absence, and never writes to other modules.
+        $combined=JVCombinedPresenceEvidence::evaluate(
+            $wlan,$houseObservation,$p03Timeline['report'],
+            $boundary['report'],$gateDisplay,$indoorHints,time()
+        );
+        $houseObservation['combinedContextStatus']=$combined['status'];
+        $houseObservation['combinedContextAuthority']=$combined['authority'];
+        $houseObservation['absenceEvidenceMissing']=$combined['absenceReview']['missingRequirements'];
         // WLAN evidence supplements physical context without creating an
         // identity, occupancy count or empty-property certificate.
         $houseObservation['wlanDeviceContext']=$wlan['combinedContext'];
@@ -1192,6 +1202,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'localSensors'=>$local,
             'localActivity'=>$activity,
             'houseObservation'=>$houseObservation,
+            'combinedPresenceEvidence'=>$combined,
             'boundaryEvidence'=>$boundary['report'],
             'exitCandidateInventory'=>$exitInventory,
             'gateSignalAudit'=>$gateAudit,
@@ -1261,6 +1272,7 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | Innenlicht/TV AN: '.$indoorHints['onCount']
             .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
+            .' | Kombiniert: '.$combined['status']
             .' | WLAN-Handys: '.(
                 !$existingWlanEnabled?'nicht verbunden'
                 :$wlan['freshMacConfirmedDeviceCount'].'/2 MAC-frisch (nur Geraetehinweis)'

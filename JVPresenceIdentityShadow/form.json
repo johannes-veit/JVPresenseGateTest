@@ -86,6 +86,10 @@
       ]
     },
     {
+      "type": "Label",
+      "caption": "NEUE GEMEINSAME BEWERTUNG: Die bestehende EvidenceJSON enthält jetzt combinedPresenceEvidence und houseObservation.combinedContextStatus. Frische WLAN-Handys + aktuelle GUS-Bewegung liefern einen anonymen kombinierten Haus-Aktivitätshinweis. Handys ohne frische GUS-Bewegung bestätigen nur Geräte im WLAN. P03 Haus↔Lager ist KEIN Grundstücksausgang, Schiebetor ZU/AUF keine Personenrichtung. Wenn Handys offline und das Haus ruhig sind, listet absenceReview fehlende Nachweise; keine automatische Abwesenheit und kein Alarm."
+    },
+    {
       "type": "CheckBox",
       "name": "EnablePhoneIntegration",
       "caption": "Separates altes JV Phone-Observer-Modul (optional; fuer WLAN-Skripte NICHT benoetigt – AUS lassen)"
@@ -298,7 +302,7 @@
     },
     {
       "type": "Button",
-      "caption": "5. Bestehende Innenlicht- und TV-Statusvariablen suchen (nur lesen)",
+      "caption": "5. Innenlicht-/TV-Statusvariablen für kombinierte Hinweise suchen (nur Metadaten lesen)",
       "onClick": "JVIDSH_AuditIndoorHintCandidates($id);"
     },
     {
