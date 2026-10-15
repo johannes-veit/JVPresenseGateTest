@@ -1202,7 +1202,17 @@ class JVPresenceIdentityShadow extends IPSModule
                 $p03Timeline['report'],$activity,$boundary['report']
             ),
             // No baseline and no group count -> NO person occupancy guesses.
-            'people'=>array_fill_keys(array_keys($phones),'UNKNOWN'),
+            // Distinguish missing MAC evidence from absent humans: even
+            // when one handset goes offline, both known residents remain
+            // explicitly UNKNOWN (never silently removed from the map).
+            'people'=>array_fill_keys(
+                $existingWlanEnabled
+                    ?array_values(array_unique(array_merge(
+                        array_keys($phones),['johannes','carina']
+                    )))
+                    :array_keys($phones),
+                'UNKNOWN'
+            ),
             'warnings'=>array_values(array_unique($warnings))
         ];
         $out=$p03['p03']['homeToWork'];
