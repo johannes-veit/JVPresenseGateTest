@@ -64,6 +64,8 @@ jobs:
         run: php tests/JVLocalActivityLedgerTest.php
       - name: Anonymous home occupancy and absent-vs-quiet safety simulations
         run: php tests/JVHomeOccupancyEvidenceTest.php
+      - name: Two people walking together: P03 events not person count or property exit
+        run: php tests/JVParallelPassageGuardTest.php
       - name: Property boundary signal health and exit variable metadata discovery
         run: php tests/JVBoundaryEvidenceTest.php
       - name: Prioritized exit-status candidate filter and false-positive regression
