@@ -141,6 +141,11 @@ class IPSModule {
     public array $messages=[];
     public function Create():void {}
     public function ApplyChanges():void {}
+    public int $instanceStatus=101;
+    protected function SetStatus(int $code):bool {
+        $this->instanceStatus=$code;return true;
+    }
+    protected function SendDebug(string $topic,string $text,int $format):void {}
     protected function RegisterPropertyBoolean(string $k,bool $v):void {$this->properties[$k]=$v;}
     protected function RegisterPropertyInteger(string $k,int $v):void {$this->properties[$k]=$v;}
     protected function RegisterPropertyString(string $k,string $v):void {$this->properties[$k]=$v;}

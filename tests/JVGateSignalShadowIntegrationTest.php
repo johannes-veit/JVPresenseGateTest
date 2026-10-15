@@ -7,6 +7,12 @@ class IPSModule {
     private array $values=[];
     public array $registered=[];
     public array $subscriptions=[];
+    // Mimic a real Symcon instance stuck in IS_CREATING until ApplyChanges.
+    public int $instanceStatus=101;
+    public array $statusTransitions=[];
+    public array $bootstrapDebug=[];
+    public bool $failTimerConfiguration=false;
+    public bool $failActiveStatus=false;
     public function Create():void {}
     public function ApplyChanges():void {}
     public function RegisterPropertyBoolean(string $id,bool $val):void {if(!array_key_exists($id,$this->props))$this->props[$id]=$val;}
@@ -26,7 +32,18 @@ class IPSModule {
     public function exportPersistedAttributes():array{return $this->attributes;}
     public function importPersistedAttributes(array $data):void{$this->attributes=$data;}
     public function RegisterTimer(string $id,int $v,string $script):void {}
-    public function SetTimerInterval(string $id,int $v):void {}
+    public function SetTimerInterval(string $id,int $v):void {
+        if($this->failTimerConfiguration && $v>0)
+            throw new RuntimeException('MOCK_TIMER_FAILURE');
+    }
+    public function SetStatus(int $next):bool {
+        $this->statusTransitions[]=$next;
+        if($next===102 && $this->failActiveStatus)return false;
+        $this->instanceStatus=$next;return true;
+    }
+    public function SendDebug(string $message,string $data,int $format):void {
+        $this->bootstrapDebug[]=['message'=>$message,'data'=>$data];
+    }
     public function RegisterMessage(int $id,int $message):void {
         $this->subscriptions[$id.'|'.$message]=true;
     }
@@ -331,6 +348,10 @@ $after->setProp('Enabled',true);
 $after->setProp('SensorSources','[]');
 $after->setProp('P03InstanceID',0);
 $after->ApplyChanges();
+checkGate($after->instanceStatus===102,
+    'ApplyChanges must complete status 101 to IS_ACTIVE 102 after preserved restart');
+checkGate($after->statusTransitions===[102],
+    'successful existing Shadow reload performs exactly one active acknowledgement');
 checkGate(count($after->subscriptions)===7,
     'ApplyChanges re-registers VM_UPDATE for all seven saved inputs');
 $after->Refresh();
@@ -357,10 +378,50 @@ checkGate($after->exportPersistedAttributes()===$attrsBeforeSecondCreate,
     'reentrant Create does not reset any persistent attribute');
 $after->setProp('Enabled',false);
 $after->ApplyChanges();
+checkGate($after->instanceStatus===102,
+    'switching off passive observer still means a healthy initialized module');
 checkGate(count($after->subscriptions)===0,
     'disabling Shadow unregisters seven passive gate subscriptions');
 checkGate($after->registered===['Status','EvidenceJSON',
     'Status','EvidenceJSON'],
     'still exactly two output identifiers after simulated module reload');
 
-echo "Gate Shadow integration / no-actions / path-revalidation PASS\n";
+// Fail-closed lifecycle regression. Do not turn a failed bootstrap green.
+$bad=new JVPresenceIdentityShadow();
+$bad->Create();
+$bad->setProp('Enabled',true);
+$bad->setProp('SensorSources','[]');
+$bad->setProp('P03InstanceID',0);
+$bad->failTimerConfiguration=true;
+$bad->ApplyChanges();
+checkGate($bad->instanceStatus===201,
+    'bootstrap timer failure becomes genuine error status 201, not 101 or 102');
+checkGate(!in_array(102,$bad->statusTransitions,true),
+    'bootstrap failure NEVER acknowledges ACTIVE');
+checkGate(str_contains((string)$bad->GetValue('Status'),
+    'CONFIGURE_READ_ONLY_TIMER'),
+    'existing Status string identifies failed initialization stage');
+checkGate(count($bad->registered)===2,
+    'bootstrap failure does not duplicate or create output variables');
+$bad->failTimerConfiguration=false;
+$bad->ApplyChanges();
+checkGate($bad->instanceStatus===102,
+    'retry recovers module from 201 only after fully successful bootstrap');
+checkGate($bad->registered===['Status','EvidenceJSON'],
+    'successful retry preserves two existing output variables');
+$activeFailure=new JVPresenceIdentityShadow();
+$activeFailure->Create();
+$activeFailure->setProp('Enabled',false);
+$activeFailure->setProp('P03InstanceID',0);
+$activeFailure->failActiveStatus=true;
+$activeFailure->ApplyChanges();
+checkGate($activeFailure->instanceStatus===201,
+    'failed status transition is reported as a failure, never ignored');
+checkGate(str_contains((string)$activeFailure->GetValue('Status'),
+    'SET_ACTIVE_STATUS'),
+    'status transition rejection has diagnostic stage');
+$activeFailure->failActiveStatus=false;
+$activeFailure->ApplyChanges();
+checkGate($activeFailure->instanceStatus===102,
+    'when status API recovers the module becomes active on next ApplyChanges');
+echo "Gate Shadow integration / initialization 101->102, failure 201 recovery PASS\n";
