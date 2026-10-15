@@ -212,6 +212,10 @@
     {
       "type": "Label",
       "caption": "boundaryEvidence überwacht ausschließlich ausdrücklich ausgewählte bestehende Tür-/Tor-/Fahrzeug-Statusänderungen. Alle Ausgänge und die Bewegungsrichtung bleiben ohne lückenlose Prüfung UNBESTÄTIGT; niemals automatisch Abwesenheit oder Alarm schalten."
+    },
+    {
+      "type": "Label",
+      "caption": "WEITERE IPC: Neue rein lesende Instanz-Inventur sucht Namen vorhandener Kamera-/ONVIF-Instanzen. Treffer sind nur Kandidaten und belegen weder zusätzliche physische Kameras noch aktives People Counting. Erst nach Sichtfeld-/Smart-Plan-Prüfung andere IPC für die Zählung priorisieren. Die aktuelle P03-Störung bleibt vorrangig; keine Kamera-Netzwerkabfragen oder Änderungen."
     }
   ],
   "actions": [
@@ -244,6 +248,11 @@
       "type": "Button",
       "caption": "5. Bestehende Innenlicht- und TV-Statusvariablen suchen (nur lesen)",
       "onClick": "JVIDSH_AuditIndoorHintCandidates($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "6. Weitere vorhandene IPC-/Kamerainstanzen suchen (nur lesen)",
+      "onClick": "JVIDSH_AuditOtherIPCCandidates($id);"
     }
   ]
 }
