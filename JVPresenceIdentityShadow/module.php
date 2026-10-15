@@ -15,6 +15,7 @@ require_once dirname(__DIR__).'/libs/JVGateDisplayHint.php';
 require_once dirname(__DIR__).'/libs/JVParallelPassageGuard.php';
 require_once dirname(__DIR__).'/libs/JVCameraCapabilityPriority.php';
 require_once dirname(__DIR__).'/libs/JVAdditionalIpcInventory.php';
+require_once dirname(__DIR__).'/libs/JVAdditionalIpcEventEvidence.php';
 require_once dirname(__DIR__).'/libs/JVDahuaNumberStatEvidence.php';
 
 /**
@@ -25,6 +26,7 @@ require_once dirname(__DIR__).'/libs/JVDahuaNumberStatEvidence.php';
 class JVPresenceIdentityShadow extends IPSModule
 {
     private const P03_GUID='{0A7A91CE-3BC1-4B1E-9C11-7B7E973F5C03}';
+    private const AUX_GUID='{8F4A3A57-3A5B-4F6E-9A64-9E1D326FF7B4}';
     private const PHONE_GUID='{B5BF0266-A4D1-40A0-AAC8-97E9C24C4173}';
     private const VM_UPDATE=10603; // Symcon documented variable-update message
     private const STORED_STATE_NAMES=[
@@ -647,9 +649,24 @@ class JVPresenceIdentityShadow extends IPSModule
                             }
                         }
                     }
-                    if($ip!==null)$found[]=[
-                        'instanceId'=>$id,'ip'=>$ip,'label'=>''
-                    ];
+                    if($ip!==null){
+                        $eventVariableId=0;
+                        try{
+                            $inst=IPS_GetInstance($id);
+                            if(strcasecmp((string)($inst['ModuleInfo']['ModuleID']??''),
+                                self::AUX_GUID)===0){
+                                $var=@IPS_GetObjectIDByIdent('LastIVSEvent',$id);
+                                if(is_int($var)&&$var>0&&IPS_VariableExists($var)
+                                    &&(IPS_GetVariable($var)['VariableType']??null)===3
+                                    &&(int)(IPS_GetObject($var)['ParentID']??0)===$id)
+                                    $eventVariableId=$var;
+                            }
+                        }catch(Throwable $e){}
+                        $found[]=[
+                            'instanceId'=>$id,'ip'=>$ip,
+                            'label'=>'','eventVariableId'=>$eventVariableId
+                        ];
+                    }
                 }catch(Throwable $e){$errors++;}
             }
         }catch(Throwable $e){$limited=true;$errors++;}
@@ -665,6 +682,62 @@ class JVPresenceIdentityShadow extends IPSModule
             'Weitere IPC – nur Symcon-Konfiguration gelesen: '
             .$result['otherIpcFoundInSymcon'].' zusätzliche IP-Kandidaten erkannt. '
             .'Keine Kamera kontaktiert und keine Einstellungen verändert.');
+    }
+
+    /**
+     * Use additional IPC only IF an already-configured P03 Aux observer with
+     * matching CameraHost and a verified existing LastIVSEvent STRING is
+     * found. This is read-only supplementary HUMAN context, NEVER a count.
+     * Unconfigured camera addresses produce no fake event evidence.
+     */
+    private function readAdditionalIpcEventHints(?array $inventory):array
+    {
+        $reads=[];
+        if(!is_array($inventory)||!is_array($inventory['otherIpcCandidates']??null))
+            return JVAdditionalIpcEventEvidence::evaluate([]);
+        foreach(array_slice($inventory['otherIpcCandidates'],0,16) as $camera){
+            if(!is_array($camera)||!is_string($camera['ip']??null))continue;
+            $ip=$camera['ip'];
+            foreach(array_slice($camera['existingP03AuxEventSources']??[],0,8) as $src){
+                if(count($reads)>=16)break 2;
+                if(!is_array($src)
+                    ||!is_int($src['instanceId']??null)
+                    ||!is_int($src['eventVariableId']??null))continue;
+                $id=$src['instanceId'];$vid=$src['eventVariableId'];
+                if($id<=0||$vid<=0)continue;
+                try{
+                    $instance=IPS_GetInstance($id);
+                    if(strcasecmp(
+                        (string)($instance['ModuleInfo']['ModuleID']??''),
+                        self::AUX_GUID
+                    )!==0)continue;
+                    $conf=IPS_GetConfiguration($id);
+                    if(!is_string($conf)||strlen($conf)>262144)continue;
+                    $props=json_decode($conf,true);
+                    if(!is_array($props))continue;
+                    // A changed/recycled CameraHost must invalidate the
+                    // source, never re-bind silently to a different camera.
+                    $configured=(string)($props['CameraHost']??'');
+                    if($configured!==$ip)continue;
+                    $actual=@IPS_GetObjectIDByIdent('LastIVSEvent',$id);
+                    if($actual!==$vid||!IPS_VariableExists($vid))continue;
+                    $obj=IPS_GetObject($vid);
+                    $meta=IPS_GetVariable($vid);
+                    if((int)($obj['ParentID']??0)!==$id
+                        ||($meta['VariableType']??null)!==3)continue;
+                    $updated=$meta['VariableUpdated']??0;
+                    if(!is_int($updated)||$updated<1
+                        ||$updated>time()+5)continue;
+                    $raw=GetValue($vid);
+                    if(!is_string($raw)||strlen($raw)>8192)continue;
+                    $reads[]=[
+                        'ip'=>$ip,'ageSeconds'=>max(0,time()-$updated),
+                        'raw'=>$raw
+                    ];
+                }catch(Throwable $e){}
+            }
+        }
+        return JVAdditionalIpcEventEvidence::evaluate($reads);
     }
 
     public function Refresh(): void
@@ -868,6 +941,9 @@ class JVPresenceIdentityShadow extends IPSModule
         $additionalIpcInventory=is_array($ipcScan)
             && ($ipcScan['authority']??'')==='ADDITIONAL_IPC_METADATA_ONLY'
             ?$ipcScan:null;
+        $additionalIpcEventEvidence=$this->readAdditionalIpcEventHints(
+            $additionalIpcInventory
+        );
         $cameraCapability=JVCameraCapabilityPriority::evaluate(
             $p03Timeline['report'],$this->readP03LiveCounters(),
             $p03['street'],$numberStat,$additionalIpcInventory
@@ -887,6 +963,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'parallelPersonPassage'=>$parallelPassage,
             'cameraCapabilityPriority'=>$cameraCapability,
             'additionalIpcInventory'=>$additionalIpcInventory,
+            'additionalIpcEventEvidence'=>$additionalIpcEventEvidence,
             'numberStatEvidence'=>$numberStat,
             'phone'=>$phones,
             'phoneLink'=>$phoneLink,
