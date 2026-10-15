@@ -212,6 +212,10 @@
     {
       "type": "Label",
       "caption": "boundaryEvidence überwacht ausschließlich ausdrücklich ausgewählte bestehende Tür-/Tor-/Fahrzeug-Statusänderungen. Alle Ausgänge und die Bewegungsrichtung bleiben ohne lückenlose Prüfung UNBESTÄTIGT; niemals automatisch Abwesenheit oder Alarm schalten."
+    },
+    {
+      "type": "Label",
+      "caption": "WEITERE DAHUA IPC (NUR LESEN): zusätzlich zu TiOC/P03 die früher dokumentierten Kamerapositionen Lagerplatz JV rechts (.96), Torhalle Einfahrt (.97), Torhalle Straße (.98), Werkstatt rechts (.99) und Farbcontainer (.92) suchen. Die IP-Adressen sind historische Kandidaten im Kamera-VLAN 107, keine bestätigte aktuelle Verbindung. Button 6 prüft ausschließlich bereits in Symcon konfigurierte Instanz-Adressen und meldet Kandidaten mit Priorität; es wird keine Kamera abgefragt, neu installiert oder umprogrammiert. Zuerst Kameramodell, Blick auf die jeweilige Grundstücksgrenze und nutzbare IVS-/People-Counting-Signale prüfen, erst anschließend eine bestehende Signalvariable separat verbinden."
     }
   ],
   "actions": [
@@ -244,6 +248,11 @@
       "type": "Button",
       "caption": "5. Bestehende Innenlicht- und TV-Statusvariablen suchen (nur lesen)",
       "onClick": "JVIDSH_AuditIndoorHintCandidates($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "6. Weitere IPC-Kameras im Symcon-Bestand prüfen (nur lesen)",
+      "onClick": "JVIDSH_AuditAdditionalIpcCameras($id);"
     }
   ]
 }
