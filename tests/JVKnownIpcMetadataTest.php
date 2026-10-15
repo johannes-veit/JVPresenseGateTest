@@ -12,7 +12,7 @@ $r=JVKnownIpcMetadata::evaluate([
  ['instanceId'=>211,'ip'=>'192.168.107.98','label'=>'Torhalle Strasse Kamera'],
  ['instanceId'=>213,'ip'=>'192.168.107.97','label'=>'Torhalle Einfahrt'],
  ['instanceId'=>217,'ip'=>'192.168.107.96','label'=>'JV rechts','eventVariableId'=>42117],
- ['instanceId'=>219,'ip'=>'192.168.107.99','label'=>'Werkstatt rechts'],
+ ['instanceId'=>219,'ip'=>'192.168.107.99','label'=>'P03 – Lagerplatz Werkstatt links'],
  ['instanceId'=>225,'ip'=>'192.168.107.94','label'=>'WORK_LEFT'],
  ['instanceId'=>229,'ip'=>'192.168.107.110','label'=>'TiOC Terrasse'],
  ['instanceId'=>231,'ip'=>'192.168.107.196','label'=>'andere noch unbekannt'],
@@ -34,6 +34,8 @@ chkExtra($r['otherIpcCandidates'][2]['ip']==='192.168.107.96',
     'spare JV right suitable for review without touching current JV left');
 chkExtra($r['otherIpcCandidates'][3]['ip']==='192.168.107.99',
     'spare WORK right suitable for review without touching main WORK left');
+chkExtra($r['otherIpcCandidates'][3]['roleNameConflictNeedsReview']===true,
+    'IP historically WORK RIGHT but configured Symcon instance named left; review before use');
 chkExtra($r['otherIpcCandidates'][2]['peopleCountingSupportedByModel']===true,
     'older HFW5442 inventory is only model-conditional capability');
 chkExtra($r['otherIpcCandidates'][2]['modelReadFromCameraNow']===false,
