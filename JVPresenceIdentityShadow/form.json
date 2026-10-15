@@ -178,6 +178,10 @@
     },
     {
       "type": "Label",
+      "caption": "ZWEI PERSONEN GLEICHZEITIG: Bei nebeneinander gehenden Johannes/Carina kann eine IVS-Grenzüberschreitung beide oder nur eine Person erfassen. Ein P03-Nachweis ist ein Richtungsereignis, keine Personenzahl. Auch zwei Ereignisse koennen derselbe Mensch sein. parallelPersonPassage zeigt nahe Richtungsereignisse als Gruppenfenster, die Personenzahl bleibt UNKNOWN. HOME-LAGER ist nicht Grundstueck-Strasse. Keine Abwesenheit/Alarm-Aktion; Smart-Plan/People-Counting der Dahua-Kameras wird nicht umgestellt."
+    },
+    {
+      "type": "Label",
       "caption": "Bei genau einem vorhandenen JV Presence Phone Observer wird dessen Evidenz mit ID=0 automatisch und nur lesend verwendet. P03 Live-Zähler zählt nachgewiesene Richtungsereignisse, keine Personen. Keine HOME/AWAY-Buchungen."
     },
     {
