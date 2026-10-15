@@ -85,14 +85,16 @@ chkExtra($none['otherIpcFoundInSymcon']===0,
 chkExtra($none['otherIpcCandidates'][0]['configuredInSymcon']===false,
     'historical list clearly distinguished from detected instances');
 
+$now=time();
 $ivs=[[
  'code'=>'CrossLineDetection','action'=>'Start',
  'decision'=>'STAIR_HUMAN_START_COUNTED','rejectionReason'=>'MATCHED_FILTER',
  'payloadHuman'=>true,'classification'=>'Human',
- 'eventId'=>49,'objectId'=>9,'time'=>'19:30:03'
+ 'eventId'=>49,'objectId'=>9,'time'=>date('H:i:s',$now-5)
 ]];
 $evt=JVAdditionalIpcEventEvidence::evaluate([
- ['ip'=>'192.168.107.96','raw'=>json_encode($ivs),'ageSeconds'=>5],
+ ['ip'=>'192.168.107.96','raw'=>json_encode($ivs),
+  'ageSeconds'=>5,'updatedAt'=>$now-5],
 ]);
 chkExtra($evt['sourceCount']===1&&$evt['camerasWithFreshIvSHumanHint']===1,
     'existing passive IVS array yields at most a context hint');
@@ -105,14 +107,34 @@ chkExtra($evt['numberOfPeople']==='UNKNOWN'
 chkExtra($evt['freshIvSHumanHints'][0]['humanEventDateUnverified']===true,
     'time-only legacy P03 event never becomes a proven today timestamp');
 $two=JVAdditionalIpcEventEvidence::evaluate([
- ['ip'=>'192.168.107.96','raw'=>json_encode($ivs),'ageSeconds'=>3],
- ['ip'=>'192.168.107.99','raw'=>json_encode($ivs),'ageSeconds'=>3]
+ ['ip'=>'192.168.107.96','raw'=>json_encode($ivs),
+  'ageSeconds'=>3,'updatedAt'=>$now-5],
+ ['ip'=>'192.168.107.99','raw'=>json_encode($ivs),
+  'ageSeconds'=>3,'updatedAt'=>$now-5]
 ]);
 chkExtra($two['camerasWithFreshIvSHumanHint']===2
     &&$two['numberOfPeople']==='UNKNOWN',
     'two cameras may see same person so never infer two humans');
+$oldRowReplayed=JVAdditionalIpcEventEvidence::evaluate([
+ ['ip'=>'192.168.107.96','raw'=>json_encode($ivs),
+  'ageSeconds'=>2,'updatedAt'=>$now+350]
+]);
+chkExtra($oldRowReplayed['supplementaryHumanHint']===false,
+    'old Human array row cannot be resurrected by unrelated recent variable update');
+$missingTime=JVAdditionalIpcEventEvidence::evaluate([
+ ['ip'=>'192.168.107.96',
+  'raw'=>json_encode([[
+   'code'=>'CrossLineDetection','action'=>'Start',
+   'decision'=>'STAIR_HUMAN_START_COUNTED','rejectionReason'=>'MATCHED_FILTER',
+   'payloadHuman'=>true
+  ]]),'ageSeconds'=>2,'updatedAt'=>$now-2]
+]);
+chkExtra($missingTime['supplementaryHumanHint']===false,
+    'without a validated matching event time no fresh human hint');
+
 $bad=JVAdditionalIpcEventEvidence::evaluate([
- ['ip'=>'192.168.107.96','raw'=>json_encode($ivs),'ageSeconds'=>220],
+ ['ip'=>'192.168.107.96','raw'=>json_encode($ivs),
+  'ageSeconds'=>220,'updatedAt'=>$now-220],
  ['ip'=>'192.168.107.99','raw'=>'not JSON','ageSeconds'=>3],
  ['ip'=>'192.168.107.98','raw'=>json_encode([[
   'code'=>'CrossLineDetection','action'=>'Start',
