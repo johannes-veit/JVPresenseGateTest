@@ -15,7 +15,8 @@ declare(strict_types=1);
 final class JVCameraCapabilityPriority
 {
     public static function evaluate(array $p03Timeline,array $p03Live,
-        array $streetLearning,array $optionalCountTelemetry=[]):array
+        array $streetLearning,array $optionalCountTelemetry=[],
+        ?array $additionalIpcInventory=null):array
     {
         $streetMapping=($streetLearning['directionMappingCertified']??false)===true
             && in_array($streetLearning['out']??null,['RightToLeft','LeftToRight'],true)
@@ -30,8 +31,41 @@ final class JVCameraCapabilityPriority
         $p03Blocked=str_contains($proofState,'BLOCKIERT')
             ||str_contains($proofState,'abgebrochen');
         $numb=($optionalCountTelemetry['authority']??'')==='DAHUA_NUMBERSTAT_DIAGNOSTIC_ONLY';
+        $other=[];
+        if(is_array($additionalIpcInventory)
+            && ($additionalIpcInventory['authority']??null)==='ADDITIONAL_IPC_METADATA_ONLY'
+            && is_array($additionalIpcInventory['otherIpcCandidates']??null)){
+            foreach(array_slice($additionalIpcInventory['otherIpcCandidates'],0,40) as $row){
+                if(!is_array($row)
+                    ||($row['configuredInSymcon']??false)!==true)continue;
+                $role=(string)($row['historicalRole']??'');
+                $location=(string)($row['historicalLocation']??'');
+                $other[]=[
+                    'ip'=>$row['ip'],
+                    'historicalRole'=>$role,
+                    'location'=>$location,
+                    'modelCandidate'=>$row['modelFromPreviousInventory']??'UNKNOWN',
+                    'configuredSymconInstanceIds'=>$row['configuredSymconInstanceIds']??[],
+                    'possibleUse'=>str_contains($role,'STRASSE')
+                        ?'PROPERTY_STREET_DIRECTION_AND_COUNTING_IF_CAMERA_AND_VIEW_VERIFIED'
+                        :(str_contains($role,'EINFAHRT')
+                          ?'DRIVEWAY_BOUNDARY_CORROBORATION_IF_CAMERA_AND_VIEW_VERIFIED'
+                          :'ADDITIONAL_HUMAN_CROSS_CHECK_OR_DEDICATED_COUNTING_IF_VERIFIED'),
+                    'modelVerifiedFromLiveCamera'=>false,
+                    'viewVerified'=>false,
+                    'actualHumanEventStreamConnected'=>false,
+                    'countingReady'=>false,
+                    'mustNotChangeExistingSmartPlan'=>true
+                ];
+            }
+        }
         return [
             'schema'=>1,'authority'=>'CAMERA_CAPABILITY_PRIORITY_SHADOW',
+            'additionalIpcMetadataAuditAvailable'=>is_array($additionalIpcInventory)
+                &&($additionalIpcInventory['authority']??null)==='ADDITIONAL_IPC_METADATA_ONLY',
+            'additionalIpcCandidatesConfiguredInSymcon'=>$other,
+            'additionalIpcPeopleCountingCanBeUsedNow'=>false,
+            'additionalIpcFirstCheck'=>'MODEL_THEN_VIEW_THEN_SMART_PLAN_THEN_SAFE_EVENT_STREAM',
             'cameraPriorityForHouseToWork'=>[
                 'JV_LEFT','WORK_LEFT','TIOC_TERRASSE_BACKUP_ONLY'
             ],
