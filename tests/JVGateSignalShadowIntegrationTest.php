@@ -79,7 +79,8 @@ function IPS_VariableExists(int $id):bool{return isset($GLOBALS['gateDevices'][$
 function IPS_GetVariable(int $id):array{
     if(!IPS_VariableExists($id))throw new RuntimeException('unknown variable');
     return ['VariableType'=>$GLOBALS['gateDevices'][$id]['type']??0,
-        'VariableChanged'=>$GLOBALS['gateDevices'][$id]['changed']];
+        'VariableChanged'=>$GLOBALS['gateDevices'][$id]['changed'],
+        'VariableUpdated'=>$GLOBALS['gateDevices'][$id]['updated']??($GLOBALS['gateDevices'][$id]['changed']??0)];
 }
 function IPS_GetObject(int $id):array{
     if($id===50000)return ['ParentID'=>35965];
@@ -223,7 +224,7 @@ checkGate(count($GLOBALS['readCalls'])===14
     && count(array_diff($GLOBALS['readCalls'],[
         40678,56808,13257,20724,31597,49204,50300
     ]))===0,'only original seven gate candidates read across two refreshes');
-checkGate($m->registered===['Status','EvidenceJSON'],
+checkGate($m->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
     'unchanged two Shadow variables');
 checkGate(($data['boundaryEvidence']['configuredBoundarySignals']??null)===0,
     'candidate audit does not bind physical sensors');
@@ -414,7 +415,7 @@ checkGate(count($afterRestart['gateSignalAudit']['recentStatusEdges']??[])>=1,
 checkGate(($afterRestart['localActivity']['startedAt']??null)
     ===($beforeRestart['localActivity']['startedAt']??null),
     'GUS observer startedAt survives complete restart');
-checkGate($after->registered===['Status','EvidenceJSON'],
+checkGate($after->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
     'no additional Shadow variables after instance restart');
 // Also test reentrant Create on an existing instance: registered attributes
 // must never be rewritten with blank defaults.
@@ -429,9 +430,9 @@ checkGate($after->instanceStatus===102,
     'switching off passive observer still means a healthy initialized module');
 checkGate(count($after->subscriptions)===0,
     'disabling Shadow unregisters seven passive gate subscriptions');
-checkGate($after->registered===['Status','EvidenceJSON',
-    'Status','EvidenceJSON'],
-    'still exactly two output identifiers after simulated module reload');
+checkGate($after->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence',
+    'Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
+    'still exactly four output identifiers after simulated module reload');
 
 // Fail-closed lifecycle regression. Do not turn a failed bootstrap green.
 $bad=new JVPresenceIdentityShadow();
@@ -448,13 +449,13 @@ checkGate(!in_array(102,$bad->statusTransitions,true),
 checkGate(str_contains((string)$bad->GetValue('Status'),
     'CONFIGURE_READ_ONLY_TIMER'),
     'existing Status string identifies failed initialization stage');
-checkGate(count($bad->registered)===2,
+checkGate(count($bad->registered)===4,
     'bootstrap failure does not duplicate or create output variables');
 $bad->failTimerConfiguration=false;
 $bad->ApplyChanges();
 checkGate($bad->instanceStatus===102,
     'retry recovers module from 201 only after fully successful bootstrap');
-checkGate($bad->registered===['Status','EvidenceJSON'],
+checkGate($bad->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
     'successful retry preserves two existing output variables');
 $activeFailure=new JVPresenceIdentityShadow();
 $activeFailure->Create();
@@ -514,7 +515,7 @@ checkGate(($wlanData['people']['johannes']??null)==='UNKNOWN'
     &&($wlanData['people']['carina']??null)==='UNKNOWN'
     &&($wlanData['propertyEmptyMayBeCertified']??null)===false,
     'both phones online never assert two people present nor empty premises');
-checkGate($wlanMod->registered===['Status','EvidenceJSON'],
+checkGate($wlanMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
     'read-only phone integration does not allocate a new Symcon variable');
 $GLOBALS['gateDevices'][38430]['value']=false;
 $wlanMod->Refresh();
@@ -551,12 +552,12 @@ checkGate(($disabled['existingWlanSmartphones']['enabled']??null)===false
 checkGate(($disabled['phoneLink']['state']??null)==='DISABLED_SEPARATE_PROJECT',
     'legacy phone observer still remains disabled');
 
-// Real installed EgiGeoZone: #35965 / dummy #50000 / TestGeoZone #41869
+// Real installed EgiGeoZone: #35965 / dummy #50000 / Zuhause #41869
 // / Timestamp #28055. Raw latitude #42608 and longitude #12243 MUST NOT
 // be read. Opt-in preserves all existing phone/P03/gate integrations.
 $now=time();
 $GLOBALS['gateDevices'][41869]=[
-    'name'=>'TestGeoZone','parent'=>'Smartphone Johannes',
+    'name'=>'Zuhause','parent'=>'Smartphone Johannes',
     'type'=>0,'value'=>true,'changed'=>$now-18,
     'pairedParent'=>50000];
 $GLOBALS['gateDevices'][28055]=[
@@ -635,7 +636,7 @@ checkGate(($disabledGeo['johannesEgiGeoZone']['state']??null)==='DISABLED'
 checkGate(!in_array(41869,array_slice($GLOBALS['readCalls'],$readsBefore),true)
     &&!in_array(28055,array_slice($GLOBALS['readCalls'],$readsBefore),true),
     'disabled geofence reads zero smartphone geo values');
-checkGate($geoMod->registered===['Status','EvidenceJSON'],
+checkGate($geoMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
     'EgiGeoZone opt-in creates no new Symcon variables');
 
 // Carina iPhone Geofency is a separate real IP-Symcon Geofency module
@@ -650,11 +651,11 @@ $GLOBALS['gateDevices'][41869]['value']=true;
 $GLOBALS['gateDevices'][28055]['value']=$now-30;
 $GLOBALS['gateDevices'][63000]=[
     'name'=>'Zuhause','parent'=>'Device','type'=>0,
-    'pairedParent'=>62000,'value'=>true,'changed'=>$now-15
+    'pairedParent'=>62000,'value'=>true,'changed'=>$now-15,'updated'=>$now-15
 ];
 $GLOBALS['gateDevices'][63001]=[
     'name'=>'Timestamp','parent'=>'Device','type'=>1,
-    'pairedParent'=>62000,'value'=>$now-65,'changed'=>$now-65
+    'pairedParent'=>62000,'value'=>$now-65,'changed'=>$now-65,'updated'=>$now-15
 ];
 $GLOBALS['gateDevices'][63002]=[
     'name'=>'Latitude','parent'=>'Device','type'=>2,
@@ -676,6 +677,7 @@ checkGate(($candidates['authority']??null)==='CARINA_GEOFENCY_METADATA_ONLY'
     'Carina metadata audit identifies only existing Boolean Zuhause and Timestamp');
 checkGate(count($GLOBALS['readCalls'])===$readsBefore,
     'metadata inventory reads no device values and no GPS coordinates');
+$carGeoMod->setProp('CarinaGeofencyInstanceID',61000);
 $carGeoMod->setProp('CarinaGeofencyDeviceID',62000);
 $carGeoMod->setProp('CarinaGeofencyZoneVarID',63000);
 $carGeoMod->setProp('CarinaGeofencyTimestampID',63001);
@@ -696,6 +698,11 @@ checkGate(($both['people']['carina']??null)==='UNKNOWN'
     &&($both['people']['johannes']??null)==='UNKNOWN'
     &&($both['combinedPresenceEvidence']['absenceReview']['mayArmAlarm']??null)===false,
     'two home phones cannot identify humans or arm alarm');
+checkGate($carGeoMod->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)'
+    &&$carGeoMod->GetValue('CarinaPresence')==='ANWESEND (Handyhinweis)',
+    'both requested status values show confirmed smartphone device proximity');
+checkGate(($both['residentDisplay']['people']['carina']['personPhysicallyHomeCertified']??true)===false,
+    'new display cannot claim physical resident identification');
 $readNew=array_slice($GLOBALS['readCalls'],$readsBefore);
 checkGate(in_array(63000,$readNew,true)&&in_array(63001,$readNew,true)
     &&!in_array(63002,$readNew,true),
@@ -708,6 +715,8 @@ checkGate(($conflict['carinaGeofency']['outsideRecent']??null)===true
     ==='WLAN_ON_GEOFENCY_OUT_REVIEW_ONLY'
     &&($conflict['people']['carina']??null)==='UNKNOWN',
     'Carina outside while WLAN true is conflict review, never absent');
+checkGate($carGeoMod->GetValue('CarinaPresence')==='WIDERSPRUCH (WLAN / Geofence)',
+    'conflicting source shown without claiming away');
 $GLOBALS['gateDevices'][63001]['value']=$now-22000;
 $carGeoMod->Refresh();
 $stale=json_decode((string)$carGeoMod->GetValue('EvidenceJSON'),true);
@@ -715,6 +724,9 @@ checkGate(($stale['carinaGeofency']['outsideRecent']??true)===false
     &&($stale['carinaGeofency']['state']??null)
     ==='STALE_OUTSIDE_NOT_PERSON_AWAY',
     'stale Geofency event not current phone position');
+checkGate($carGeoMod->GetValue('CarinaPresence')
+    ==='WLAN ZUHAUSE (Geofence unbestätigt)',
+    'stale outside plus WLAN does not claim away');
 $GLOBALS['gateDevices'][63001]['value']=$now-60;
 $GLOBALS['gateDevices'][63000]['pairedParent']=62001; // actual tree change
 $readsBefore=count($GLOBALS['readCalls']);
@@ -722,6 +734,9 @@ $carGeoMod->Refresh();
 $bad=json_decode((string)$carGeoMod->GetValue('EvidenceJSON'),true);
 checkGate(($bad['carinaGeofency']['state']??null)==='SOURCE_NOT_VERIFIED',
     'moved or reused Geofency Boolean fails closed before state read');
+checkGate($carGeoMod->GetValue('CarinaPresence')
+    ==='WLAN ZUHAUSE (Geofence unbestätigt)',
+    'reparented source cannot certify absent');
 $readNew=array_slice($GLOBALS['readCalls'],$readsBefore);
 checkGate(!in_array(63000,$readNew,true)&&!in_array(63001,$readNew,true),
     'invalid ID hierarchy never reads geofence values');
@@ -737,6 +752,6 @@ checkGate(($disabledCarina['carinaGeofency']['state']??null)==='DISABLED'
     'Carina opt-out does not disrupt EgiGeoZone Johannes');
 checkGate(!in_array(63000,array_slice($GLOBALS['readCalls'],$readsBefore),true)
     &&!in_array(63001,array_slice($GLOBALS['readCalls'],$readsBefore),true)
-    &&$carGeoMod->registered===['Status','EvidenceJSON'],
+    &&$carGeoMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
     'disabled Geofency reads no values and creates no Symcon output variables');
 echo "Gate Shadow integration / initialization 101->102, failure 201 recovery PASS\n";
