@@ -1071,6 +1071,19 @@ class JVPresenceIdentityShadow extends IPSModule
         $zone=$this->ReadPropertyInteger('CarinaGeofencyZoneVarID');
         $timestamp=$this->ReadPropertyInteger('CarinaGeofencyTimestampID');
         $zoneName=$this->ReadPropertyString('CarinaGeofencyZoneName');
+        // IP-Symcon preserves old registered property values on update:
+        // v0.8.47's Device/Zone/Timestamp defaults were ALL zero.
+        // Only for that precise legacy triple, use the three REAL
+        // screenshot-confirmed IDs as a read-only effective mapping.
+        // Never write IPS_SetProperty / IPS_ApplyChanges here. Mixed IDs
+        // are never silently completed and fail closed below.
+        if($device===0 &&$zone===0 &&$timestamp===0
+            &&$root===48903 &&$zoneName==='Zuhause'){
+            $device=45439;
+            $zone=39169;
+            $timestamp=45666;
+            $none['selectionStatus']='LEGACY_ZERO_PROPERTIES_REAL_IDS_CHECKED';
+        }
         // Previously unknown IDs can still be inventoried with Button 7,
         // but neither a stale inventory nor a device name alone is trusted.
         if($root<=0||$device<=0||$zone<=0||$timestamp<=0
