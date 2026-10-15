@@ -68,6 +68,8 @@ jobs:
         run: php tests/JVParallelPassageGuardTest.php
       - name: Camera capability priority and strict Dahua counting telemetry semantics
         run: php tests/JVCameraCapabilityPriorityTest.php
+      - name: Extra Dahua IPC inventory and safely reusable existing IVS event hints
+        run: php tests/JVAdditionalIpcInventoryTest.php
       - name: Property boundary signal health and exit variable metadata discovery
         run: php tests/JVBoundaryEvidenceTest.php
       - name: Prioritized exit-status candidate filter and false-positive regression
