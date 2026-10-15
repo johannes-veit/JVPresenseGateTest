@@ -78,10 +78,12 @@ function IPS_GetVariableList():array{return array_keys($GLOBALS['gateDevices']);
 function IPS_VariableExists(int $id):bool{return isset($GLOBALS['gateDevices'][$id]);}
 function IPS_GetVariable(int $id):array{
     if(!IPS_VariableExists($id))throw new RuntimeException('unknown variable');
-    return ['VariableType'=>0,'VariableChanged'=>$GLOBALS['gateDevices'][$id]['changed']];
+    return ['VariableType'=>$GLOBALS['gateDevices'][$id]['type']??0,
+        'VariableChanged'=>$GLOBALS['gateDevices'][$id]['changed']];
 }
 function IPS_GetObject(int $id):array{
-    if(isset($GLOBALS['gateDevices'][$id]))return ['ParentID'=>$id+100000];
+    if(isset($GLOBALS['gateDevices'][$id]))return ['ParentID'=>
+        $GLOBALS['gateDevices'][$id]['pairedParent']??($id+100000)];
     if($id>=100000&&isset($GLOBALS['gateDevices'][$id-100000]))
         return ['ParentID'=>200000];
     if($id===200000)return ['ParentID'=>0];
@@ -424,4 +426,75 @@ $activeFailure->failActiveStatus=false;
 $activeFailure->ApplyChanges();
 checkGate($activeFailure->instanceStatus===102,
     'when status API recovers the module becomes active on next ApplyChanges');
+// Johannes/Carina independently tested scripts: 4 existing variables,
+// no WLAN traffic, no new event/category or change to their scripts.
+$now=time();
+$GLOBALS['gateDevices'][19980]=[
+    'name'=>'WLAN anwesend','parent'=>'WLAN Johannes',
+    'type'=>0,'value'=>true,'changed'=>$now-9,'pairedParent'=>801001];
+$GLOBALS['gateDevices'][26497]=[
+    'name'=>'Letzter Kontakt','parent'=>'WLAN Johannes',
+    'type'=>1,'value'=>$now-30,'changed'=>$now-30,'pairedParent'=>801001];
+$GLOBALS['gateDevices'][38430]=[
+    'name'=>'WLAN anwesend','parent'=>'WLAN Carina',
+    'type'=>0,'value'=>true,'changed'=>$now-9,'pairedParent'=>801002];
+$GLOBALS['gateDevices'][10760]=[
+    'name'=>'Letzter Kontakt','parent'=>'WLAN Carina',
+    'type'=>1,'value'=>$now-90,'changed'=>$now-90,'pairedParent'=>801002];
+$wlanMod=new JVPresenceIdentityShadow();
+$wlanMod->Create();
+$wlanMod->setProp('Enabled',true);
+$wlanMod->setProp('SensorSources','[]');
+$wlanMod->setProp('P03InstanceID',0);
+$wlanMod->setProp('EnableExistingWLANHints',true);
+$wlanMod->Refresh();
+$wlanData=json_decode((string)$wlanMod->GetValue('EvidenceJSON'),true);
+checkGate(($wlanData['existingWlanSmartphones']['freshMacConfirmedDeviceCount']??null)===2,
+    'MAC verified actual Johannes and Carina booleans + Unix contact times');
+checkGate(($wlanData['existingWlanSmartphones']['people']['johannes']['recentMacEvidence']??false)===true
+    &&($wlanData['existingWlanSmartphones']['people']['carina']['recentMacEvidence']??false)===true,
+    'two separate handset MAC devices supported without forcing a human count');
+checkGate(($wlanData['phone']['johannes']??null)==='PHONE_PROPERTY_INDICATION'
+    &&($wlanData['phone']['carina']??null)==='PHONE_PROPERTY_INDICATION',
+    'existing high-level phone indications receive read-only device evidence');
+checkGate(($wlanData['people']['johannes']??null)==='UNKNOWN'
+    &&($wlanData['people']['carina']??null)==='UNKNOWN'
+    &&($wlanData['propertyEmptyMayBeCertified']??null)===false,
+    'both phones online never assert two people present nor empty premises');
+checkGate($wlanMod->registered===['Status','EvidenceJSON'],
+    'read-only phone integration does not allocate a new Symcon variable');
+$GLOBALS['gateDevices'][38430]['value']=false;
+$wlanMod->Refresh();
+$off=json_decode((string)$wlanMod->GetValue('EvidenceJSON'),true);
+checkGate(($off['existingWlanSmartphones']['people']['carina']['state']??null)
+    ==='NO_RECENT_MAC_CONFIRMATION_NOT_ABSENCE',
+    'Carina WLAN off does NOT prove Carina actually left');
+checkGate(($off['people']['carina']??null)==='UNKNOWN',
+    'Carina identity/absence never automatically written');
+$GLOBALS['gateDevices'][38430]['value']=true;
+$GLOBALS['gateDevices'][10760]['value']=$now-900;
+$wlanMod->Refresh();
+$stale=json_decode((string)$wlanMod->GetValue('EvidenceJSON'),true);
+checkGate(($stale['existingWlanSmartphones']['people']['carina']['state']??null)
+    ==='STALE_TRUE_CANNOT_CONFIRM_PRESENCE',
+    'old TRUE is rejected beyond the 660s positive-contact threshold');
+$GLOBALS['gateDevices'][10760]['value']=$now-5;
+$GLOBALS['gateDevices'][38430]['name']='Other variable ID';
+$readsBefore=count($GLOBALS['readCalls']);
+$wlanMod->Refresh();
+$badName=json_decode((string)$wlanMod->GetValue('EvidenceJSON'),true);
+checkGate(($badName['existingWlanSmartphones']['people']['carina']['state']??null)
+    ==='SOURCE_NOT_VERIFIED',
+    'accidental ID reuse with wrong variable name fails closed');
+checkGate(count($GLOBALS['readCalls'])===$readsBefore+2,
+    'invalid Carina IDs NOT read: only Johannes two existing WLAN variables read');
+$wlanMod->setProp('EnableExistingWLANHints',false);
+$readsBefore=count($GLOBALS['readCalls']);
+$wlanMod->Refresh();
+$disabled=json_decode((string)$wlanMod->GetValue('EvidenceJSON'),true);
+checkGate(($disabled['existingWlanSmartphones']['enabled']??null)===false
+    &&count($GLOBALS['readCalls'])===$readsBefore,
+    'disabling WLAN read avoids touching any phone source');
+checkGate(($disabled['phoneLink']['state']??null)==='DISABLED_SEPARATE_PROJECT',
+    'legacy phone observer still remains disabled');
 echo "Gate Shadow integration / initialization 101->102, failure 201 recovery PASS\n";

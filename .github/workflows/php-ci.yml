@@ -84,6 +84,8 @@ jobs:
         run: php tests/JVGateSignalAuditTest.php
       - name: Schiebetor Shadow activation, exact ID path verification and no writes
         run: php tests/JVGateSignalShadowIntegrationTest.php
+      - name: Two existing WLAN smartphone scripts and 660-second standby safety
+        run: php tests/JVExistingWlanPhoneHintsTest.php
       - name: Fifteen verified real LCN GUS inventory imports and collision protection
         run: php tests/JVLCNGUSInventoryTest.php
       - name: P03 proof simulations

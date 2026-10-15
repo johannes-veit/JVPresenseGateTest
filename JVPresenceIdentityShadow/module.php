@@ -19,6 +19,7 @@ require_once dirname(__DIR__).'/libs/JVAdditionalIPCInventory.php';
 require_once dirname(__DIR__).'/libs/JVKnownIpcMetadata.php';
 require_once dirname(__DIR__).'/libs/JVSupplementaryIpcEvidence.php';
 require_once dirname(__DIR__).'/libs/JVP03SourceHealth.php';
+require_once dirname(__DIR__).'/libs/JVExistingWlanPhoneHints.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -57,6 +58,13 @@ class JVPresenceIdentityShadow extends IPSModule
         // until the user explicitly authorizes a future opt-in.
         $this->RegisterPropertyBoolean('EnablePhoneIntegration',false);
         $this->RegisterPropertyInteger('PhoneObserverInstanceID',0);
+        // Exact pairs come from the user's independently working WLAN
+        // Johannes v1.2 and WLAN Carina v1.5. Manual opt-in; no script writes.
+        $this->RegisterPropertyBoolean('EnableExistingWLANHints',false);
+        $this->RegisterPropertyInteger('JohannesWLANBoolID',19980);
+        $this->RegisterPropertyInteger('JohannesWLANLastContactID',26497);
+        $this->RegisterPropertyInteger('CarinaWLANBoolID',38430);
+        $this->RegisterPropertyInteger('CarinaWLANLastContactID',10760);
         // Historical LCN snapshot (06.10.2026). Candidates DISABLED until
         // current live source/path/type verification; never silently activate.
         $this->RegisterPropertyString('SensorSources', json_encode([
@@ -861,6 +869,60 @@ class JVPresenceIdentityShadow extends IPSModule
         return $result;
     }
 
+    /**
+     * Four existing variables only. A phone Boolean and Unix contact integer
+     * must be of the known type and EXACT known name, both under the same
+     * preexisting parent. Do not query WLAN, ARP, IP, MAC or execute scripts.
+     * A missing/reused ID is UNKNOWN; NEVER count it as a person leaving.
+     */
+    private function readExistingWLANPhones():array
+    {
+        $result=[];
+        foreach([
+            'johannes'=>[
+                'bool'=>$this->ReadPropertyInteger('JohannesWLANBoolID'),
+                'time'=>$this->ReadPropertyInteger('JohannesWLANLastContactID')
+            ],
+            'carina'=>[
+                'bool'=>$this->ReadPropertyInteger('CarinaWLANBoolID'),
+                'time'=>$this->ReadPropertyInteger('CarinaWLANLastContactID')
+            ]
+        ] as $person=>$ids){
+            $entry=[
+                'verified'=>false,'wlanValue'=>null,'lastContact'=>null,
+                'boolId'=>$ids['bool'],'lastContactId'=>$ids['time']
+            ];
+            try{
+                $bid=$ids['bool'];$tid=$ids['time'];
+                if($bid<=0||$tid<=0||$bid===$tid
+                    ||!IPS_VariableExists($bid)||!IPS_VariableExists($tid)){
+                    $result[$person]=$entry;continue;
+                }
+                $bv=IPS_GetVariable($bid);$tv=IPS_GetVariable($tid);
+                if(($bv['VariableType']??null)!==0
+                    ||($tv['VariableType']??null)!==1
+                    ||trim((string)IPS_GetName($bid))!=='WLAN anwesend'
+                    ||trim((string)IPS_GetName($tid))!=='Letzter Kontakt'){
+                    $result[$person]=$entry;continue;
+                }
+                $bp=(int)(IPS_GetObject($bid)['ParentID']??0);
+                $tp=(int)(IPS_GetObject($tid)['ParentID']??0);
+                if($bp<=0||$bp!==$tp){
+                    $result[$person]=$entry;continue;
+                }
+                $bool=GetValue($bid);$last=GetValue($tid);
+                if(!is_bool($bool)||!is_int($last)){
+                    $result[$person]=$entry;continue;
+                }
+                $entry['verified']=true;
+                $entry['wlanValue']=$bool;
+                $entry['lastContact']=$last;
+            }catch(Throwable $ignored){}
+            $result[$person]=$entry;
+        }
+        return $result;
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
@@ -938,6 +1000,11 @@ class JVPresenceIdentityShadow extends IPSModule
                 }
             }
         }
+        // Standalone two-phone WLAN scripts are never edited or executed.
+        // Hard-fail closed on reused/wrong object IDs, types, names or parents.
+        $existingWlanEnabled=$this->ReadPropertyBoolean('EnableExistingWLANHints');
+        $existingWlanSnapshots=$existingWlanEnabled
+            ?$this->readExistingWLANPhones():[];
         // Existing LCN, light, gate and vehicle Symcon variables are read
         // locally and ONLY as contextual hints. Never publish HOME/AWAY.
         $sourceRows=json_decode($this->ReadPropertyString('SensorSources'),true);
@@ -978,6 +1045,25 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->writeShadowState('LocalActivityLedger',$ledgerNext);
         }
         $activity=$ledger['report'];
+        $wlanMotionHint=is_int($activity['lastMotionAt']??null)
+            &&$activity['lastMotionAt']<=time()
+            &&$activity['lastMotionAt']>=time()-600;
+        // A motion in the past 24h only increases CONTEXT, never certifies
+        // that the handset's owner is physically at home now.
+        $wlan=JVExistingWlanPhoneHints::evaluate(
+            $existingWlanSnapshots,time(),$existingWlanEnabled,
+            $wlanMotionHint
+        );
+        if($wlan['warnings'])
+            $warnings=array_merge($warnings,$wlan['warnings']);
+        foreach($wlan['people'] as $person=>$entry){
+            if(($entry['recentMacEvidence']??false)===true
+                && !array_key_exists($person,$phones)){
+                // Existing PHONE_OBSERVER evidence, if enabled later, takes
+                // precedence instead of overwriting it.
+                $phones[$person]='PHONE_PROPERTY_INDICATION';
+            }
+        }
         if($activity['warnings']) {
             $warnings=array_merge($warnings,$activity['warnings']);
         }
@@ -1069,6 +1155,11 @@ class JVPresenceIdentityShadow extends IPSModule
         $indoorInventory=is_array($insideScan)
             && ($insideScan['authority']??'')==='INDOOR_LIGHT_TV_CANDIDATES_METADATA_ONLY'
             ?$insideScan:null;
+        // WLAN evidence supplements physical context without creating an
+        // identity, occupancy count or empty-property certificate.
+        $houseObservation['wlanDeviceContext']=$wlan['combinedContext'];
+        $houseObservation['wlanMacConfirmedDeviceCount']=$wlan['freshMacConfirmedDeviceCount'];
+        $houseObservation['wlanCannotCertifyAbsence']=true;
         // Existing gate display is context only, NOT a verified exit route.
         $boundary['report']['existingGateDisplay']=$gateDisplay;
         $boundary['report']['parallelPersonPassage']=$parallelPassage['status'];
@@ -1097,6 +1188,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'numberStatEvidence'=>$numberStat,
             'phone'=>$phones,
             'phoneLink'=>$phoneLink,
+            'existingWlanSmartphones'=>$wlan,
             'localSensors'=>$local,
             'localActivity'=>$activity,
             'houseObservation'=>$houseObservation,
@@ -1110,7 +1202,17 @@ class JVPresenceIdentityShadow extends IPSModule
                 $p03Timeline['report'],$activity,$boundary['report']
             ),
             // No baseline and no group count -> NO person occupancy guesses.
-            'people'=>array_fill_keys(array_keys($phones),'UNKNOWN'),
+            // Distinguish missing MAC evidence from absent humans: even
+            // when one handset goes offline, both known residents remain
+            // explicitly UNKNOWN (never silently removed from the map).
+            'people'=>array_fill_keys(
+                $existingWlanEnabled
+                    ?array_values(array_unique(array_merge(
+                        array_keys($phones),['johannes','carina']
+                    )))
+                    :array_keys($phones),
+                'UNKNOWN'
+            ),
             'warnings'=>array_values(array_unique($warnings))
         ];
         $out=$p03['p03']['homeToWork'];
@@ -1159,6 +1261,10 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | Innenlicht/TV AN: '.$indoorHints['onCount']
             .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
+            .' | WLAN-Handys: '.(
+                !$existingWlanEnabled?'nicht verbunden'
+                :$wlan['freshMacConfirmedDeviceCount'].'/2 MAC-frisch (nur Geraetehinweis)'
+            )
             .' | Identitaet UNBEKANNT';
         if ($warnings) $state.=' | QUELLHINWEIS '.implode(',',array_slice($warnings,0,2));
         $this->publish($report,$state);

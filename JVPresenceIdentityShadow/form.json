@@ -38,13 +38,61 @@
       ]
     },
     {
+      "type": "ExpansionPanel",
+      "caption": "WLAN Johannes + Carina (bereits funktionierende Skripte, nur lesen)",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Direkte Anbindung der bestehenden WLAN-Skripte Johannes v1.2 und Carina v1.5: beide nutzen MAC-bestaetigte ARP/UDP-Erreichbarkeit, pruefen alle 5 Minuten und halten positive Nachweise maximal 660 Sekunden. SHADOW liest nur WLAN anwesend (Boolean) und Letzter Kontakt (Unix-Integer). Kein Script-/Ereignis-/Kamera-/WLAN-Eingriff. TRUE + aktueller letzter Kontakt = Hinweis auf das Geraet; FALSE oder veraltete Daten sind KEIN Abwesenheitsbeweis."
+        },
+        {
+          "type": "CheckBox",
+          "name": "EnableExistingWLANHints",
+          "caption": "Vorhandene WLAN-Handy-Signale Johannes + Carina in SHADOW lesen (ausdruecklich aktivieren)"
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "JohannesWLANBoolID",
+          "caption": "Johannes – WLAN anwesend (Boolean, bisher #19980)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "JohannesWLANLastContactID",
+          "caption": "Johannes – Letzter Kontakt (Unix-Integer, bisher #26497)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "CarinaWLANBoolID",
+          "caption": "Carina – WLAN anwesend (Boolean, bisher #38430)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "CarinaWLANLastContactID",
+          "caption": "Carina – Letzter Kontakt (Unix-Integer, bisher #10760)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "Label",
+          "caption": "Die Variablennamen, Typen und gemeinsame Eltern-Kategorie pro Handy werden vor jedem Lesen geprueft. Bei Unstimmigkeit steht SOURCE_NOT_VERIFIED statt fiktiver Anwesenheit. Ein Handy kann zu Hause liegen, waehrend die Person unterwegs ist. Auch bei zwei aktiven WLAN-Handys bleiben die Identitaeten und das Haus-Leer-Zertifikat UNBEKANNT. Ergebnisse in der bestehenden EvidenceJSON-Variable unter existingWlanSmartphones und houseObservation.wlanDeviceContext."
+        }
+      ]
+    },
+    {
       "type": "CheckBox",
       "name": "EnablePhoneIntegration",
-      "caption": "Smartphone/WLAN später optional verbinden – aktuell AUS lassen"
+      "caption": "Separates altes JV Phone-Observer-Modul (optional; fuer WLAN-Skripte NICHT benoetigt – AUS lassen)"
     },
     {
       "type": "Label",
-      "caption": "Smartphone-/WLAN-Aufbau erfolgt separat. Bei AUS werden weder Smartphone-Observer gesucht noch deren Daten gelesen. P03 und alle 15 GUS funktionieren unabhängig."
+      "caption": "Die WLAN-Skripte Johannes/Carina werden jetzt separat und direkt als existierende Boolean/Unix-Variablen integriert (oberer Abschnitt). Der fruehere PHONE_OBSERVER ist eine unabhaengige optionale Instanz und bleibt AUS; er ist keine Voraussetzung. P03, 15 GUS, Gate, Innenlichter und Alarm bleiben unveraendert."
     },
     {
       "type": "NumberSpinner",
@@ -211,7 +259,7 @@
     },
     {
       "type": "Label",
-      "caption": "Anwesenheitskontrolle ohne WLAN: houseObservation wertet 15 LCN-GUS und neue P03-Richtungsbeweise gemeinsam aus. Bewegung (1 GUS) = Hinweis, zwei verschiedene GUS = gestuetzter Hinweis; P03 HOME-LAGER ist KEINE Grundstuecksabwesenheit. Nach 30 Minuten ohne neue GUS nur 'Ruhig', niemals 'Abwesend'. Kein Alarm schalten, keine neuen Variablen."
+      "caption": "Anwesenheitskontrolle: 15 LCN-GUS, P03-Richtungen, Innenlicht/TV und WLAN-Handyhinweise werden gemeinsam als separate Signale dargestellt. WLAN TRUE mit frischer MAC bestaetigt nur ein Geraet am WLAN; WLAN FALSE/keine Antwort bedeutet NIEMALS sicher ausser Haus. Keine Bewohner-/Abwesenheitsbuchung und kein Alarm."
     },
     {
       "type": "Label",
