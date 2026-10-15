@@ -83,6 +83,7 @@ function IPS_GetVariable(int $id):array{
 }
 function IPS_GetObject(int $id):array{
     if($id===50000)return ['ParentID'=>35965];
+    if($id===62000)return ['ParentID'=>61000];
     if(isset($GLOBALS['gateDevices'][$id]))return ['ParentID'=>
         $GLOBALS['gateDevices'][$id]['pairedParent']??($id+100000)];
     if($id>=100000&&isset($GLOBALS['gateDevices'][$id-100000]))
@@ -99,6 +100,7 @@ function IPS_GetName(int $id):string{
     if($id===200000)return 'Schiebetor_Logik';
     if($id===200001)return 'Licht';
     if($id===300000)return 'Vorhandene Dahua-Kameras';
+    if($id===62000)return 'Device';
     if($id===8001)return 'Dahua Kamera Torhalle Strasse';
     if($id===8002)return 'Dahua Kamera JV rechts';
     if($id===8003)return 'Dahua Kamera WORK_LEFT';
@@ -112,7 +114,10 @@ function GetValue(int $id):mixed{
     return $GLOBALS['gateDevices'][$id]['value'];
 }
 // This is invoked only inside P03's optional lookup try/catch.
-function IPS_GetInstance(int $id):array{throw new RuntimeException('no P03 fixture');}
+function IPS_GetInstance(int $id):array{
+    if($id===61000)return ['ModuleInfo'=>['ModuleID'=>'{0100CA50-D2DA-11E4-8830-0800200C9A66}']];
+    throw new RuntimeException('no P03 fixture');
+}
 function IPS_GetInstanceList():array{return [8001,8002,8003,8004,8005];}
 function IPS_GetConfiguration(int $id):string{
     return match($id){
@@ -632,4 +637,106 @@ checkGate(!in_array(41869,array_slice($GLOBALS['readCalls'],$readsBefore),true)
     'disabled geofence reads zero smartphone geo values');
 checkGate($geoMod->registered===['Status','EvidenceJSON'],
     'EgiGeoZone opt-in creates no new Symcon variables');
+
+// Carina iPhone Geofency is a separate real IP-Symcon Geofency module
+// under root 61000 / generic dummy 62000 / actual boolean & timestamp.
+// Its child IDs must be identified through metadata only before activation.
+$now=time();
+$GLOBALS['gateDevices'][38430]['name']='WLAN anwesend';
+$GLOBALS['gateDevices'][38430]['value']=true;
+$GLOBALS['gateDevices'][10760]['value']=$now-20;
+$GLOBALS['gateDevices'][41869]['pairedParent']=50000;
+$GLOBALS['gateDevices'][41869]['value']=true;
+$GLOBALS['gateDevices'][28055]['value']=$now-30;
+$GLOBALS['gateDevices'][63000]=[
+    'name'=>'Zuhause','parent'=>'Device','type'=>0,
+    'pairedParent'=>62000,'value'=>true,'changed'=>$now-15
+];
+$GLOBALS['gateDevices'][63001]=[
+    'name'=>'Timestamp','parent'=>'Device','type'=>1,
+    'pairedParent'=>62000,'value'=>$now-65,'changed'=>$now-65
+];
+$GLOBALS['gateDevices'][63002]=[
+    'name'=>'Latitude','parent'=>'Device','type'=>2,
+    'pairedParent'=>62000,'value'=>48.0,'changed'=>$now-15
+];
+$carGeoMod=new JVPresenceIdentityShadow();
+$carGeoMod->Create();
+$carGeoMod->setProp('Enabled',true);
+$carGeoMod->setProp('P03InstanceID',0);
+$carGeoMod->setProp('SensorSources','[]');
+$carGeoMod->setProp('EnableExistingWLANHints',true);
+$carGeoMod->setProp('EnableJohannesEgiGeoZone',true);
+$readsBefore=count($GLOBALS['readCalls']);
+$carGeoMod->AuditCarinaGeofencyCandidates();
+$candidates=json_decode((string)$carGeoMod->GetValue('EvidenceJSON'),true);
+checkGate(($candidates['authority']??null)==='CARINA_GEOFENCY_METADATA_ONLY'
+    &&($candidates['candidateCount']??0)===2
+    &&($candidates['deviceCount']??0)===1,
+    'Carina metadata audit identifies only existing Boolean Zuhause and Timestamp');
+checkGate(count($GLOBALS['readCalls'])===$readsBefore,
+    'metadata inventory reads no device values and no GPS coordinates');
+$carGeoMod->setProp('CarinaGeofencyDeviceID',62000);
+$carGeoMod->setProp('CarinaGeofencyZoneVarID',63000);
+$carGeoMod->setProp('CarinaGeofencyTimestampID',63001);
+$carGeoMod->setProp('EnableCarinaGeofencyHints',true);
+$readsBefore=count($GLOBALS['readCalls']);
+$carGeoMod->Refresh();
+$both=json_decode((string)$carGeoMod->GetValue('EvidenceJSON'),true);
+checkGate(($both['carinaGeofency']['state']??null)
+    ==='RECENT_INSIDE_HOME_GEOFENCE_DEVICE_HINT',
+    'Carina actual existing iPhone Geofency Boolean with valid timestamp');
+checkGate(($both['combinedPresenceEvidence']['bothPhoneGeofencesNearHome']??false)
+    &&($both['combinedPresenceEvidence']['carinaWlanGeofencyCrossCheck']??null)
+    ==='GEOFENCY_AND_WLAN_CARINA_PHONE_NEAR_HOME'
+    &&($both['combinedPresenceEvidence']['status']??null)
+    ==='BOTH_PHONES_WLAN_AND_GEOFENCE_NEAR_HOME_NO_MOTION',
+    'Johannes and Carina each report geofence and WLAN with no recent indoor GUS');
+checkGate(($both['people']['carina']??null)==='UNKNOWN'
+    &&($both['people']['johannes']??null)==='UNKNOWN'
+    &&($both['combinedPresenceEvidence']['absenceReview']['mayArmAlarm']??null)===false,
+    'two home phones cannot identify humans or arm alarm');
+$readNew=array_slice($GLOBALS['readCalls'],$readsBefore);
+checkGate(in_array(63000,$readNew,true)&&in_array(63001,$readNew,true)
+    &&!in_array(63002,$readNew,true),
+    'read actual Boolean and Unix timestamp; never iPhone GPS coordinates');
+$GLOBALS['gateDevices'][63000]['value']=false;
+$carGeoMod->Refresh();
+$conflict=json_decode((string)$carGeoMod->GetValue('EvidenceJSON'),true);
+checkGate(($conflict['carinaGeofency']['outsideRecent']??null)===true
+    &&($conflict['combinedPresenceEvidence']['carinaWlanGeofencyCrossCheck']??null)
+    ==='WLAN_ON_GEOFENCY_OUT_REVIEW_ONLY'
+    &&($conflict['people']['carina']??null)==='UNKNOWN',
+    'Carina outside while WLAN true is conflict review, never absent');
+$GLOBALS['gateDevices'][63001]['value']=$now-22000;
+$carGeoMod->Refresh();
+$stale=json_decode((string)$carGeoMod->GetValue('EvidenceJSON'),true);
+checkGate(($stale['carinaGeofency']['outsideRecent']??true)===false
+    &&($stale['carinaGeofency']['state']??null)
+    ==='STALE_OUTSIDE_NOT_PERSON_AWAY',
+    'stale Geofency event not current phone position');
+$GLOBALS['gateDevices'][63001]['value']=$now-60;
+$GLOBALS['gateDevices'][63000]['pairedParent']=62001; // actual tree change
+$readsBefore=count($GLOBALS['readCalls']);
+$carGeoMod->Refresh();
+$bad=json_decode((string)$carGeoMod->GetValue('EvidenceJSON'),true);
+checkGate(($bad['carinaGeofency']['state']??null)==='SOURCE_NOT_VERIFIED',
+    'moved or reused Geofency Boolean fails closed before state read');
+$readNew=array_slice($GLOBALS['readCalls'],$readsBefore);
+checkGate(!in_array(63000,$readNew,true)&&!in_array(63001,$readNew,true),
+    'invalid ID hierarchy never reads geofence values');
+$carGeoMod->setProp('EnableCarinaGeofencyHints',false);
+$readsBefore=count($GLOBALS['readCalls']);
+$carGeoMod->Refresh();
+$disabledCarina=json_decode((string)$carGeoMod->GetValue('EvidenceJSON'),true);
+checkGate(($disabledCarina['carinaGeofency']['state']??null)==='DISABLED'
+    &&($disabledCarina['combinedPresenceEvidence']['carinaGeofencyContext']??null)
+    ==='DISABLED_OR_UNVERIFIED'
+    &&($disabledCarina['combinedPresenceEvidence']['johannesGeofenceContext']??null)
+    ==='JOHANNES_PHONE_REPORTED_WITHIN_HOME_GEOFENCE',
+    'Carina opt-out does not disrupt EgiGeoZone Johannes');
+checkGate(!in_array(63000,array_slice($GLOBALS['readCalls'],$readsBefore),true)
+    &&!in_array(63001,array_slice($GLOBALS['readCalls'],$readsBefore),true)
+    &&$carGeoMod->registered===['Status','EvidenceJSON'],
+    'disabled Geofency reads no values and creates no Symcon output variables');
 echo "Gate Shadow integration / initialization 101->102, failure 201 recovery PASS\n";
