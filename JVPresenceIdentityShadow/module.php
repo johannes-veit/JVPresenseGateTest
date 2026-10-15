@@ -21,6 +21,7 @@ require_once dirname(__DIR__).'/libs/JVKnownIpcMetadata.php';
 require_once dirname(__DIR__).'/libs/JVSupplementaryIpcEvidence.php';
 require_once dirname(__DIR__).'/libs/JVP03SourceHealth.php';
 require_once dirname(__DIR__).'/libs/JVExistingWlanPhoneHints.php';
+require_once dirname(__DIR__).'/libs/JVJohannesEgiGeoZoneHints.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 
 /**
@@ -70,6 +71,15 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterPropertyInteger('JohannesWLANLastContactID',26497);
         $this->RegisterPropertyInteger('CarinaWLANBoolID',38430);
         $this->RegisterPropertyInteger('CarinaWLANLastContactID',10760);
+        // Johannes' separately configured Android EgiGeoZone: SHADOW only
+        // reads two existing child variables of the verified Symcon device.
+        // The 150 m radius is an app setting, NOT verified via these values.
+        $this->RegisterPropertyBoolean('EnableJohannesEgiGeoZone',false);
+        $this->RegisterPropertyInteger('JohannesEgiInstanceID',35965);
+        $this->RegisterPropertyInteger('JohannesEgiDeviceID',50000);
+        $this->RegisterPropertyInteger('JohannesEgiZoneVariableID',41869);
+        $this->RegisterPropertyInteger('JohannesEgiTimestampID',28055);
+        $this->RegisterPropertyInteger('JohannesEgiRadiusMeters',150);
         // Historical LCN snapshot (06.10.2026). Candidates DISABLED until
         // current live source/path/type verification; never silently activate.
         $this->RegisterPropertyString('SensorSources', json_encode([
@@ -928,6 +938,47 @@ class JVPresenceIdentityShadow extends IPSModule
         return $result;
     }
 
+
+    /**
+     * EgiGeoZone v0.8.46: use ONLY existing #41869 TestGeoZone Boolean and
+     * #28055 Timestamp Integer under known device #50000 / Egi #35965.
+     * No latitude/longitude reads, no webhook setup or module actions.
+     * An incorrect/recycled object ID fails closed BEFORE any value read.
+     */
+    private function readExistingJohannesEgiGeoZone():array
+    {
+        $snapshot=['verified'=>false,'inside'=>null,'timestamp'=>null];
+        try{
+            $root=$this->ReadPropertyInteger('JohannesEgiInstanceID');
+            $device=$this->ReadPropertyInteger('JohannesEgiDeviceID');
+            $zone=$this->ReadPropertyInteger('JohannesEgiZoneVariableID');
+            $timestamp=$this->ReadPropertyInteger('JohannesEgiTimestampID');
+            if($root<=0||$device<=0||$zone<=0||$timestamp<=0
+                ||count(array_unique([$root,$device,$zone,$timestamp]))!==4
+                ||!IPS_VariableExists($zone)
+                ||!IPS_VariableExists($timestamp))return $snapshot;
+            // EgiGeoZone holds a dummy device with its own child variables.
+            $deviceObject=IPS_GetObject($device);
+            if(($deviceObject['ParentID']??null)!==$root)return $snapshot;
+            $zoneObject=IPS_GetObject($zone);
+            $timestampObject=IPS_GetObject($timestamp);
+            if(($zoneObject['ParentID']??null)!==$device
+                ||($timestampObject['ParentID']??null)!==$device
+                ||IPS_GetName($zone)!=='TestGeoZone'
+                ||IPS_GetName($timestamp)!=='Timestamp')return $snapshot;
+            $zoneMeta=IPS_GetVariable($zone);
+            $timeMeta=IPS_GetVariable($timestamp);
+            if(($zoneMeta['VariableType']??null)!==0
+                ||($timeMeta['VariableType']??null)!==1)return $snapshot;
+            $value=GetValue($zone);
+            $at=GetValue($timestamp);
+            if(!is_bool($value)||!is_int($at))return $snapshot;
+            return ['verified'=>true,'inside'=>$value,'timestamp'=>$at];
+        }catch(Throwable $ignored){
+            return $snapshot;
+        }
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
@@ -1061,6 +1112,17 @@ class JVPresenceIdentityShadow extends IPSModule
         );
         if($wlan['warnings'])
             $warnings=array_merge($warnings,$wlan['warnings']);
+        // Separate app-reported 150m handset location, opt-in and read-only.
+        // Neither geo OUT nor no update can automatically set away/alarm.
+        $egiEnabled=$this->ReadPropertyBoolean('EnableJohannesEgiGeoZone');
+        $egi=JVJohannesEgiGeoZoneHints::evaluate(
+            $egiEnabled?$this->readExistingJohannesEgiGeoZone():[],
+            time(),$egiEnabled,$this->ReadPropertyInteger('JohannesEgiRadiusMeters')
+        );
+        if($egi['warnings']){
+            foreach($egi['warnings'] as $notice)
+                $warnings[]='JOHANNES_EGIGEOZONE:'.$notice;
+        }
         foreach($wlan['people'] as $person=>$entry){
             if(($entry['recentMacEvidence']??false)===true
                 && !array_key_exists($person,$phones)){
@@ -1175,7 +1237,7 @@ class JVPresenceIdentityShadow extends IPSModule
         // or any person presence/absence, and never writes to other modules.
         $combined=JVCombinedPresenceEvidence::evaluate(
             $wlan,$houseObservation,$p03Timeline['report'],
-            $boundary['report'],$gateDisplay,$indoorHints,time()
+            $boundary['report'],$gateDisplay,$indoorHints,time(),$egi
         );
         $houseObservation['combinedContextStatus']=$combined['status'];
         $houseObservation['combinedContextAuthority']=$combined['authority'];
@@ -1185,6 +1247,9 @@ class JVPresenceIdentityShadow extends IPSModule
         $houseObservation['wlanDeviceContext']=$wlan['combinedContext'];
         $houseObservation['wlanMacConfirmedDeviceCount']=$wlan['freshMacConfirmedDeviceCount'];
         $houseObservation['wlanCannotCertifyAbsence']=true;
+        $houseObservation['johannesGeofenceContext']=$combined['johannesGeofenceContext'];
+        $houseObservation['johannesWlanGeofenceCrossCheck']=$combined['johannesWlanGeofenceCrossCheck'];
+        $houseObservation['geofenceOutsideCannotCertifyAway']=true;
         // Existing gate display is context only, NOT a verified exit route.
         $boundary['report']['existingGateDisplay']=$gateDisplay;
         $boundary['report']['parallelPersonPassage']=$parallelPassage['status'];
@@ -1214,6 +1279,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'phone'=>$phones,
             'phoneLink'=>$phoneLink,
             'existingWlanSmartphones'=>$wlan,
+            'johannesEgiGeoZone'=>$egi,
             'localSensors'=>$local,
             'localActivity'=>$activity,
             'houseObservation'=>$houseObservation,
@@ -1288,6 +1354,9 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | Innenlicht/TV AN: '.$indoorHints['onCount']
             .' | Auto-Innenlicht: '.($autoIndoorEnabled
                 ?$autoIndoor['readableCount'].'/'.$autoIndoor['candidateCount'].' nur lesen'
+                :'AUS')
+            .' | EgiGeoZone Johannes: '.($egiEnabled
+                ?$egi['state'].' (App '.$egi['radiusMetersConfiguredInPhoneApp'].'m)'
                 :'AUS')
             .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
