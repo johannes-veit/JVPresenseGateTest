@@ -140,9 +140,18 @@ checkGate(($data['personPresenceMayBeChanged']??null)===false,
 checkGate(($data['cameraCapabilityPriority']['cameraPriorityForStreet'][0]??null)
     ==='WORK_LEFT_IPC_STREET_IVS',
     'known installed WORK_LEFT IPC prioritized for street IVS');
-checkGate(($data['cameraCapabilityPriority']['installedCameras']['JV_TERRASSE']['peopleCountingHardwareCapable']??null)
-    ==='NOT_VERIFIED',
-    'unknown specific TiOC cannot be promoted to headcount camera');
+checkGate(($data['cameraCapabilityPriority']['installedCameras']['JV_TERRASSE']['model']??null)
+    ==='IPC-PDW3849-A180-AS-PV',
+    'the exact already known TiOC model is reported');
+checkGate(($data['cameraCapabilityPriority']['installedCameras']['JV_HOF_GARAGE']['model']??null)
+    ==='IPC-PDW3849-A180-AS-PV',
+    'the second known 180-degree TiOC is also reported');
+checkGate(($data['cameraCapabilityPriority']['installedCameras']['JV_TERRASSE']['independentPeopleCountingAdvertised']??null)
+    ===false,
+    'no undocumented TiOC native headcount mode is assumed');
+checkGate(($data['cameraCapabilityPriority']['panoramaCameraDoesNotCertifyExactlyTwoPeople']??null)
+    ===true,
+    '180-degree panorama remains only a group hint');
 checkGate(($data['numberStatEvidence']['status']??null)==='NOT_CONNECTED',
     'never contact counting camera without opt-in or existing local source');
 checkGate(($data['parallelPersonPassage']['individualPeopleCount']??null)==='UNKNOWN',
