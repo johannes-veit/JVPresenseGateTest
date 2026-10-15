@@ -13,6 +13,7 @@ require_once dirname(__DIR__) . '/libs/P03WorkStreetLearning.php';
 require_once dirname(__DIR__) . '/libs/P03TerraceInBackup.php';
 require_once dirname(__DIR__) . '/libs/P03TerraceOutBackup.php';
 require_once dirname(__DIR__) . '/libs/P03IPC5442Audit.php';
+require_once dirname(__DIR__) . '/libs/P03ChatGPTTestReport.php';
 
 class JVPresenceP03MultiCamera extends IPSModule
 {
@@ -51,6 +52,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         parent::Create();
 
         $this->RegisterPropertyBoolean('Enabled', true);
+        $this->RegisterPropertyString('ChatGPTTestScenario','ONE_HOME_TO_WORK');
 
         // P03 owns all three camera connections. The former AussenlichtAutomatik2
         // source selection remains registered only so an update does not lose old
@@ -183,6 +185,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterAttributeInteger('P03TestWireTraceAt', 0);
         $this->RegisterAttributeString('P03TestWireTraceBaseline', '{}');
         $this->RegisterAttributeInteger('LastP03AutomaticDiagnosticAt', 0);
+        $this->RegisterAttributeString('ChatGPTTestBaseline', '{}');
 
         $this->RegisterAttributeInteger('P03CrossingCount', 0);
         $this->RegisterVariableString('P03CameraStatus', 'P03 Kamerastatus', '', 5);
@@ -192,6 +195,7 @@ class JVPresenceP03MultiCamera extends IPSModule
         $this->RegisterVariableString('Result', 'Ergebnis / Nächster Schritt', '', 50);
         $this->RegisterVariableString('Protocol', 'Testprotokoll', '', 70);
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
+        $this->RegisterVariableString('ChatGPTTestResult','Testergebnis an ChatGPT','',80);
 
         $this->RegisterTimer('HandshakeTimer', 0, 'JVP03MC_HandshakeTimer($_IPS["TARGET"]);');
         $this->RegisterTimer('SocketRestartTimer', 0, 'JVP03MC_SocketRestartTimer($_IPS["TARGET"]);');
@@ -229,6 +233,7 @@ class JVPresenceP03MultiCamera extends IPSModule
 
         // Add the diagnosis variable to P03 instances installed before 0.6.15.
         $this->RegisterVariableString('P03ConnectionDiagnosis', 'P03 Socket-Diagnose (kopierbar)', '', 75);
+        $this->RegisterVariableString('ChatGPTTestResult','Testergebnis an ChatGPT','',80);
         // Timer is registered exclusively in Create(), as required by
         // IP-Symcon; only its active interval changes in ApplyChanges.
         $this->SetTimerInterval('P03MastHealthTimer', 15000);
@@ -1651,6 +1656,15 @@ class JVPresenceP03MultiCamera extends IPSModule
         // VM_UPDATE after a brief reconnect or a module restart.
         $this->reconcileRecoveredP03MastStreams();
         $this->appendP03TestWireTraceIfDue();
+        // No extra timer/objects: update the SAME copyable result variable
+        // while a ChatGPT observation window has been marked.
+        if($this->ReadAttributeString('ChatGPTTestBaseline')!=='{}'){
+            try{$this->RefreshChatGPTTestResult();}
+            catch(Throwable $e){
+                $this->SendDebug('P03 ChatGPT Result',
+                    'Report read failed: '.get_class($e),0);
+            }
+        }
         // Every 30 s: read-only observer snapshots with fresh timestamps;
         // never restart a healthy stream for lack of person detections.
         $now = time();
@@ -2644,6 +2658,135 @@ class JVPresenceP03MultiCamera extends IPSModule
         string $host, int $port, string $username, string $password, string $uri
     ): array {
         return $this->genericCameraGet($host,$port,$username,$password,$uri);
+    }
+
+    /**
+     * Mark only the passive test baseline. Does not start/clear P03 training,
+     * camera rules or production. Same visible output object every time.
+     */
+    public function StartChatGPTTestCapture(): void
+    {
+        $scenario=$this->ReadPropertyString('ChatGPTTestScenario');
+        if(!isset(P03ChatGPTTestReport::SCENARIOS[$scenario]))
+            $scenario='GENERAL_DIAGNOSIS';
+        $baseline=['schema'=>1,'startedAt'=>time(),'scenario'=>$scenario,
+            'values'=>$this->readChatGPTTestSnapshot()];
+        $json=json_encode($baseline,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+        if(!is_string($json))throw new RuntimeException('P03_BASELINE_SERIALIZATION');
+        $this->WriteAttributeString('ChatGPTTestBaseline',$json);
+        $this->RefreshChatGPTTestResult();
+    }
+
+    public function RefreshChatGPTTestResult(): void
+    {
+        $baseline=json_decode($this->ReadAttributeString('ChatGPTTestBaseline'),true);
+        if(!is_array($baseline))$baseline=[];
+        $this->SetValue('ChatGPTTestResult',P03ChatGPTTestReport::render(
+            $baseline,$this->readChatGPTTestSnapshot(),time()
+        ));
+    }
+
+    /**
+     * Existing P03 data ONLY; trusted existing P03 Aux instances are checked
+     * by module GUID, role and host before their variable values are read.
+     */
+    private function readChatGPTTestSnapshot(): array
+    {
+        $snapshot=[
+            'testActive'=>$this->ReadAttributeBoolean('TestActive'),
+            'productionEnabled'=>$this->ReadAttributeBoolean('ProductionEnabled'),
+            'verifiedTransfers'=>(int)$this->GetValue('P03VerifiedTransfers'),
+            'proofState'=>(string)$this->GetValue('P03ProofState'),
+            'masts'=>[],
+            'terrace'=>['streamOK'=>null,'counter'=>null],
+            'streetHumanRawCount'=>$this->ReadAttributeInteger('P03StreetRawCount'),
+            'streetLastRaw'=>$this->ReadAttributeString('P03StreetLastRaw')
+        ];
+        foreach([
+            ['role'=>self::AUX_JV_ROLE,'observer'=>'AuxJVInstanceID',
+                'host'=>'AuxJVHost','counter'=>'AuxJVEventCounterVarID',
+                'stream'=>'AuxJVStreamVarID'],
+            ['role'=>self::AUX_WORK_ROLE,'observer'=>'AuxWorkInstanceID',
+                'host'=>'AuxWorkHost','counter'=>'AuxWorkEventCounterVarID',
+                'stream'=>'AuxWorkStreamVarID']
+        ] as $cam){
+            $role=$cam['role'];
+            $id=$this->ReadAttributeInteger($cam['observer']);
+            $data=['observerId'=>$id,'streamOK'=>null,'counter'=>null,
+                'rxAge'=>null,'wireCodeCount'=>null,
+                'wireHeartbeatCount'=>null,'crosslines'=>[]];
+            try {
+                if($id>0&&$this->matchesTrustedP03Observer(
+                    $id,trim($this->ReadPropertyString($cam['host'])),$role)){
+                    $counter=$this->ReadAttributeInteger($cam['counter']);
+                    if($counter>0&&IPS_VariableExists($counter)){
+                        $val=GetValue($counter);
+                        if(is_int($val)&&$val>=0)$data['counter']=$val;
+                    }
+                    $stream=$this->ReadAttributeInteger($cam['stream']);
+                    if($stream>0&&IPS_VariableExists($stream)){
+                        $val=GetValue($stream);
+                        if(is_bool($val))$data['streamOK']=$val;
+                    }
+                    $raw=$this->p03AuxDiagnostic($id,'ObserverStatus');
+                    if($raw!==''&&strlen($raw)<=8192){
+                        $status=json_decode($raw,true);
+                        if(is_array($status)&&($status['role']??null)===$role
+                            &&($status['host']??null)==trim(
+                                $this->ReadPropertyString($cam['host']))){
+                            foreach(['rxAge','wireCodeCount',
+                                'wireHeartbeatCount'] as $key){
+                                if(is_int($status[$key]??null)&&$status[$key]>=0)
+                                    $data[$key]=$status[$key];
+                            }
+                        }
+                    }
+                    $eventVar=$this->findAuxVariable($id,'LastIVSEvent');
+                    if($eventVar>0){
+                        $history=GetValue($eventVar);
+                        if(is_string($history)&&strlen($history)<=32768){
+                            $events=json_decode($history,true);
+                            if(is_array($events)&&array_is_list($events)){
+                                foreach(array_slice($events,-8) as $event){
+                                    if(!is_array($event))continue;
+                                    $selected=[];
+                                    foreach(['time','action','ruleId','classification',
+                                        'direction','decision','rejectionReason',
+                                        'objectId'] as $key){
+                                        $value=$event[$key]??null;
+                                        if(is_scalar($value)
+                                            &&strlen((string)$value)<=160)
+                                            $selected[$key]=$value;
+                                    }
+                                    $data['crosslines'][]=$selected;
+                                }
+                            }
+                        }
+                    }
+                }
+            }catch(Throwable $ignored){}
+            $snapshot['masts'][$role]=$data;
+        }
+        try{
+            if($this->ReadPropertyBoolean('TerraceDiagnosticsEnabled')){
+                $id=$this->ReadAttributeInteger('TerraceObserverInstanceID');
+                if($id>0&&$this->matchesTrustedP03Observer($id,
+                    trim($this->ReadPropertyString('TerraceHost')),
+                    self::TERRACE_ROLE)){
+                    $counter=$this->ReadAttributeInteger('TerraceHumanCounterVarID');
+                    $stream=$this->ReadAttributeInteger('TerraceStreamVarID');
+                    if($counter>0&&IPS_VariableExists($counter)){
+                        $val=GetValue($counter);
+                        if(is_int($val)&&$val>=0)$snapshot['terrace']['counter']=$val;
+                    }
+                    if($stream>0&&IPS_VariableExists($stream)){
+                        $val=GetValue($stream);
+                        if(is_bool($val))$snapshot['terrace']['streamOK']=$val;
+                    }
+                }
+            }
+        }catch(Throwable $ignored){}
+        return $snapshot;
     }
 
     public function DiagnoseP03Connections(bool $automatic = false): void

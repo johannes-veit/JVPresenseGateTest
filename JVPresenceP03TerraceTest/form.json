@@ -64,6 +64,52 @@
           "caption": "AUS: Observer wird nach Übernehmen deaktiviert, seine Ereignisse sind für P03 irrelevant. Eindeutige aktive Human-CrossLine erforderlich; andernfalls bleibt der Zusatzsensor gesperrt."
         }
       ]
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "ChatGPT – immer derselbe Testergebnis-Bericht",
+      "expanded": true,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Für jeden Test dieselbe P03-Variable „Testergebnis an ChatGPT“ verwenden. Zuerst Testszenario auswählen und speichern; dann Button „Testbeginn markieren“. Ab diesem Zeitpunkt werden ursprüngliche Zähler gespeichert (ohne sie zurückzusetzen). Der Bericht aktualisiert sich auf dem bestehenden 15-Sekunden-Watchdog automatisch. Nach dem Durchgang nur den Inhalt dieser einen Variable kopieren und im ursprünglichen Chat einfügen. Kein Test-/Produktionsstart, keine Kamerabefehle."
+        },
+        {
+          "type": "Select",
+          "name": "ChatGPTTestScenario",
+          "caption": "Aktuell zu prüfender Test",
+          "options": [
+            {
+              "caption": "1 Person: HOME -> LAGER",
+              "value": "ONE_HOME_TO_WORK"
+            },
+            {
+              "caption": "2 Personen nebeneinander HOME -> LAGER",
+              "value": "TWO_SIDE_BY_SIDE"
+            },
+            {
+              "caption": "2 Personen mit Abstand HOME -> LAGER",
+              "value": "TWO_SEPARATED"
+            },
+            {
+              "caption": "Rueckweg LAGER -> HOME",
+              "value": "RETURN_WORK_TO_HOME"
+            },
+            {
+              "caption": "Strassenuebertritt WORK_LEFT",
+              "value": "STREET_CROSSING"
+            },
+            {
+              "caption": "Allgemeine Diagnose",
+              "value": "GENERAL_DIAGNOSIS"
+            }
+          ]
+        },
+        {
+          "type": "Label",
+          "caption": "Die Variante kann nach dem nächsten Arbeitsschritt gewechselt werden, aber die Ausgabevariable bleibt dauerhaft dieselbe. Automatisches Senden direkt in einen bestehenden ChatGPT-Chat ist ohne separate authentifizierte Integration nicht möglich; Bericht in Symcon kopieren und hier einfügen."
+        }
+      ]
     }
   ],
   "actions": [
@@ -121,6 +167,16 @@
       "type": "Button",
       "caption": "Test / Produktion stoppen",
       "onClick": "JVP03MC_DisableProductionP03($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "ChatGPT – aktuellen Testbeginn markieren (nur Zählerstand merken)",
+      "onClick": "JVP03MC_StartChatGPTTestCapture($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "ChatGPT – Testergebnis jetzt aktualisieren (kopierfertig)",
+      "onClick": "JVP03MC_RefreshChatGPTTestResult($id);"
     }
   ]
 }

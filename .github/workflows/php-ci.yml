@@ -110,6 +110,8 @@ jobs:
         run: php tests/P03LeftCameraMigrationTest.php
       - name: P03 one-click read-only socket diagnosis
         run: php tests/P03ConnectionDiagnosisTest.php
+      - name: Stable ChatGPT P03 test result and two-person guard
+        run: php tests/P03ChatGPTTestReportTest.php
       - name: P03 Symcon Create and ApplyChanges registration safety
         run: php tests/P03RegistrationLifecycleTest.php
       - name: P03 physical variable budget and migration safety

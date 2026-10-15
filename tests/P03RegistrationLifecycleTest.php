@@ -81,12 +81,14 @@ foreach ([$main,$observer] as $source) {
         'obsolete status variables are removed only by own-module UnregisterVariable');
 }
 $form=json_decode(file_get_contents(dirname(__DIR__).'/JVPresenceP03TerraceTest/form.json'),true);
-lifecycleAssert(is_array($form) && count($form['actions']??[])===11,
+lifecycleAssert(is_array($form) && count($form['actions']??[])===13,
     'Symcon user form has eleven focused buttons including single-IN and street-only training');
 $commands=array_column($form['actions'],'onClick');
 foreach ([
     'JVP03MC_ConfigureTerraceMonitor($id);',
     'JVP03MC_DiagnoseP03Connections($id, false);',
+    'JVP03MC_StartChatGPTTestCapture($id);',
+    'JVP03MC_RefreshChatGPTTestResult($id);',
     'JVP03MC_DiagnoseIPC5442Configuration($id);',
     'JVP03MC_AuditCameraConfiguration($id);',
     'JVP03MC_DiagnoseIPC5442AllValues($id);',
@@ -138,6 +140,19 @@ lifecycleAssert(
         'public function DiagnoseP03Connections(bool $automatic = false): void')===1,
     'automatic diagnostics default remains unchanged inside main P03 code'
 );
+lifecycleAssert(str_contains($main,
+    "RegisterVariableString('ChatGPTTestResult'"),
+    'stable single ChatGPT test-result variable ident');
+lifecycleAssert(substr_count($main,
+    "RegisterVariableString('ChatGPTTestResult'")===2,
+    'new variable registered in Create and ApplyChanges with same ident');
+lifecycleAssert(str_contains($main,
+    "RegisterAttributeString('ChatGPTTestBaseline', '{}')"),
+    'baseline persists via one attribute');
+lifecycleAssert(str_contains($main,
+    "public function StartChatGPTTestCapture(): void")
+    &&str_contains($main,"public function RefreshChatGPTTestResult(): void"),
+    'both report buttons connected to public methods');
 lifecycleAssert(!in_array('JVP03MC_SwitchToVerifiedLeftCameras($id);',$commands,true)
     && !in_array('JVP03MC_RepairP03ClientSockets($id);',$commands,true),
     'completed migrations and repetitive emergency repair buttons removed from live UI');

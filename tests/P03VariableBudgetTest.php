@@ -12,7 +12,7 @@ $root=dirname(__DIR__);
 $expected=[
     'JVPresenceP03TerraceTest/module.php'=>[
         'P03CameraStatus','P03ProofState','P03VerifiedTransfers',
-        'Result','Protocol','P03ConnectionDiagnosis'
+        'Result','Protocol','P03ConnectionDiagnosis','ChatGPTTestResult'
     ],
     'JVPresenceP03AuxObserver/module.php'=>[
         'PersonDetected','StreamOK','HumanEventCounter','LastIVSEvent'
@@ -46,6 +46,9 @@ foreach (['TestActive','CrossingCount','PresenceLastEvent','P03StreetDirectionSt
     budgetCheck(!preg_match('/\\$this->(?:SetValue|GetValue)\\s*\\(\\s*[\\x27\\x22]'.preg_quote($id,'/').'[\\x27\\x22]/',$main),
         'main no longer accesses removed Symcon variable '.$id);
 }
+budgetCheck(str_contains($main,"RegisterVariableString('ChatGPTTestResult'")
+    &&substr_count($main,"RegisterVariableString('ChatGPTTestResult'")===2,
+    'one user-requested extra test-report variable with same ident in Create/ApplyChanges');
 budgetCheck(str_contains($main,"ReadAttributeInteger('P03CrossingCount')")
     && str_contains($main,"WriteAttributeInteger('P03CrossingCount'"),
     'single walk counter stored internally without sacrificing state machine');
