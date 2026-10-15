@@ -39,4 +39,4 @@ geoAssert(!$disabled['insideRecent']&&$disabled['state']==='DISABLED',
 $invalid=JVJohannesEgiGeoZoneHints::evaluate($inside,$now,true,25);
 geoAssert($invalid['state']==='INVALID_CONFIGURATION',
     'invalid smaller than Egi minimum radius not trusted');
-echo "EgiGeoZone Johannesburg read-only geofence evidence PASS\n";
+echo "EgiGeoZone Johannes read-only geofence evidence PASS\n";
