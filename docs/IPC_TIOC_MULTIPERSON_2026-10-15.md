@@ -4,7 +4,9 @@
 
 - Bekannte Hauptkameras: **JV_LEFT** und **WORK_LEFT**, beide **IPC-HFW5442E-ZE**, Dahua Firmware **2.840.0000000.28.R** vom **07.08.2024**.
 - Im aktuell verwendeten P03-Richtungsnachweis: **JV_LEFT → WORK_LEFT = HOME_TO_LAGER**; umgekehrt = LAGER_TO_HOME. Beide Mast-Kameras sind notwendig, TiOC **JV Terrasse** ist nur Backup. **WORK_LEFT** hat zusätzlich die bestehende Straßen-IVS-Regel.
-- Terrasse TiOC: Kamera ist als TiOC bekannt, aber die **exakte Modellbezeichnung/Firmware** wurde für diesen Vergleich nicht verifiziert. Deshalb keine serienweite Behauptung, dass jede TiOC Personenzählung kann oder nicht kann.
+- **Korrigierter früherer Fehler:** Die exakten TiOC-Modelle waren bereits am 05.10.2026 in früheren Chatangaben bekannt. **JV Terrasse und JV Hof/Garage = Dahua IPC-PDW3849-A180-AS-PV**. Firmware der beiden konkreten TiOC bleibt hier unbekannt; keine neue Abfrage der Kamera.
+- TiOC Duo = **zwei 4-MP-Sensoren, zu 180° horizontaler Panoramaansicht zusammengesetzt**, SMD 4.0 und IVS Tripwire/Intrusion mit Menschen-/Fahrzeugklassifizierung, EPTZ zur Vergrößerung/Verfolgung intelligenter Alarme. **Das offizielle Modell-Datenblatt nennt keine eigenständige People-Counting-Funktion.** Breites Sichtfeld kann zwei nebeneinander gehende Personen eher gemeinsam im Bild halten, löst aber **keine zertifizierte Trennung/Zählung von genau zwei Personen** aus. Die tatsächlich sichtbare Treppen- und Straßenstrecke je Kamera muss durch vorhandene Bilder bestätigt werden.
+  Herstellerquelle: https://www.dahuasecurity.com/products/network-products/network-cameras/WizSense-Series/TiOC/IPC-PDW3849-A180-AS-PV
 - Die bisher gelernte Straßenrichtung ist **RightToLeft = OUT**, **LeftToRight = IN**. Eine gelernte Richtung ist **kein** Live-Straßenübertritt.
 - SHADOW ist read-only; WLAN wird separat entwickelt. Niemand wird als zu Hause/abwesend eingetragen; keine Alarm- oder Kamerasteuerung.
 
@@ -16,10 +18,10 @@ Dahua **IPC-HFW5442E-ZE (WizMind 5)**:
 - Offizielle Produktangabe: **drei umschaltbare** intelligente Ressourcen **IVS, Face Detection, People Counting**. Ein Wechsel auf People Counting kann die aktuell benötigten IVS-Grenzüberschreitungen deaktivieren. **Nicht automatisch umschalten.**
   Quelle: https://www.dahuasecurity.com/de/products/All-Products/Network-Cameras/WizMind-8-Series/5-Series/4MP/IPC-HFW5442E-ZE
 
-Typische TiOC **IPC-HFW3449T1-AS-PV**:
-- IVS Tripwire/Intrusion Human/Vehicle und SMD Plus/3.0/4.0 je Firmware/Generation, aktive Abschreckung/Beleuchtung.
-- Keine eigenständige Personenzählung im herangezogenen Modell-Datenblatt gelistet; **dies ist nicht der Nachweis über das konkrete installierte TiOC-Modell**.
-  Quelle: https://www.dahuasecurity.com/de/products/All-Products/Network-Cameras/WizSense-Series/3-Series/TiOC/IPC-HFW3449T1-AS-PV
+Installierte TiOC **IPC-PDW3849-A180-AS-PV (JV Terrasse und JV Hof/Garage)**:
+- IVS Tripwire/Intrusion mit menschlicher Klassifizierung, SMD 4.0, 180° Bild aus 2 × 4 MP, EPTZ.
+- Dahua nennt keine native Tripwire/Area-Personenzählung für dieses Modell. Es bleibt **nur ein Kamera-Hinweis** für gemeinsam erkannte Personen, kein automatischer Zwei-Personen-Nachweis.
+  Herstellerquelle: https://www.dahuasecurity.com/products/network-products/network-cameras/WizSense-Series/TiOC/IPC-PDW3849-A180-AS-PV
 
 Personenzähl-Ereignisse laut Dahua CGI HTTP API:
 - IVS: `Code=CrossLineDetection;action=Start;index=0;data={...}`, teils mit `ObjectID`, `EventID`, `GroupID`, `Direction`, `ObjectType=Human`. `ObjectID` ist **kameralokal/regelbezogen**, möglicherweise recycelt; `EventID` ist keine Person-ID. Ein Ereignis kann zwei Menschen überlappen. Auch zwei Ereignisse sind nicht zwingend zwei Personen.
@@ -31,7 +33,7 @@ Personenzähl-Ereignisse laut Dahua CGI HTTP API:
 ## Prioritätsregeln (in v0.8.33 SHADOW als Diagnose)
 
 1. **Grundstück/Straße:** primär **WORK_LEFT IPC – Straßen-IVS Human Richtung**, sofern live gültig. Kein einzelnes IVS-Ereignis als Kopfzahl.
-2. **Haus/Lager:** **JV_LEFT IPC plus WORK_LEFT IPC** als unabhängiger Richtungsnachweis, nicht als Personenabgleich. TiOC Terrasse nur unabhängige Zusatz-/Backuprichtung.
+2. **Haus/Lager:** **JV_LEFT IPC plus WORK_LEFT IPC** als unabhängiger Richtungsnachweis, nicht als Personenabgleich. **JV Terrasse TiOC-Panoramabild** und gegebenenfalls **JV Hof/Garage TiOC-Panoramabild** können, nur wenn der konkrete Weg sichtbar ist, mehrere gemeinsame Menschen als Zusatzhinweis dokumentieren. Sie sind kein zusätzlicher Personenzähler und keine Voraussetzung für den P03-Hauptrichtungsnachweis.
 3. **Genaue Personenanzahl:** nur expliziter **kamera-nativer People-Counting-Betrieb**, mit bekanntem Kameramodell, kalibrierter Linie, sauberem Echtzeit-Zählwert und dokumentierten Zweipersonen-Praxistests. Eine **separate, bislang nicht festgestellte** Kamera (idealerweise freie IPC-HFW5442E-ZE mit geeigneter Sicht auf Grundstücksgrenze) könnte Count-Modus nutzen, während die beiden P03-Mastkameras IVS unverändert weiter betreiben.
 4. Solange keine live verifizierte Zählkamera installiert/zugeordnet ist: `individualPeopleCount=UNKNOWN`, `liveStreetExitPersonCount=UNKNOWN`, `propertyEmptyMayBeCertified=false`, `alarmMayBeControlled=false`.
 
