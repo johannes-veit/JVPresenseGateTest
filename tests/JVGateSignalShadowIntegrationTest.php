@@ -813,6 +813,26 @@ checkGate(($live['people']['carina']??null)==='UNKNOWN'
 $readLive=array_slice($GLOBALS['readCalls'],$readsBefore);
 checkGate(!in_array(36910,$readLive,true)&&!in_array(51224,$readLive,true),
     'new Carina display does not read real GPS coordinates');
+$GLOBALS['gateDevices'][41869]['updated']=$now-900;
+$GLOBALS['gateDevices'][28055]['updated']=$now-2;
+$readsBefore=count($GLOBALS['readCalls']);
+$real->Refresh();
+$otherEgi=json_decode((string)$real->GetValue('EvidenceJSON'),true);
+checkGate(($otherEgi['johannesEgiGeoZone']['state']??null)
+    ==='SOURCE_NOT_VERIFIED',
+    'EgiGeoZone timestamp for other zone cannot fake fresh home flag');
+checkGate($real->GetValue('JohannesPresence')
+    ==='WLAN ZUHAUSE (Geofence unbestätigt)',
+    'Johannes conflicting timestamps fall back to WLAN-only, never physical presence');
+$otherEgiRead=array_slice($GLOBALS['readCalls'],$readsBefore);
+checkGate(!in_array(41869,$otherEgiRead,true)
+    &&!in_array(28055,$otherEgiRead,true),
+    'invalid EgiGeoZone timestamp provenance blocks geofence value reads');
+$GLOBALS['gateDevices'][41869]['updated']=$now-15;
+$GLOBALS['gateDevices'][28055]['updated']=$now-15;
+$real->Refresh();
+checkGate($real->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)',
+    'Johannes recovers after consistent two timestamp updates');
 $GLOBALS['gateDevices'][39169]['updated']=$now-1000;
 $GLOBALS['gateDevices'][45666]['updated']=$now-3;
 $readsBefore=count($GLOBALS['readCalls']);
