@@ -712,6 +712,82 @@ $counterMain->MessageSink(time(),54893,10603,[false,true]);
 verifyDiag(($counterMain->attributes['P03HumanEvents']??'')==='[]'
     && ($counterMain->timers['P03ProofTimer']??-1)===0,
     'lost observer StreamOK discards stale camera proof instead of combining across reconnection');
+verifyDiag(($counterMain->values['P03ProofState']??'')
+    ==='BLOCKIERT – Mastkamera-Stream abgebrochen',
+    'P03 correctly marks actual mast outage while stream false');
+
+// Regression: two newly LIVE mast streams must remove only the obsolete
+// dropout message. An old StreamOK true alone is not sufficient: fresh
+// validated ObserverStatus + exact role/host + exclusive socket required.
+$goodJV=[
+ 'role'=>'JV_LEFT','host'=>'192.168.107.96','streamOK'=>true,
+ 'streaming'=>true,'configReady'=>true,'parentOpen'=>true,
+ 'parentExclusive'=>true,'authPending'=>false,'authBlocked'=>false,
+ 'rxAge'=>2
+];
+$goodWORK=[
+ 'role'=>'WORK_LEFT','host'=>'192.168.107.99','streamOK'=>true,
+ 'streaming'=>true,'configReady'=>true,'parentOpen'=>true,
+ 'parentExclusive'=>true,'authPending'=>false,'authBlocked'=>false,
+ 'rxAge'=>2
+];
+$GLOBALS['variables'][54893]=true;
+$GLOBALS['variables'][51090]=true;
+$GLOBALS['variables'][26298]=json_encode($goodJV);
+$GLOBALS['variables'][56881]=json_encode($goodWORK);
+$proofCountBefore=(int)($counterMain->attributes['P03VerifiedCount']??0);
+$counterMain->MessageSink(time(),54893,10603,[true,true]);
+verifyDiag(str_starts_with((string)$counterMain->values['P03ProofState'],
+    'MASTKAMERAS LIVE –'),
+    'on positive StreamOK VM_UPDATE the stale dropout text clears only after both recent camera RX');
+verifyDiag(($counterMain->attributes['P03HumanEvents']??'[]')==='[]'
+    &&($counterMain->attributes['P03VerifiedCount']??0)===$proofCountBefore
+    &&($counterMain->timers['P03ProofTimer']??-1)===0,
+    'recovered streams NEVER resurrect old proof events, restart proof timer or increment transfers');
+$recoveryProtocol=(string)($counterMain->values['Protocol']??'');
+$counterMain->MessageSink(time(),51090,10603,[true,true]);
+verifyDiag((string)($counterMain->values['Protocol']??'')===$recoveryProtocol,
+    'duplicate recovered stream notification is idempotent and does not spam the protocol');
+
+// A stale mast receiving no camera bytes must remain blocked even when
+// both StreamOK booleans and both socket objects are still true.
+$counterMain->values['P03ProofState']='BLOCKIERT – Mastkamera-Stream abgebrochen';
+$badJV=$goodJV;$badJV['rxAge']=156;
+$GLOBALS['variables'][26298]=json_encode($badJV);
+$counterMain->MessageSink(time(),51090,10603,[true,true]);
+verifyDiag($counterMain->values['P03ProofState']
+    ==='BLOCKIERT – Mastkamera-Stream abgebrochen',
+    'stale 156-second RX rejects false recovery even with StreamOK true');
+// A diagnostic with another camera identity must not unblock P03.
+$badJV=$goodJV;$badJV['role']='WORK_LEFT';
+$GLOBALS['variables'][26298]=json_encode($badJV);
+$counterMain->MessageSink(time(),54893,10603,[true,true]);
+verifyDiag($counterMain->values['P03ProofState']
+    ==='BLOCKIERT – Mastkamera-Stream abgebrochen',
+    'wrong camera role in observer diagnostic cannot release the block');
+// A shared/unknown parent is never accepted as healthy two-camera proof.
+$badJV=$goodJV;$badJV['parentExclusive']=false;
+$GLOBALS['variables'][26298]=json_encode($badJV);
+$counterMain->MessageSink(time(),54893,10603,[true,true]);
+verifyDiag($counterMain->values['P03ProofState']
+    ==='BLOCKIERT – Mastkamera-Stream abgebrochen',
+    'nonexclusive socket report cannot silently release the block');
+// Test disabled: no automatic rearming or extra person event on recovery.
+$GLOBALS['variables'][26298]=json_encode($goodJV);
+$counterMain->attributes['TestActive']=false;
+$counterMain->attributes['ProductionEnabled']=false;
+$counterMain->P03MastHealthTimer();
+verifyDiag(str_starts_with((string)$counterMain->values['P03ProofState'],
+    'MASTKAMERAS LIVE –')
+    &&$counterMain->attributes['TestActive']===false
+    &&$counterMain->attributes['ProductionEnabled']===false,
+    '15-second health timer recovers lost positive notification without activating production/test');
+// An unrelated security block must NOT be changed to a positive status.
+$counterMain->values['P03ProofState']='BLOCKIERT – Mastkameras/Observer nicht sicher zugeordnet';
+$counterMain->P03MastHealthTimer();
+verifyDiag($counterMain->values['P03ProofState']
+    ==='BLOCKIERT – Mastkameras/Observer nicht sicher zugeordnet',
+    'unrelated camera security block remains unchanged after watchdog');
 
 // Confirm a real previously permanent 500-ms proof timer is stopped
 // when no two-camera sequence exists, and when test/production are OFF.
