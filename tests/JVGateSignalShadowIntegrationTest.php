@@ -68,6 +68,8 @@ function IPS_GetObject(int $id):array{
     if($id>=100000&&isset($GLOBALS['gateDevices'][$id-100000]))
         return ['ParentID'=>200000];
     if($id===200000)return ['ParentID'=>0];
+    if($id>=8001&&$id<=8005)return ['ParentID'=>300000];
+    if($id===300000)return ['ParentID'=>0];
     throw new RuntimeException('object unknown');
 }
 function IPS_GetName(int $id):string{
@@ -75,6 +77,12 @@ function IPS_GetName(int $id):string{
     if($id>=100000&&isset($GLOBALS['gateDevices'][$id-100000]))
         return $GLOBALS['gateDevices'][$id-100000]['parent'];
     if($id===200000)return 'Schiebetor_Logik';
+    if($id===300000)return 'Vorhandene Dahua-Kameras';
+    if($id===8001)return 'Dahua Kamera Torhalle Strasse';
+    if($id===8002)return 'Dahua Kamera JV rechts';
+    if($id===8003)return 'Dahua Kamera WORK_LEFT';
+    if($id===8004)return 'TiOC Kamera Hof';
+    if($id===8005)return 'LCN Eingang 103';
     throw new RuntimeException('name unknown');
 }
 function GetValue(int $id):mixed{
@@ -84,6 +92,19 @@ function GetValue(int $id):mixed{
 }
 // This is invoked only inside P03's optional lookup try/catch.
 function IPS_GetInstance(int $id):array{throw new RuntimeException('no P03 fixture');}
+function IPS_GetInstanceList():array{return [8001,8002,8003,8004,8005];}
+function IPS_GetConfiguration(int $id):string{
+    return match($id){
+        8001=>json_encode(['Host'=>'192.168.107.98',
+            'Password'=>'PRIVATE_CAMERA_PASSWORD_NEVER_OUTPUT']),
+        8002=>json_encode(['CameraHost'=>'192.168.107.96',
+            'Password'=>'HIDDEN_ANOTHER_SECRET']),
+        8003=>json_encode(['Host'=>'192.168.107.95']),
+        8004=>json_encode(['Host'=>'192.168.107.111']),
+        8005=>json_encode(['Host'=>'192.168.103.45']),
+        default=>'{}'
+    };
+}
 
 require_once dirname(__DIR__).'/JVPresenceIdentityShadow/module.php';
 function checkGate(bool $true,string $name):void{
@@ -99,6 +120,22 @@ $raw=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 checkGate(($raw['candidateCount']??null)===7,'find seven from fixture');
 checkGate($GLOBALS['readCalls']===[],'candidate scan reads metadata not values');
 $m->AuditExistingGateSignals();
+// Existing button 6: first scan camera-looking names, then ONLY known
+// camera-host configuration fields. Never send config or passwords to JSON.
+$readsBeforeCameraAudit=count($GLOBALS['readCalls']);
+$m->AuditOtherIPCCandidates();
+$camScan=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($camScan['authority']??null)==='ADDITIONAL_IPC_LOCAL_METADATA_ONLY',
+    'existing IPC metadata scan action remains unchanged');
+checkGate(($camScan['qualifiedOtherIpcFoundInSymcon']??null)===2,
+    'two extra camera hosts matched local configuration metadata');
+checkGate(($camScan['qualifiedOtherIpcCandidates'][0]['ip']??null)
+    ==='192.168.107.98','street-side additional camera ranked first');
+checkGate(!str_contains(json_encode($camScan),'PRIVATE_CAMERA_PASSWORD_NEVER_OUTPUT')
+    &&!str_contains(json_encode($camScan),'HIDDEN_ANOTHER_SECRET'),
+    'never print Symcon camera passwords');
+checkGate(count($GLOBALS['readCalls'])===$readsBeforeCameraAudit,
+    'camera scan never reads camera device variables');
 // Indoor candidate discovery reads metadata only, never device states,
 // and cannot change the established gate watch or GUS configuration.
 $readsBeforeIndoorScan=count($GLOBALS['readCalls']);
@@ -113,6 +150,14 @@ checkGate(count($GLOBALS['readCalls'])===$readsBeforeIndoorScan,
 $m->Refresh();
 
 $data=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($data['qualifiedAdditionalIPCInventory']['otherIpcFoundInSymcon']??null)===2,
+    'qualified IPC metadata persists through periodic Refresh');
+checkGate(($data['cameraCapabilityPriority']['additionalIpcCandidatesConfiguredInSymcon'][0]['ip']??null)
+    ==='192.168.107.98','existing street IPC candidate leads supplemental list');
+checkGate(($data['supplementaryIpcEventEvidence']['numberOfPeople']??null)==='UNKNOWN',
+    'without preexisting extra IPC AUX event strings no people count invented');
+checkGate(($data['supplementaryIpcEventEvidence']['supplementaryHumanHint']??null)===false,
+    'no invented live human event for unmatched additional IPC sources');
 checkGate(($data['gateSignalAudit']['signalCount']??null)===7,'manual audit samples 7');
 checkGate(($data['gateSignalAudit']['readableSignals']??null)===7,'all 7 read');
 checkGate(($data['gateDisplay']['positionHint']??null)==='ZWISCHENSTELLUNG_ODER_FAHRT',

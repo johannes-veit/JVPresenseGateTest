@@ -70,6 +70,8 @@ jobs:
         run: php tests/JVCameraCapabilityPriorityTest.php
       - name: Passive inventory of additional IPC camera instances
         run: php tests/JVAdditionalIPCInventoryTest.php
+      - name: Qualified installed IPC addresses and passive IVS evidence fail closed
+        run: php tests/JVKnownIpcMetadataTest.php
       - name: Property boundary signal health and exit variable metadata discovery
         run: php tests/JVBoundaryEvidenceTest.php
       - name: Prioritized exit-status candidate filter and false-positive regression
