@@ -98,6 +98,8 @@ jobs:
         run: php tests/JVCombinedPresenceBooleanTest.php
       - name: Company WLAN exact SSIDs, iOS/Android sources, stale and overlap safety
         run: php tests/JVCompanyWiFiEvidenceTest.php
+      - name: Standalone secure phone SSID WebHook script installer is idempotent
+        run: php tests/JVPhoneWiFiBridgeInstallerTest.php
       - name: Combined anonymous WLAN GUS P03 gate indoor occupancy evaluation
         run: php tests/JVCombinedPresenceEvidenceTest.php
       - name: Fifteen verified real LCN GUS inventory imports and collision protection
