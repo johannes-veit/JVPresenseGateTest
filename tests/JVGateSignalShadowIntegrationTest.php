@@ -521,7 +521,10 @@ checkGate(($wlanData['people']['johannes']??null)==='UNKNOWN'
     &&($wlanData['propertyEmptyMayBeCertified']??null)===false,
     'both phones online never assert two people present nor empty premises');
 checkGate($wlanMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected'],
-    'read-only phone integration does not allocate a new Symcon variable');
+    'read-only phone integration does not allocate further variables');
+checkGate($wlanMod->GetValue('PresenceDetected')===false
+    &&($wlanData['presenceDetected']['notDetectedDoesNotMeanEmpty']??false)===true,
+    'two WLAN devices ALONE must not claim occupancy or empty property');
 $GLOBALS['gateDevices'][38430]['value']=false;
 $wlanMod->Refresh();
 $off=json_decode((string)$wlanMod->GetValue('EvidenceJSON'),true);
@@ -706,6 +709,10 @@ checkGate(($both['people']['carina']??null)==='UNKNOWN'
 checkGate($carGeoMod->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)'
     &&$carGeoMod->GetValue('CarinaPresence')==='ANWESEND (Handyhinweis)',
     'both requested status values show confirmed smartphone device proximity');
+checkGate($carGeoMod->GetValue('PresenceDetected')===true
+    &&($both['presenceDetected']['detected']??false)===true
+    &&($both['presenceDetected']['mayArmAlarm']??true)===false,
+    'combined Boolean detects both fresh devices, cannot trigger alarm');
 checkGate(($both['residentDisplay']['people']['carina']['personPhysicallyHomeCertified']??true)===false,
     'new display cannot claim physical resident identification');
 $readNew=array_slice($GLOBALS['readCalls'],$readsBefore);
@@ -720,6 +727,8 @@ checkGate(($conflict['carinaGeofency']['outsideRecent']??null)===true
     ==='WLAN_ON_GEOFENCY_OUT_REVIEW_ONLY'
     &&($conflict['people']['carina']??null)==='UNKNOWN',
     'Carina outside while WLAN true is conflict review, never absent');
+checkGate($carGeoMod->GetValue('PresenceDetected')===true,
+    'Carina conflict does not cancel independent Johannes positive proof');
 checkGate($carGeoMod->GetValue('CarinaPresence')==='WIDERSPRUCH (WLAN / Geofence)',
     'conflicting source shown without claiming away');
 $GLOBALS['gateDevices'][63001]['value']=$now-22000;
@@ -856,6 +865,8 @@ $real->Refresh();
 checkGate($real->GetValue('JohannesPresence')==='NICHT BESTÄTIGT'
     &&$real->GetValue('CarinaPresence')==='NICHT BESTÄTIGT',
     'disabled instance immediately clears earlier positive phone displays');
+checkGate($real->GetValue('PresenceDetected')===false,
+    'SHADOW disabled sets combined Boolean back to NO');
 checkGate($real->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected'],
     'exactly two additional user-requested instance variables');
 
@@ -884,6 +895,8 @@ checkGate(($zeroUpgrade['carinaGeofency']['state']??null)
 checkGate($legacy->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)'
     &&$legacy->GetValue('CarinaPresence')==='ANWESEND (Handyhinweis)',
     'legacy upgrades show both user-requested display states without manual IDs');
+checkGate($legacy->GetValue('PresenceDetected')===true,
+    'legacy Carina 0/0/0 fallback also contributes to general detection');
 $readsLegacy=array_slice($GLOBALS['readCalls'],$readsBefore);
 checkGate(in_array(39169,$readsLegacy,true)&&in_array(45666,$readsLegacy,true)
     &&!in_array(36910,$readsLegacy,true)&&!in_array(51224,$readsLegacy,true),
