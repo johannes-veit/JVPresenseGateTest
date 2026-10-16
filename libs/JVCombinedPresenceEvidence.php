@@ -18,7 +18,7 @@ final class JVCombinedPresenceEvidence
 
     public static function evaluate(
         array $wlan,array $home,array $p03,array $boundary,
-        array $gate,array $indoor,int $now,array $geofence=[],array $carinaGeofency=[]
+        array $gate,array $indoor,int $now,array $geofence=[],array $carinaGeofency=[],array $workWiFi=[]
     ):array {
         $data=[
             'schema'=>self::SCHEMA,
@@ -47,6 +47,9 @@ final class JVCombinedPresenceEvidence
             'indoorReadOnlySourceCount'=>0,
             'indoorOnCount'=>0,
             'indoorDevicesOffProveAbsence'=>false,
+            'firmWorkWifiPhoneCount'=>0,
+            'workSSIDDoesNotProveHumanLocation'=>true,
+            'shared150mGeofenceCannotDistinguishWorkFromHome'=>true,
             'carinaGeofencyContext'=>'DISABLED_OR_UNVERIFIED',
             'carinaWlanGeofencyCrossCheck'=>'NOT_AVAILABLE',
             'bothPhoneGeofencesNearHome'=>false,
@@ -137,6 +140,15 @@ final class JVCombinedPresenceEvidence
             &&($geofence['outsideRecent']??null)===false;
         $geoOutside=$geoAuthorized &&($geofence['outsideRecent']??null)===true
             &&($geofence['insideRecent']??null)===false;
+        $workAuthorized=($workWiFi['schema']??null)===1
+            &&($workWiFi['authority']??null)==='PHONE_CURRENT_SSID_READ_ONLY_WORK_CONTEXT'
+            &&($workWiFi['enabled']??false)===true;
+        $johannesWork=$workAuthorized
+            &&($workWiFi['people']['johannes']['workRecent']??false)===true;
+        $carinaWork=$workAuthorized
+            &&($workWiFi['people']['carina']['workRecent']??false)===true;
+        $workCount=(int)$johannesWork+(int)$carinaWork;
+        $data['firmWorkWifiPhoneCount']=$workCount;
         $johannesWlan=($wlan['people']['johannes']['recentMacEvidence']??false)===true;
         if($geoAuthorized){
             $data['johannesGeofenceRadiusMeters']=$geofence['radiusMetersConfiguredInPhoneApp'];
@@ -180,7 +192,14 @@ final class JVCombinedPresenceEvidence
                         :'GEOFENCY_OUT_WLAN_NOT_CONFIRMED_NOT_ABSENCE')
                     :'STALE_GEOFENCY_NOT_USED');
         }
-        $data['bothPhoneGeofencesNearHome']=$geoInside&&$carinaInside;
+        // Work SSID defeats any HOME inference from broad shared geofence.
+        if($johannesWork)
+            $data['johannesWlanGeofenceCrossCheck']='FIRMA_SSID_OVERLAPS_HOME_GEOFENCE_NO_HOME_PROOF';
+        if($carinaWork)
+            $data['carinaWlanGeofencyCrossCheck']='FIRMA_SSID_OVERLAPS_HOME_GEOFENCE_NO_HOME_PROOF';
+        $geoHomeCandidate=$geoInside&&!$johannesWork;
+        $carinaHomeCandidate=$carinaInside&&!$carinaWork;
+        $data['bothPhoneGeofencesNearHome']=$geoHomeCandidate&&$carinaHomeCandidate;
         if($count>0&&$recent) {
             $data['status']=$strong
                 ?'HOUSE_ACTIVITY_WITH_WLAN_DEVICE_CORROBORATED'
@@ -192,28 +211,33 @@ final class JVCombinedPresenceEvidence
         }elseif($recent){
             $data['status']='HOUSE_ACTIVITY_WITHOUT_FRESH_WLAN';
             $data['description']='GUS-Bewegung im Haus trotz fehlendem aktuellem WLAN-Handy-Nachweis. Das Handy darf nicht als abwesende Person gelten.';
+        }elseif($workCount>0
+            &&!($geoHomeCandidate&&$johannesWlan)
+            &&!($carinaHomeCandidate&&$carinaWlan)){
+            $data['status']='PHONE_ON_FIRMEN_WIFI_HOME_NOT_CONFIRMED';
+            $data['description']='Aktuelles Smartphone-SSID im Firmen-WLAN erkannt; gemeinsamer 150-m-Geofence umfasst Firma und Zuhause. HOME nicht aus diesem Handy ableiten. Andere Bewohner oder Hausbewegungen bleiben möglich.';
         }elseif($count>0){
-            $data['status']=$geoInside&&$carinaInside&&$johannesWlan&&$carinaWlan
+            $data['status']=$geoHomeCandidate&&$carinaHomeCandidate&&$johannesWlan&&$carinaWlan
                 ?'BOTH_PHONES_WLAN_AND_GEOFENCE_NEAR_HOME_NO_MOTION'
-                :($carinaInside&&$carinaWlan
+                :($carinaHomeCandidate&&$carinaWlan
                     ?'CARINA_WLAN_GEOFENCY_DEVICE_NEAR_HOME_NO_RECENT_MOTION'
-                    :($geoInside&&$johannesWlan
+                    :($geoHomeCandidate&&$johannesWlan
                 ?'JOHANNES_WLAN_GEOFENCE_DEVICE_NEAR_HOME_NO_RECENT_MOTION'
                 :'WLAN_DEVICES_ONLY_NO_RECENT_HOME_MOTION'));
-            $data['description']=$geoInside&&$carinaInside&&$johannesWlan&&$carinaWlan
+            $data['description']=$geoHomeCandidate&&$carinaHomeCandidate&&$johannesWlan&&$carinaWlan
                 ?'Beide Smartphones über WLAN und frische App-Geofences nahe Zuhause gemeldet; keine aktuelle GUS-Bewegung. Keine Personenidentität bewiesen.'
-                :($carinaInside&&$carinaWlan
+                :($carinaHomeCandidate&&$carinaWlan
                     ?'Carinas iPhone via WLAN und Geofency nahe Zuhause gemeldet; ohne aktuelle GUS-Bewegung. Kein sicherer Personennachweis.'
-                    :($geoInside&&$johannesWlan
+                    :($geoHomeCandidate&&$johannesWlan
                         ?'Johannes Smartphone via WLAN und gemeldetem 150-m-Geofence nahe Haus; keine aktuelle GUS-Bewegung. Telefon ist kein Personenbeweis.'
                         :'Smartphone(s) im WLAN, aber keine aktuelle bestätigte Hausbewegung. Auch liegengebliebene Handys möglich.'));
         }elseif($data['p03RecentDirection']==='LAGER_TO_HOME'){
             $data['status']='P03_HOME_ENTRY_DIRECTION_ONLY';
             $data['description']='Frischer P03-Richtungsnachweis Lager nach Haus, ohne Identität oder Personenzahl.';
-        }elseif($carinaInside){
+        }elseif($carinaHomeCandidate){
             $data['status']='CARINA_GEOFENCY_PHONE_NEAR_HOME_ONLY';
             $data['description']='Geofency hat das iPhone in der Zuhause-Zone gemeldet, ohne aktuelle GUS-/WLAN-Bestaetigung. Keine sichere Personenerkennung.';
-        }elseif($geoInside){
+        }elseif($geoHomeCandidate){
             $data['status']='JOHANNES_GEOFENCE_PHONE_NEAR_HOME_ONLY';
             $data['description']='EgiGeoZone hat das Smartphone innerhalb des Zuhause-Geofences gemeldet, ohne aktuellen WLAN-/GUS-Nachweis. Keine Bewohneridentitaet oder sichere Anwesenheit.';
         }elseif($data['indoorOnCount']>0){
