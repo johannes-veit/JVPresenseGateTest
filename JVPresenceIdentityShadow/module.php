@@ -26,6 +26,7 @@ require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
 require_once dirname(__DIR__).'/libs/JVResidentPresenceDisplay.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
+require_once dirname(__DIR__).'/libs/JVCompanyWiFiEvidence.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -75,6 +76,14 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterPropertyInteger('JohannesWLANLastContactID',26497);
         $this->RegisterPropertyInteger('CarinaWLANBoolID',38430);
         $this->RegisterPropertyInteger('CarinaWLANLastContactID',10760);
+        // WORK source is NOT inferred from home MAC, VLAN/IP or geofence.
+        // Disabled until actual phone-specific CURRENT SSID String sources
+        // are available. No AP/controller credentials or new actions.
+        $this->RegisterPropertyBoolean('EnableWorkWiFiHints',false);
+        $this->RegisterPropertyInteger('JohannesSSIDVariableID',0);
+        $this->RegisterPropertyInteger('JohannesSSIDParentID',0);
+        $this->RegisterPropertyInteger('CarinaSSIDVariableID',0);
+        $this->RegisterPropertyInteger('CarinaSSIDParentID',0);
         // Johannes' separately configured Android EgiGeoZone: SHADOW only
         // reads two existing child variables of the verified Symcon device.
         // The 150 m radius is an app setting, NOT verified via these values.
@@ -1127,6 +1136,72 @@ class JVPresenceIdentityShadow extends IPSModule
         }catch(Throwable $ignored){return $none;}
     }
 
+
+    /**
+     * ONLY existing phone-specific CURRENT SSID string variables.
+     * Do not mistake an AP/SSID nearby for a phone connected to that SSID,
+     * or a Shelly device WifiSSID as either resident's handset.
+     * No ping, ARP, VLAN scan, UniFi API, hook, action, event or writes.
+     */
+    private function readWorkWiFiSSIDs():array
+    {
+        $pairs=[
+            'johannes'=>[
+                'variableID'=>$this->ReadPropertyInteger('JohannesSSIDVariableID'),
+                'parentID'=>$this->ReadPropertyInteger('JohannesSSIDParentID')
+            ],
+            'carina'=>[
+                'variableID'=>$this->ReadPropertyInteger('CarinaSSIDVariableID'),
+                'parentID'=>$this->ReadPropertyInteger('CarinaSSIDParentID')
+            ]
+        ];
+        $out=[];
+        $j=$pairs['johannes']['variableID'];
+        $c=$pairs['carina']['variableID'];
+        // One generic SSID source must never falsely identify BOTH phones.
+        if($j>0 && $c>0 && $j===$c)
+            return ['johannes'=>['verified'=>false],
+                'carina'=>['verified'=>false]];
+        foreach($pairs as $person=>$pair){
+            $out[$person]=['verified'=>false];
+            $id=$pair['variableID'];$parent=$pair['parentID'];
+            if($id<=0||$parent<=0||$id===$parent)continue;
+            try{
+                if(!IPS_VariableExists($id))continue;
+                $name=(string)IPS_GetName($id);
+                if(!in_array($name,['WifiSSID','WLAN SSID','WLAN-SSID',
+                    'Aktuelle SSID'],true))continue;
+                $meta=IPS_GetVariable($id);
+                $updated=$meta['VariableUpdated']??null;
+                if(($meta['VariableType']??null)!==3
+                    ||!is_int($updated)||$updated<=0
+                    ||$updated>time()+5)continue;
+                if((int)(IPS_GetObject($id)['ParentID']??0)!==$parent)
+                    continue;
+                $obj=IPS_GetObject($parent);
+                $root=(int)($obj['ParentID']??0);
+                $parentName=(string)IPS_GetName($parent);
+                // Known genuine device identities OR clearly person-named
+                // custom reporter containers; never accept a generic
+                // Shelly, AP or another resident's phone source.
+                $knownDevice=$person==='johannes'
+                    ?($parent===50000&&$root===35965)
+                    :($parent===45439&&$root===48903);
+                $namedPhone=preg_match(
+                    '/(?:^|[^a-z])'.preg_quote($person,'/').'(?:$|[^a-z])/iu',
+                    $parentName
+                )===1;
+                if(!$knownDevice&&!$namedPhone)continue;
+                $value=GetValue($id);
+                if(!is_string($value))continue;
+                $out[$person]=[
+                    'verified'=>true,'ssid'=>$value,'updatedAt'=>$updated
+                ];
+            }catch(Throwable $ignored){}
+        }
+        return $out;
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
@@ -1262,6 +1337,11 @@ class JVPresenceIdentityShadow extends IPSModule
         );
         if($wlan['warnings'])
             $warnings=array_merge($warnings,$wlan['warnings']);
+        $workEnabled=$this->ReadPropertyBoolean('EnableWorkWiFiHints');
+        $workWiFi=JVCompanyWiFiEvidence::evaluate(
+            $workEnabled?$this->readWorkWiFiSSIDs():[],
+            time(),$workEnabled
+        );
         // Separate app-reported 150m handset location, opt-in and read-only.
         // Neither geo OUT nor no update can automatically set away/alarm.
         $egiEnabled=$this->ReadPropertyBoolean('EnableJohannesEgiGeoZone');
@@ -1396,7 +1476,7 @@ class JVPresenceIdentityShadow extends IPSModule
         // or any person presence/absence, and never writes to other modules.
         $combined=JVCombinedPresenceEvidence::evaluate(
             $wlan,$houseObservation,$p03Timeline['report'],
-            $boundary['report'],$gateDisplay,$indoorHints,time(),$egi,$carinaGeo
+            $boundary['report'],$gateDisplay,$indoorHints,time(),$egi,$carinaGeo,$workWiFi
         );
         $houseObservation['combinedContextStatus']=$combined['status'];
         $houseObservation['combinedContextAuthority']=$combined['authority'];
@@ -1414,11 +1494,11 @@ class JVPresenceIdentityShadow extends IPSModule
         // Device-derived per-resident display is NEVER a physical
         // identification or permission for alarm/presence commands.
         $residentDisplay=JVResidentPresenceDisplay::evaluate(
-            $wlan,$egi,$carinaGeo
+            $wlan,$egi,$carinaGeo,$workWiFi
         );
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
             $combined,$houseObservation,$wlan,$egi,$carinaGeo,
-            $p03Timeline['report'],$gateDisplay,$indoorHints,time()
+            $p03Timeline['report'],$gateDisplay,$indoorHints,time(),$workWiFi
         );
         // Existing gate display is context only, NOT a verified exit route.
         $boundary['report']['existingGateDisplay']=$gateDisplay;
@@ -1452,6 +1532,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'johannesEgiGeoZone'=>$egi,
             'carinaGeofency'=>$carinaGeo,
             'residentDisplay'=>$residentDisplay,
+            'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
             'carinaGeofencyInventory'=>json_decode($this->readShadowState('CarinaGeofencyInventory'),true),
             'localSensors'=>$local,
@@ -1535,6 +1616,7 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | Carina Geofency: '.($carinaGeoEnabled
                 ?$carinaGeo['state'].' ('.$carinaGeo['selectionStatus'].')'
                 :'AUS')
+            .' | Firmen-WLAN Handys: '.$workWiFi['workPhoneCount']
             .' | Anwesenheit erkannt: '.($presenceDetected['detected']?'JA':'NEIN')
             .' (NEIN = kein aktueller positiver Nachweis, NICHT leer)'
             .' | Abwesenheit: NICHT BESTAETIGT'
