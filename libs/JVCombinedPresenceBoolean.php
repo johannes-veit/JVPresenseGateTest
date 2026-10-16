@@ -17,7 +17,7 @@ final class JVCombinedPresenceBoolean
 
     public static function evaluate(
         array $combined,array $home,array $wlan,array $johannesGeo,
-        array $carinaGeo,array $p03,array $gate,array $indoor,int $now
+        array $carinaGeo,array $p03,array $gate,array $indoor,int $now,array $workWiFi=[]
     ):array {
         $result=[
             'schema'=>1,
@@ -38,6 +38,8 @@ final class JVCombinedPresenceBoolean
                 'carinaHomeGeofenceRecent'=>false,
                 'indoorLightsOrTvOn'=>0,
                 'gatePosition'=>'UNKNOWN',
+                'johannesWorkWifiRecent'=>false,
+                'carinaWorkWifiRecent'=>false,
                 'gateIsNotEntryOrExitProof'=>true
             ],
             'notDetectedDoesNotMeanEmpty'=>true,
@@ -112,9 +114,21 @@ final class JVCombinedPresenceBoolean
                 &&($geo['validatedSource']??false)===true
                 &&($geo['insideRecent']??false)===true
                 &&($geo['outsideRecent']??false)===false;
+            // The 150 m geofence includes HOME and WORK. A recent,
+            // personally associated exact WORK SSID defeats any inference
+            // that WLAN+the broad geofence jointly locate THIS phone HOME.
+            $work=($workWiFi['schema']??null)===1
+                &&($workWiFi['authority']??null)==='PHONE_CURRENT_SSID_READ_ONLY_WORK_CONTEXT'
+                &&($workWiFi['enabled']??false)===true
+                &&($workWiFi['people'][$person]['workRecent']??false)===true;
+            $result['sources'][$person.'WorkWifiRecent']=$work;
+            if($work)$result['supportingContext'][]=strtoupper($person)
+                .'_PHONE_ON_COMPANY_WIFI_NOT_HOME_PROOF';
             $result['sources'][$person.'WlanRecent']=$onWlan;
             $result['sources'][$person.'HomeGeofenceRecent']=$onGeo;
-            $pair=$onWlan&&$onGeo;
+            $pair=$onWlan&&$onGeo&&!$work;
+            if($work&&$onWlan)
+                $result['warnings'][]=strtoupper($person).'_HOME_WLAN_WORK_SSID_CONFLICT';
             $result['sources'][$person.'WlanAndHomeGeofence']=$pair;
             if($pair)$result['positiveReasons'][]=strtoupper($person)
                 .'_WLAN_AND_GEOFENCE_HOME_PHONE_HINT';

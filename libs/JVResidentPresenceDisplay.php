@@ -11,7 +11,7 @@ declare(strict_types=1);
 final class JVResidentPresenceDisplay
 {
     public static function evaluate(array $wlan,array $johannesGeo,
-        array $carinaGeo):array
+        array $carinaGeo,array $workWiFi=[]):array
     {
         $people=[];
         foreach(['johannes','carina'] as $person){
@@ -38,7 +38,14 @@ final class JVResidentPresenceDisplay
             $geofenceOld=$geoOK
                 &&($geo['geofenceReportedInside']??null)===true
                 &&!$inside;
-            if($wlanNear&&$outside){
+            $verifiedWork=($workWiFi['schema']??null)===1
+                &&($workWiFi['authority']??null)==='PHONE_CURRENT_SSID_READ_ONLY_WORK_CONTEXT'
+                &&($workWiFi['enabled']??false)===true
+                &&($workWiFi['people'][$person]['workRecent']??false)===true;
+            if($verifiedWork){
+                $status='WORK (Firmen-WLAN-Handy)';
+                $evidence='RECENT_VERIFIED_WORK_SSID_HANDSET_ONLY';
+            }elseif($wlanNear&&$outside){
                 $status='WIDERSPRUCH (WLAN / Geofence)';
                 $evidence='CONFLICT_NO_RESIDENT_LOCATION';
             }elseif($wlanNear&&$inside){
@@ -61,6 +68,7 @@ final class JVResidentPresenceDisplay
             $people[$person]=[
                 'display'=>$status,'evidence'=>$evidence,
                 'freshWlanHandset'=>$wlanNear,
+                'currentWorkWifiHandset'=>$verifiedWork,
                 'freshInsideGeofenceHandset'=>$inside,
                 'geofenceOutsideHandset'=>$outside,
                 'personPhysicallyHomeCertified'=>false,

@@ -89,6 +89,7 @@ function IPS_GetObject(int $id):array{
     if($id===50000)return ['ParentID'=>35965];
     if($id===62000)return ['ParentID'=>61000];
     if($id===45439)return ['ParentID'=>48903];
+    if($id===200100||$id===200101)return ['ParentID'=>300000];
     if(isset($GLOBALS['gateDevices'][$id]))return ['ParentID'=>
         $GLOBALS['gateDevices'][$id]['pairedParent']??($id+100000)];
     if($id>=100000&&isset($GLOBALS['gateDevices'][$id-100000]))
@@ -106,6 +107,8 @@ function IPS_GetName(int $id):string{
     if($id===200001)return 'Licht';
     if($id===300000)return 'Vorhandene Dahua-Kameras';
     if($id===62000)return 'Device';
+    if($id===200100)return 'Johannes Smartphone SSID Quelle';
+    if($id===200101)return 'Carina Smartphone SSID Quelle';
     if($id===8001)return 'Dahua Kamera Torhalle Strasse';
     if($id===8002)return 'Dahua Kamera JV rechts';
     if($id===8003)return 'Dahua Kamera WORK_LEFT';
@@ -909,4 +912,85 @@ checkGate(($wrongMix['carinaGeofency']['state']??null)==='SOURCE_NOT_VERIFIED',
 checkGate($legacy->GetValue('CarinaPresence')
     ==='WLAN ZUHAUSE (Geofence unbestätigt)',
     'bad source mapping remains non-authoritative and never claims person AWAY');
+
+// The two company SSIDs are NOT present as live Symcon variables in the
+// actual installation yet. Mock a future authenticated per-phone reporter,
+// never read generic Shelly WifiSSID or an AP beacon as personal presence.
+$now=time();
+$GLOBALS['gateDevices'][60501]=[
+    'name'=>'WifiSSID','parent'=>'Johannes Smartphone SSID Quelle','type'=>3,
+    'pairedParent'=>200100,'value'=>'Intern-Veit',
+    'changed'=>$now-30,'updated'=>$now-30
+];
+$GLOBALS['gateDevices'][60502]=[
+    'name'=>'WifiSSID','parent'=>'Carina Smartphone SSID Quelle','type'=>3,
+    'pairedParent'=>200101,'value'=>'Privat-Veit',
+    'changed'=>$now-25,'updated'=>$now-25
+];
+$GLOBALS['gateDevices'][60503]=[
+    'name'=>'WifiSSID','parent'=>'Shelly Steckdose','type'=>3,
+    'pairedParent'=>200100,'value'=>'Intern-Veit',
+    'changed'=>$now-8,'updated'=>$now-8
+];
+$firm=new JVPresenceIdentityShadow();
+$firm->Create();
+$firm->setProp('Enabled',true);
+$firm->setProp('P03InstanceID',0);
+$firm->setProp('SensorSources','[]');
+$firm->setProp('EnableExistingWLANHints',true);
+$firm->setProp('EnableJohannesEgiGeoZone',true);
+$firm->setProp('EnableCarinaGeofencyHints',true);
+$firm->Refresh();
+$pre=json_decode((string)$firm->GetValue('EvidenceJSON'),true);
+checkGate(($pre['workWiFi']['enabled']??true)===false
+    &&$firm->GetValue('PresenceDetected')===true,
+    'default disabled SSID integration preserves v0.8.50 home behavior');
+$firm->setProp('JohannesSSIDVariableID',60501);
+$firm->setProp('JohannesSSIDParentID',200100);
+$firm->setProp('CarinaSSIDVariableID',60502);
+$firm->setProp('CarinaSSIDParentID',200101);
+$firm->setProp('EnableWorkWiFiHints',true);
+$readsBefore=count($GLOBALS['readCalls']);
+$firm->Refresh();
+$atFirm=json_decode((string)$firm->GetValue('EvidenceJSON'),true);
+checkGate(($atFirm['workWiFi']['workPhoneCount']??null)===2
+    &&$firm->GetValue('JohannesPresence')==='WORK (Firmen-WLAN-Handy)'
+    &&$firm->GetValue('CarinaPresence')==='WORK (Firmen-WLAN-Handy)',
+    'exact two phone SSIDs report company as WORK, not HOME');
+checkGate($firm->GetValue('PresenceDetected')===false
+    &&($atFirm['combinedPresenceEvidence']['status']??null)
+      ==='PHONE_ON_FIRMEN_WIFI_HOME_NOT_CONFIRMED',
+    'oversized shared geofence cannot create false HOME when both phones on work SSIDs');
+$readFirm=array_slice($GLOBALS['readCalls'],$readsBefore);
+checkGate(in_array(60501,$readFirm,true)&&in_array(60502,$readFirm,true)
+    &&!in_array(60503,$readFirm,true),
+    'only explicitly configured phone SSID sources read, no generic Shelly');
+$GLOBALS['gateDevices'][60501]['value']='Veit-FilzenerWeg';
+$GLOBALS['gateDevices'][60501]['updated']=$now-4;
+$firm->Refresh();
+checkGate($firm->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)'
+    &&$firm->GetValue('CarinaPresence')==='WORK (Firmen-WLAN-Handy)'
+    &&$firm->GetValue('PresenceDetected')===true,
+    'one phone at home preserves HOME while other correctly stays at work');
+$GLOBALS['gateDevices'][60501]['value']='Intern-Veit';
+$GLOBALS['gateDevices'][60501]['updated']=$now-1000;
+$firm->Refresh();
+$aged=json_decode((string)$firm->GetValue('EvidenceJSON'),true);
+checkGate(($aged['workWiFi']['people']['johannes']['workRecent']??true)===false,
+    'stale work SSID never claims phone is still in office');
+$GLOBALS['gateDevices'][60501]['updated']=$now-8;
+$GLOBALS['gateDevices'][60501]['pairedParent']=200101;
+$readsBefore=count($GLOBALS['readCalls']);
+$firm->Refresh();
+$badParent=json_decode((string)$firm->GetValue('EvidenceJSON'),true);
+checkGate(($badParent['workWiFi']['people']['johannes']['workRecent']??true)===false
+    &&!in_array(60501,array_slice($GLOBALS['readCalls'],$readsBefore),true),
+    'different phone parent blocks SSID value BEFORE reading');
+$firm->setProp('EnableWorkWiFiHints',false);
+$readsBefore=count($GLOBALS['readCalls']);
+$firm->Refresh();
+$offFirm=json_decode((string)$firm->GetValue('EvidenceJSON'),true);
+checkGate(($offFirm['workWiFi']['enabled']??true)===false
+    &&!in_array(60502,array_slice($GLOBALS['readCalls'],$readsBefore),true),
+    'opt-out reads no phone SSIDs and does not break existing geo sources');
 echo "Gate Shadow integration / initialization 101->102, failure 201 recovery PASS\n";

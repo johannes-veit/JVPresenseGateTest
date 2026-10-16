@@ -95,6 +95,54 @@
     },
     {
       "type": "ExpansionPanel",
+      "caption": "WORK: Firmen-WLAN Intern-Veit / Privat-Veit (vorbereitet, NUR LESEN)",
+      "expanded": false,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Firmen-WLANs aus den bisherigen Gesprächen: Intern-Veit und Privat-Veit = WORK (VLAN 2). Privat-Veit-EXT erreicht auch den privaten Außenbereich und gilt NICHT als eindeutiger Arbeitsnachweis. Zuhause: Veit-FilzenerWeg. Ein aktueller exakter Firmen-SSID-Wert ist pro Smartphone erforderlich. MAC/ARP, die 150-m-Geofence-Zone oder die bloße Erreichbarkeit eines Firmen-AP zeigen den aktuell verbundenen SSID eines Smartphones NICHT. Aktuell sind noch keine solchen per Telefon gelieferten, fortlaufend aktualisierten SSID-Variablen bekannt."
+        },
+        {
+          "type": "CheckBox",
+          "name": "EnableWorkWiFiHints",
+          "caption": "Vorhandene telefonbezogene WLAN-SSID-Meldungen zur HOME/WORK-Trennung NUR LESEN (Opt-in, standardmäßig AUS)"
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "JohannesSSIDVariableID",
+          "caption": "Johannes – existierende String-Variable für aktuelle WLAN-SSID (0 = noch nicht vorhanden)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "JohannesSSIDParentID",
+          "caption": "Johannes – Elternobjekt der persönlichen SSID-Quelle (0 = noch nicht vorhanden)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "CarinaSSIDVariableID",
+          "caption": "Carina – existierende String-Variable für aktuelle WLAN-SSID (0 = noch nicht vorhanden)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "NumberSpinner",
+          "name": "CarinaSSIDParentID",
+          "caption": "Carina – Elternobjekt der persönlichen SSID-Quelle (0 = noch nicht vorhanden)",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        {
+          "type": "Label",
+          "caption": "Nur String-Variablen WifiSSID / WLAN SSID / WLAN-SSID / Aktuelle SSID unter einem nachweislich telefonbezogenen Elternobjekt werden gelesen. Jede Quelle muss spätestens alle 15 Minuten aktualisiert werden; sonst ist WORK nicht mehr bestätigt. Zwei gleiche Quell-IDs oder fremde Shelly-/AP-Statusvariablen werden gesperrt. Der bestehende 60-s-SHADOW-Timer genügt. Bei verifiziertem WORK-SSID erscheint WORK (Firmen-WLAN-Handy) bei Johannes/Carina und das breite Zuhause-Geofence darf NICHT zusammen mit altem WLAN eine falsche HOME-Bestätigung erzeugen. Unabhängige GUS-/P03-Nachweise für andere Menschen bleiben gültig. Keine fremden Skripte/AP-/Firewall-/App-Änderungen und niemals automatische Abwesenheit/Alarm."
+        }
+      ]
+    },
+    {
+      "type": "ExpansionPanel",
       "caption": "EgiGeoZone Johannes – Android Zuhause-Geofence 150 m (nur lesen)",
       "expanded": true,
       "items": [
