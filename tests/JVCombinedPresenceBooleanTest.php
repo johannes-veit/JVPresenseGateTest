@@ -30,9 +30,11 @@ $gate=['schema'=>1,'authority'=>'EXISTING_SCHIEBETOR_DISPLAY_HINT_ONLY',
     'signalPathAndBooleanVerified'=>true,'positionHint'=>'ZU'];
 $indoor=['schema'=>1,'authority'=>'INDOOR_DEVICE_HINTS_ONLY',
     'onCount'=>0,'sourceCount'=>21];
-$eval=static fn() => JVCombinedPresenceBoolean::evaluate(
-    $combined,$home,$wlan,$j,$c,$p,$gate,$indoor,$now
-);
+$eval=static function()use(&$combined,&$home,&$wlan,&$j,&$c,&$p,&$gate,&$indoor,$now):array{
+    return JVCombinedPresenceBoolean::evaluate(
+        $combined,$home,$wlan,$j,$c,$p,$gate,$indoor,$now
+    );
+};
 $a=$eval();
 detectionCheck($a['detected']===false&&$a['status']==='NEIN_KEIN_AKTUELLER_NACHWEIS',
     'house quiet 4000s is no current positive detection');
