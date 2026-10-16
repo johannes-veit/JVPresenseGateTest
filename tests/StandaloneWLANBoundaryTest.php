@@ -63,10 +63,10 @@ preg_match_all(
 );
 $registered=$matches[1]??[];
 sort($registered);
-if($registered!==['CarinaPresence','EvidenceJSON','JohannesPresence','Status']) {
+if($registered!==['CarinaPresence','EvidenceJSON','JohannesPresence','PresenceDetected','Status']) {
     throw new RuntimeException(
         'SHADOW_CREATED_ADDITIONAL_VARIABLES:'.implode(',',$registered)
     );
 }
 echo "Standalone WLAN object boundary PASS: $inspected modules; " .
-    "no category/variable creation calls; Shadow 4 variables (2 original + 2 requested displays), WLAN disabled.\\n";
+    "no category/variable creation calls; Shadow 5 variables (2 original + 2 resident displays + 1 total Boolean), WLAN disabled.\\n";

@@ -28,6 +28,10 @@ class IPSModule {
         $this->registeredVariables[]=$id;
         $this->values[$id]='';
     }
+    public function RegisterVariableBoolean(string $id,string $name,string $profile,int $position):void {
+        $this->registeredVariables[]=$id;
+        $this->values[$id]=false;
+    }
     public function ReadPropertyBoolean(string $id):bool {return (bool)$this->properties[$id];}
     public function ReadPropertyInteger(string $id):int {return (int)$this->properties[$id];}
     public function ReadPropertyString(string $id):string {return (string)$this->properties[$id];}
@@ -81,7 +85,7 @@ $m->Refresh();
 $again=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 assertSnapshot(($again['exitCandidateInventory']['candidateCount']??-1)===1,
     'second refresh still retains scan');
-assertSnapshot($m->registeredVariables===['Status','EvidenceJSON','JohannesPresence','CarinaPresence'],
+assertSnapshot($m->registeredVariables===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected'],
     'exactly original two outputs and two requested read-only resident displays');
 $m->clearRuntimeBuffers();
 $m->Refresh();

@@ -14,6 +14,10 @@
       "caption": "NEU V0.8.48: Zwei Statusvariablen direkt unter SHADOW: „Johannes anwesend“ und „Carina anwesend“ (beide STRING). ANWESEND (Handyhinweis) nur bei frischem WLAN-MAC und frischer Zuhause-Geofence-Meldung. Sonst NICHT BESTÄTIGT / WIDERSPRUCH / WLAN ZUHAUSE ...; nie unbewiesenes ABWESEND. Alle bisherigen Variablen behalten IDs, Namen, Typen und Ident. Die Ausgaben steuern keine anderen Module und keinen Alarm."
     },
     {
+      "type": "Label",
+      "caption": "NEU v0.8.50: Boolean-Variable „Anwesenheit erkannt“ direkt unter SHADOW. JA/TRUE, wenn in den letzten 5 Min. ein geprüfter Haus-GUS-Bewegungsnachweis oder ein frischer P03-Eingang Lager→Haus vorliegt, oder wenn bei mindestens einem Smartphone gleichzeitig frisches MAC-bestätigtes WLAN und ein frisches Zuhause-Geofence-Ereignis vorliegen. Innenlicht/TV, Torlage und weitere P03-/WLAN-/Geofence-Signale werden mitberücksichtigt und im EvidenceJSON dokumentiert, zählen aber allein bewusst nicht als Anwesenheitsbeweis. NEIN/FALSE = derzeit kein ausreichend aktueller positiver Hinweis, NIEMALS „Haus sicher leer“ oder Freigabe zum Scharfschalten. Keine Änderung von Fremdmodulen oder bestehenden Ausgaben. Entscheidungsgrund: EvidenceJSON.presenceDetected."
+    },
+    {
       "type": "NumberSpinner",
       "name": "P03InstanceID",
       "caption": "Bestehende P03-Hauptinstanz (bekannt: #53879)",

@@ -25,6 +25,7 @@ require_once dirname(__DIR__).'/libs/JVJohannesEgiGeoZoneHints.php';
 require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
 require_once dirname(__DIR__).'/libs/JVResidentPresenceDisplay.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
+require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -118,6 +119,9 @@ class JVPresenceIdentityShadow extends IPSModule
         // misleadingly mean "person absent" even when phone is asleep.
         $this->RegisterVariableString('JohannesPresence','Johannes anwesend','',2);
         $this->RegisterVariableString('CarinaPresence','Carina anwesend','',3);
+        // Exactly one additional user-requested Boolean inside SHADOW.
+        // FALSE means NO CURRENT POSITIVE SIGNAL, never confirmed empty.
+        $this->RegisterVariableBoolean('PresenceDetected','Anwesenheit erkannt','',4);
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
     }
 
@@ -174,6 +178,7 @@ class JVPresenceIdentityShadow extends IPSModule
                     'SHADOW Initialisierung fehlgeschlagen: '.$step
                 );
                 $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
+            $this->setPresenceDetected(false);
             }catch(Throwable $ignored){}
         }
     }
@@ -1126,6 +1131,7 @@ class JVPresenceIdentityShadow extends IPSModule
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
             $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
+            $this->setPresenceDetected(false);
             $this->publish([
                 'schema'=>1,'authority'=>'SHADOW_DISABLED',
                 'personPresenceMayBeChanged'=>false,
@@ -1410,6 +1416,10 @@ class JVPresenceIdentityShadow extends IPSModule
         $residentDisplay=JVResidentPresenceDisplay::evaluate(
             $wlan,$egi,$carinaGeo
         );
+        $presenceDetected=JVCombinedPresenceBoolean::evaluate(
+            $combined,$houseObservation,$wlan,$egi,$carinaGeo,
+            $p03Timeline['report'],$gateDisplay,$indoorHints,time()
+        );
         // Existing gate display is context only, NOT a verified exit route.
         $boundary['report']['existingGateDisplay']=$gateDisplay;
         $boundary['report']['parallelPersonPassage']=$parallelPassage['status'];
@@ -1442,6 +1452,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'johannesEgiGeoZone'=>$egi,
             'carinaGeofency'=>$carinaGeo,
             'residentDisplay'=>$residentDisplay,
+            'presenceDetected'=>$presenceDetected,
             'carinaGeofencyInventory'=>json_decode($this->readShadowState('CarinaGeofencyInventory'),true),
             'localSensors'=>$local,
             'localActivity'=>$activity,
@@ -1524,6 +1535,8 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | Carina Geofency: '.($carinaGeoEnabled
                 ?$carinaGeo['state'].' ('.$carinaGeo['selectionStatus'].')'
                 :'AUS')
+            .' | Anwesenheit erkannt: '.($presenceDetected['detected']?'JA':'NEIN')
+            .' (NEIN = kein aktueller positiver Nachweis, NICHT leer)'
             .' | Abwesenheit: NICHT BESTAETIGT'
             .' | '.$phoneDescription
             .' | Kombiniert: '.$combined['status']
@@ -1537,6 +1550,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $residentDisplay['people']['johannes']['display'],
             $residentDisplay['people']['carina']['display']
         );
+        $this->setPresenceDetected($presenceDetected['detected']);
         $this->publish($report,$state);
     }
 
@@ -1863,6 +1877,13 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->SetValue('JohannesPresence',$johannes);
         if($this->GetValue('CarinaPresence')!==$carina)
             $this->SetValue('CarinaPresence',$carina);
+    }
+
+    /** Write only our own Boolean, never HOME/AWAY/alarm of other modules. */
+    private function setPresenceDetected(bool $detected):void
+    {
+        if($this->GetValue('PresenceDetected')!==$detected)
+            $this->SetValue('PresenceDetected',$detected);
     }
 
     private function publish(array $report,string $status): void
