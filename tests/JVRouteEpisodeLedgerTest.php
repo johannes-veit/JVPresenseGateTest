@@ -77,15 +77,25 @@ $f['p03']['newAnonymousProofs']=[$proof('LAGER_TO_HOME',$t+945)];
 $amb=$run($m2['next'],$t+950);
 routeCheck(!$amb['report']['newEpisodeThisRefresh']
     &&$amb['report']['openOutgoingPassages']===0
+    &&$amb['report']['ambiguousOutstanding']===1
     &&$amb['report']['ambiguityResetThisRefresh']===true
     &&in_array('MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN',
         $amb['report']['warnings'],true)
     &&in_array('AMBIGUOUS_ROUTE_WINDOW_RESET',
         $amb['report']['warnings'],true),
     'two people parallel passage ambiguous: clear all unpairable OUTs');
-// New independent route may start immediately, without waiting 12h.
+// Until the second originally outward crossing is accounted for, a
+// later individual OUT cannot be safely paired with an earlier IN.
+$f['p03']['newAnonymousProofs']=[$proof('LAGER_TO_HOME',$t+960)];
+$oldFinalIn=$run($amb['next'],$t+970);
+routeCheck($oldFinalIn['report']['ambiguousOutstanding']===0
+    &&!$oldFinalIn['report']['newEpisodeThisRefresh']
+    &&in_array('UNRESOLVED_MULTIPERSON_CROSSINGS_QUARANTINED',
+        $oldFinalIn['report']['warnings'],true),
+    'late second IN clears ambiguity debt but never completes a claimed trip');
+// New independent route may now start without waiting 12h.
 $f['p03']['newAnonymousProofs']=[$proof('HOME_TO_LAGER',$t+980)];
-$independentOut=$run($amb['next'],$t+990);
+$independentOut=$run($oldFinalIn['next'],$t+990);
 routeCheck($independentOut['report']['openOutgoingPassages']===1,
     'after ambiguous returns the next independent OUT can start a clean route');
 $f['p03']['newAnonymousProofs']=[$proof('LAGER_TO_HOME',$t+1040)];
