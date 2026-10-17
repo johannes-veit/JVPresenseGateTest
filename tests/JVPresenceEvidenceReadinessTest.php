@@ -21,9 +21,13 @@ $boundary=['schema'=>1,'authority'=>'READ_ONLY_BOUNDARY_CONTEXT',
     'vehicleSignals'=>0];
 $journey=['schema'=>1,'authority'=>'READ_ONLY_RESIDENT_ROUTE_PHONE_ASSOCIATIONS',
     'status'=>'ANONYMOUS_ROUTE_NO_PERSONAL_PHONE_SEQUENCE'];
-$run=static fn()=>JVPresenceEvidenceReadiness::evaluate(
-    $mode,$mast,$fusion,$work,$boundary,$home,$journey,1800000000
-);
+$run=static function()use(
+    &$mode,&$mast,&$fusion,&$work,&$boundary,&$home,&$journey
+):array{
+    return JVPresenceEvidenceReadiness::evaluate(
+        $mode,$mast,$fusion,$work,$boundary,$home,$journey,1800000000
+    );
+};
 $r=$run();
 readyAssert($r['p03Mode']==='P03_INTENTIONALLY_OFF_NO_NEW_TRANSFERS'
     &&$r['mastStreams']==='BOTH_OBSERVERS_LIVE_NOT_PROOF_OF_TRANSITION',
