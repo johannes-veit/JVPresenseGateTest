@@ -172,6 +172,8 @@ $gateFixture=['schema'=>1,
         'CARINA_QUALIFY_EXISTING_PHONE_REPORTED_SSID_SOURCE',
         'QUALIFY_EXISTING_VEHICLE_CLASS_AND_DIRECTION_SOURCE'
     ]];
+$routeDemo['lastAmbiguousAt']=$now-20;
+$routeDemo['lastAmbiguityReason']='MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN';
 $detailed=JVResidentEveningHandoff::build(
     $tile,$phoneState,$wlan,$work,$jGeo,$cGeo,$p03,$timing,
     $mast,$house,$activity,$local,$boundary,$gate,[],$now,true,
@@ -181,6 +183,8 @@ $detailed=JVResidentEveningHandoff::build(
 expectHandoff(str_contains($detailed,'HANDY-VERLAUF/24h: 2')
     &&str_contains($detailed,'HANDY-EVENT/24h: PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC')
     &&str_contains($detailed,'P03 PROTOKOLL-KONTINUITAET: LOG_GAP_OR_RESET')
+    &&str_contains($detailed,'MEHRPERSONEN-KONFLIKT: letzte unaufloesbare Weggruppe')
+    &&str_contains($detailed,'MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN')
     &&str_contains($detailed,'P03 BEWEIS-UEBERGABE: Journal vor diesem Durchlauf 2')
     &&str_contains($detailed,'Paket 1 | Ueberlauf NEIN | abgelaufen NEIN')
     &&str_contains($detailed,'MEILENSTEIN QUELLENQUALIFIKATION: CORE_READ_ONLY_VALIDATED')
