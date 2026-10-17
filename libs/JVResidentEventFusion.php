@@ -147,7 +147,8 @@ final class JVResidentEventFusion
                 &&($ssid['status']??null)==='WORK_FIRMEN_WLAN_PHONE';
             // First sample is a baseline only. Old P03 and geofence events
             // must never be turned into new personal journeys on an update.
-            if($geoSourceContinuous && $geoAt!==null &&$geoAt>=$initialAt
+            if($geoSourceContinuous&&!$macRebaseline
+                &&$geoAt!==null &&$geoAt>=$initialAt
                 && $geoKind!==null
                 &&($lastGeo===null||$geoAt>$lastGeo)){
                 if($geoKind==='OUT'){
