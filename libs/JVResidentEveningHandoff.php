@@ -112,6 +112,22 @@ final class JVResidentEveningHandoff
             $add('HANDY-VERLAUF/24h: '.self::number(
                 $fp['eventHistoryCount']??null)
                 .' qualifizierte Ereignisse (maximal 24 pro Handy, keine Identitaet)');
+            if(is_array($fp['eventHistory']??null)){
+                $validTypes=[
+                    'PHONE_GEOFENCE_OUT_OBSERVED','PHONE_GEOFENCE_IN_OBSERVED',
+                    'PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC',
+                    'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP'
+                ];
+                foreach(array_slice($fp['eventHistory'],0,3) as $hEvent){
+                    if(!is_array($hEvent)
+                        ||!in_array($hEvent['code']??null,$validTypes,true)
+                        ||!is_int($hEvent['at']??null)
+                        ||$hEvent['at']<=0||$hEvent['at']>$now+5)continue;
+                    $add('HANDY-EVENT/24h: '.self::code($hEvent['code'])
+                        .' | '.self::date($hEvent['at'])
+                        .' | nur Telefon-Indiz');
+                }
+            }
             $add('Handy-Ereignis ist KEIN Nachweis der Person oder einer Autofahrt.');
             $add('ANKUNFT: '.self::code($a['assessment']??'NOT_ESTABLISHED')
                 .' | Grund: '.self::code($a['reason']??'NO_DATA')
