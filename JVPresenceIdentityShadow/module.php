@@ -1324,6 +1324,12 @@ class JVPresenceIdentityShadow extends IPSModule
 
     public function Refresh(): void
     {
+        // Timer, sensor and gate notifications can fire concurrently.
+        // Discard overlapping snapshots; the next 60 s poll recovers.
+        // A partial concurrent state write could double-book a passage.
+        $semaphore='JVPresenceShadow_'.$this->InstanceID;
+        if(!IPS_SemaphoreEnter($semaphore,1000))return;
+        try {
         if (!$this->ReadPropertyBoolean('Enabled')) {
             $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
             $this->setPresenceDetected(false);
@@ -1929,6 +1935,9 @@ class JVPresenceIdentityShadow extends IPSModule
             $evidenceReadiness
         ));
         $this->publish($report,$state);
+        } finally {
+            IPS_SemaphoreLeave($semaphore);
+        }
     }
 
     /**
