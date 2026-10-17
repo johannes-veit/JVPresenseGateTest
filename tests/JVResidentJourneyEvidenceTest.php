@@ -91,4 +91,28 @@ $ssid['people']['carina']['status']='WORK_FIRMEN_WLAN_PHONE';
 $route['lastEpisode']['inAt']=$t-14600;
 journeyAssert($run()['status']==='NO_RECENT_VERIFIED_ROUTE_EPISODE',
     'old P03 episode cannot create persistent false fresh trip');
+
+// Versioned phone history keeps a genuine prior return even if a later
+// ordinary WLAN recovery replaced the single legacy "lastEvent".
+$route['lastEpisode']['inAt']=$t-100;
+$fusion['people']['carina']['eventHistory']=[
+    ['code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP','at'=>$t-20],
+    ['code'=>'PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC','at'=>$t-55],
+    ['code'=>'PHONE_GEOFENCE_IN_OBSERVED','at'=>$t-170]
+];
+$fusion['people']['carina']['lastEvent']=[
+    'code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP','at'=>$t-20
+];
+$ssid['people']['carina']['status']='WORK_OR_PRIVATE_PROPERTY_EXT_UNCERTAIN';
+$fromHistory=$run();
+journeyAssert($fromHistory['candidateCount']===1
+    &&$fromHistory['candidatePerson']==='carina'
+    &&$fromHistory['phoneCandidates'][0]['signal']
+        ==='PHONE_RETURN_AFTER_OWN_OUT_IN',
+    'older genuine phone return survives later routine network recovery');
+$fusion['people']['carina']['eventHistory']=[
+    ['code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP','at'=>$t-20]
+];
+journeyAssert($run()['candidateCount']===0,
+    'explicit empty return history defeats stale fallback last-event assertion');
 echo "Resident journey evidence PASS\n";
