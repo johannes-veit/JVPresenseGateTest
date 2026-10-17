@@ -249,6 +249,8 @@ final class JVResidentEveningHandoff
         $add('MEHRPERSONEN-KONFLIKT: letzte unaufloesbare Weggruppe '
             .self::date($re['lastAmbiguousAt']??null)
             .' | Ursache '.self::code($re['lastAmbiguityReason']??'KEINE')
+            .' | ungeklaerte Rueckwege '.self::number(
+                $re['ambiguousOutstanding']??null)
             .' | keine willkuerliche Zuordnung');
         $add('WEGFOLGE KONTEXT: Hausbewegung vorher '
             .self::yes(($ep['anonymousIndoorMotionBeforeOut']??false)===true)
