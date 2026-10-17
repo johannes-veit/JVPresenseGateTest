@@ -106,6 +106,8 @@ jobs:
         run: php tests/JVResidentVisuStateTest.php
       - name: Collapsible single tile HTML current resident status no fabricated travel or alarm
         run: php tests/JVResidentTileDashboardTest.php
+      - name: Three-event phone departure with real Carina timestamps and contradictory source safety
+        run: php tests/JVResidentDepartureInferenceTest.php
       - name: One complete evening ChatGPT pasteable redacted safety-audited resident test report
         run: php tests/JVResidentEveningHandoffTest.php
       - name: Company WLAN exact SSIDs, iOS/Android sources, stale and overlap safety
