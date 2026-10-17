@@ -21,9 +21,11 @@ $ssid=['schema'=>1,'authority'=>'PHONE_CURRENT_SSID_READ_ONLY_WORK_CONTEXT',
     'enabled'=>true,'people'=>[]];
 $boundary=['schema'=>1,'authority'=>'READ_ONLY_BOUNDARY_CONTEXT',
     'vehicleSignals'=>0];
-$run=static fn()=>JVResidentJourneyEvidence::evaluate(
-    $route,$fusion,$ssid,$boundary,$t
-);
+$run=static function()use(&$route,&$fusion,&$ssid,&$boundary,$t):array{
+    return JVResidentJourneyEvidence::evaluate(
+        $route,$fusion,$ssid,$boundary,$t
+    );
+};
 $r=$run();
 journeyAssert($r['status']==='ANONYMOUS_ROUTE_NO_PERSONAL_PHONE_SEQUENCE'
     &&$r['candidateCount']===0&&$r['candidatePerson']===null,
