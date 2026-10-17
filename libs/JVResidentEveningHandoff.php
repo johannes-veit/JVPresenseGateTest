@@ -97,7 +97,8 @@ final class JVResidentEveningHandoff
             $add('WLAN-KONTAKTHISTORIE: '.self::code($contactHistory['people'][$person]['status']??'NICHT_ERFASST'));
             $add('ANKUNFT: '.self::code($a['assessment']??'NOT_ESTABLISHED')
                 .' | Grund: '.self::code($a['reason']??'NO_DATA')
-                .' | letzte Haus-WLAN-MAC: '.self::date($a['homeMacAt']??null)
+                );
+            $add('ANKUNFT-QUELLEN: letzte Haus-WLAN-MAC: '.self::date($a['homeMacAt']??null)
                 .' | P03 IN (anonym): '.self::date($a['p03AnonymousEntryAt']??null)
                 .' | Geofence IN: '.self::date($a['geoInAt']??null)
                 .' | AUTO: NICHT NACHGEWIESEN');
