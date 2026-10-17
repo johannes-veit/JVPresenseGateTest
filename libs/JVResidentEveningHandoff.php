@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -90,8 +90,16 @@ final class JVResidentEveningHandoff
                 :'NO_VALIDATED_LIVE_SOURCE';
             $geoAge=$gValid?($g['lastEventAgeSeconds']??null):null;
 
+            $a=($arrival['authority']??null)==='PHONE_ARRIVAL_CORRELATION_READ_ONLY'
+                ?($arrival['people'][$person]??[]):[];
             $add('--- '.$label.' ---');
             $add('KACHEL: '.$summary.' | Entscheidung: '.$decision);
+            $add('ANKUNFT: '.self::code($a['assessment']??'NOT_ESTABLISHED')
+                .' | Grund: '.self::code($a['reason']??'NO_DATA')
+                .' | letzte Haus-WLAN-MAC: '.self::date($a['homeMacAt']??null)
+                .' | P03 IN (anonym): '.self::date($a['p03AnonymousEntryAt']??null)
+                .' | Geofence IN: '.self::date($a['geoInAt']??null)
+                .' | AUTO: NICHT NACHGEWIESEN');
             // Human-readable meanings are authored by our own tile
             // evaluator. Allow only these known fixed labels, not any text
             // supplied by phone, WLAN, camera or camera diagnostics.
