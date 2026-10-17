@@ -24,6 +24,7 @@ require_once dirname(__DIR__).'/libs/JVExistingWlanPhoneHints.php';
 require_once dirname(__DIR__).'/libs/JVJohannesEgiGeoZoneHints.php';
 require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
 require_once dirname(__DIR__).'/libs/JVResidentPresenceDisplay.php';
+require_once dirname(__DIR__).'/libs/JVResidentVisuState.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
 require_once dirname(__DIR__).'/libs/JVCompanyWiFiEvidence.php';
@@ -43,6 +44,7 @@ class JVPresenceIdentityShadow extends IPSModule
     private const STORED_STATE_NAMES=[
         'LocalSensorState',
         'LocalActivityLedger',
+        'ResidentVisuState',
         'P03IncrementalTimeline',
         'BoundaryLedger',
         'ExitCandidateInventory',
@@ -1497,6 +1499,18 @@ class JVPresenceIdentityShadow extends IPSModule
         $residentDisplay=JVResidentPresenceDisplay::evaluate(
             $wlan,$egi,$carinaGeo,$workWiFi
         );
+        $priorResident=json_decode($this->readShadowState('ResidentVisuState'),true);
+        $residentVisu=JVResidentVisuState::evaluate(
+            $wlan,$workWiFi,$egi,$carinaGeo,
+            $houseObservation,$p03Timeline['report'],
+            is_array($priorResident)?$priorResident:[],time()
+        );
+        $residentNext=json_encode(
+            $residentVisu['next'],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE
+        );
+        if(is_string($residentNext)
+            &&$this->readShadowState('ResidentVisuState')!==$residentNext)
+            $this->writeShadowState('ResidentVisuState',$residentNext);
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
             $combined,$houseObservation,$wlan,$egi,$carinaGeo,
             $p03Timeline['report'],$gateDisplay,$indoorHints,time(),$workWiFi
@@ -1545,6 +1559,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'johannesEgiGeoZone'=>$egi,
             'carinaGeofency'=>$carinaGeo,
             'residentDisplay'=>$residentDisplay,
+            'residentVisuState'=>$residentVisu['report'],
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
             'carinaGeofencyInventory'=>json_decode($this->readShadowState('CarinaGeofencyInventory'),true),
@@ -1637,6 +1652,9 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | Carina Geofency: '.($carinaGeoEnabled
                 ?$carinaGeo['state'].' ('.$carinaGeo['selectionStatus'].')'
                 :'AUS')
+            .' | Bewohner-Kacheln: Johannes='
+            .$residentVisu['report']['people']['johannes']['decision']
+            .', Carina='.$residentVisu['report']['people']['carina']['decision']
             .' | Firmen-WLAN Handys: '.$workWiFi['workPhoneCount']
             .' | Anwesenheit erkannt: '.($presenceDetected['detected']?'JA':'NEIN')
             .' (NEIN = kein aktueller positiver Nachweis, NICHT leer)'
@@ -1650,8 +1668,8 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | Identitaet UNBEKANNT';
         if ($warnings) $state.=' | QUELLHINWEIS '.implode(',',array_slice($warnings,0,2));
         $this->setResidentDisplayValues(
-            $residentDisplay['people']['johannes']['display'],
-            $residentDisplay['people']['carina']['display']
+            $residentVisu['report']['people']['johannes']['display'],
+            $residentVisu['report']['people']['carina']['display']
         );
         $this->setPresenceDetected($presenceDetected['detected']);
         $this->publish($report,$state);
