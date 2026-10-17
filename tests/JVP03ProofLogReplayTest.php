@@ -234,13 +234,22 @@ eq($observed['personPresenceMayBeChanged'],false,'P03 and phone cannot alter pre
 eq($observed['propertyEmptyMayBeCertified'],false,'P03 and phone cannot certify vacancy');
 // First post-baseline sample legitimately changes the baselineInitialized flag.
 $module->Refresh();
+// EvidenceJSON is a live observation report: its elapsed-second values
+// (e.g. quietForSeconds) MUST change across a clock-second boundary.
+// Stable status, resident presence and the HTML tile must not be rewritten.
 $stableWrites=static fn(array $writes):array=>array_values(
-    array_filter($writes,static fn($w)=>($w['key']??'')!=='TestReport')
+    array_filter($writes,static fn($w)=>!in_array(
+        $w['key']??'', ['TestReport','EvidenceJSON'],true))
 );
 $beforeStable=$stableWrites($module->writes);
+$beforeEvidence=json_decode($module->values['EvidenceJSON'],true);
 for($i=0;$i<100;$i++)$module->Refresh();
 eq($stableWrites($module->writes),$beforeStable,
-    '100 unchanged refreshes add zero writes to six existing actual status/HTML outputs; TestReport may refresh its clock');
+    '100 unchanged polls never rewrite resident status or tiles even if diagnostic clock advances');
+$afterEvidence=json_decode($module->values['EvidenceJSON'],true);
+foreach(['people','residentDisplay','presenceDetected'] as $field)
+    eq($afterEvidence[$field]??null,$beforeEvidence[$field]??null,
+        'elapsed diagnostic seconds cannot change logical presence field '.$field);
 
 // Local LCN and output-variable integration without any real Symcon writes.
 // Sensor snapshots are initially BASELINED, not replayed as new movements.
