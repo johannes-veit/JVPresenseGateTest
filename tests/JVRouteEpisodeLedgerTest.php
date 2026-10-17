@@ -117,4 +117,25 @@ routeCheck(!$afterOn['report']['newEpisodeThisRefresh']
     &&in_array('IN_WITHOUT_OBSERVED_OUT',
         $afterOn['report']['warnings'],true),
     'new IN cannot pair with prior OUT across P03 off');
+// Even with live observer packets, a P03 log gap must interrupt an
+// opened route. Later IN cannot be paired across missing proof history.
+$raw['p03OperatingMode']='TEST_ACTIVE';
+$f['p03']['newAnonymousProofs']=[$proof('HOME_TO_LAGER',$t+5400)];
+$openBeforeGap=$run($afterOn['next'],$t+5410);
+routeCheck($openBeforeGap['report']['openOutgoingPassages']===1,
+    'route opened before protocol discontinuity');
+$f['p03']['newAnonymousProofs']=[];
+$f['p03']['logInterrupted']=true;
+$logGap=$run($openBeforeGap['next'],$t+5430);
+routeCheck($logGap['report']['openOutgoingPassages']===0
+    &&in_array('P03_LOG_GAP_CORRIDOR_CONTINUITY_INTERRUPTED',
+        $logGap['report']['warnings'],true),
+    'P03 proof-log gap clears incomplete route');
+$f['p03']['logInterrupted']=false;
+$f['p03']['newAnonymousProofs']=[$proof('LAGER_TO_HOME',$t+5480)];
+$lateAfterGap=$run($logGap['next'],$t+5490);
+routeCheck(!$lateAfterGap['report']['newEpisodeThisRefresh']
+    &&in_array('IN_WITHOUT_OBSERVED_OUT',
+        $lateAfterGap['report']['warnings'],true),
+    'cannot connect a later IN across P03 lost-protocol window');
 echo "Anonymous route episodes PASS\n";
