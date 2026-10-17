@@ -19,7 +19,11 @@ $make=static function(int $at):array{
     ];
 };
 $old=json_encode($make($t),JSON_THROW_ON_ERROR);
-$new=json_encode($make($t+60),JSON_THROW_ON_ERROR);
+$heartbeat=$make($t);
+$heartbeat['people']['johannes']['lastObservedAt']=$t+60;
+$heartbeat['people']['carina']['lastObservedAt']=$t+60;
+$heartbeat['p03']['lastReadAt']=$t+60;
+$new=json_encode($heartbeat,JSON_THROW_ON_ERROR);
 checkpointOK(JVShadowStateCheckpoint::useRuntimeCache('ResidentEventFusion')
     &&JVShadowStateCheckpoint::useRuntimeCache('RouteEpisodeLedger')
     &&!JVShadowStateCheckpoint::useRuntimeCache('P03IncrementalTimeline'),
