@@ -1,0 +1,45 @@
+name: Presence PHP regressions
+
+on:
+  push:
+    paths:
+      - 'JVPresenceIdentityShadow/**'
+      - 'libs/**'
+      - 'tests/**'
+      - 'library.json'
+      - '.github/workflows/presence-php-checks.yml'
+  pull_request:
+    paths:
+      - 'JVPresenceIdentityShadow/**'
+      - 'libs/**'
+      - 'tests/**'
+      - 'library.json'
+      - '.github/workflows/presence-php-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  php-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP runtime
+        run: php -v && php -m | grep -i mbstring
+      - name: Syntax check relevant modules
+        run: |
+          php -l JVPresenceIdentityShadow/module.php
+          php -l libs/JVResidentEventFusion.php
+          php -l libs/JVResidentArrivalInference.php
+          php -l libs/JVResidentDepartureInference.php
+          php -l libs/JVResidentTileDashboard.php
+          php -l libs/JVResidentEveningHandoff.php
+          php -l libs/JVPhoneContactContinuity.php
+      - name: Regression simulations
+        run: |
+          php tests/JVResidentEventFusionTest.php
+          php tests/JVResidentArrivalInferenceTest.php
+          php tests/JVPhoneContactContinuityTest.php
+          php tests/JVResidentTileDashboardTest.php
+          php tests/JVResidentEveningHandoffTest.php
+          php tests/JVCombinedPresenceBooleanTest.php
