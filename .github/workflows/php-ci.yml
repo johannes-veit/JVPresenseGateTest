@@ -104,6 +104,8 @@ jobs:
         run: php tests/JVCombinedPresenceBooleanTest.php
       - name: Reliable VISU handset HOME WORK UNKNOWN stale Standby and source contradiction
         run: php tests/JVResidentVisuStateTest.php
+      - name: Collapsible single tile HTML current resident status no fabricated travel or alarm
+        run: php tests/JVResidentTileDashboardTest.php
       - name: Company WLAN exact SSIDs, iOS/Android sources, stale and overlap safety
         run: php tests/JVCompanyWiFiEvidenceTest.php
       - name: Standalone secure phone SSID WebHook script installer is idempotent
