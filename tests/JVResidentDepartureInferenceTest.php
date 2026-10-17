@@ -159,6 +159,31 @@ $verifiedPhoneOut=JVResidentDepartureInference::evaluate(
 depOK($verifiedPhoneOut['people']['carina']['assessment']==='LIKELY_PHONE_DEPARTED'
     &&!$verifiedPhoneOut['people']['carina']['humanAbsenceCertified'],
     'observed individual phone OUT enables phone-only departure hint');
+$authoritative['people']['carina']['macSourceContinuous']=false;
+$disconnectedMac=JVResidentDepartureInference::evaluate(
+    $w,$firm,$jo,$ca,$p03,$now,$authoritative
+);
+depOK($disconnectedMac['people']['carina']['assessment']==='NOT_ESTABLISHED'
+    &&$disconnectedMac['people']['carina']['reason']==='PHONE_SOURCE_SEQUENCE_INTERRUPTED',
+    'WLAN source outage cannot establish personal departure from old MAC');
+$authoritative['people']['carina']['macSourceContinuous']=true;
+$authoritative['people']['carina']['geoSourceContinuous']=false;
+$disconnectedGeo=JVResidentDepartureInference::evaluate(
+    $w,$firm,$jo,$ca,$p03,$now,$authoritative
+);
+depOK($disconnectedGeo['people']['carina']['assessment']==='NOT_ESTABLISHED'
+    &&$disconnectedGeo['people']['carina']['reason']==='PHONE_SOURCE_SEQUENCE_INTERRUPTED',
+    'Geofence source outage prevents false personal departure');
+$authoritative['people']['carina']['geoSourceContinuous']=true;
+$authoritative['people']['carina']['lastSourceRebindAt']=$geo-1;
+$changedSource=JVResidentDepartureInference::evaluate(
+    $w,$firm,$jo,$ca,$p03,$now,$authoritative
+);
+depOK($changedSource['people']['carina']['assessment']==='NOT_ESTABLISHED'
+    &&$changedSource['people']['carina']['reason']
+        ==='PHONE_EVENTS_PRECEDE_CURRENT_SOURCE_BINDING',
+    'historical home MAC predating new phone source cannot assert departure');
+unset($authoritative['people']['carina']['lastSourceRebindAt']);
 $authoritative['people']['carina']['pendingGeofenceOut']=$geo-60;
 $disagreeingOut=JVResidentDepartureInference::evaluate(
     $w,$firm,$jo,$ca,$p03,$now,$authoritative
