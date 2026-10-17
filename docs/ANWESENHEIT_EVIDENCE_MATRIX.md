@@ -41,3 +41,16 @@ Der Benutzer bestätigte: **Nur Johannes** ging Büro → Flur → Wohnzimmer �
 ## Offene Datenqualifikation, keine Aufforderung zu unnötigen Tests
 
 Eine eindeutige Carina/Johannes-Zuordnung beim Auto ist derzeit nicht nachweisbar, weil konkrete verifizierte Fahrzeugereignisse und persönliche aktuelle WORK-SSID-Quellen im SHADOW-Datenmodell fehlen. Bestehende modul-/netzwerkfremde Konfigurationen nicht verändern. Neue Kamera- oder Netzwerktests nur, wenn ein konkreter neuer Quellennachweis aus bereits vorhandenen Daten nicht möglich ist.
+
+
+## v0.8.68 – anonymer Hin-/Rückweg und Fahrzeugkontext
+
+- **Neue Quelle**: `JVRouteEpisodeLedger::evaluate` erhält nur die streng verifizierten, seit letztem Durchlauf **neuen** Zweimast-P03-Ereignisse aus `JVResidentEventFusion`. Keine Roh-IVS-STOP-/Motion-/SMD-Ereignisse als vollständiger Übergang.
+- `HOME_TO_LAGER` öffnet einen anonymen Hinweg. Nur bei genau **einem** offenen OUT-Kandidaten und einem späteren `LAGER_TO_HOME` innerhalb 12 h wird eine anonyme Folge mit `outAt`, `inAt`, Dauer dokumentiert. Das beweist weder die Gleichheit der Personen in beiden Kameradurchläufen noch deren Anzahl.
+- Mehrere offene OUT-Kandidaten vor einem IN: `MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN`, **keine** erzwungene Zuordnung. Ein isoliertes IN: `IN_WITHOUT_OBSERVED_OUT`.
+- P03 `TEST_AND_PRODUCTION_OFF` mit frischer Diagnose **unterbricht** einen offenen Weg; ein neuer IN nach Wiederaufnahme darf nicht mit dem früheren OUT gepaart werden. Nach mehr als 3600 s ohne SHADOW-Durchlauf ebenfalls Baseline/Reset.
+- Die bereits vorhandenen 15 LCN-GUS-Ereignisse (Büro/Flur/Küche), P03-Straßenregel 5 (Human), registrierte Tor- und Fahrzeugvariablen sind nur **zeitlicher Kontext**. Selbst eine aktive Fahrzeugvariable neben der P03-Passage hat zunächst weder Fahrzeugrichtung, Personidentität noch gesicherte Fahrweise. Bei `vehicleSignals=0` lautet der ehrliche Befund `NO_VERIFIED_VEHICLE_SIGNAL_CONFIGURED`.
+- Speicherung über **ein weiteres persistentes Instanzattribut** `PersistRouteEpisodeLedger`, keine neue Symcon-Variable, Kamera- oder Netzwerkkonfiguration. Ergebnis liegt in `EvidenceJSON.anonymousRouteEpisodes`, in der bestehenden HTML-Kachel und dem einzigen kopierbaren Testbericht.
+- Reproduzierbare Simulation: `tests/JVRouteEpisodeLedgerTest.php` im GitHub-Workflow `Presence PHP regressions` (Hin-/Rückweg, parallele Personen, fehlende/aktive Fahrzeugquelle, 60-minütiger SHADOW-Ausfall, P03 AUS dazwischen, falsche Quelle/Zeiten). Diese Tests benötigen **keine reale erneute Fuß- oder Autofahrt**.
+
+Die Unterscheidung „Carina fährt mit Auto heim“ bleibt für die technische Freigabe offen, solange keine verifizierten Vehicle-Ereignisse und keine zuverlässige persönliche Zuordnung vorliegen. Die Kamera- und Smartphone-Quellskripte bleiben unverändert.
