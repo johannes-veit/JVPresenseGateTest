@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
