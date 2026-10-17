@@ -101,6 +101,13 @@ final class JVShadowIntegrityAudit
             }
         }
         if($okRoutes){
+            $uncertain=$routes['ambiguousOutstanding']??0;
+            $open=$routes['openOutgoingPassages']??0;
+            if(!is_int($uncertain)||$uncertain<0||$uncertain>8
+                ||!is_int($open)||$open<0||$open>8
+                ||($uncertain>0&&$open>0))
+                $issues[]='ANONYMOUS_MULTIPERSON_QUARANTINE_STATE_INVALID';
+            $checks++;
             $r=$routes['lastEpisode']??null;
             if(is_array($r)&&($r['kind']??null)
                 ==='ANONYMOUS_OUT_IN_CORRIDOR_SEQUENCE'){
