@@ -94,6 +94,15 @@ checkArrival(
     &&$historyArrival['people']['carina']['personIdentifiedByCamera']===false,
     'prior personal phone return remains visible after ordinary WLAN refresh'
 );
+$withHistory['people']['carina']['lastSourceRebindAt']=$now-20;
+$invalidAfterRebind=JVResidentArrivalInference::evaluate(
+    $w,$j,$g,$p,$now,$withHistory
+);
+checkArrival($invalidAfterRebind['people']['carina']['verifiedPhoneReturnAt']===null
+    &&$invalidAfterRebind['people']['carina']['assessment']
+        !=='PHONE_RETURN_AFTER_OUT_IN_HOME_MAC',
+    'phone return recorded before a source-ID change must never be used as fresh arrival');
+unset($withHistory['people']['carina']['lastSourceRebindAt']);
 $withHistory['people']['carina']['eventHistory']=[
     ['code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP','at'=>$now-8]
 ];
