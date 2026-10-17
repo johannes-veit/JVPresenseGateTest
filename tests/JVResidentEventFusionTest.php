@@ -87,4 +87,18 @@ $w['people']['carina']=$phone($now+1375);
 $conflict=$run($now+1380,$twoHome['next']);
 chk($conflict['report']['people']['carina']['state']==='HOME_WORK_PHONE_SOURCE_CONFLICT',
     'current opposite HOME and WORK sources report conflict, no forced location');
+// More than one hour without observations must rebaseline, not create
+// artificial phone departures or historic P03 arrivals when timers resume.
+$jg['insideRecent']=false;$jg['outsideRecent']=true;
+$jg['geofenceReportedInside']=false;$jg['lastEventAt']=$now+5500;
+$p['recentDirectionProofs'][]=['source'=>'P03_TWO_MAST_VERIFIED',
+    'direction'=>'HOME_TO_LAGER','route'=>'P03_2CAM_JV_THEN_WORK','at'=>$now+5800];
+$afterPause=$run($now+6000,$conflict['next']);
+chk($afterPause['report']['people']['johannes']['newPersonalPhoneEvent']===null,
+    'offline geofence change must be rebaselined');
+chk(count($afterPause['report']['p03']['newAnonymousProofs'])===0,
+    'offline P03 proof must be rebaselined');
+$afterPauseAgain=$run($now+6060,$afterPause['next']);
+chk(count($afterPauseAgain['report']['p03']['newAnonymousProofs'])===0,
+    'no P03 proof replay after offline baseline');
 echo "Resident event fusion PASS\n";
