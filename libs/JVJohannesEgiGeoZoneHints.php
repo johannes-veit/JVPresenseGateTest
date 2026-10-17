@@ -31,6 +31,7 @@ final class JVJohannesEgiGeoZoneHints
             'insideRecent'=>false,
             'outsideRecent'=>false,
             'validatedSource'=>false,
+            'sourceKey'=>null,
             'appCanMissOrDelayTransitions'=>true,
             'handsetIsNotPerson'=>true,
             'outsideIsNotVerifiedResidentAway'=>true,
@@ -54,6 +55,10 @@ final class JVJohannesEgiGeoZoneHints
             return $report;
         }
         $report['validatedSource']=true;
+        $sourceKey=$snapshot['sourceKey']??null;
+        if(is_string($sourceKey)
+            &&preg_match('/^EGI:(?:[1-9][0-9]*:){3}[1-9][0-9]*$/D',$sourceKey))
+            $report['sourceKey']=$sourceKey;
         $report['geofenceReportedInside']=$snapshot['inside'];
         $at=$snapshot['timestamp'];
         if($at<=0||$at>$now+5){
