@@ -100,6 +100,10 @@ final class JVResidentJourneyEvidence
                     ||($event['code']??null)!=='PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC'
                     ||!is_int($event['at']??null))continue;
                 $when=$event['at'];
+                $rebind=$p['lastSourceRebindAt']??null;
+                // A personal event predating a reconfigured handset
+                // source must not match a newer anonymous camera trip.
+                if(is_int($rebind)&&$rebind>0&&$when<$rebind)continue;
                 if($when>=$inAt-self::CLOCK_SLACK
                     &&$when<=$inAt+self::PHONE_AFTER_IN
                     &&$when<=$now+self::CLOCK_SLACK
@@ -118,7 +122,15 @@ final class JVResidentJourneyEvidence
                 $workAt=is_int($age)&&$age>=0&&$age<=300
                     ?$now-$age:null;
                 $mac=$p['lastMacAt']??null;
-                if(is_array($wp)
+                // The prior HOME-MAC hint must still belong to the
+                // verified WLAN source currently tracked by the fusion.
+                // Legacy reports without these fields remain readable.
+                $macContinuous=($p['macSourceContinuous']??true)===true
+                    &&($p['sourceRebaselineRequired']??false)!==true;
+                $rebind=$p['lastSourceRebindAt']??null;
+                $macAfterBinding=!is_int($rebind)||$rebind<=0
+                    ||(is_int($mac)&&$mac>=$rebind);
+                if($macContinuous&&$macAfterBinding&&is_array($wp)
                     &&($wp['sourceVerified']??false)===true
                     &&($wp['workRecent']??false)===true
                     &&($wp['status']??null)==='WORK_FIRMEN_WLAN_PHONE'
