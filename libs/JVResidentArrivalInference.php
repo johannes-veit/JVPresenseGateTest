@@ -61,11 +61,18 @@ final class JVResidentArrivalInference
             $fp=($fusion['authority']??null)==='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'
                 &&is_array($fusion['people'][$person]??null)
                 ?$fusion['people'][$person]:[];
-            $last=is_array($fp['lastEvent']??null)?$fp['lastEvent']:[];
-            $retAt=($last['code']??null)==='PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC'
-                &&is_int($last['at']??null)&&$last['at']>0
-                &&$last['at']<=$now+5&&$now-$last['at']<=3600
-                ?$last['at']:null;
+            $history=is_array($fp['eventHistory']??null)
+                ?array_slice($fp['eventHistory'],0,24)
+                :[$fp['lastEvent']??null];
+            $retAt=null;
+            foreach($history as $last){
+                if(!is_array($last)
+                    ||($last['code']??null)!=='PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC'
+                    ||!is_int($last['at']??null))continue;
+                $at=$last['at'];
+                if($at>0&&$at<=$now+5&&$now-$at<=3600
+                    &&($retAt===null||$at>$retAt))$retAt=$at;
+            }
             $entry['verifiedPhoneReturnAt']=$retAt;
             if($fresh){
                 if($retAt!==null){
