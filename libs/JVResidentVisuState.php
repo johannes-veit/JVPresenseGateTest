@@ -102,6 +102,14 @@ final class JVResidentVisuState
                 ||self::validTime($lastAt,$now,self::PAST_CONTEXT_SECONDS)===null){
                 $lastZone=null;$lastAt=null;
             }
+            // Never roll the resident's display back to an OLDER phone
+            // location event after a more recent opposite-zone observation.
+            // A stale source can remain TRUE during the 660s/900s grace.
+            $outOfOrderZone=false;
+            if(!$conflict&&$at!==null&&$lastAt!==null
+                &&$zone!==$lastZone&&$at<$lastAt){
+                $outOfOrderZone=true;$zone='UNKNOWN';$at=null;
+            }
             // A newer verified phone observation replaces the saved one.
             // Contradictions never overwrite a valid last-known location.
             if(!$conflict&&$at!==null
@@ -152,6 +160,7 @@ final class JVResidentVisuState
                 'workSSIDAt'=>$workAt,
                 'homeSSIDAt'=>$homeSsidAt,
                 'wifiConflict'=>$conflict,
+                'rejectedOlderOppositeZoneSource'=>$outOfOrderZone,
                 'lastKnownDeviceZone'=>$lastZone,
                 'lastKnownDeviceAt'=>$lastAt,
                 'lastKnownDeviceAgeSeconds'=>$lastAt!==null?$now-$lastAt:null,
