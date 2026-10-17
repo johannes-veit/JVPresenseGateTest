@@ -30,6 +30,16 @@ $c1=$run($t+900,$b['next']);
 ccheck($c1['report']['people']['johannes']['contactResumedAfterGap']
     &&$c1['report']['people']['johannes']['status']==='HOME_MAC_RECOVERED_AFTER_GAP_NOT_ARRIVAL',
     'reacquisition after quiet gap is not a return');
+ccheck($c1['report']['people']['johannes']['lastRecoveredHomeMacAt']===$t+850
+    &&$c1['report']['people']['johannes']['lastObservedRecoveryGapSeconds']===910,
+    'new recovery timestamp and original real MAC gap are retained');
+$persisted=$run($t+940,$c1['next']);
+ccheck($persisted['report']['people']['johannes']['status']==='FRESH_HOME_MAC_CONTACT'
+    &&!$persisted['report']['people']['johannes']['contactResumedAfterGap']
+    &&$persisted['report']['people']['johannes']['lastRecoveredHomeMacAt']===$t+850
+    &&$persisted['report']['people']['johannes']['lastObservedRecoveryGapSeconds']===910,
+    'recovery survives following refresh without replaying as new arrival');
+
 $j['outsideRecent']=true;$j['geofenceReportedInside']=false;
 $j['lastEventAt']=$t+940;
 $d=$run($t+950,$c1['next']);
