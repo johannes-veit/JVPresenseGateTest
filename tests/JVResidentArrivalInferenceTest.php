@@ -23,7 +23,7 @@ $r=$run();checkArrival($r['people']['carina']['assessment']==='ANONYMOUS_ENTRY_N
     &&$r['people']['carina']['vehicle']==='UNVERIFIED'
     &&!$r['mayArmAlarm'],'ordered phone and anonymous p03 IN');
 $p['recentDirectionProofs']=[];
-$r=$run();checkArrival($r['people']['carina']['assessment']==='POSSIBLE_PHONE_RETURN_HOME',
+$r=$run();checkArrival($r['people']['carina']['assessment']==='GEOFENCE_IN_NOT_SUFFICIENT_FOR_HOME_RETURN',
     'broad geofence alone does not prove property arrival');
 $g['insideRecent']=false;
 $r=$run();checkArrival($r['people']['carina']['assessment']==='HOME_PHONE_CURRENT_ARRIVAL_NOT_PROVEN',
@@ -52,4 +52,26 @@ checkArrival(
     &&!$both['people']['johannes']['phoneAssociatedArrivalOnly'],
     'single anonymous crossing cannot identify either resident'
 );
+
+// A verified earlier phone OUT->IN->MAC sequence is allowed to report a
+// HANDSET return; neither P03 nor a second resident receives human identity.
+$confirmedReturn=['authority'=>'PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY',
+    'people'=>['carina'=>['lastEvent'=>[
+        'code'=>'PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC','at'=>$now-35]]]];
+$individual=JVResidentArrivalInference::evaluate(
+    $w,$j,$g,$p,$now,$confirmedReturn
+);
+checkArrival(
+    $individual['people']['carina']['assessment']==='PHONE_RETURN_AFTER_OUT_IN_HOME_MAC'
+    &&$individual['people']['carina']['phoneAssociatedArrivalOnly']===true
+    &&$individual['people']['carina']['personIdentifiedByCamera']===false,
+    'only personal verified phone sequence can be called phone return'
+);
+$confirmedReturn['people']['johannes']=$confirmedReturn['people']['carina'];
+$w['people']['johannes']=['validatedExistingVariablePair'=>true,
+    'recentMacEvidence'=>true,'state'=>'MAC_CONFIRMED_RECENT_DEVICE_HINT',
+    'lastMacContactAt'=>$now-20];
+$two=JVResidentArrivalInference::evaluate($w,$j,$g,$p,$now,$confirmedReturn);
+checkArrival($two['people']['johannes']['assessment']==='PHONE_RETURN_AFTER_OUT_IN_HOME_MAC',
+    'two independently observed phone return sequences may report two phones');
 echo "Arrival correlation tests PASS\n";
