@@ -226,6 +226,18 @@ final class JVResidentEventFusion
         $p03Continuous=($oldP03['initialized']??false)===true
             &&$lastP03Read!==null
             &&$now-$lastP03Read<=self::MAX_OBSERVATION_GAP;
+        // Persisted delivery journal protects the gap between P03 cursor
+        // advance and successful route processing. The journal is replayed
+        // after a crash and removed only after the route ledger is durable.
+        $pending=[];
+        if($p03Continuous&&$p03Valid&&!$logInterrupted){
+            foreach(array_slice(is_array($oldP03['unackedRouteProofs']??null)
+                ?$oldP03['unackedRouteProofs']:[],0,32) as $oldProof){
+                $valid=self::safeProof($oldProof,$now);
+                if($valid===null||$now-$valid['at']>600)continue;
+                $pending[self::proofKey($valid)]=$valid;
+            }
+        }
         $newProofs=[];
         if($p03Valid&&!$logInterrupted){
             $proofs=$p03['recentDirectionProofs']??[];
@@ -245,14 +257,24 @@ final class JVResidentEventFusion
                 }
             }
         }
+        foreach($newProofs as $proof){
+            if($now-$proof['at']<=600)
+                $pending[self::proofKey($proof)]=$proof;
+        }
+        uasort($pending,static fn(array $a,array $b)=>$a['at']<=>$b['at']);
+        $delivery=array_slice(array_values($pending),0,32);
         arsort($clean,SORT_NUMERIC);
         $clean=array_slice($clean,0,self::MAX_P03_KEYS,true);
         usort($newProofs,static fn(array $a,array $b)=>$a['at']<=>$b['at']);
         $next['p03']=['initialized'=>true,'lastReadAt'=>$now,
             'seen'=>$clean,
-            'lastAnonymous'=>$latest,'highWaterAt'=>$highWater];
+            'lastAnonymous'=>$latest,'highWaterAt'=>$highWater,
+            'unackedRouteProofs'=>$delivery];
         $out['p03']=[
-            'newAnonymousProofs'=>$newProofs,'lastAnonymousProof'=>$latest,
+            'newAnonymousProofs'=>$newProofs,
+            'routeDeliveryProofs'=>$delivery,
+            'unackedRouteProofCount'=>count($delivery),
+            'lastAnonymousProof'=>$latest,
             'identityConfirmed'=>false,'phoneAssociatedWithCrossing'=>false,
             'homeLagerIsNotPropertyExit'=>true,
             'oldProofReplayed'=>false,
@@ -261,6 +283,35 @@ final class JVResidentEventFusion
             'proofSourceValidated'=>$p03Valid
         ];
         return ['report'=>$out,'next'=>$next];
+    }
+
+    /**
+     * Acknowledge only proofs already durably processed in RouteEpisodeLedger.
+     * A second acknowledgement after a restart is idempotent.
+     */
+    public static function acknowledgeRouteDelivery(
+        array $state,array $delivered,int $now
+    ):array {
+        if(($state['schema']??null)!==1
+            ||!is_array($state['p03']??null))return $state;
+        $keys=[];
+        foreach(array_slice($delivered,0,32) as $proof){
+            $valid=self::safeProof($proof,$now);
+            if($valid!==null)$keys[self::proofKey($valid)]=true;
+        }
+        $rest=[];
+        foreach(($state['p03']['unackedRouteProofs']??[]) as $proof){
+            $valid=self::safeProof($proof,$now);
+            if($valid===null)continue;
+            if(!isset($keys[self::proofKey($valid)]))$rest[]=$valid;
+        }
+        $state['p03']['unackedRouteProofs']=array_slice($rest,0,32);
+        return $state;
+    }
+
+    private static function proofKey(array $proof):string
+    {
+        return $proof['at'].'|'.$proof['direction'].'|'.$proof['route'];
     }
 
     private static function ts(mixed $at,int $now,int $ttl):?int
