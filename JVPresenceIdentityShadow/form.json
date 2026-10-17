@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.70: Eine einzige vorhandene Variable 'Testergebnis an ChatGPT (Kopieren)' (Ident TestReport) zeigt die quellengeprüften aktuellen WLAN-/Geofence-Zustände, die individuelle Handy-Ereigniskette, die anonymen P03-Haus-Lagerplatz-Wege, den zeitlichen Weg-Handy-Abgleich, 15 LCN-GUS sowie Fahrzeug- und SSID-Beweislücken. Die Auswertung läuft automatisch alle 60 s und nach LCN-/Torereignissen, ohne neue Sensoren oder Schreibzugriffe auf P03, Kamera, WLAN, LCN, Schiebetor oder Alarm. Eine Handy-Beobachtung ist keine Personenidentifikation. Abwesenheit, Autofahrt und Haus leer bleiben ohne gesicherte Quellen UNBEWIESEN; keine Alarmfreigabe. Kein erneuter Geh-/Fahrtest nur wegen Modulupdate erforderlich."
+      "caption": "SHADOW v0.8.71: Read-only Anwesenheit und Wege – neue dauerhaft gespeicherte Handy-Ereignishistorie (max. 24 Ereignisse pro Person/24h) mit quellengeprüfter Geofence-OUT/IN-Folge, wiedererkanntem Heim-WLAN und anonymen P03-Haus-Lagerplatz-Beweisen. Bei Unterbrechung der P03-Protokollkette werden offene Wege verworfen; nach einer unterbrochenen WLAN- oder Geofence-Quelle erfolgt zuerst eine neue sichere Baseline. Eine eigene Selbstprüfung zeigt Inkonsistenzen ohne Steuerung fremder Module. Die eine vorhandene Variable 'Testergebnis an ChatGPT (Kopieren)' enthält Verlauf, Quellenzustände und Sperrgründe. Keine neue Symcon-Variable, keine LCN-, Kamera-, Alarm-, Tor- oder WLAN-Schaltaktion, keine automatische Personen-/Autofahrt- oder Haus-leer-Zertifizierung. Update benötigt zunächst keinen weiteren Lauf-/Fahrtest."
     },
     {
       "type": "Label",
