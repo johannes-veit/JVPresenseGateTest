@@ -127,10 +127,15 @@ final class JVResidentEventFusion
                     'at'=>$mac,'certainty'=>'NETWORK_CONTACT_ONLY'];
             if($newEvent!==null && ($event===null||$newEvent['at']>=$event['at']))
                 $event=$newEvent;
-            $phoneState=$workFresh&&$fresh?'HOME_WORK_PHONE_SOURCE_CONFLICT'
-                :($workFresh?'PHONE_WORK_SSID_RECENT':($fresh
+            $phoneState=$workFresh?'PHONE_WORK_SSID_RECENT':($fresh
                 ?'PHONE_HOME_MAC_RECENT':($verifiedPair&&($wp['wlanBoolean']??null)===true
-                    ?'PHONE_HOME_MAC_STALE_NOT_AWAY':'PHONE_LOCATION_UNCONFIRMED')));
+                    ?'PHONE_HOME_MAC_STALE_NOT_AWAY':'PHONE_LOCATION_UNCONFIRMED'));
+            if($workFresh&&$fresh){
+                $workAt=$now-$ssid['ageSeconds'];
+                $diff=$workAt-$mac;
+                $phoneState=abs($diff)<=45?'HOME_WORK_PHONE_SOURCE_CONFLICT'
+                    :($diff>0?'PHONE_WORK_SSID_RECENT':'PHONE_HOME_MAC_RECENT');
+            }
             $next['people'][$person]=[
                 'initialized'=>true,
                 'initializedAt'=>$initialAt,'lastObservedAt'=>$now,
