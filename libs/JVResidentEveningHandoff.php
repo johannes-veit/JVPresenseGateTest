@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -186,6 +186,40 @@ final class JVResidentEveningHandoff
             .' | Alter: '.self::age($houseVerified
                 ?($house['lastHomeMotionAgeSeconds']??null):null)
             .' | Zuordnung zu Johannes/Carina: UNBEKANNT');
+        $add('--- RAUMWEGE AUS LCN-GUS (ANONYM) ---');
+        $roomsValid=($rooms['schema']??null)===1
+            &&($rooms['authority']??null)==='LCN_ROOM_MOTION_PATHS_ANONYMOUS_ONLY'
+            &&($rooms['coverageStatus']??null)==='AVAILABLE_ANONYMOUS_EDGES';
+        $add('Geprüfte Bewegungsimpulse/90min: '
+            .($roomsValid?self::number($rooms['roomEdgeCount90m']??null):'?')
+            .' | Personenzuordnung: UNBEKANNT');
+        foreach([
+            'officeGuestWcReturn'=>'Büro > Flur > Gäste WC > Flur > Büro',
+            'kitchenToUpperDressing'=>'Küche > OG Flur > Ankleide'
+        ] as $kind=>$path){
+            $matched=$roomsValid?($rooms[$kind]??null):null;
+            $add($path.': '.(is_array($matched)
+                ?('REIHENFOLGE ERKANNT '.self::date($matched['startAt']??null)
+                    .' bis '.self::date($matched['at']??null)
+                    .' | Person nicht identifiziert')
+                :'KEINE VOLLSTÄNDIGE FOLGE'));
+        }
+        if($roomsValid){
+            $knownRooms=[
+                'EG Büro','EG Flur','EG Gäste-WC','EG Wohnen/Küche',
+                'EG Wohnen Kamin','EG Bad','EG Schlafen','OG Flur',
+                'OG Ankleide','OG Ankleide Decke','OG Bad',
+                'OG Bad Dusche','OG Bad Waschtisch',
+                'OG Schlafen 1','OG Schlafen 2'
+            ];
+            foreach(array_slice($rooms['recentRoomEdges']??[],0,15) as $e){
+                if(!is_array($e)||!in_array($e['room']??null,$knownRooms,true))continue;
+                $add('RAUMIMPULS: '.self::date($e['at']??null).' | '.$e['room']);
+            }
+        }
+        $add('Kochen: Strom >3000 W derzeit UNGEPRÜFT – keine zugeordnete Leistungsvariable.');
+        $add('OG-Ankleide: Bewegung ist kein Beweis für Umziehen.');
+        $add('Auto/Terrasse: keine verifizierte Fahrzeug- und Terrassentür-Ereigniskette.');
         $add('Tor/Fahrzeug-Grenzsignale: '
             .self::number($boundary['configuredBoundarySignals']??null)
             .' zugeordnet | Schiebetor-Hinweis: '
