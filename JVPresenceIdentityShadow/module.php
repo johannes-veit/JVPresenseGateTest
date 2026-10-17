@@ -36,6 +36,7 @@ require_once dirname(__DIR__).'/libs/JVResidentJourneyEvidence.php';
 require_once dirname(__DIR__).'/libs/JVShadowStateCheckpoint.php';
 require_once dirname(__DIR__).'/libs/JVShadowIntegrityAudit.php';
 require_once dirname(__DIR__).'/libs/JVPresenceEvidenceReadiness.php';
+require_once dirname(__DIR__).'/libs/JVPresenceCommissioningGate.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
@@ -1788,6 +1789,11 @@ class JVPresenceIdentityShadow extends IPSModule
             $residentFusion['report'],$routeEpisodes['report'],
             $residentJourney,$evidenceReadiness,time()
         );
+        $commissioningGate=JVPresenceCommissioningGate::evaluate(
+            $tileWlan,$residentFusion['report'],$tileWork,
+            $evidenceReadiness,$boundary['report'],$extraIpcEvidence,
+            $numberStat,$integrityAudit,time()
+        );
         $tilePrior=json_decode($this->readShadowState('TileResidentState'),true);
         $tileResident=JVResidentVisuState::evaluate(
             $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
@@ -1861,6 +1867,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentJourneyCorrelation'=>$residentJourney,
             'presenceEvidenceReadiness'=>$evidenceReadiness,
             'shadowIntegrityAudit'=>$integrityAudit,
+            'presenceCommissioningGate'=>$commissioningGate,
             'roomMovementPaths'=>$roomPaths,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
@@ -1983,7 +1990,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $warnings,time(),true,$departureHint,$roomPaths,$arrivalHint,
             $contactHistory['report'],$residentFusion['report'],
             $routeEpisodes['report'],$residentJourney,
-            $evidenceReadiness,$integrityAudit
+            $evidenceReadiness,$integrityAudit,$commissioningGate
         ));
         $this->publish($report,$state);
         } finally {
