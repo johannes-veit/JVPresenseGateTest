@@ -85,8 +85,8 @@ $m->Refresh();
 $again=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 assertSnapshot(($again['exitCandidateInventory']['candidateCount']??-1)===1,
     'second refresh still retains scan');
-assertSnapshot($m->registeredVariables===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected'],
-    'exactly original two outputs and two requested read-only resident displays');
+assertSnapshot($m->registeredVariables===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
+    'exactly the five historical read-only outputs plus the user-requested combined tile');
 $m->clearRuntimeBuffers();
 $m->Refresh();
 $restarted=json_decode((string)$m->GetValue('EvidenceJSON'),true);
