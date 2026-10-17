@@ -60,7 +60,9 @@ final class JVResidentRoomPaths
             // with the stable live inventory's source mapping.
             $name=(string)($source[$id]['name']??'');
             $room=self::ROOM[$id];
-            if(stripos($name,substr($room,3))===false)continue;
+            $normal=static fn(string $t):string=>(string)preg_replace(
+                '/[^\\p{L}\\p{N}]/u','',mb_strtolower($t,'UTF-8'));
+            if(!str_contains($normal($name),$normal(substr($room,3))))continue;
             $valid[$id.'@'.$at]=[
                 'id'=>$id,'room'=>$room,'at'=>$at];
         }
