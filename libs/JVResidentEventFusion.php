@@ -15,6 +15,7 @@ final class JVResidentEventFusion
     private const HOME_TO_OUT=1800;
     private const CLOCK_SKEW=5;
     private const MAX_P03_KEYS=48;
+    private const MAX_OBSERVATION_GAP=3600;
 
     public static function evaluate(
         array $wlan, array $jGeo, array $cGeo, array $work,
@@ -39,7 +40,12 @@ final class JVResidentEventFusion
         foreach(['johannes','carina'] as $person){
             $prev=$validPrior&&is_array($prior['people'][$person]??null)
                 ?$prior['people'][$person]:[];
-            $boot=($prev['initialized']??false)!==true;
+            $observedAt=self::ts($prev['lastObservedAt']??null,$now,self::MAX_AGE);
+            $initialAt=self::ts($prev['initializedAt']??null,$now,self::MAX_AGE);
+            $boot=($prev['initialized']??false)!==true
+                ||$observedAt===null
+                ||$now-$observedAt>self::MAX_OBSERVATION_GAP;
+            if($initialAt===null)$initialAt=$now;
             $wp=$okWlan&&is_array($wlan['people'][$person]??null)
                 ?$wlan['people'][$person]:[];
             $mac=self::ts($wp['lastMacContactAt']??null,$now,self::MAX_AGE);
@@ -86,7 +92,8 @@ final class JVResidentEventFusion
                 &&($ssid['status']??null)==='WORK_FIRMEN_WLAN_PHONE';
             // First sample is a baseline only. Old P03 and geofence events
             // must never be turned into new personal journeys on an update.
-            if(!$boot && $geoAt!==null && $geoKind!==null
+            if(!$boot && $geoAt!==null &&$geoAt>=$initialAt
+                && $geoKind!==null
                 &&($lastGeo===null||$geoAt>$lastGeo)){
                 if($geoKind==='OUT'){
                     $outAt=$oldMac!==null &&$oldMac<$geoAt
@@ -125,7 +132,9 @@ final class JVResidentEventFusion
                 ?'PHONE_HOME_MAC_RECENT':($verifiedPair&&($wp['wlanBoolean']??null)===true
                     ?'PHONE_HOME_MAC_STALE_NOT_AWAY':'PHONE_LOCATION_UNCONFIRMED')));
             $next['people'][$person]=[
-                'initialized'=>true,'lastMacAt'=>$lastMac,
+                'initialized'=>true,
+                'initializedAt'=>$initialAt,'lastObservedAt'=>$now,
+                'lastMacAt'=>$lastMac,
                 'lastGeoAt'=>$lastGeo,'pendingOutAt'=>$outAt,
                 'pendingInAt'=>$inAt,'lastPhoneReturnAt'=>$returnAt,
                 'lastEvent'=>$event
@@ -156,6 +165,10 @@ final class JVResidentEventFusion
         $latest=self::safeProof($oldP03['lastAnonymous']??null,$now);
         $highWater=self::ts($oldP03['highWaterAt']??null,$now,self::MAX_AGE);
         $oldHighWater=$highWater;
+        $lastP03Read=self::ts($oldP03['lastReadAt']??null,$now,self::MAX_AGE);
+        $p03Continuous=($oldP03['initialized']??false)===true
+            &&$lastP03Read!==null
+            &&$now-$lastP03Read<=self::MAX_OBSERVATION_GAP;
         $newProofs=[];
         if($p03Valid){
             $proofs=$p03['recentDirectionProofs']??[];
@@ -165,7 +178,7 @@ final class JVResidentEventFusion
                     if($checked===null)continue;
                     $key=$checked['at'].'|'.$checked['direction'].'|'.$checked['route'];
                     if(!isset($clean[$key]) &&$validPrior
-                        &&($oldP03['initialized']??false)===true
+                        &&$p03Continuous
                         &&($oldHighWater===null||$checked['at']>$oldHighWater))
                         $newProofs[]=$checked;
                     if($highWater===null||$checked['at']>$highWater)
@@ -178,7 +191,8 @@ final class JVResidentEventFusion
         arsort($clean,SORT_NUMERIC);
         $clean=array_slice($clean,0,self::MAX_P03_KEYS,true);
         usort($newProofs,static fn(array $a,array $b)=>$a['at']<=>$b['at']);
-        $next['p03']=['initialized'=>true,'seen'=>$clean,
+        $next['p03']=['initialized'=>true,'lastReadAt'=>$now,
+            'seen'=>$clean,
             'lastAnonymous'=>$latest,'highWaterAt'=>$highWater];
         $out['p03']=[
             'newAnonymousProofs'=>$newProofs,'lastAnonymousProof'=>$latest,
