@@ -98,4 +98,19 @@ $h3=JVResidentTileDashboard::render(JVResidentTileDashboard::evaluate(
 tileAssert(!str_contains($h3,'<script>')
     &&str_contains($h3,'&lt;script&gt;'),
     'HTML escaping prevents SSID-fed script injection');
+$phoneEvents=['authority'=>'PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY',
+    'people'=>[
+        'johannes'=>['lastEvent'=>[
+            'code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP','at'=>$now-30]],
+        'carina'=>['lastEvent'=>null]
+    ]];
+$eventTile=JVResidentTileDashboard::evaluate(
+    $people,$wlan,$ssid,[],$house,$now,[],[],$phoneEvents
+);
+$eventHtml=JVResidentTileDashboard::render($eventTile);
+tileAssert(str_contains($eventHtml,'Letztes Handy-Ereignis:')
+    &&str_contains($eventHtml,'keine Heimkehr bewiesen')
+    &&str_contains($eventHtml,'Kein neuer bestaetigter Handy-Zustandswechsel')
+    &&substr_count($eventHtml,'<details')===2,
+    'one last phone event per person inside existing single tile');
 echo "Single resident current-state expandable HTML Tile PASS\n";
