@@ -1,3 +1,11 @@
+# v0.8.66 (Build 147) – Letzte WLAN-Wiedererkennung dauerhaft sichtbar
+
+- Praxistest 17.10. 18:26: Beide Smartphones mit frischem Heim-WLAN, keine neue verifizierte P03-Hauspassage. Kein persönlicher neuer Eintritt nachgewiesen. Insbesondere wird eine WLAN-Kontakterneuerung **nicht** als persönliche Rückkehr gewertet.
+- Fehlerdiagnose verbessert: Das zuvor nur einen einzigen Refresh lang sichtbare Ereignis "Handy nach WLAN-Lücke neu bestätigt" wird nun in der bestehenden persistenten Handyhistorie gespeichert: letzter Wiedererkennungszeitpunkt und echte Dauer der vorausgehenden MAC-Erfassungslücke (>660 Sekunden; maximal 24 h Beobachtungsfenster).
+- Der bestehende kopierbare Testbericht zeigt jetzt "LETZTE WLAN-WIEDERERKENNUNG" mit Zeitpunkt, Lückendauer und explizit "KEIN Ankunftsnachweis". Fehlt eine echte beobachtete Wiedererkennung, bleibt der Zeitpunkt unbekannt. Die normale 300-Sekunden-Frischeentscheidung für die Bewohnervisualisierung wird nicht verlängert.
+- Bestehende Attribute werden rückwärtskompatibel erweitert; keine neuen Symcon-Variablen, Events, Timer, Kamerabefehle, WLAN-/Geofence-Skriptänderungen oder automatischen Anwesenheits-/Alarmaktionen.
+- Neue Regressionen für Persistenz über weitere Durchläufe und Ausgabe im Testbericht. Der GitHub-Commit ist noch kein bestandener SymBox- oder CI-Lauf.
+
 # v0.8.65 (Build 146) – Handy-Kontinuität und WLAN-Lücken ohne Schein-Abwesenheit
 
 - Neuer persistenter, ausschließlich lesender `JVPhoneContactContinuity`: pro Smartphone validierter letzter MAC-Kontakt, Empfangslücken (>660 s), nach WLAN-Lücke erneut erkannte Kontakte und sequenzierte Geofence-OUT/IN-Ereignisse. Bestehende SHADOW-Attribute dienen als Speicher; keine neuen Variablen oder fremden Skriptänderungen.
