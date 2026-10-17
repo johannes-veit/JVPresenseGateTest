@@ -1,3 +1,10 @@
+# v0.8.56 (Build 137) – SHADOW-Konfigurationsformular lässt sich wieder öffnen
+
+- Symcon-Fehler beim Öffnen von Instanz **JV Presence Identität SHADOW #32969**: `Fehler beim Laden der Konfigurationsform: Nicht unterstützter Typ: TextBox`. In `JVPresenceIdentityShadow/form.json` waren die beiden String-Eingaben `JohannesEgiZoneName` und `CarinaGeofencyZoneName` fälschlich als `TextBox` konfiguriert. IP-Symcon 9 unterstützt dafür `ValidationTextBox`; **beide** Felder wurden exakt darauf umgestellt.
+- Felder-Namen, registrierte String-Eigenschaften, gespeicherte Werte, Instanz-IDs, Checkbox-Optionen, Timer, bestehende SHADOW-Variablen und Ereignislogik bleiben unverändert. Es sind keine neuen Kategorien, Variablen, Instanzen, WebHooks, Skripte oder Änderungen an Fremdmodulen/Kameras/WLAN/Geofences erforderlich.
+- Neuer Regressionstest `tests/JVConfigurationFormTypesTest.php` prüft rekursiv alle `form.json`-Dateien der gesamten Bibliothek einschließlich verschachtelter `ExpansionPanel`-/`List`-Felder gegen eine Auswahl dokumentierter Symcon-Komponenten sowie beide Geofencing-Textfelder und ihre `RegisterPropertyString`-Deklarationen. GitHub-CI führt diesen Test vor Freigabe aus und blockiert weitere ungültige `TextBox`-Einträge.
+- Nach Update **0.8.56 Build 137** SHADOW-Konfiguration #32969 öffnen und prüfen; keine neue Instanz anlegen. Diese Korrektur betrifft das Laden des Formulars und ist kein Feldtest der tatsächlichen Bewohner-Anwesenheit.
+
 # v0.8.55 (Build 136) – IP-Symcon Modulverwaltung: Bibliotheksfehler „!“ beseitigen
 
 - Fehlerursache: Der eigenständige Repository-Hauptordner `tools/` aus der optionalen Phone-WiFi-Webhook-Anbindung ist **kein zulässiger IP-Symcon-Modulordner** (besitzt keine `module.json`) und steht auch nicht auf der Liste erlaubter Sonderordner. Die Modulliste zeigte deshalb bei `JV Presence Gate Test` ein schwarzes Ausrufezeichen, obwohl GitHub-PHP-CI und Build 135 korrekt waren. Laut offizieller Symcon-Modulstruktur sind u. a. `libs/`, `docs/`, `imgs/`, `tests/` und `actions/` ausgenommen; unbekannte Root-Ordner werden als fehlerhaft markiert.

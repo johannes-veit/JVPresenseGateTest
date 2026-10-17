@@ -203,7 +203,7 @@
           "maximum": 10000
         },
         {
-          "type": "TextBox",
+          "type": "ValidationTextBox",
           "name": "JohannesEgiZoneName",
           "caption": "Exakter Name von Johannes Geofence-Boolean (geprüft: Zuhause)"
         },
@@ -264,7 +264,7 @@
           "maximum": 2147483647
         },
         {
-          "type": "TextBox",
+          "type": "ValidationTextBox",
           "name": "CarinaGeofencyZoneName",
           "caption": "Exakter Name der Carina Zuhause-Zone (Standard Zuhause)"
         },
