@@ -81,6 +81,25 @@ expectHandoff(str_contains($reportRecovery,'LETZTE WLAN-WIEDERERKENNUNG:')
     &&str_contains($reportRecovery,'vorherige MAC-Kontaktluecke: 860 s')
     &&str_contains($reportRecovery,'KEIN Ankunftsnachweis'),
     'show retained recovery as diagnostic not human arrival');
+$fusionExample=[
+    'authority'=>'PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY',
+    'people'=>[
+        'johannes'=>['state'=>'PHONE_HOME_MAC_RECENT',
+            'lastEvent'=>['code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP',
+                'at'=>$now-120]],
+        'carina'=>['state'=>'PHONE_LOCATION_UNCONFIRMED','lastEvent'=>null]
+    ],
+    'p03'=>['lastAnonymousProof'=>null,'newAnonymousProofs'=>[]]
+];
+$reportedFusion=JVResidentEveningHandoff::build($tile,$phoneState,
+    $wlan,$work,$jGeo,$cGeo,$p03,$timing,$mast,$house,$activity,
+    $local,$boundary,$gate,[],$now,true,[],[],[],[],$fusionExample);
+expectHandoff(str_contains($reportedFusion,'EREIGNISKERN: PHONE_HOME_MAC_RECENT')
+    &&str_contains($reportedFusion,'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP')
+    &&str_contains($reportedFusion,'EREIGNISKERN P03:')
+    &&str_contains($reportedFusion,'P03_BEWUSST_INAKTIV_KEINE_NEUEN_ZONENUEBERGAENGE')
+    &&!str_contains($reportedFusion,'P03_KEIN_VERIFIZIERTER_LIVE_BETRIEB'),
+    'persistent phone event, anonymous P03 and intentionally inactive mode');
 expectHandoff(strlen($report)>1800 &&strlen($report)<13000
     &&str_starts_with($report,'=== TESTBERICHT AN CHATGPT')
     &&str_ends_with($report,'=== ENDE TESTBERICHT ==='),
