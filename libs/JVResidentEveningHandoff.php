@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -250,6 +250,17 @@ final class JVResidentEveningHandoff
         $add('NAECHSTE QUELLENLUECKEN: '.self::code($ready
                 ?implode(', ',array_slice($readiness['nextEvidencePriority']??[],0,3))
                 :'NOT_VERIFIED'));
+        $auditOK=($integrity['schema']??null)===1
+            &&($integrity['authority']??null)==='SHADOW_INTEGRITY_AUDIT_READ_ONLY';
+        $auditIssues=$auditOK &&is_array($integrity['issues']??null)
+            ?array_slice($integrity['issues'],0,5):[];
+        $add('SELBSTPRUEFUNG: '.self::code($auditOK
+                ?($integrity['status']??'UNBEKANNT'):'NICHT_VERIFIZIERT')
+            .' | kontrollierte Invarianten: '.self::number($integrity['verifiedChecks']??null)
+            .' | P03-Protokoll: '.self::code($auditOK
+                ?($integrity['p03LogContinuity']??'UNBEKANNT'):'UNBEKANNT'));
+        if($auditIssues!==[])$add('SELBSTPRUEFUNG HINWEISE: '.self::code(
+            implode(', ',$auditIssues)));
         $raw=$timingVerified&&is_array($timing['rawStreetIVS24h']??null)
             ?$timing['rawStreetIVS24h']:[];
         $add('ROHE Strassen-IVS/24h (kein Hauswechsel!): IN '
