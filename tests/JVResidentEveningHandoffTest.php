@@ -70,6 +70,17 @@ $gate=['positionHint'=>'ZU'];
 $report=JVResidentEveningHandoff::build($tile,$phoneState,
     $wlan,$work,$jGeo,$cGeo,$p03,$timing,$mast,$house,$activity,
     $local,$boundary,$gate,[], $now,true);
+$persistedContact=['authority'=>'READ_ONLY_PHONE_OBSERVATION_CONTINUITY',
+    'people'=>['johannes'=>['status'=>'FRESH_HOME_MAC_CONTACT',
+        'lastRecoveredHomeMacAt'=>$now-140,
+        'lastObservedRecoveryGapSeconds'=>860]]];
+$reportRecovery=JVResidentEveningHandoff::build($tile,$phoneState,
+    $wlan,$work,$jGeo,$cGeo,$p03,$timing,$mast,$house,$activity,
+    $local,$boundary,$gate,[],$now,true,[],[],[],$persistedContact);
+expectHandoff(str_contains($reportRecovery,'LETZTE WLAN-WIEDERERKENNUNG:')
+    &&str_contains($reportRecovery,'vorherige MAC-Kontaktluecke: 860 s')
+    &&str_contains($reportRecovery,'KEIN Ankunftsnachweis'),
+    'show retained recovery as diagnostic not human arrival');
 expectHandoff(strlen($report)>1800 &&strlen($report)<13000
     &&str_starts_with($report,'=== TESTBERICHT AN CHATGPT')
     &&str_ends_with($report,'=== ENDE TESTBERICHT ==='),
