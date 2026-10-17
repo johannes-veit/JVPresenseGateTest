@@ -16,7 +16,9 @@ $j=[];$g=['schema'=>1,'authority'=>'EXISTING_CARINA_GEOFENCY_READ_ONLY',
 $p=['schema'=>1,'authority'=>'P03_LIVE_PROOFS_DIRECTION_ONLY',
     'recentDirectionProofs'=>[['source'=>'P03_TWO_MAST_VERIFIED',
     'direction'=>'LAGER_TO_HOME','at'=>$now-70]]];
-$run=static fn()=>JVResidentArrivalInference::evaluate($w,$j,$g,$p,$now);
+$run=static function()use(&$w,&$j,&$g,&$p,$now):array {
+    return JVResidentArrivalInference::evaluate($w,$j,$g,$p,$now);
+};
 $r=$run();checkArrival($r['people']['carina']['assessment']==='LIKELY_PHONE_ASSOCIATED_HOME_ARRIVAL'
     &&$r['people']['carina']['vehicle']==='UNVERIFIED'
     &&!$r['mayArmAlarm'],'ordered phone and anonymous p03 IN');
