@@ -336,7 +336,7 @@ eq($module->timer['ReadLocal'],0,'disabling shadow stops timer');
 eq(count($module->messages),0,'disabled instance releases all GUS subscriptions');
 eq(count($module->values),7,'module registers five historical outputs plus tile and handoff');
 $form=json_decode($module->GetConfigurationForm(),true);
-eq(count($form['actions']),8,'eight read-only audit, import and discovery operations including Carina Geofency');
+eq(count($form['actions']),9,'eight existing read-only actions plus one requested copy-paste TestReport refresh');
 // A one-click LCN inventory must work even with Shadow DISABLED and
 // must not activate configured GUS, alter P03, or read camera credentials.
 $GLOBALS['instances'][8001]=['ModuleInfo'=>[
