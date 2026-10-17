@@ -234,11 +234,14 @@ final class JVResidentEventFusion
         // advance and successful route processing. The journal is replayed
         // after a crash and removed only after the route ledger is durable.
         $pending=[];
+        $queueExpired=false;
         if($p03Continuous&&$p03Valid&&!$logInterrupted){
             foreach(array_slice(is_array($oldP03['unackedRouteProofs']??null)
                 ?$oldP03['unackedRouteProofs']:[],0,self::MAX_ROUTE_PENDING) as $oldProof){
                 $valid=self::safeProof($oldProof,$now);
-                if($valid===null||$now-$valid['at']>600)continue;
+                if($valid===null||$now-$valid['at']>600){
+                    $queueExpired=true;continue;
+                }
                 $pending[self::proofKey($valid)]=$valid;
             }
         }
@@ -271,9 +274,9 @@ final class JVResidentEventFusion
         $queueOverflow=count($pending)>self::MAX_ROUTE_PENDING
             ||(is_array($oldP03['unackedRouteProofs']??null)
                 &&count($oldP03['unackedRouteProofs'])>self::MAX_ROUTE_PENDING);
-        if($queueOverflow){
-            // Never silently trim valid proofs and pretend the route remained
-            // fully observed. Invalidate open route continuity explicitly.
+        if($queueOverflow||$queueExpired){
+            // Neither overflow nor expired delivery may be presented as
+            // continuous route evidence: discard the incomplete corridor.
             $logInterrupted=true;$pending=[];$newProofs=[];
         }
         $allPending=array_slice(array_values($pending),0,self::MAX_ROUTE_PENDING);
@@ -290,6 +293,7 @@ final class JVResidentEventFusion
             'routeDeliveryProofs'=>$delivery,
             'unackedRouteProofCount'=>count($allPending),
             'routeJournalOverflow'=>$queueOverflow,
+            'routeJournalExpired'=>$queueExpired,
             'lastAnonymousProof'=>$latest,
             'identityConfirmed'=>false,'phoneAssociatedWithCrossing'=>false,
             'homeLagerIsNotPropertyExit'=>true,
