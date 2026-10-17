@@ -31,6 +31,8 @@ jobs:
           php -l JVPresenceIdentityShadow/module.php
           php -l libs/JVResidentEventFusion.php
           php -l libs/JVRouteEpisodeLedger.php
+          php -l libs/JVResidentJourneyEvidence.php
+          php -l libs/JVPresenceEvidenceReadiness.php
           php -l libs/JVResidentArrivalInference.php
           php -l libs/JVResidentDepartureInference.php
           php -l libs/JVResidentTileDashboard.php
@@ -40,6 +42,9 @@ jobs:
         run: |
           php tests/JVResidentEventFusionTest.php
           php tests/JVRouteEpisodeLedgerTest.php
+          php tests/JVResidentJourneyEvidenceTest.php
+          php tests/JVPresenceEvidenceReadinessTest.php
+          php tests/JVResidentDepartureInferenceTest.php
           php tests/JVResidentArrivalInferenceTest.php
           php tests/JVPhoneContactContinuityTest.php
           php tests/JVResidentTileDashboardTest.php
