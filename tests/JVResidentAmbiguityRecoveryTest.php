@@ -78,7 +78,11 @@ $fusion['p03']['newAnonymousProofs']=[
     $proof('LAGER_TO_HOME',$t+155),
     $proof('LAGER_TO_HOME',$t+175)
 ];
-$extraIn=$run($stillAmbiguous['next'],$t+185);
+$reloaded=json_decode(json_encode($stillAmbiguous['next'],
+    JSON_THROW_ON_ERROR),true,512,JSON_THROW_ON_ERROR);
+assertMulti(($reloaded['ambiguousOutstanding']??null)===2,
+    'two still-unresolved outward crossings persist across SymBox checkpoint reload');
+$extraIn=$run($reloaded,$t+185);
 assertMulti(!$extraIn['report']['newEpisodeThisRefresh']
     &&$extraIn['report']['ambiguousOutstanding']===0
     &&in_array('UNRESOLVED_MULTIPERSON_CROSSINGS_QUARANTINED',
