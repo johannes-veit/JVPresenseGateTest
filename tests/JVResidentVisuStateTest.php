@@ -25,9 +25,15 @@ $home=['authority'=>'ANONYMOUS_HOME_OBSERVATION_ONLY',
  'sourcesHealthy'=>true,'lastHomeMotionAgeSeconds'=>2];
 $p03=['authority'=>'P03_LIVE_PROOFS_DIRECTION_ONLY',
  'directionProofs24h'=>['HOME_TO_LAGER'=>2,'LAGER_TO_HOME'=>2]];
-$eval=static fn(array $prior=[],?int $clock=null) =>
-    JVResidentVisuState::evaluate($mac,$work,$geo,$cGeo,$home,$p03,
-        $prior,$clock??$now);
+// Capture the mutable scenario fixtures BY REFERENCE. An arrow function
+// would capture their initial values and silently invalidate later cases.
+$eval=static function(array $prior=[],?int $clock=null) use (
+    &$mac,&$work,&$geo,&$cGeo,&$home,&$p03,$now
+):array {
+    return JVResidentVisuState::evaluate(
+        $mac,$work,$geo,$cGeo,$home,$p03,$prior,$clock??$now
+    );
+};
 $r=$eval();
 rv($r['report']['people']['johannes']['decision']==='HOME_PHONE_CONFIRMED'
     &&$r['report']['people']['carina']['decision']==='HOME_PHONE_CONFIRMED',
