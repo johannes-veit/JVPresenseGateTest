@@ -1601,6 +1601,14 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | GUS-Impulse/24h: '.$activity['totalMotionEdges24h']
             .' | P03-neue Beweise/24h: '
             .array_sum($p03Timeline['report']['directionProofs24h'])
+            .' | P03-Betrieb: '.($temporalCrossCheck['p03OperatingMode']==='TEST_AND_PRODUCTION_OFF'
+                ?'TEST/PRODUKTION AUS – IVS nur roh'
+                :($temporalCrossCheck['p03OperatingMode']==='PRODUCTION_ACTIVE'
+                    ?'PRODUKTION AKTIV'
+                    :($temporalCrossCheck['p03OperatingMode']==='TEST_ACTIVE'
+                        ?'TEST AKTIV':'NICHT VERIFIZIERT')))
+            .' | P03-Roh-STRASSE/24h: '
+            .array_sum($temporalCrossCheck['rawStreetIVS24h'])
             .' | Haus: '.$houseLabel
             .' | Grundstuecksausgaenge: '.(
                 $boundary['report']['configuredBoundarySignals']===0
