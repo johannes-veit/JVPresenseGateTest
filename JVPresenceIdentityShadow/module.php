@@ -29,6 +29,7 @@ require_once dirname(__DIR__).'/libs/JVResidentVisuState.php';
 require_once dirname(__DIR__).'/libs/JVResidentTileDashboard.php';
 require_once dirname(__DIR__).'/libs/JVResidentDepartureInference.php';
 require_once dirname(__DIR__).'/libs/JVResidentArrivalInference.php';
+require_once dirname(__DIR__).'/libs/JVPhoneContactContinuity.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
@@ -50,6 +51,7 @@ class JVPresenceIdentityShadow extends IPSModule
         'LocalSensorState',
         'LocalActivityLedger',
         'ResidentVisuState',
+        'ResidentPhoneContinuity',
         'TileResidentState',
         'P03IncrementalTimeline',
         'BoundaryLedger',
@@ -1658,6 +1660,20 @@ class JVPresenceIdentityShadow extends IPSModule
                 ],true))
                 $tileWork['people'][$person]=$workWiFi['people'][$person];
         }
+        // Durable phone-contact history. A resumed WLAN confirmation is
+        // not evidence of a human arriving, and silence is never departure.
+        $contactPrior=json_decode(
+            $this->readShadowState('ResidentPhoneContinuity'),true
+        );
+        $contactHistory=JVPhoneContactContinuity::evaluate(
+            $tileWlan,$tileGeoJ,$tileGeoC,
+            is_array($contactPrior)?$contactPrior:[],time()
+        );
+        $contactNext=json_encode($contactHistory['next'],
+            JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+        if(is_string($contactNext)
+            &&$this->readShadowState('ResidentPhoneContinuity')!==$contactNext)
+            $this->writeShadowState('ResidentPhoneContinuity',$contactNext);
         $tilePrior=json_decode($this->readShadowState('TileResidentState'),true);
         $tileResident=JVResidentVisuState::evaluate(
             $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
@@ -1733,6 +1749,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentTileEvidence'=>$tileData,
             'residentDepartureInference'=>$departureHint,
             'residentArrivalInference'=>$arrivalHint,
+            'phoneContactContinuity'=>$contactHistory['report'],
             'roomMovementPaths'=>$roomPaths,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
@@ -1852,7 +1869,8 @@ class JVPresenceIdentityShadow extends IPSModule
             $tileGeoJ,$tileGeoC,$p03Timeline['report'],
             $temporalCrossCheck,$mastHealth,$houseObservation,
             $activity,$local,$boundary['report'],$gateDisplay,
-            $warnings,time(),true,$departureHint,$roomPaths,$arrivalHint
+            $warnings,time(),true,$departureHint,$roomPaths,$arrivalHint,
+            $contactHistory['report']
         ));
         $this->publish($report,$state);
     }
