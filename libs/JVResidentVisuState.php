@@ -1,5 +1,5 @@
 <?php
-declare(strict_types=1;
+declare(strict_types=1);
 
 /**
  * Read-only, restart-safe phone-based VISU state, one state per named
