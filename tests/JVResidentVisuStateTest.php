@@ -99,10 +99,11 @@ $back=JVResidentVisuState::evaluate(
 rv($back['report']['people']['carina']['decision']==='HOME_PHONE_CONFIRMED'
     &&$back['next']['people']['carina']['zone']==='HOME',
     'newer genuine HOME proof supersedes previous firm SSID');
+$switchNow=$at+60;
 $mac['people']['carina']['lastMacContactAt']=$at-400;
 $work['people']['carina']['ageSeconds']=2;
 $go=JVResidentVisuState::evaluate(
-    $mac,$work,$geo,$cGeo,$home,$p03,$back['next'],$at);
+    $mac,$work,$geo,$cGeo,$home,$p03,$back['next'],$switchNow);
 rv($go['report']['people']['carina']['decision']==='WORK_PHONE_CONFIRMED'
     &&$go['next']['people']['carina']['zone']==='WORK',
     'fresh firm SSID supersedes lingering 11-min home MAC grace');
@@ -113,7 +114,7 @@ $mac['people']['carina']['recentMacEvidence']=true;
 $mac['people']['carina']['state']='MAC_CONFIRMED_RECENT_DEVICE_HINT';
 $work['people']['carina']['ageSeconds']=901;
 $outOfOrder=JVResidentVisuState::evaluate(
-    $mac,$work,$geo,$cGeo,$home,$p03,$go['next'],$at);
+    $mac,$work,$geo,$cGeo,$home,$p03,$go['next'],$switchNow);
 rv($outOfOrder['report']['people']['carina']['decision']==='LAST_KNOWN_UNCONFIRMED'
     &&$outOfOrder['report']['people']['carina']['rejectedOlderOppositeZoneSource']===true
     &&$outOfOrder['next']['people']['carina']['zone']==='WORK',
@@ -121,13 +122,13 @@ rv($outOfOrder['report']['people']['carina']['decision']==='LAST_KNOWN_UNCONFIRM
 $mac['enabled']=false;
 $work['people']['carina']['ageSeconds']=901;
 $after=JVResidentVisuState::evaluate(
-    $mac,$work,$geo,$cGeo,$home,$p03,$go['next'],$at);
+    $mac,$work,$geo,$cGeo,$home,$p03,$go['next'],$switchNow);
 rv($after['report']['people']['carina']['decision']==='LAST_KNOWN_UNCONFIRMED'
     &&$after['report']['people']['carina']['deviceEvidenceAt']===null,
     'stale firm update stays last-known, no permanent WORK');
 $work['people']['carina']['sourceVerified']=false;
 $fail=JVResidentVisuState::evaluate(
-    $mac,$work,$geo,$cGeo,$home,$p03,[],$at);
+    $mac,$work,$geo,$cGeo,$home,$p03,[],$switchNow);
 rv($fail['report']['people']['carina']['decision']==='UNKNOWN',
     'unverified source never creates location');
 $work['people']['carina']['sourceVerified']=true;
@@ -136,7 +137,7 @@ $work['people']['carina']['workRecent']=false;
 $work['people']['carina']['homeSsidRecent']=true;
 $work['people']['carina']['ageSeconds']=7;
 $homeSSID=JVResidentVisuState::evaluate(
-    $mac,$work,$geo,$cGeo,$home,$p03,[],$at);
+    $mac,$work,$geo,$cGeo,$home,$p03,[],$switchNow);
 rv($homeSSID['report']['people']['carina']['decision']==='HOME_PHONE_CONFIRMED'
     &&$homeSSID['report']['people']['carina']['deviceEvidenceReason']==='PHONE_HOME_SSID',
     'phone actively reports exact home SSID even if MAC polling off');
