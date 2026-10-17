@@ -57,7 +57,7 @@ jobs:
           n=0
           for test in tests/*Test.php tests/test_logic.php; do
             echo "::group::$test"
-            php "$test"
+            php -d auto_prepend_file=tests/MockSymconSemaphore.php "$test"
             echo "::endgroup::"
             n=$((n+1))
           done
