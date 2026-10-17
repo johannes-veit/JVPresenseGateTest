@@ -80,9 +80,10 @@ final class JVRouteEpisodeLedger
             if($p03LogInterrupted)
                 $report['warnings'][]='P03_LOG_GAP_CORRIDOR_CONTINUITY_INTERRUPTED';
         }
+        $delivery=$p03['routeDeliveryProofs']??$p03['newAnonymousProofs']??null;
         $new=$fusionOK&&!$p03Off&&!$p03LogInterrupted
-            &&is_array($p03['newAnonymousProofs']??null)
-            ?array_slice($p03['newAnonymousProofs'],0,32):[];
+            &&is_array($delivery)
+            ?array_slice($delivery,0,32):[];
         usort($new,static fn($a,$b)=>($a['at']??0)<=>($b['at']??0));
         foreach($new as $proof){
             $pass=self::safePassage($proof,$now);
