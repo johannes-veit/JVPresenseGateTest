@@ -145,7 +145,8 @@ final class JVPresenceCommissioningGate
                 ?($numberStat['status']??'NOT_CONNECTED'):'NOT_VERIFIED';
         // A Dahua NumberStat threshold/cumulative counter cannot close
         // the gap for individual vehicle direction or distinct humans.
-        if(!$all)$actions[]='RECHECK_UNVERIFIED_READ_ONLY_INPUT_REPORTS';
+        if(!$all)array_unshift($actions,
+            'RECHECK_UNVERIFIED_READ_ONLY_INPUT_REPORTS');
         $actions=array_values(array_unique($actions));
         $out['actionCount']=count($actions);
         $out['actions']=array_slice($actions,0,self::MAX_ACTIONS);
