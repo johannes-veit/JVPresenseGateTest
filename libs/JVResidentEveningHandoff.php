@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -53,7 +53,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.67 Build 148 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.68 Build 149 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -197,6 +197,26 @@ final class JVResidentEveningHandoff
             .' | neue seit letztem SHADOW-Durchlauf: '
             .self::number(is_array($fp03['newAnonymousProofs']??null)
                 ?count($fp03['newAnonymousProofs']):null));
+        $re=($routeEpisodes['authority']??null)==='ANONYMOUS_ROUTE_EPISODES_READ_ONLY'
+            ?$routeEpisodes:[];
+        $ep=is_array($re['lastEpisode']??null)?$re['lastEpisode']:[];
+        $add('WEGFOLGE: '.self::code($ep['kind']??'KEINE_ABGESCHLOSSENE_FOLGE')
+            .' | Haus->Lager '.self::date($ep['outAt']??null)
+            .' | Lager->Haus '.self::date($ep['inAt']??null));
+        $add('WEGFOLGE: Dauer '.self::age($ep['durationSeconds']??null)
+            .' | offene Hinwege '.self::number($re['openOutgoingPassages']??null)
+            .' | Mehrpersonen-/Identitaetsnachweis NEIN');
+        $add('WEGFOLGE KONTEXT: Hausbewegung vorher '
+            .self::yes(($ep['anonymousIndoorMotionBeforeOut']??false)===true)
+            .' | Hausbewegung danach '
+            .self::yes(($ep['anonymousIndoorMotionAfterIn']??false)===true)
+            .' | Strassen-Human nahebei '
+            .self::yes(($ep['rawStreetHumanNearby']??false)===true));
+        $add('FAHRZEUGKONTEXT: '.self::code(
+                $re['vehicleSignalCoverage']??'NICHT_VERIFIZIERT')
+            .' | Fahrzeugvariable aktiv nahebei '
+            .self::yes(($ep['vehicleVariableActiveNearby']??false)===true)
+            .' | Auto/Fussweg weiterhin NICHT NACHGEWIESEN');
         $raw=$timingVerified&&is_array($timing['rawStreetIVS24h']??null)
             ?$timing['rawStreetIVS24h']:[];
         $add('ROHE Strassen-IVS/24h (kein Hauswechsel!): IN '
