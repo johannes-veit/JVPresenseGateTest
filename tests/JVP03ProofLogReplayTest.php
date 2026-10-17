@@ -1,5 +1,14 @@
 <?php
 declare(strict_types=1);
+// Mock the IP-Symcon per-instance Refresh semaphore (no real server).
+$GLOBALS['shadowSemaphores']=[];
+function IPS_SemaphoreEnter(string $name,int $timeout):bool {
+    if(isset($GLOBALS['shadowSemaphores'][$name]))return false;
+    $GLOBALS['shadowSemaphores'][$name]=true;return true;
+}
+function IPS_SemaphoreLeave(string $name):void {
+    unset($GLOBALS['shadowSemaphores'][$name]);
+}
 require_once dirname(__DIR__).'/libs/JVP03ProofLogReplay.php';
 
 $checks=0;
