@@ -32,6 +32,8 @@ final class JVCombinedPresenceBoolean
                 'p03RecentHouseEntry'=>false,
                 'johannesWlanAndHomeGeofence'=>false,
                 'carinaWlanAndHomeGeofence'=>false,
+                'johannesRecentHomeMacPositive'=>false,
+                'carinaRecentHomeMacPositive'=>false,
                 'johannesWlanRecent'=>false,
                 'carinaWlanRecent'=>false,
                 'johannesHomeGeofenceRecent'=>false,
@@ -125,6 +127,16 @@ final class JVCombinedPresenceBoolean
             if($work)$result['supportingContext'][]=strtoupper($person)
                 .'_PHONE_ON_COMPANY_WIFI_NOT_HOME_PROOF';
             $result['sources'][$person.'WlanRecent']=$onWlan;
+            // Match the resident tile's 300-second fresh HOME-MAC rule.
+            // A retained WLAN Boolean (660 s grace) is NOT fresh proof.
+            $macAt=$phone['lastMacContactAt']??null;
+            $freshHomeMac=$onWlan&&is_int($macAt)
+                &&$macAt>0&&$macAt<=$now+5
+                &&$now-$macAt>=0&&$now-$macAt<=300
+                &&!$work&&($geo['outsideRecent']??false)!==true;
+            $result['sources'][$person.'RecentHomeMacPositive']=$freshHomeMac;
+            if($freshHomeMac)$result['positiveReasons'][]=strtoupper($person)
+                .'_CURRENT_HOME_MAC_PHONE_HINT';
             $result['sources'][$person.'HomeGeofenceRecent']=$onGeo;
             $pair=$onWlan&&$onGeo&&!$work;
             if($work&&$onWlan)
