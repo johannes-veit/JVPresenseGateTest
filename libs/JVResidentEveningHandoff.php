@@ -94,6 +94,7 @@ final class JVResidentEveningHandoff
                 ?($arrival['people'][$person]??[]):[];
             $add('--- '.$label.' ---');
             $add('KACHEL: '.$summary.' | Entscheidung: '.$decision);
+            $add('WLAN-KONTAKTHISTORIE: '.self::code($contactHistory['people'][$person]['status']??'NICHT_ERFASST'));
             $add('ANKUNFT: '.self::code($a['assessment']??'NOT_ESTABLISHED')
                 .' | Grund: '.self::code($a['reason']??'NO_DATA')
                 .' | letzte Haus-WLAN-MAC: '.self::date($a['homeMacAt']??null)
