@@ -30,6 +30,7 @@ require_once dirname(__DIR__).'/libs/JVResidentTileDashboard.php';
 require_once dirname(__DIR__).'/libs/JVResidentDepartureInference.php';
 require_once dirname(__DIR__).'/libs/JVResidentArrivalInference.php';
 require_once dirname(__DIR__).'/libs/JVPhoneContactContinuity.php';
+require_once dirname(__DIR__).'/libs/JVResidentEventFusion.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
@@ -52,6 +53,7 @@ class JVPresenceIdentityShadow extends IPSModule
         'LocalActivityLedger',
         'ResidentVisuState',
         'ResidentPhoneContinuity',
+        'ResidentEventFusion',
         'TileResidentState',
         'P03IncrementalTimeline',
         'BoundaryLedger',
@@ -1674,6 +1676,21 @@ class JVPresenceIdentityShadow extends IPSModule
         if(is_string($contactNext)
             &&$this->readShadowState('ResidentPhoneContinuity')!==$contactNext)
             $this->writeShadowState('ResidentPhoneContinuity',$contactNext);
+        // Durable, per-phone event sequence + anonymous P03 proof ledger.
+        // Strictly local reads: no camera operation, alarms or person identity.
+        $fusionPrior=json_decode(
+            $this->readShadowState('ResidentEventFusion'),true
+        );
+        $residentFusion=JVResidentEventFusion::evaluate(
+            $tileWlan,$tileGeoJ,$tileGeoC,$tileWork,
+            $p03Timeline['report'],
+            is_array($fusionPrior)?$fusionPrior:[],time()
+        );
+        $fusionNext=json_encode($residentFusion['next'],
+            JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+        if(is_string($fusionNext)
+            &&$this->readShadowState('ResidentEventFusion')!==$fusionNext)
+            $this->writeShadowState('ResidentEventFusion',$fusionNext);
         $tilePrior=json_decode($this->readShadowState('TileResidentState'),true);
         $tileResident=JVResidentVisuState::evaluate(
             $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
@@ -1694,7 +1711,8 @@ class JVPresenceIdentityShadow extends IPSModule
         );
         $tileData=JVResidentTileDashboard::evaluate(
             $tileResident['report'],$tileWlan,$tileWork,
-            $p03Timeline['report'],$houseObservation,time(),$departureHint,$roomPaths
+            $p03Timeline['report'],$houseObservation,time(),$departureHint,$roomPaths,
+            $residentFusion['report']
         );
         $tileHTML=JVResidentTileDashboard::render($tileData);
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
@@ -1750,6 +1768,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentDepartureInference'=>$departureHint,
             'residentArrivalInference'=>$arrivalHint,
             'phoneContactContinuity'=>$contactHistory['report'],
+            'residentEventFusion'=>$residentFusion['report'],
             'roomMovementPaths'=>$roomPaths,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
@@ -1870,7 +1889,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $temporalCrossCheck,$mastHealth,$houseObservation,
             $activity,$local,$boundary['report'],$gateDisplay,
             $warnings,time(),true,$departureHint,$roomPaths,$arrivalHint,
-            $contactHistory['report']
+            $contactHistory['report'],$residentFusion['report']
         ));
         $this->publish($report,$state);
     }
