@@ -174,4 +174,55 @@ $gapResult=JVResidentEventFusion::evaluate(
 chk($gapResult['report']['p03']['logInterrupted']===true
     &&count($gapResult['report']['p03']['newAnonymousProofs'])===0,
     'P03 protocol reset never supplies a new continuous route proof');
+
+// Source outage without a SHADOW outage: re-enabling an unverified
+// geofence must only establish baseline, never retroactively book OUT/IN.
+$z=$now+40000;
+$zWifi=['schema'=>1,'authority'=>'EXISTING_WLAN_MAC_HINTS_READ_ONLY',
+    'enabled'=>true,'people'=>['johannes'=>$phone($z-100)]];
+$zGeo=['schema'=>1,'authority'=>'EXISTING_JOHANNES_EGIGEOZONE_READ_ONLY',
+    'enabled'=>true,'validatedSource'=>true,'insideRecent'=>true,
+    'outsideRecent'=>false,'geofenceReportedInside'=>true,
+    'lastEventAt'=>$z-50];
+$zCarina=['schema'=>1,'authority'=>'EXISTING_CARINA_GEOFENCY_READ_ONLY',
+    'enabled'=>true,'validatedSource'=>false];
+$z0=JVResidentEventFusion::evaluate(
+    $zWifi,$zGeo,$zCarina,$work,$hp,[],$z
+);
+$zGeo['validatedSource']=false;
+$zGeo['outsideRecent']=true;$zGeo['insideRecent']=false;
+$zGeo['geofenceReportedInside']=false;$zGeo['lastEventAt']=$z+30;
+$z1=JVResidentEventFusion::evaluate(
+    $zWifi,$zGeo,$zCarina,$work,$hp,$z0['next'],$z+60
+);
+chk($z1['next']['people']['johannes']['lastGeoSourceVerified']===false,
+    'untrusted geofence stops an active personal event chain');
+$zGeo['validatedSource']=true;
+$z2=JVResidentEventFusion::evaluate(
+    $zWifi,$zGeo,$zCarina,$work,$hp,$z1['next'],$z+80
+);
+chk($z2['report']['people']['johannes']['newPersonalPhoneEvent']===null
+    &&$z2['report']['people']['johannes']['pendingGeofenceOut']===null,
+    'restored OUT snapshot is baseline only, no fake departure');
+$zGeo['lastEventAt']=$z+90;
+$z3=JVResidentEventFusion::evaluate(
+    $zWifi,$zGeo,$zCarina,$work,$hp,$z2['next'],$z+100
+);
+chk($z3['report']['people']['johannes']['newPersonalPhoneEvent']['code']
+    ==='PHONE_GEOFENCE_OUT_OBSERVED',
+    'genuinely newer verified OUT after restored baseline is counted');
+$zWifi['people']['johannes']['validatedExistingVariablePair']=false;
+$zWifi['people']['johannes']['lastMacContactAt']=$z+110;
+$z4=JVResidentEventFusion::evaluate(
+    $zWifi,$zGeo,$zCarina,$work,$hp,$z3['next'],$z+120
+);
+chk($z4['next']['people']['johannes']['lastMacSourceVerified']===false,
+    'untrusted MAC source breaks personal contact continuity');
+$zWifi['people']['johannes']=$phone($z+140);
+$z5=JVResidentEventFusion::evaluate(
+    $zWifi,$zGeo,$zCarina,$work,$hp,$z4['next'],$z+150
+);
+chk($z5['report']['people']['johannes']['newPhoneReturn']===false
+    &&$z5['report']['people']['johannes']['newPersonalPhoneEvent']===null,
+    'fresh MAC after unverified source cannot be interpreted as new arrival');
 echo "Resident event fusion PASS\n";
