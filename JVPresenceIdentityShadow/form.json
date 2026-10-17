@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "ABEND-TEST v0.8.58: Direkt unter dieser SHADOW-Instanz entsteht automatisch die eine kopierbare STRING-Variable 'Testergebnis an ChatGPT (Kopieren)' (Ident TestReport). Jede Aktualisierung im 60-s-Takt sammelt die aktuellen, quellengeprüften Johannes-/Carina-WLAN-, Geo-, Firmen-SSID-, P03-Richtungs-, Kamera-LIVE-, LCN-GUS-, Tor-/Routendaten samt Original-Uhrzeiten, Altersangaben, Blockern und noch fehlenden Beweisen. Kein Roh-GPS, Passwörter, Token oder persönliche MAC-Adressen im Bericht. Du musst keine Daten aus fünf anderen Variablen suchen. Heute Abend einfach den kompletten Inhalt dieser EINEN Variablen kopieren oder bei Bedarf mehrere Screenshots davon schicken. Keine manuellen Optionen oder fremden Module umschalten. Aktuellen Bericht bei Bedarf mit der Schaltfläche 'Testbericht jetzt aktualisieren (nur lesen)' unten auffrischen. Keine automatische Abwesenheit-/Alarmsteuerung freigegeben."
+      "caption": "SHADOW v0.8.70: Eine einzige vorhandene Variable 'Testergebnis an ChatGPT (Kopieren)' (Ident TestReport) zeigt die quellengeprüften aktuellen WLAN-/Geofence-Zustände, die individuelle Handy-Ereigniskette, die anonymen P03-Haus-Lagerplatz-Wege, den zeitlichen Weg-Handy-Abgleich, 15 LCN-GUS sowie Fahrzeug- und SSID-Beweislücken. Die Auswertung läuft automatisch alle 60 s und nach LCN-/Torereignissen, ohne neue Sensoren oder Schreibzugriffe auf P03, Kamera, WLAN, LCN, Schiebetor oder Alarm. Eine Handy-Beobachtung ist keine Personenidentifikation. Abwesenheit, Autofahrt und Haus leer bleiben ohne gesicherte Quellen UNBEWIESEN; keine Alarmfreigabe. Kein erneuter Geh-/Fahrtest nur wegen Modulupdate erforderlich."
     },
     {
       "type": "Label",
