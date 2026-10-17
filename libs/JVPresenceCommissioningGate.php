@@ -21,7 +21,8 @@ final class JVPresenceCommissioningGate
         $out=[
             'schema'=>1,'authority'=>'PRESENCE_READ_ONLY_COMMISSIONING_GATE',
             'state'=>'INPUTS_UNVERIFIED','sources'=>[],
-            'p03'=>'NOT_VERIFIED','vehicle'=>'NOT_VERIFIED',
+            'p03'=>'NOT_VERIFIED','mastStreams'=>'NOT_VERIFIED',
+            'roomMotion'=>'NOT_VERIFIED','vehicle'=>'NOT_VERIFIED',
             'numberStat'=>'NOT_VERIFIED',
             'additionalCameras'=>'NOT_VERIFIED',
             'actions'=>[],'actionCount'=>0,
@@ -29,6 +30,7 @@ final class JVPresenceCommissioningGate
             'canClaimPersonDrivingCar'=>false,
             'canCertifyPropertyEmpty'=>false,
             'mayArmAlarm'=>false,'maySwitchDevices'=>false,
+            'canObserveInShadowReadOnly'=>false,
             'noNewSymconObjects'=>true
         ];
         if($now<=0)return $out;
@@ -106,6 +108,14 @@ final class JVPresenceCommissioningGate
         }
         $out['p03']=$readyOk
             ?($readiness['p03Mode']??'MODE_NOT_VERIFIED'):'NOT_VERIFIED';
+        $out['mastStreams']=$readyOk
+            ?($readiness['mastStreams']??'NOT_VERIFIED'):'NOT_VERIFIED';
+        $out['roomMotion']=$readyOk
+            ?($readiness['roomMotionCoverage']??'NOT_VERIFIED'):'NOT_VERIFIED';
+        if($out['mastStreams']!=='BOTH_OBSERVERS_LIVE_NOT_PROOF_OF_TRANSITION')
+            $actions[]='VERIFY_EXISTING_P03_MAST_HEALTH_READ_ONLY';
+        if($out['roomMotion']!=='FIFTEEN_GUS_SOURCES_VERIFIED_ANONYMOUS')
+            $actions[]='VERIFY_EXISTING_FIFTEEN_GUS_SOURCE_MAPPING';
         if($out['p03']==='P03_INTENTIONALLY_OFF_NO_NEW_TRANSFERS'){
             $actions[]='P03_MODE_OFF_INTENTIONAL_NO_NEW_VERIFIED_ROUTE';
         }elseif($out['p03']!=='P03_TRANSFER_MODE_ACTIVE'){
@@ -140,6 +150,8 @@ final class JVPresenceCommissioningGate
         $out['actionCount']=count($actions);
         $out['actions']=array_slice($actions,0,self::MAX_ACTIONS);
         $out['actionsTruncated']=count($actions)>self::MAX_ACTIONS;
+        $out['canObserveInShadowReadOnly']=$all
+            &&($integrity['status']??null)==='CONSISTENT';
         $out['state']=!$all?'INPUTS_UNVERIFIED':
             ((($integrity['status']??null)==='REVIEW_REQUIRED')
                 ?'SOURCE_CONSISTENCY_REVIEW'
