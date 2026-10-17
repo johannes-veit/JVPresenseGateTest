@@ -77,4 +77,16 @@ $f['p03']['routeDeliveryProofs']=[['at'=>$t-5]];
 $a=$run();
 auditOK(in_array('P03_DELIVERY_DURING_SOURCE_GAP',$a['issues'],true),
     'proof delivery while verified log continuity broken is prohibited');
+$f['p03']['routeDeliveryProofs']=[];
+$r['ambiguousOutstanding']=2;$r['openOutgoingPassages']=1;
+$a=$run();
+auditOK(in_array('ANONYMOUS_MULTIPERSON_QUARANTINE_STATE_INVALID',
+    $a['issues'],true),
+    'open unique route and unresolved multiperson quarantine cannot coexist');
+$r['openOutgoingPassages']=0;
+$r['ambiguousOutstanding']=0;
+$a=$run();
+auditOK(!in_array('ANONYMOUS_MULTIPERSON_QUARANTINE_STATE_INVALID',
+    $a['issues'],true),
+    'valid cleared ambiguity quarantine is not an integrity error');
 echo "SHADOW integrity audit PASS\n";
