@@ -111,12 +111,19 @@ final class JVResidentEventFusion
             }
             $lastGeo=$geoRebaseline?null:
                 self::ts($prev['lastGeoAt']??null,$now,self::GEO_MAX_AGE);
-            $outAt=$geoSourceContinuous
+            $outAt=$geoSourceContinuous&&!$macRebaseline
                 ?self::ts($prev['pendingOutAt']??null,$now,self::GEO_MAX_AGE)
                 :null;
-            $inAt=$geoSourceContinuous
+            $inAt=$geoSourceContinuous&&!$macRebaseline
                 ?self::ts($prev['pendingInAt']??null,$now,self::GEO_MAX_AGE)
                 :null;
+            // A source change cannot inherit the other source's pending
+            // personal sequence. No cross-binding OUT->IN->MAC proof.
+            if($geoRebaseline){
+                $oldMac=null;$newMac=false;$gap=null;
+            }
+            $lastRebind=self::ts($prev['lastSourceRebindAt']??null,$now,self::MAX_AGE);
+            if($macKeyChanged||$geoKeyChanged)$lastRebind=$now;
             $returnAt=($macRebaseline||$geoRebaseline)?null:
                 self::ts($prev['lastPhoneReturnAt']??null,$now,self::MAX_AGE);
             $event=($macKeyChanged||$geoKeyChanged)?null:
@@ -200,6 +207,7 @@ final class JVResidentEventFusion
                 'lastGeoSourceVerified'=>$geoValid,
                 'lastMacSourceKey'=>$macKey??$oldMacKey,
                 'lastGeoSourceKey'=>$geoKey??$oldGeoKey,
+                'lastSourceRebindAt'=>$lastRebind,
                 'lastGeoAt'=>$lastGeo,'pendingOutAt'=>$outAt,
                 'pendingInAt'=>$inAt,'lastPhoneReturnAt'=>$returnAt,
                 'lastEvent'=>$event,
@@ -214,6 +222,9 @@ final class JVResidentEventFusion
                 'macSourceRebound'=>$macKeyChanged,
                 'geoSourceRebound'=>$geoKeyChanged,
                 'sourceRebaselineRequired'=>$macRebaseline||$geoRebaseline,
+                'lastSourceRebindAt'=>$lastRebind,
+                'sourceRebindRecent'=>$lastRebind!==null
+                    &&$now-$lastRebind<=86400,
                 'lastEvent'=>$event,'eventHistory'=>$history,
                 'eventHistoryCount'=>count($history),
                 'lastEventIsHistorical'=>$newEvent===null,
