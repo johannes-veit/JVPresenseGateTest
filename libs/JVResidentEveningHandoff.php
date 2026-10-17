@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -53,7 +53,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.69 Build 150 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.70 Build 151 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -231,6 +231,17 @@ final class JVResidentEveningHandoff
         $add('FAHRZEUG-NACHWEIS: '.self::code(
                 $journeyOK?($journey['vehicleEvidence']??'NO_DATA'):'NOT_VERIFIED')
             .' | Auto, Fahrtrichtung und Bewohner NICHT BEWIESEN');
+        $ready=($readiness['schema']??null)===1
+            &&($readiness['authority']??null)==='READ_ONLY_PRESENCE_EVIDENCE_READINESS';
+        $add('QUELLENSTATUS: P03 '.self::code($ready
+                ?($readiness['p03Mode']??'UNKNOWN'):'NOT_VERIFIED')
+            .' | Mastkamera '.self::code($ready
+                ?($readiness['mastStreams']??'UNKNOWN'):'NOT_VERIFIED')
+            .' | 15 GUS '.self::code($ready
+                ?($readiness['roomMotionCoverage']??'UNKNOWN'):'NOT_VERIFIED'));
+        $add('NAECHSTE QUELLENLUECKEN: '.self::code($ready
+                ?implode(', ',array_slice($readiness['nextEvidencePriority']??[],0,3))
+                :'NOT_VERIFIED'));
         $raw=$timingVerified&&is_array($timing['rawStreetIVS24h']??null)
             ?$timing['rawStreetIVS24h']:[];
         $add('ROHE Strassen-IVS/24h (kein Hauswechsel!): IN '
