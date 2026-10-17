@@ -15,6 +15,8 @@ final class JVResidentEventFusion
     private const HOME_TO_OUT=1800;
     private const CLOCK_SKEW=5;
     private const MAX_P03_KEYS=48;
+    private const MAX_ROUTE_PENDING=128;
+    private const MAX_ROUTE_DELIVERY=32;
     private const MAX_PHONE_EVENTS=24;
     private const MAX_OBSERVATION_GAP=3600;
 
@@ -211,8 +213,10 @@ final class JVResidentEventFusion
             ['OK','TAIL_OVERLAP_AFTER_ROTATION'],true)
             ||count(array_intersect($logWarnings,[
                 'P03_LOG_BATCH_INVALID','INVALID_CLOCK_OR_LOG_SIZE',
-                'P03_SOURCE_NOT_READABLE','P03_LOG_GAP_OR_RESET'
-            ]))>0;
+                'P03_SOURCE_NOT_READABLE','P03_LOG_GAP_OR_RESET',
+                'P03_NEW_PROOF_BATCH_OVERFLOW'
+            ]))>0
+            ||($p03['newProofBatchOverflow']??false)===true;
         $oldP03=$validPrior&&is_array($prior['p03']??null)?$prior['p03']:[];
         $seen=is_array($oldP03['seen']??null)?$oldP03['seen']:[];
         $clean=[];
@@ -232,7 +236,7 @@ final class JVResidentEventFusion
         $pending=[];
         if($p03Continuous&&$p03Valid&&!$logInterrupted){
             foreach(array_slice(is_array($oldP03['unackedRouteProofs']??null)
-                ?$oldP03['unackedRouteProofs']:[],0,32) as $oldProof){
+                ?$oldP03['unackedRouteProofs']:[],0,self::MAX_ROUTE_PENDING) as $oldProof){
                 $valid=self::safeProof($oldProof,$now);
                 if($valid===null||$now-$valid['at']>600)continue;
                 $pending[self::proofKey($valid)]=$valid;
@@ -240,9 +244,11 @@ final class JVResidentEventFusion
         }
         $newProofs=[];
         if($p03Valid&&!$logInterrupted){
-            $proofs=$p03['recentDirectionProofs']??[];
+            $proofs=is_array($p03['newlyVerifiedDirectionProofs']??null)
+                ?$p03['newlyVerifiedDirectionProofs']
+                :($p03['recentDirectionProofs']??[]);
             if(is_array($proofs)){
-                foreach(array_slice($proofs,0,64) as $proof){
+                foreach(array_slice($proofs,0,self::MAX_ROUTE_PENDING) as $proof){
                     $checked=self::safeProof($proof,$now);
                     if($checked===null)continue;
                     $key=$checked['at'].'|'.$checked['direction'].'|'.$checked['route'];
@@ -262,18 +268,28 @@ final class JVResidentEventFusion
                 $pending[self::proofKey($proof)]=$proof;
         }
         uasort($pending,static fn(array $a,array $b)=>$a['at']<=>$b['at']);
-        $delivery=array_slice(array_values($pending),0,32);
+        $queueOverflow=count($pending)>self::MAX_ROUTE_PENDING
+            ||(is_array($oldP03['unackedRouteProofs']??null)
+                &&count($oldP03['unackedRouteProofs'])>self::MAX_ROUTE_PENDING);
+        if($queueOverflow){
+            // Never silently trim valid proofs and pretend the route remained
+            // fully observed. Invalidate open route continuity explicitly.
+            $logInterrupted=true;$pending=[];$newProofs=[];
+        }
+        $allPending=array_slice(array_values($pending),0,self::MAX_ROUTE_PENDING);
+        $delivery=array_slice($allPending,0,self::MAX_ROUTE_DELIVERY);
         arsort($clean,SORT_NUMERIC);
         $clean=array_slice($clean,0,self::MAX_P03_KEYS,true);
         usort($newProofs,static fn(array $a,array $b)=>$a['at']<=>$b['at']);
         $next['p03']=['initialized'=>true,'lastReadAt'=>$now,
             'seen'=>$clean,
             'lastAnonymous'=>$latest,'highWaterAt'=>$highWater,
-            'unackedRouteProofs'=>$delivery];
+            'unackedRouteProofs'=>$allPending];
         $out['p03']=[
             'newAnonymousProofs'=>$newProofs,
             'routeDeliveryProofs'=>$delivery,
-            'unackedRouteProofCount'=>count($delivery),
+            'unackedRouteProofCount'=>count($allPending),
+            'routeJournalOverflow'=>$queueOverflow,
             'lastAnonymousProof'=>$latest,
             'identityConfirmed'=>false,'phoneAssociatedWithCrossing'=>false,
             'homeLagerIsNotPropertyExit'=>true,
@@ -295,7 +311,7 @@ final class JVResidentEventFusion
         if(($state['schema']??null)!==1
             ||!is_array($state['p03']??null))return $state;
         $keys=[];
-        foreach(array_slice($delivered,0,32) as $proof){
+        foreach(array_slice($delivered,0,self::MAX_ROUTE_DELIVERY) as $proof){
             $valid=self::safeProof($proof,$now);
             if($valid!==null)$keys[self::proofKey($valid)]=true;
         }
@@ -305,7 +321,8 @@ final class JVResidentEventFusion
             if($valid===null)continue;
             if(!isset($keys[self::proofKey($valid)]))$rest[]=$valid;
         }
-        $state['p03']['unackedRouteProofs']=array_slice($rest,0,32);
+        $state['p03']['unackedRouteProofs']=array_slice(
+            $rest,0,self::MAX_ROUTE_PENDING);
         return $state;
     }
 
