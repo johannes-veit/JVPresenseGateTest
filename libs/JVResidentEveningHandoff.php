@@ -53,7 +53,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.65 Build 146 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.66 Build 147 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -95,8 +95,13 @@ final class JVResidentEveningHandoff
             $add('--- '.$label.' ---');
             $add('KACHEL: '.$summary.' | Entscheidung: '.$decision);
             $add('WLAN-KONTAKTHISTORIE: '.self::code($contactHistory['people'][$person]['status']??'NICHT_ERFASST'));
-            $add('Handy nach WLAN-Luecke neu bestaetigt: '.self::yes(($contactHistory['people'][$person]['contactResumedAfterGap']??false)===true)
-                .' | Geofence OUT/IN + neuer MAC: '.self::yes(($contactHistory['people'][$person]['phoneReturnAfterObservedOutIn']??false)===true));
+            $add('LETZTE WLAN-WIEDERERKENNUNG: '.self::date(
+                $contactHistory['people'][$person]['lastRecoveredHomeMacAt']??null)
+                .' | vorherige MAC-Kontaktluecke: '.self::age(
+                $contactHistory['people'][$person]['lastObservedRecoveryGapSeconds']??null)
+                .' | KEIN Ankunftsnachweis');
+            $add('Geofence OUT/IN + neuer MAC in diesem Zyklus: '.self::yes(
+                ($contactHistory['people'][$person]['phoneReturnAfterObservedOutIn']??false)===true));
             $add('ANKUNFT: '.self::code($a['assessment']??'NOT_ESTABLISHED')
                 .' | Grund: '.self::code($a['reason']??'NO_DATA')
                 );
