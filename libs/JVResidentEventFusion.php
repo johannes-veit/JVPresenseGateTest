@@ -56,12 +56,15 @@ final class JVResidentEventFusion
                 ?self::ts($wp['lastMacContactAt']??null,$now,self::MAX_AGE)
                 :null;
             $oldMac=self::ts($prev['lastMacAt']??null,$now,self::MAX_AGE);
+            $macSourceContinuous=($prev['lastMacSourceVerified']??false)===true
+                &&$verifiedPair&&!$boot;
             $fresh=$verifiedPair
                 &&($wp['wlanBoolean']??null)===true
                 &&($wp['recentMacEvidence']??false)===true
                 &&($wp['state']??null)==='MAC_CONFIRMED_RECENT_DEVICE_HINT'
                 &&$mac!==null&&$mac>=$now-self::PHONE_FRESH;
-            $newMac=$fresh&&$oldMac!==null&&$mac>$oldMac;
+            $newMac=$fresh&&$macSourceContinuous
+                &&$oldMac!==null&&$mac>$oldMac;
             $gap=$newMac?$mac-$oldMac:null;
             $lastMac=$mac!==null&&($oldMac===null||$mac>$oldMac)?$mac:$oldMac;
             $geo=$person==='johannes'?$jGeo:$cGeo;
@@ -72,6 +75,9 @@ final class JVResidentEventFusion
                 &&($geo['authority']??null)===$expected
                 &&($geo['enabled']??false)===true
                 &&($geo['validatedSource']??false)===true;
+            $geoSourceContinuous=$geoValid
+                &&($prev['lastGeoSourceVerified']??false)===true
+                &&!$boot;
             $geoAt=$geoValid?self::ts($geo['lastEventAt']??null,$now,self::GEO_MAX_AGE):null;
             $geoKind=null;
             if($geoAt!==null){
@@ -83,8 +89,12 @@ final class JVResidentEventFusion
                     &&($geo['geofenceReportedInside']??null)===false)$geoKind='OUT';
             }
             $lastGeo=self::ts($prev['lastGeoAt']??null,$now,self::GEO_MAX_AGE);
-            $outAt=self::ts($prev['pendingOutAt']??null,$now,self::GEO_MAX_AGE);
-            $inAt=self::ts($prev['pendingInAt']??null,$now,self::GEO_MAX_AGE);
+            $outAt=$geoSourceContinuous
+                ?self::ts($prev['pendingOutAt']??null,$now,self::GEO_MAX_AGE)
+                :null;
+            $inAt=$geoSourceContinuous
+                ?self::ts($prev['pendingInAt']??null,$now,self::GEO_MAX_AGE)
+                :null;
             $returnAt=self::ts($prev['lastPhoneReturnAt']??null,$now,self::MAX_AGE);
             $event=self::safeEvent($prev['lastEvent']??null,$now);
             $history=[];
@@ -106,7 +116,7 @@ final class JVResidentEventFusion
                 &&($ssid['status']??null)==='WORK_FIRMEN_WLAN_PHONE';
             // First sample is a baseline only. Old P03 and geofence events
             // must never be turned into new personal journeys on an update.
-            if(!$boot && $geoAt!==null &&$geoAt>=$initialAt
+            if($geoSourceContinuous && $geoAt!==null &&$geoAt>=$initialAt
                 && $geoKind!==null
                 &&($lastGeo===null||$geoAt>$lastGeo)){
                 if($geoKind==='OUT'){
@@ -162,6 +172,8 @@ final class JVResidentEventFusion
                 'initialized'=>true,
                 'initializedAt'=>$initialAt,'lastObservedAt'=>$now,
                 'lastMacAt'=>$lastMac,
+                'lastMacSourceVerified'=>$verifiedPair,
+                'lastGeoSourceVerified'=>$geoValid,
                 'lastGeoAt'=>$lastGeo,'pendingOutAt'=>$outAt,
                 'pendingInAt'=>$inAt,'lastPhoneReturnAt'=>$returnAt,
                 'lastEvent'=>$event,
@@ -171,6 +183,8 @@ final class JVResidentEventFusion
                 'state'=>$phoneState,'lastMacAt'=>$lastMac,
                 'lastMacAgeSeconds'=>$lastMac!==null?$now-$lastMac:null,
                 'lastGeoAt'=>$lastGeo,'lastGeoKind'=>$geoKind,
+                'geoSourceContinuous'=>$geoSourceContinuous,
+                'macSourceContinuous'=>$macSourceContinuous,
                 'lastEvent'=>$event,'eventHistory'=>$history,
                 'eventHistoryCount'=>count($history),
                 'lastEventIsHistorical'=>$newEvent===null,
