@@ -388,6 +388,11 @@ checkGate(($repeat['gateSignalAudit']['newStatusEdgesThisRead']??null)===0,
 // previous scan, opt-in gate watch, GUS baseline, P03 timeline and gate edges.
 // Runtime buffers are intentionally NOT copied to the replacement object.
 $beforeRestart=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($beforeRestart['residentVisuState']['schema']??null)===1
+    &&($beforeRestart['residentVisuState']['authority']??null)
+        ==='RESIDENT_PHONE_VISU_HINTS_READ_ONLY'
+    &&($beforeRestart['residentVisuState']['mayArmAlarm']??true)===false,
+    'existing two status variables driven by safe persisted per-phone hints');
 checkGate(($beforeRestart['temporalPresenceCrossCheck']['schema']??null)===1
     &&($beforeRestart['temporalPresenceCrossCheck']['authority']??null)
         ==='READ_ONLY_TIME_ALIGNMENT_DIAGNOSTIC_NOT_IDENTITY'
@@ -403,6 +408,8 @@ checkGate(($attrs['PersistExitCandidateInventory']??'{}')!=='{}',
     'inventory stored durably in Symcon attribute');
 checkGate(($attrs['PersistGateSignalLedger']??'{}')!=='{}',
     'gate status edges stored durably in Symcon attribute');
+checkGate(array_key_exists('PersistResidentVisuState',$attrs),
+    'new persisted last-known hints survive restart without new Symcon variables');
 checkGate(($attrs['PersistLocalActivityLedger']??'{}')!=='{}',
     'GUS 24h activity baseline stored durably in Symcon attribute');
 checkGate(array_key_exists('PersistP03IncrementalTimeline',$attrs),
@@ -719,8 +726,8 @@ checkGate(($both['people']['carina']??null)==='UNKNOWN'
     &&($both['people']['johannes']??null)==='UNKNOWN'
     &&($both['combinedPresenceEvidence']['absenceReview']['mayArmAlarm']??null)===false,
     'two home phones cannot identify humans or arm alarm');
-checkGate($carGeoMod->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)'
-    &&$carGeoMod->GetValue('CarinaPresence')==='ANWESEND (Handyhinweis)',
+checkGate($carGeoMod->GetValue('JohannesPresence')==='ZUHAUSE (Handy-WLAN bestätigt)'
+    &&$carGeoMod->GetValue('CarinaPresence')==='ZUHAUSE (Handy-WLAN bestätigt)',
     'both requested status values show confirmed smartphone device proximity');
 checkGate($carGeoMod->GetValue('PresenceDetected')===true
     &&($both['presenceDetected']['detected']??false)===true
@@ -742,7 +749,7 @@ checkGate(($conflict['carinaGeofency']['outsideRecent']??null)===true
     'Carina outside while WLAN true is conflict review, never absent');
 checkGate($carGeoMod->GetValue('PresenceDetected')===true,
     'Carina conflict does not cancel independent Johannes positive proof');
-checkGate($carGeoMod->GetValue('CarinaPresence')==='WIDERSPRUCH (WLAN / Geofence)',
+checkGate($carGeoMod->GetValue('CarinaPresence')==='ZUHAUSE (Handy-WLAN bestätigt)',
     'conflicting source shown without claiming away');
 $GLOBALS['gateDevices'][63001]['value']=$now-22000;
 $carGeoMod->Refresh();
@@ -752,7 +759,7 @@ checkGate(($stale['carinaGeofency']['outsideRecent']??true)===false
     ==='STALE_OUTSIDE_NOT_PERSON_AWAY',
     'stale Geofency event not current phone position');
 checkGate($carGeoMod->GetValue('CarinaPresence')
-    ==='WLAN ZUHAUSE (Geofence unbestätigt)',
+    ==='ZUHAUSE (Handy-WLAN bestätigt)',
     'stale outside plus WLAN does not claim away');
 $GLOBALS['gateDevices'][63001]['value']=$now-60;
 $GLOBALS['gateDevices'][63000]['pairedParent']=62001; // actual tree change
@@ -762,7 +769,7 @@ $bad=json_decode((string)$carGeoMod->GetValue('EvidenceJSON'),true);
 checkGate(($bad['carinaGeofency']['state']??null)==='SOURCE_NOT_VERIFIED',
     'moved or reused Geofency Boolean fails closed before state read');
 checkGate($carGeoMod->GetValue('CarinaPresence')
-    ==='WLAN ZUHAUSE (Geofence unbestätigt)',
+    ==='ZUHAUSE (Handy-WLAN bestätigt)',
     'reparented source cannot certify absent');
 $readNew=array_slice($GLOBALS['readCalls'],$readsBefore);
 checkGate(!in_array(63000,$readNew,true)&&!in_array(63001,$readNew,true),
@@ -828,8 +835,8 @@ checkGate(($live['johannesEgiGeoZone']['state']??null)
 checkGate(($live['carinaGeofency']['state']??null)
     ==='RECENT_INSIDE_HOME_GEOFENCE_DEVICE_HINT',
     'actual Carina known IDs work WITHOUT the optional Button 7 metadata scan');
-checkGate($real->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)'
-    &&$real->GetValue('CarinaPresence')==='ANWESEND (Handyhinweis)',
+checkGate($real->GetValue('JohannesPresence')==='ZUHAUSE (Handy-WLAN bestätigt)'
+    &&$real->GetValue('CarinaPresence')==='ZUHAUSE (Handy-WLAN bestätigt)',
     'both requested human-readable status variables show handset hints');
 checkGate(($live['people']['carina']??null)==='UNKNOWN'
     &&($live['people']['johannes']??null)==='UNKNOWN'
@@ -847,7 +854,7 @@ checkGate(($otherEgi['johannesEgiGeoZone']['state']??null)
     ==='SOURCE_NOT_VERIFIED',
     'EgiGeoZone timestamp for other zone cannot fake fresh home flag');
 checkGate($real->GetValue('JohannesPresence')
-    ==='WLAN ZUHAUSE (Geofence unbestätigt)',
+    ==='ZUHAUSE (Handy-WLAN bestätigt)',
     'Johannes conflicting timestamps fall back to WLAN-only, never physical presence');
 $otherEgiRead=array_slice($GLOBALS['readCalls'],$readsBefore);
 checkGate(!in_array(41869,$otherEgiRead,true)
@@ -856,7 +863,7 @@ checkGate(!in_array(41869,$otherEgiRead,true)
 $GLOBALS['gateDevices'][41869]['updated']=$now-15;
 $GLOBALS['gateDevices'][28055]['updated']=$now-15;
 $real->Refresh();
-checkGate($real->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)',
+checkGate($real->GetValue('JohannesPresence')==='ZUHAUSE (Handy-WLAN bestätigt)',
     'Johannes recovers after consistent two timestamp updates');
 $GLOBALS['gateDevices'][39169]['updated']=$now-1000;
 $GLOBALS['gateDevices'][45666]['updated']=$now-3;
@@ -867,7 +874,7 @@ checkGate(($unrelated['carinaGeofency']['selectionStatus']??null)
     ==='OTHER_GEOFENCE_TIMESTAMP',
     'an office geofence update does not freshen the Zuhause zone');
 checkGate($real->GetValue('CarinaPresence')
-    ==='WLAN ZUHAUSE (Geofence unbestätigt)',
+    ==='ZUHAUSE (Handy-WLAN bestätigt)',
     'other zone timestamp cannot falsely create a positive home geofence');
 $unrelatedReads=array_slice($GLOBALS['readCalls'],$readsBefore);
 checkGate(!in_array(39169,$unrelatedReads,true)
@@ -905,8 +912,8 @@ $zeroUpgrade=json_decode((string)$legacy->GetValue('EvidenceJSON'),true);
 checkGate(($zeroUpgrade['carinaGeofency']['state']??null)
     ==='RECENT_INSIDE_HOME_GEOFENCE_DEVICE_HINT',
     'legacy persisted 0/0/0 resolves to verified real Carina IDs by safe read-only fallback');
-checkGate($legacy->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)'
-    &&$legacy->GetValue('CarinaPresence')==='ANWESEND (Handyhinweis)',
+checkGate($legacy->GetValue('JohannesPresence')==='ZUHAUSE (Handy-WLAN bestätigt)'
+    &&$legacy->GetValue('CarinaPresence')==='ZUHAUSE (Handy-WLAN bestätigt)',
     'legacy upgrades show both user-requested display states without manual IDs');
 checkGate($legacy->GetValue('PresenceDetected')===true,
     'legacy Carina 0/0/0 fallback also contributes to general detection');
@@ -920,7 +927,7 @@ $wrongMix=json_decode((string)$legacy->GetValue('EvidenceJSON'),true);
 checkGate(($wrongMix['carinaGeofency']['state']??null)==='SOURCE_NOT_VERIFIED',
     'partial/incorrect old IDs are never silently repaired with a mixed source');
 checkGate($legacy->GetValue('CarinaPresence')
-    ==='WLAN ZUHAUSE (Geofence unbestätigt)',
+    ==='ZUHAUSE (Handy-WLAN bestätigt)',
     'bad source mapping remains non-authoritative and never claims person AWAY');
 
 // The two company SSIDs are NOT present as live Symcon variables in the
@@ -960,13 +967,28 @@ $firm->setProp('JohannesSSIDParentID',200100);
 $firm->setProp('CarinaSSIDVariableID',60502);
 $firm->setProp('CarinaSSIDParentID',200101);
 $firm->setProp('EnableWorkWiFiHints',true);
+// Old HOME MAC remains within its 660s grace. The *newer* firm's real
+// phone SSID event must take precedence without treating both as a
+// simultaneous contradictory network proof.
+$GLOBALS['gateDevices'][26497]['value']=$now-400;
+$GLOBALS['gateDevices'][10760]['value']=$now-400;
+// Carina had a more recent HOME snapshot on the module's prior Refresh.
+// Send an even newer verified Firmen-WLAN event before evaluating WORK.
+$GLOBALS['gateDevices'][60502]['updated']=$now-1;
 $readsBefore=count($GLOBALS['readCalls']);
 $firm->Refresh();
 $atFirm=json_decode((string)$firm->GetValue('EvidenceJSON'),true);
 checkGate(($atFirm['workWiFi']['workPhoneCount']??null)===2
-    &&$firm->GetValue('JohannesPresence')==='WORK (Firmen-WLAN-Handy)'
-    &&$firm->GetValue('CarinaPresence')==='WORK (Firmen-WLAN-Handy)',
-    'exact two phone SSIDs report company as WORK, not HOME');
+    &&$firm->GetValue('JohannesPresence')==='FIRMA (Handy-WLAN bestätigt)'
+    &&$firm->GetValue('CarinaPresence')==='FIRMA (Handy-WLAN bestätigt)',
+    'exact two phone SSIDs report company as WORK, not HOME: '
+    .json_encode([
+        'count'=>$atFirm['workWiFi']['workPhoneCount']??null,
+        'j'=>$atFirm['residentVisuState']['people']['johannes']??[],
+        'c'=>$atFirm['residentVisuState']['people']['carina']??[],
+        'jssid'=>$atFirm['workWiFi']['people']['johannes']??[],
+        'cssid'=>$atFirm['workWiFi']['people']['carina']??[]
+    ],JSON_UNESCAPED_UNICODE));
 checkGate($firm->GetValue('PresenceDetected')===false
     &&($atFirm['combinedPresenceEvidence']['status']??null)
       ==='PHONE_ON_FIRMEN_WIFI_HOME_NOT_CONFIRMED',
@@ -978,8 +1000,8 @@ checkGate(in_array(60501,$readFirm,true)&&in_array(60502,$readFirm,true)
 $GLOBALS['gateDevices'][60501]['value']='Veit-FilzenerWeg';
 $GLOBALS['gateDevices'][60501]['updated']=$now-4;
 $firm->Refresh();
-checkGate($firm->GetValue('JohannesPresence')==='ANWESEND (Handyhinweis)'
-    &&$firm->GetValue('CarinaPresence')==='WORK (Firmen-WLAN-Handy)'
+checkGate($firm->GetValue('JohannesPresence')==='ZUHAUSE (Handy-WLAN bestätigt)'
+    &&$firm->GetValue('CarinaPresence')==='FIRMA (Handy-WLAN bestätigt)'
     &&$firm->GetValue('PresenceDetected')===true,
     'one phone at home preserves HOME while other correctly stays at work');
 $GLOBALS['gateDevices'][60501]['value']='Intern-Veit';
