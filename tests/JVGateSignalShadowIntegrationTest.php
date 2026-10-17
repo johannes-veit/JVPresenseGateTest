@@ -457,7 +457,7 @@ checkGate(count($after->subscriptions)===0,
     'disabling Shadow unregisters seven passive gate subscriptions');
 checkGate($after->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile',
     'Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
-    'still exactly five output identifiers after simulated module reload');
+    'still exactly six output identifiers after simulated module reload');
 
 // Fail-closed lifecycle regression. Do not turn a failed bootstrap green.
 $bad=new JVPresenceIdentityShadow();
@@ -474,7 +474,7 @@ checkGate(!in_array(102,$bad->statusTransitions,true),
 checkGate(str_contains((string)$bad->GetValue('Status'),
     'CONFIGURE_READ_ONLY_TIMER'),
     'existing Status string identifies failed initialization stage');
-checkGate(count($bad->registered)===5,
+checkGate(count($bad->registered)===6,
     'bootstrap failure does not duplicate or create output variables');
 $bad->failTimerConfiguration=false;
 $bad->ApplyChanges();
