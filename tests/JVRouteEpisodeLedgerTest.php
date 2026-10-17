@@ -97,4 +97,24 @@ $f['p03']['newAnonymousProofs']=[
 ];
 $bad=$run($soloIn['next'],$t+5130);
 routeCheck($bad['report']['newPassagesThisRefresh']===0,'reject wrong or future source');
+// Verified P03 OFF breaks corridor continuity, even if observer packets
+// or a later officially verified IN exist.
+$raw['p03OperatingMode']='TEST_ACTIVE';
+$raw['p03ModeTrustedFromFreshDiagnosis']=true;
+$f['p03']['newAnonymousProofs']=[$proof('HOME_TO_LAGER',$t+5220)];
+$openNow=$run($bad['next'],$t+5230);
+routeCheck($openNow['report']['openOutgoingPassages']===1,'active P03 can start new route');
+$raw['p03OperatingMode']='TEST_AND_PRODUCTION_OFF';
+$f['p03']['newAnonymousProofs']=[];
+$disabled=$run($openNow['next'],$t+5260);
+routeCheck($disabled['report']['openOutgoingPassages']===0
+    &&in_array('P03_OFF_CORRIDOR_CONTINUITY_INTERRUPTED',
+        $disabled['report']['warnings'],true),'P03 mode off interrupts trip');
+$raw['p03OperatingMode']='TEST_ACTIVE';
+$f['p03']['newAnonymousProofs']=[$proof('LAGER_TO_HOME',$t+5300)];
+$afterOn=$run($disabled['next'],$t+5310);
+routeCheck(!$afterOn['report']['newEpisodeThisRefresh']
+    &&in_array('IN_WITHOUT_OBSERVED_OUT',
+        $afterOn['report']['warnings'],true),
+    'new IN cannot pair with prior OUT across P03 off');
 echo "Anonymous route episodes PASS\n";
