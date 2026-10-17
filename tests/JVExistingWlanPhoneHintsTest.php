@@ -25,6 +25,25 @@ wlanAssert($both['propertyEmptyMayBeCertified']===false
     &&$both['personPresenceMayBeChanged']===false
     &&$both['alarmMayBeControlled']===false,
     'no effect on presence, property absence or alarm');
+// A duplicated/cross-wired Symcon mapping is one handset, never
+// two different residents. Fail closed rather than double-count.
+$duplicate=$online;
+$duplicate['johannes']['boolId']=19980;
+$duplicate['johannes']['lastContactId']=26497;
+$duplicate['carina']['boolId']=19980;
+$duplicate['carina']['lastContactId']=26497;
+$dup=JVExistingWlanPhoneHints::evaluate($duplicate,$now,true);
+wlanAssert($dup['freshMacConfirmedDeviceCount']===0
+    &&$dup['phonesUnavailableOrUnconfirmed']===2
+    &&$dup['combinedContext']==='NO_FRESH_WLAN_NOT_ABSENCE',
+    'same source selected twice never presents two fresh resident phones');
+wlanAssert($dup['people']['johannes']['state']==='SOURCE_IDENTITY_COLLISION'
+    &&$dup['people']['carina']['state']==='SOURCE_IDENTITY_COLLISION'
+    &&!$dup['people']['johannes']['validatedExistingVariablePair']
+    &&!$dup['people']['carina']['validatedExistingVariablePair'],
+    'both duplicated WLAN bindings isolated without inventing absence');
+wlanAssert(in_array('BOTH_RESIDENTS_SHARE_ONE_WLAN_SOURCE',
+    $dup['warnings'],true),'duplicate source is explicitly diagnosable');
 $off=$online;
 $off['carina']['wlanValue']=false;
 $one=JVExistingWlanPhoneHints::evaluate($off,$now,true,false);
