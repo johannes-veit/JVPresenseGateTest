@@ -54,3 +54,16 @@ Eine eindeutige Carina/Johannes-Zuordnung beim Auto ist derzeit nicht nachweisba
 - Reproduzierbare Simulation: `tests/JVRouteEpisodeLedgerTest.php` im GitHub-Workflow `Presence PHP regressions` (Hin-/Rückweg, parallele Personen, fehlende/aktive Fahrzeugquelle, 60-minütiger SHADOW-Ausfall, P03 AUS dazwischen, falsche Quelle/Zeiten). Diese Tests benötigen **keine reale erneute Fuß- oder Autofahrt**.
 
 Die Unterscheidung „Carina fährt mit Auto heim“ bleibt für die technische Freigabe offen, solange keine verifizierten Vehicle-Ereignisse und keine zuverlässige persönliche Zuordnung vorliegen. Die Kamera- und Smartphone-Quellskripte bleiben unverändert.
+
+
+## v0.8.69 – Quellenübergreifende Handy-/Weg-Korrelation (nur lesen)
+
+Die Klasse `JVResidentJourneyEvidence` nutzt **keine neue Kamera- oder WLAN-Quelle**, sondern ausschließlich `JVResidentEventFusion`, `JVRouteEpisodeLedger`, die verifizierten persönlichen SSID-Hinweise und `JVBoundaryEvidence`. Eine Person wird dadurch **nicht** in Video identifiziert.
+
+- `PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC`: ein **persönliches Smartphone** hat nach individuell beobachtetem OUT und IN wieder einen bestätigten Heim-MAC innerhalb von höchstens 20 Minuten nach dem *anonymen* P03-IN. Das ist nur eine zeitlich passende Smartphonefolge.
+- `HOME_MAC_BEFORE_AND_WORK_SSID_AFTER_OUT`: für **dasselbe Smartphone** lag ein bestätigter Heim-MAC innerhalb von 15 Minuten **vor** dem anonymen P03-OUT und ein aktueller, persönlich verifizierter Firmen-WLAN-SSID-Nachweis höchstens 15 Minuten **danach** vor. Ein Home-MAC nach OUT, veraltete Firmen-SSID, `Privat-Veit-EXT` oder ohne eigene gültige Quelle werden abgewiesen.
+- Ohne passende persönliche Sequenz bleibt der Korridor anonym. Mit genau einer Sequenz darf nur das **Handy als zeitlich passend** erscheinen. Mit zwei konkurrierenden Handys wird **keine** Identität zugeordnet. Kein Ergebnis erlaubt eine Aussage „Johannes fuhr Auto“, „Carina wurde von der Kamera erkannt“ oder „Grundstück ist leer“.
+- Eine positive Fahrzeugvariable, rohes WORK_LEFT-RuleID5-Human und ein AUF/ZU-Signal sind jeweils nur Kontext. Solange keine real belegte, korrekt zugeordnete Fahrzeugklasse **mit Richtung und eindeutigem Verkehrskontext** in vorhandenen Quellen existiert, zeigt das Modul `NO_VEHICLE_SOURCE_MAPPED` oder `VEHICLE_SOURCE_ACTIVE_NEAR_ANONYMOUS_ROUTE_UNQUALIFIED`, niemals ein Fahr-/Fußwegzertifikat.
+- Die neue Reifematrix `JVPresenceEvidenceReadiness` sammelt P03-Modus, Maststreamgesundheit, 15 GUS-Quellen, den aktuellen Status **jeder** persönlichen Firmen-SSID und die fehlende qualifizierte Fahrzeugrichtung in `nextEvidencePriority`. P03 bewusst AUS ist eine Betriebsart und **kein Kameraverbindungsfehler**.
+- Die alte `JVResidentDepartureInference` darf in SHADOW nur noch ein tatsächlich im persistenten, einzelnen Handy-OUT-Ledger beobachtetes Geofence-OUT auswerten. Ein altes OUT-Boolean/Snapshot, beschädigtes Ledger oder eine reine WLAN-Erfassungslücke kann keine neue wahrscheinliche Abfahrt auslösen.
+- Ausgaben bleiben: bestehende Kachel und `TestReport #40890`, plus `EvidenceJSON.residentJourneyCorrelation` und `EvidenceJSON.presenceEvidenceReadiness`. Keine weiteren Instanzvariablen oder Änderungen an P03, LCN, Alarm, Netzwerk, Geofency, EgiGeoZone oder Schiebetor.
