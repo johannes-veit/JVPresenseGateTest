@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[],array $commissioning=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -293,6 +293,14 @@ final class JVResidentEveningHandoff
                 ?($integrity['p03LogContinuity']??'UNBEKANNT'):'UNBEKANNT'));
         if($auditIssues!==[])$add('SELBSTPRUEFUNG HINWEISE: '.self::code(
             implode(', ',$auditIssues)));
+        $gateOk=($commissioning['schema']??null)===1
+            &&($commissioning['authority']??null)==='PRESENCE_READ_ONLY_COMMISSIONING_GATE';
+        $add('MEILENSTEIN QUELLENQUALIFIKATION: '.self::code($gateOk
+                ?($commissioning['state']??'UNBEKANNT'):'NICHT_VERIFIZIERT')
+            .' | Fahrzeug '.self::code($gateOk
+                ?($commissioning['vehicle']??'UNBEKANNT'):'UNBEKANNT'));
+        if($gateOk)$add('NAECHSTE QUELLENARBEIT (NUR LESEN): '.self::code(
+            implode(', ',array_slice($commissioning['actions']??[],0,3))));
         $raw=$timingVerified&&is_array($timing['rawStreetIVS24h']??null)
             ?$timing['rawStreetIVS24h']:[];
         $add('ROHE Strassen-IVS/24h (kein Hauswechsel!): IN '
