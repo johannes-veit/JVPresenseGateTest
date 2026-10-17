@@ -101,4 +101,12 @@ assertDelivery($f7['report']['p03']['logInterrupted']===true
     &&in_array('P03_LOG_GAP_CORRIDOR_CONTINUITY_INTERRUPTED',
         $r5['report']['warnings'],true),
     'unreadable P03 source invalidates pending route handoff');
+// A journal whose oldest P03 proof passed its 10-minute delivery
+// deadline is an interrupted route, not a silently discarded crossing.
+$log['logContinuity']='OK';$log['warnings']=[];
+$expiry=$runFusion($f6['next'],$t+1100);
+assertDelivery(($expiry['report']['p03']['routeJournalExpired']??false)===true
+    &&$expiry['report']['p03']['logInterrupted']===true
+    &&count($expiry['report']['p03']['routeDeliveryProofs'])===0,
+    'expired unacknowledged P03 proof forces incomplete-route state');
 echo "Crash-safe proof delivery PASS\n";
