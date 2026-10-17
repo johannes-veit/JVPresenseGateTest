@@ -11,6 +11,10 @@
     },
     {
       "type": "Label",
+      "caption": "ABEND-TEST v0.8.58: Direkt unter dieser SHADOW-Instanz entsteht automatisch die eine kopierbare STRING-Variable 'Testergebnis an ChatGPT (Kopieren)' (Ident TestReport). Jede Aktualisierung im 60-s-Takt sammelt die aktuellen, quellengeprüften Johannes-/Carina-WLAN-, Geo-, Firmen-SSID-, P03-Richtungs-, Kamera-LIVE-, LCN-GUS-, Tor-/Routendaten samt Original-Uhrzeiten, Altersangaben, Blockern und noch fehlenden Beweisen. Kein Roh-GPS, Passwörter, Token oder persönliche MAC-Adressen im Bericht. Du musst keine Daten aus fünf anderen Variablen suchen. Heute Abend einfach den kompletten Inhalt dieser EINEN Variablen kopieren oder bei Bedarf mehrere Screenshots davon schicken. Keine manuellen Optionen oder fremden Module umschalten. Aktuellen Bericht bei Bedarf mit der Schaltfläche 'Testbericht jetzt aktualisieren (nur lesen)' unten auffrischen. Keine automatische Abwesenheit-/Alarmsteuerung freigegeben."
+    },
+    {
+      "type": "Label",
       "caption": "NEU v0.8.57: Unter SHADOW entsteht automatisch EINE String-Kachel 'Anwesenheit – Johannes & Carina' (Webinhalt/HTMLBox, eigene Variable). Jede Person ist per Klick auf ihren Namen aufklappbar und zeigt ausschließlich den aktuellen bestätigten Handy-Hinweis mit Uhrzeit sowie getrennte, ausdrücklich anonyme P03-/GUS-Indizien. Das Modul liest automatisch die vorhandenen, anhand ID/Name/Typ/Elternobjekt geprüften WLAN-Johannes-/Carina-Variablen aus den bestehenden Kategorien und die zwei bekannten Geofences (gemeinsamer Bereich Haus/Firma). Optional vorhandene eindeutige persönliche WifiSSID-Variablen werden rein lesend entdeckt. Es muss kein weiterer Fremdmodulschalter geändert und keine Quelle neu angelegt werden. 'ABWESEND' wird nur bei aktuell nachgewiesenem Firmen-WLAN des zugeordneten HANDYS angezeigt; fehlende Nachweise bleiben NICHT BESTÄTIGT, keine sichere menschliche Abwesenheit. Der konkrete Fuß-/Autoweg Filzener Weg / Lagerplatz ist aus bisherigen anonymen Kameras und WLAN nicht personenbezogen belegbar und wird deshalb nicht erfunden. Weder Alarm noch spätere Aktionen dürfen anhand dieser Kachel automatisch geschaltet werden."
     },
     {
@@ -477,6 +481,11 @@
     }
   ],
   "actions": [
+    {
+      "type": "Button",
+      "caption": "Testbericht an ChatGPT jetzt aktualisieren (nur lesen)",
+      "onClick": "JVIDSH_Refresh($id);"
+    },
     {
       "type": "Button",
       "caption": "1. Bestehende LCN-Bewegungsmelder-IDs prüfen (nur lesen)",

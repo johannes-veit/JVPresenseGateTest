@@ -26,6 +26,7 @@ require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
 require_once dirname(__DIR__).'/libs/JVResidentPresenceDisplay.php';
 require_once dirname(__DIR__).'/libs/JVResidentVisuState.php';
 require_once dirname(__DIR__).'/libs/JVResidentTileDashboard.php';
+require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
 require_once dirname(__DIR__).'/libs/JVCompanyWiFiEvidence.php';
@@ -141,6 +142,11 @@ class JVPresenceIdentityShadow extends IPSModule
         // status IDs, types, names and idents remain unmodified.
         $this->RegisterVariableString('ResidentTile',
             'Anwesenheit – Johannes & Carina','~HTMLBox',5);
+        // One new, automatically refreshed and copyable human-readable
+        // handoff. This is not a log of multiple statuses and no passwords
+        // or phone coordinates are included.
+        $this->RegisterVariableString('TestReport',
+            'Testergebnis an ChatGPT (Kopieren)','',6);
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
     }
 
@@ -197,7 +203,10 @@ class JVPresenceIdentityShadow extends IPSModule
                     'SHADOW Initialisierung fehlgeschlagen: '.$step
                 );
                 $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
-            $this->setPresenceDetected(false);
+                $this->setPresenceDetected(false);
+                $this->setTestReport('SHADOW-STARTFEHLER: '.$step
+                    .' | Keine Abwesenheitsfreigabe. '
+                    .'Kein fremdes Modul wurde veraendert.');
             }catch(Throwable $ignored){}
         }
     }
@@ -1309,6 +1318,11 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->setPresenceDetected(false);
             $this->setResidentTile('<section>SHADOW deaktiviert – '
                 .'Anwesenheit derzeit nicht bestätigt.</section>');
+            $this->setTestReport(
+                'SHADOW DEAKTIVIERT – keine aktive Beobachtung. '
+                .'Im Modul die bestehende Option Beobachtung einschalten '
+                .'und Uebernehmen waehlen. Keine Fremdmodule veraendert.'
+            );
             $this->publish([
                 'schema'=>1,'authority'=>'SHADOW_DISABLED',
                 'personPresenceMayBeChanged'=>false,
@@ -1817,6 +1831,13 @@ class JVPresenceIdentityShadow extends IPSModule
         );
         $this->setPresenceDetected($presenceDetected['detected']);
         $this->setResidentTile($tileHTML);
+        $this->setTestReport(JVResidentEveningHandoff::build(
+            $tileData,$tileResident['report'],$tileWlan,$tileWork,
+            $tileGeoJ,$tileGeoC,$p03Timeline['report'],
+            $temporalCrossCheck,$mastHealth,$houseObservation,
+            $activity,$local,$boundary['report'],$gateDisplay,
+            $warnings,time(),true
+        ));
         $this->publish($report,$state);
     }
 
@@ -2134,6 +2155,13 @@ class JVPresenceIdentityShadow extends IPSModule
         } catch(Throwable $e) {
             return null;
         }
+    }
+
+    /** One auto-refreshed copy/paste-only report, never raw secrets or GPS. */
+    private function setTestReport(string $text):void
+    {
+        if($this->GetValue('TestReport')!==$text)
+            $this->SetValue('TestReport',$text);
     }
 
     /** Update only the one new read-only HTMLBox display output on change. */

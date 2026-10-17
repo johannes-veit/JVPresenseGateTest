@@ -186,7 +186,7 @@ $GLOBALS['shadowPropertyWrites']=[];
 $GLOBALS['shadowApplyCalls']=[];
 $module->Create();
 $module->ApplyChanges();
-eq(count($module->values),6,'five existing outputs plus exactly one combined HTML tile');
+eq(count($module->values),7,'five existing outputs plus one combined HTML tile and copy-paste TestReport');
 eq($module->timer['ReadLocal'],0,'disabled by default: no background polling');
 eq(count($module->messages),0,'disabled default: no local VM_UPDATE subscriptions');
 eq($GLOBALS['readCount'],0,'disabled by default: no external read');
@@ -223,9 +223,13 @@ eq($observed['personPresenceMayBeChanged'],false,'P03 and phone cannot alter pre
 eq($observed['propertyEmptyMayBeCertified'],false,'P03 and phone cannot certify vacancy');
 // First post-baseline sample legitimately changes the baselineInitialized flag.
 $module->Refresh();
-$writeCount=count($module->writes);
+$stableWrites=static fn(array $writes):array=>array_values(
+    array_filter($writes,static fn($w)=>($w['key']??'')!=='TestReport')
+);
+$beforeStable=$stableWrites($module->writes);
 for($i=0;$i<100;$i++)$module->Refresh();
-eq(count($module->writes),$writeCount,'100 unchanged refreshes add zero variable writes');
+eq($stableWrites($module->writes),$beforeStable,
+    '100 unchanged refreshes add zero writes to six existing actual status/HTML outputs; TestReport may refresh its clock');
 
 // Local LCN and output-variable integration without any real Symcon writes.
 // Sensor snapshots are initially BASELINED, not replayed as new movements.
@@ -334,9 +338,9 @@ $module->properties['Enabled']=false;
 $module->ApplyChanges();
 eq($module->timer['ReadLocal'],0,'disabling shadow stops timer');
 eq(count($module->messages),0,'disabled instance releases all GUS subscriptions');
-eq(count($module->values),6,'module registers five historical outputs plus one combined tile');
+eq(count($module->values),7,'module registers five historical outputs plus tile and handoff');
 $form=json_decode($module->GetConfigurationForm(),true);
-eq(count($form['actions']),8,'eight read-only audit, import and discovery operations including Carina Geofency');
+eq(count($form['actions']),9,'eight existing read-only actions plus one requested copy-paste TestReport refresh');
 // A one-click LCN inventory must work even with Shadow DISABLED and
 // must not activate configured GUS, alter P03, or read camera credentials.
 $GLOBALS['instances'][8001]=['ModuleInfo'=>[
@@ -604,7 +608,7 @@ eq($repeat['houseObservation']['absenceControlState'],'NOT_CERTIFIED',
     'there is still no automatic AWAY certainty');
 eq($repeat['phoneLink']['state'],'DISABLED_SEPARATE_PROJECT',
     'WLAN project remains completely separate');
-eq(count($module->values),6,
+eq(count($module->values),7,
     'home observation extends existing JSON with zero new variables');
 
 
@@ -656,7 +660,7 @@ eq($module->properties,$propsBeforeAudit,
     'source configuration is unchanged after scan');
 eq(count($GLOBALS['shadowPropertyWrites']),$writesBeforeAudit,
     'inventory does not invoke IPS_SetProperty');
-eq(count($module->values),6,
+eq(count($module->values),7,
     'metadata-only inventory creates no additional Symcon variables beyond the two explicitly requested displays');
 
 // Only explicitly chosen existing contact/gate/vehicle signals can be read,
@@ -711,7 +715,7 @@ $module->MessageSink(1,8889,10603,[]);
 $repeatBoundary=json_decode($module->values['EvidenceJSON'],true);
 eq($repeatBoundary['boundaryEvidence']['boundaryChanges24h'],1,
     'same contact update not counted twice');
-eq(count($module->values),6,
+eq(count($module->values),7,
     'no further Symcon variables after boundary integration');
 $module->properties['Enabled']=false;
 $module->ApplyChanges();

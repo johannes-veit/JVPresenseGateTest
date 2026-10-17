@@ -232,7 +232,7 @@ checkGate(count($GLOBALS['readCalls'])===14
     && count(array_diff($GLOBALS['readCalls'],[
         40678,56808,13257,20724,31597,49204,50300
     ]))===0,'only original seven gate candidates read across two refreshes');
-checkGate($m->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
+checkGate($m->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport'],
     'unchanged two Shadow variables');
 checkGate(($data['boundaryEvidence']['configuredBoundarySignals']??null)===0,
     'candidate audit does not bind physical sensors');
@@ -400,7 +400,7 @@ checkGate(($beforeRestart['temporalPresenceCrossCheck']['schema']??null)===1
         ==='UNKNOWN_NOT_VERIFIED'
     &&($beforeRestart['temporalPresenceCrossCheck']['mayArmAlarm']??true)===false,
     'no camera instance means temporal audit exists but does not invent active P03');
-checkGate($m->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
+checkGate($m->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport'],
     'temporal crosscheck adds NO new Symcon variables');
 
 $attrs=$m->exportPersistedAttributes();
@@ -440,7 +440,7 @@ checkGate(count($afterRestart['gateSignalAudit']['recentStatusEdges']??[])>=1,
 checkGate(($afterRestart['localActivity']['startedAt']??null)
     ===($beforeRestart['localActivity']['startedAt']??null),
     'GUS observer startedAt survives complete restart');
-checkGate($after->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
+checkGate($after->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport'],
     'no additional Shadow variables after instance restart');
 // Also test reentrant Create on an existing instance: registered attributes
 // must never be rewritten with blank defaults.
@@ -455,9 +455,9 @@ checkGate($after->instanceStatus===102,
     'switching off passive observer still means a healthy initialized module');
 checkGate(count($after->subscriptions)===0,
     'disabling Shadow unregisters seven passive gate subscriptions');
-checkGate($after->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile',
-    'Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
-    'still exactly six output identifiers after simulated module reload');
+checkGate($after->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport',
+    'Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport'],
+    'still seven output identifiers, five historic plus tile and handoff');
 
 // Fail-closed lifecycle regression. Do not turn a failed bootstrap green.
 $bad=new JVPresenceIdentityShadow();
@@ -474,13 +474,13 @@ checkGate(!in_array(102,$bad->statusTransitions,true),
 checkGate(str_contains((string)$bad->GetValue('Status'),
     'CONFIGURE_READ_ONLY_TIMER'),
     'existing Status string identifies failed initialization stage');
-checkGate(count($bad->registered)===6,
+checkGate(count($bad->registered)===7,
     'bootstrap failure does not duplicate or create output variables');
 $bad->failTimerConfiguration=false;
 $bad->ApplyChanges();
 checkGate($bad->instanceStatus===102,
     'retry recovers module from 201 only after fully successful bootstrap');
-checkGate($bad->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
+checkGate($bad->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport'],
     'successful retry preserves two existing output variables');
 $activeFailure=new JVPresenceIdentityShadow();
 $activeFailure->Create();
@@ -521,6 +521,14 @@ $wlanMod->setProp('EnableExistingWLANHints',true);
 $wlanMod->Refresh();
 $wlanData=json_decode((string)$wlanMod->GetValue('EvidenceJSON'),true);
 $oneTile=(string)$wlanMod->GetValue('ResidentTile');
+$singleReport=(string)$wlanMod->GetValue('TestReport');
+checkGate(str_contains($singleReport,'=== TESTBERICHT AN CHATGPT')
+    &&str_contains($singleReport,'Heim-WLAN: ID #19980/#26497')
+    &&str_contains($singleReport,'Heim-WLAN: ID #38430/#10760')
+    &&str_contains($singleReport,'ABWESENHEIT-AKTIONEN / ALARMFREIGABE: NEIN')
+    &&str_ends_with($singleReport,'=== ENDE TESTBERICHT ==='),
+    'one auto-updated TestReport collects both WLAN phones and blocks real-world action permission');
+
 checkGate(str_contains($oneTile,'<details')
     &&str_contains($oneTile,'Johannes')
     &&str_contains($oneTile,'Carina')
@@ -554,7 +562,7 @@ checkGate(($wlanData['people']['johannes']??null)==='UNKNOWN'
     &&($wlanData['people']['carina']??null)==='UNKNOWN'
     &&($wlanData['propertyEmptyMayBeCertified']??null)===false,
     'both phones online never assert two people present nor empty premises');
-checkGate($wlanMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
+checkGate($wlanMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport'],
     'read-only phone integration does not allocate further variables');
 checkGate($wlanMod->GetValue('PresenceDetected')===false
     &&($wlanData['presenceDetected']['notDetectedDoesNotMeanEmpty']??false)===true,
@@ -680,7 +688,7 @@ checkGate(($disabledGeo['johannesEgiGeoZone']['state']??null)==='DISABLED'
 checkGate(!in_array(41869,array_slice($GLOBALS['readCalls'],$readsBefore),true)
     &&!in_array(28055,array_slice($GLOBALS['readCalls'],$readsBefore),true),
     'disabled geofence reads zero smartphone geo values');
-checkGate($geoMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
+checkGate($geoMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport'],
     'EgiGeoZone opt-in creates no new Symcon variables');
 
 // Carina iPhone Geofency is a separate real IP-Symcon Geofency module
@@ -802,7 +810,7 @@ checkGate(($disabledCarina['carinaGeofency']['state']??null)==='DISABLED'
     'Carina opt-out does not disrupt EgiGeoZone Johannes');
 checkGate(!in_array(63000,array_slice($GLOBALS['readCalls'],$readsBefore),true)
     &&!in_array(63001,array_slice($GLOBALS['readCalls'],$readsBefore),true)
-    &&$carGeoMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
+    &&$carGeoMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport'],
     'disabled Geofency reads no values and creates no Symcon output variables');
 
 // Actual confirmed Carina live IDs: #48903 / #45439 / #39169 / #45666.
@@ -903,7 +911,7 @@ checkGate($real->GetValue('JohannesPresence')==='NICHT BESTÄTIGT'
     'disabled instance immediately clears earlier positive phone displays');
 checkGate($real->GetValue('PresenceDetected')===false,
     'SHADOW disabled sets combined Boolean back to NO');
-checkGate($real->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile'],
+checkGate($real->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport'],
     'exactly two additional user-requested instance variables');
 
 // Live upgrade path from 0.8.47: the three Carina IDs are persisted as
