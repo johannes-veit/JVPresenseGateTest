@@ -52,14 +52,25 @@ final class JVResidentEventFusion
             $wp=$okWlan&&is_array($wlan['people'][$person]??null)
                 ?$wlan['people'][$person]:[];
             $verifiedPair=($wp['validatedExistingVariablePair']??false)===true;
+            $oldMacKey=self::trustedSourceKey($prev['lastMacSourceKey']??null);
+            $macKey=$verifiedPair
+                ?self::trustedSourceKey($wp['sourceKey']??null):null;
+            $macKeyChanged=$oldMacKey!==null&&$macKey!==null
+                &&$oldMacKey!==$macKey;
+            // Missing source key in legacy tests is supported. In production
+            // a newly introduced/rebound exact object pair is baselined.
+            $macKeyStable=($oldMacKey===$macKey);
+            $macRebaseline=$macKeyChanged||($macKey!==null
+                &&$oldMacKey===null&&($prev['initialized']??false)===true);
             // Do not persist arbitrary timestamps from failed/unverified
             // WLAN source pairs. A forged MAC could unlock an OUT/IN chain.
             $mac=$verifiedPair
                 ?self::ts($wp['lastMacContactAt']??null,$now,self::MAX_AGE)
                 :null;
-            $oldMac=self::ts($prev['lastMacAt']??null,$now,self::MAX_AGE);
+            $oldMac=$macRebaseline?null:
+                self::ts($prev['lastMacAt']??null,$now,self::MAX_AGE);
             $macSourceContinuous=($prev['lastMacSourceVerified']??false)===true
-                &&$verifiedPair&&!$boot;
+                &&$verifiedPair&&!$boot&&$macKeyStable;
             $fresh=$verifiedPair
                 &&($wp['wlanBoolean']??null)===true
                 &&($wp['recentMacEvidence']??false)===true
@@ -77,9 +88,17 @@ final class JVResidentEventFusion
                 &&($geo['authority']??null)===$expected
                 &&($geo['enabled']??false)===true
                 &&($geo['validatedSource']??false)===true;
+            $oldGeoKey=self::trustedSourceKey($prev['lastGeoSourceKey']??null);
+            $geoKey=$geoValid
+                ?self::trustedSourceKey($geo['sourceKey']??null):null;
+            $geoKeyChanged=$oldGeoKey!==null&&$geoKey!==null
+                &&$oldGeoKey!==$geoKey;
+            $geoKeyStable=($oldGeoKey===$geoKey);
+            $geoRebaseline=$geoKeyChanged||($geoKey!==null
+                &&$oldGeoKey===null&&($prev['initialized']??false)===true);
             $geoSourceContinuous=$geoValid
                 &&($prev['lastGeoSourceVerified']??false)===true
-                &&!$boot;
+                &&!$boot&&$geoKeyStable;
             $geoAt=$geoValid?self::ts($geo['lastEventAt']??null,$now,self::GEO_MAX_AGE):null;
             $geoKind=null;
             if($geoAt!==null){
@@ -90,18 +109,21 @@ final class JVResidentEventFusion
                     &&($geo['insideRecent']??false)===false
                     &&($geo['geofenceReportedInside']??null)===false)$geoKind='OUT';
             }
-            $lastGeo=self::ts($prev['lastGeoAt']??null,$now,self::GEO_MAX_AGE);
+            $lastGeo=$geoRebaseline?null:
+                self::ts($prev['lastGeoAt']??null,$now,self::GEO_MAX_AGE);
             $outAt=$geoSourceContinuous
                 ?self::ts($prev['pendingOutAt']??null,$now,self::GEO_MAX_AGE)
                 :null;
             $inAt=$geoSourceContinuous
                 ?self::ts($prev['pendingInAt']??null,$now,self::GEO_MAX_AGE)
                 :null;
-            $returnAt=self::ts($prev['lastPhoneReturnAt']??null,$now,self::MAX_AGE);
-            $event=self::safeEvent($prev['lastEvent']??null,$now);
+            $returnAt=($macRebaseline||$geoRebaseline)?null:
+                self::ts($prev['lastPhoneReturnAt']??null,$now,self::MAX_AGE);
+            $event=($macKeyChanged||$geoKeyChanged)?null:
+                self::safeEvent($prev['lastEvent']??null,$now);
             $history=[];
-            foreach(array_slice(is_array($prev['eventHistory']??null)
-                ?$prev['eventHistory']:[],0,self::MAX_PHONE_EVENTS*2) as $row){
+            foreach(array_slice(($macKeyChanged||$geoKeyChanged)?[]:(is_array($prev['eventHistory']??null)
+                ?$prev['eventHistory']:[]),0,self::MAX_PHONE_EVENTS*2) as $row){
                 $valid=self::safeEvent($row,$now);
                 if($valid!==null)$history[$valid['at'].'|'.$valid['code']]=$valid;
             }
@@ -176,6 +198,8 @@ final class JVResidentEventFusion
                 'lastMacAt'=>$lastMac,
                 'lastMacSourceVerified'=>$verifiedPair,
                 'lastGeoSourceVerified'=>$geoValid,
+                'lastMacSourceKey'=>$macKey??$oldMacKey,
+                'lastGeoSourceKey'=>$geoKey??$oldGeoKey,
                 'lastGeoAt'=>$lastGeo,'pendingOutAt'=>$outAt,
                 'pendingInAt'=>$inAt,'lastPhoneReturnAt'=>$returnAt,
                 'lastEvent'=>$event,
@@ -187,6 +211,9 @@ final class JVResidentEventFusion
                 'lastGeoAt'=>$lastGeo,'lastGeoKind'=>$geoKind,
                 'geoSourceContinuous'=>$geoSourceContinuous,
                 'macSourceContinuous'=>$macSourceContinuous,
+                'macSourceRebound'=>$macKeyChanged,
+                'geoSourceRebound'=>$geoKeyChanged,
+                'sourceRebaselineRequired'=>$macRebaseline||$geoRebaseline,
                 'lastEvent'=>$event,'eventHistory'=>$history,
                 'eventHistoryCount'=>count($history),
                 'lastEventIsHistorical'=>$newEvent===null,
@@ -333,6 +360,15 @@ final class JVResidentEventFusion
     private static function proofKey(array $proof):string
     {
         return $proof['at'].'|'.$proof['direction'].'|'.$proof['route'];
+    }
+
+    private static function trustedSourceKey(mixed $key):?string
+    {
+        if(!is_string($key)||strlen($key)>96)return null;
+        return preg_match('/^(?:WLAN:[1-9][0-9]*:[1-9][0-9]*'
+            .'|EGI:(?:[1-9][0-9]*:){3}[1-9][0-9]*'
+            .'|GEOFENCY:(?:[1-9][0-9]*:){3}[1-9][0-9]*)$/D',$key)
+            ?$key:null;
     }
 
     private static function ts(mixed $at,int $now,int $ttl):?int
