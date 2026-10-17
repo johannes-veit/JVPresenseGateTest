@@ -1343,7 +1343,12 @@ class JVPresenceIdentityShadow extends IPSModule
         // Discard overlapping snapshots; the next 60 s poll recovers.
         // A partial concurrent state write could double-book a passage.
         $semaphore='JVPresenceShadow_'.(int)($this->InstanceID??0);
-        if(!IPS_SemaphoreEnter($semaphore,1000))return;
+        if(!IPS_SemaphoreEnter($semaphore,1000)){
+            // A short GUS impulse may be gone on the next 60-second poll.
+            // Request one immediate follow-up after the current owner exits.
+            $this->SetBuffer('RefreshPending','1');
+            return;
+        }
         try {
         if (!$this->ReadPropertyBoolean('Enabled')) {
             $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
@@ -1952,6 +1957,19 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->publish($report,$state);
         } finally {
             IPS_SemaphoreLeave($semaphore);
+            // Coalesce multiple sensor notifications into at most one
+            // immediate follow-up per owner pass. Never recurse indefinitely
+            // when event activity stays high; the timer is fallback.
+            if($this->GetBuffer('RefreshPending')==='1'
+                &&$this->GetBuffer('RefreshDraining')!=='1'){
+                $this->SetBuffer('RefreshPending','0');
+                $this->SetBuffer('RefreshDraining','1');
+                try {
+                    $this->Refresh();
+                } finally {
+                    $this->SetBuffer('RefreshDraining','0');
+                }
+            }
         }
     }
 
