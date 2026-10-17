@@ -589,8 +589,10 @@ $readsBefore=count($GLOBALS['readCalls']);
 $wlanMod->Refresh();
 $disabled=json_decode((string)$wlanMod->GetValue('EvidenceJSON'),true);
 checkGate(($disabled['existingWlanSmartphones']['enabled']??null)===false
-    &&count($GLOBALS['readCalls'])===$readsBefore,
-    'disabling WLAN read avoids touching any phone source');
+    &&count($GLOBALS['readCalls'])===$readsBefore+2
+    &&($disabled['residentTileEvidence']['authority']??null)
+        ==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE',
+    'manual WLAN integration stays off; independent tile reads only verified Johannes existing pair');
 checkGate(($disabled['phoneLink']['state']??null)==='DISABLED_SEPARATE_PROJECT',
     'legacy phone observer still remains disabled');
 
