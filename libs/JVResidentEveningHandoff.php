@@ -109,6 +109,9 @@ final class JVResidentEveningHandoff
             $add('EREIGNISKERN: '.self::code($fp['state']??'NO_STATE')
                 .' | Letztes Handy-Ereignis: '.self::code($evt['code']??'KEINES')
                 .' | Zeit: '.self::date($evt['at']??null));
+            $add('HANDY-VERLAUF/24h: '.self::number(
+                $fp['eventHistoryCount']??null)
+                .' qualifizierte Ereignisse (maximal 24 pro Handy, keine Identitaet)');
             $add('Handy-Ereignis ist KEIN Nachweis der Person oder einer Autofahrt.');
             $add('ANKUNFT: '.self::code($a['assessment']??'NOT_ESTABLISHED')
                 .' | Grund: '.self::code($a['reason']??'NO_DATA')
@@ -197,6 +200,11 @@ final class JVResidentEveningHandoff
             .' | neue seit letztem SHADOW-Durchlauf: '
             .self::number(is_array($fp03['newAnonymousProofs']??null)
                 ?count($fp03['newAnonymousProofs']):null));
+        $add('P03 PROTOKOLL-KONTINUITAET: '.self::code(
+                $fp03['logContinuity']??'NICHT_VERIFIZIERT')
+            .' | Unterbrechung erkannt '.self::yes(
+                ($fp03['logInterrupted']??false)===true)
+            .' | offene Korridorwege bei Unterbrechung gesperrt');
         $re=($routeEpisodes['authority']??null)==='ANONYMOUS_ROUTE_EPISODES_READ_ONLY'
             ?$routeEpisodes:[];
         $ep=is_array($re['lastEpisode']??null)?$re['lastEpisode']:[];
