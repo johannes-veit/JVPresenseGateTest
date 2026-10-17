@@ -64,11 +64,14 @@ final class JVResidentTileDashboard
                 ||$lastKnown<$now-86400)$lastKnown=null;
             $when=$likely&&is_int($d['eventAt']??null)
                 ?$d['eventAt']:($last??$lastKnown);
-            $hint=$likely?'Letztes bestätigtes Geofence-OUT':
-                ($decision==='HOME_PHONE_CONFIRMED'
-                ||$decision==='WORK_PHONE_CONFIRMED')
-                ?'Letzte bestätigte WLAN-Erfassung'
-                :'Letzter gültiger WLAN-Hinweis';
+            $hint=$likely
+                ?'Letztes bestätigtes Geofence-OUT'
+                :(in_array($decision,[
+                    'HOME_PHONE_CONFIRMED','WORK_PHONE_CONFIRMED'
+                ],true)
+                    ?'Letzte bestätigte WLAN-Erfassung'
+                    :'Letzter gültiger WLAN-Hinweis');
+            if($likely)$qualifier='Heim-WLAN nicht mehr bestätigt, danach Geofence OUT – Handy wahrscheinlich weggefahren';
             $people[$key]=[
                 'name'=>$name,
                 'status'=>$status,
