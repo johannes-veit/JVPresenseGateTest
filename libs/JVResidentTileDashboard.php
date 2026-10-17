@@ -73,11 +73,20 @@ final class JVResidentTileDashboard
                 'ssidStatus'=>($sp['status']??null)==='WORK_FIRMEN_WLAN_PHONE'
                     ?'Firmen-WLAN erkannt':(($sp['status']??null)==='HOME_SSID_PHONE_HINT'
                         ?'Heim-SSID gemeldet':'Keine aktuelle eindeutige SSID'),
-                'geofenceContext'=>match($v['geofenceInsideSharedHomeWorkZone']??null){
-                    true=>'Geofence: im gemeinsamen Bereich Haus/Firma',
-                    false=>'Geofence: außerhalb Haus/Firma (Handy)',
-                    default=>'Geofence: kein geprüfter aktueller Zustand'
-                },
+                // A geo event may be many hours old and the shared
+                // 150-m circle covers BOTH home and workplace. Never
+                // portray a persisted "Zuhause" flag as current location.
+                'geofenceContext'=>($v['geofenceEventFresh']??false)===true
+                    ?(match($v['geofenceInsideSharedHomeWorkZone']??null){
+                        true=>'Geofence meldete Haus-/Firmenbereich',
+                        false=>'Geofence meldete außerhalb des gemeinsamen Bereichs',
+                        default=>'Geofence-Ereignis unklar'
+                    }).(is_int($v['geofenceLastEventAgeSeconds']??null)
+                        ?' (Ereignis vor '.(int)floor($v['geofenceLastEventAgeSeconds']/60).' Min.)'
+                        :'')
+                    :(($v['geofenceInsideSharedHomeWorkZone']??null)!==null
+                        ?'Geofence zuletzt gemeldet, aber veraltet – kein Live-Standort'
+                        :'Geofence: keine geprüfte Meldung'),
                 'phoneFoundNotHumanCertified'=>true,
                 'travelMode'=>'NICHT NACHGEWIESEN',
                 'travelRoute'=>'NICHT NACHGEWIESEN',
