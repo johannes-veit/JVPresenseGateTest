@@ -1674,7 +1674,7 @@ class JVPresenceIdentityShadow extends IPSModule
         );
         $tileData=JVResidentTileDashboard::evaluate(
             $tileResident['report'],$tileWlan,$tileWork,
-            $p03Timeline['report'],$houseObservation,time(),$departureHint
+            $p03Timeline['report'],$houseObservation,time(),$departureHint,$roomPaths
         );
         $tileHTML=JVResidentTileDashboard::render($tileData);
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
