@@ -60,17 +60,30 @@ $fusion['p03']['newAnonymousProofs']=[$proof('LAGER_TO_HOME',$t+110)];
 $oneIn=$run($twoOut['next'],$t+120);
 assertMulti(!$oneIn['report']['newEpisodeThisRefresh']
     &&$oneIn['report']['ambiguityResetThisRefresh']
-    &&$oneIn['report']['openOutgoingPassages']===0,
+    &&$oneIn['report']['openOutgoingPassages']===0
+    &&$oneIn['report']['ambiguousOutstanding']===1,
     'unpaired multiple human crossings never yield arbitrary FIFO route');
 assertMulti($phone($oneIn,$t+120)['candidateCount']===0,
     'both home WLAN MACs remain online and identify neither walker');
-// Another IN alone cannot inherit either ambiguous OUT.
-$fusion['p03']['newAnonymousProofs']=[$proof('LAGER_TO_HOME',$t+155)];
-$extraIn=$run($oneIn['next'],$t+165);
+// A third OUT while one prior return is outstanding remains uncertain.
+$fusion['p03']['newAnonymousProofs']=[$proof('HOME_TO_LAGER',$t+135)];
+$stillAmbiguous=$run($oneIn['next'],$t+145);
+assertMulti($stillAmbiguous['report']['ambiguousOutstanding']===2
+    &&$stillAmbiguous['report']['openOutgoingPassages']===0
+    &&!$stillAmbiguous['report']['newEpisodeThisRefresh'],
+    'new OUT during unsettled two-person window is quarantined');
+// The two subsequent INs can only drain unresolved crossings. They cannot
+// be matched with a particular phone or provide a completed round trip.
+$fusion['p03']['newAnonymousProofs']=[
+    $proof('LAGER_TO_HOME',$t+155),
+    $proof('LAGER_TO_HOME',$t+175)
+];
+$extraIn=$run($stillAmbiguous['next'],$t+185);
 assertMulti(!$extraIn['report']['newEpisodeThisRefresh']
-    &&in_array('IN_WITHOUT_OBSERVED_OUT',
+    &&$extraIn['report']['ambiguousOutstanding']===0
+    &&in_array('UNRESOLVED_MULTIPERSON_CROSSINGS_QUARANTINED',
         $extraIn['report']['warnings'],true),
-    'second anonymous return does not retroactively resolve two-person route');
+    'remaining ambiguous IN passages drain quarantine without inventing trip');
 // Independent OUT→IN after the ambiguity is processed normally.
 $fusion['p03']['newAnonymousProofs']=[
     $proof('HOME_TO_LAGER',$t+250),
