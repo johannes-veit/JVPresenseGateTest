@@ -1707,7 +1707,8 @@ class JVPresenceIdentityShadow extends IPSModule
             $p03Timeline['report'],time()
         );
         $arrivalHint=JVResidentArrivalInference::evaluate(
-            $tileWlan,$tileGeoJ,$tileGeoC,$p03Timeline['report'],time()
+            $tileWlan,$tileGeoJ,$tileGeoC,$p03Timeline['report'],time(),
+            $residentFusion['report']
         );
         $tileData=JVResidentTileDashboard::evaluate(
             $tileResident['report'],$tileWlan,$tileWork,
