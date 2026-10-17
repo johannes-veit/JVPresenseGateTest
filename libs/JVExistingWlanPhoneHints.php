@@ -49,6 +49,7 @@ final class JVExistingWlanPhoneHints
                 'lastMacContactAt'=>null,
                 'lastMacContactAgeSeconds'=>null,
                 'validatedExistingVariablePair'=>false,
+                'sourceKey'=>null,
                 'humanPresentCertified'=>false,
                 'humanAbsentCertified'=>false,
                 'warnings'=>[]
@@ -61,6 +62,10 @@ final class JVExistingWlanPhoneHints
                 $entry['warnings'][]='INVALID_WLAN_VALUE_TYPES';
             }else{
                 $entry['validatedExistingVariablePair']=true;
+                $bid=$snapshot['boolId']??null;
+                $tid=$snapshot['lastContactId']??null;
+                if(is_int($bid)&&$bid>0&&is_int($tid)&&$tid>0&&$bid!==$tid)
+                    $entry['sourceKey']='WLAN:'.$bid.':'.$tid;
                 $entry['wlanBoolean']=$snapshot['wlanValue'];
                 $last=$snapshot['lastContact'];
                 if($last<=0||$last>$now+5){
