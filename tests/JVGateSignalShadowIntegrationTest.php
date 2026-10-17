@@ -575,9 +575,12 @@ checkGate(($wlanData['people']['johannes']??null)==='UNKNOWN'
     'both phones online never assert two people present nor empty premises');
 checkGate($wlanMod->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected','ResidentTile','TestReport'],
     'read-only phone integration does not allocate further variables');
-checkGate($wlanMod->GetValue('PresenceDetected')===false
-    &&($wlanData['presenceDetected']['notDetectedDoesNotMeanEmpty']??false)===true,
-    'two WLAN devices ALONE must not claim occupancy or empty property');
+checkGate($wlanMod->GetValue('PresenceDetected')===true
+    &&($wlanData['presenceDetected']['notDetectedDoesNotMeanEmpty']??false)===true
+    &&($wlanData['presenceDetected']['houseEmptyCertified']??true)===false
+    &&($wlanData['presenceDetected']['residentIdentityCertified']??true)===false
+    &&($wlanData['presenceDetected']['mayArmAlarm']??true)===false,
+    'fresh verified WLAN MAC is a positive phone HINT, never certified persons or empty property');
 $GLOBALS['gateDevices'][38430]['value']=false;
 $wlanMod->Refresh();
 $off=json_decode((string)$wlanMod->GetValue('EvidenceJSON'),true);
