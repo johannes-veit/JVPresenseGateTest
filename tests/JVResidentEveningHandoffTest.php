@@ -164,17 +164,28 @@ $integrity=['schema'=>1,'authority'=>'SHADOW_INTEGRITY_AUDIT_READ_ONLY',
     'status'=>'REVIEW_REQUIRED','verifiedChecks'=>9,
     'issues'=>['P03_PROOF_ACROSS_LOG_GAP'],
     'p03LogContinuity'=>'LOG_GAP_OR_RESET'];
+$gateFixture=['schema'=>1,
+    'authority'=>'PRESENCE_READ_ONLY_COMMISSIONING_GATE',
+    'state'=>'CORE_READ_ONLY_VALIDATED_MISSING_IDENTITY_AND_VEHICLE_PROOFS',
+    'vehicle'=>'NO_VERIFIED_DIRECTIONAL_VEHICLE_EVENT',
+    'actions'=>[
+        'CARINA_QUALIFY_EXISTING_PHONE_REPORTED_SSID_SOURCE',
+        'QUALIFY_EXISTING_VEHICLE_CLASS_AND_DIRECTION_SOURCE'
+    ]];
 $detailed=JVResidentEveningHandoff::build(
     $tile,$phoneState,$wlan,$work,$jGeo,$cGeo,$p03,$timing,
     $mast,$house,$activity,$local,$boundary,$gate,[],$now,true,
     [],[],[],[],$fusionExample,$routeDemo,$candidateJourney,
-    $readinessFixture,$integrity
+    $readinessFixture,$integrity,$gateFixture
 );
 expectHandoff(str_contains($detailed,'HANDY-VERLAUF/24h: 2')
     &&str_contains($detailed,'HANDY-EVENT/24h: PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC')
     &&str_contains($detailed,'P03 PROTOKOLL-KONTINUITAET: LOG_GAP_OR_RESET')
     &&str_contains($detailed,'P03 BEWEIS-UEBERGABE: Journal vor diesem Durchlauf 2')
     &&str_contains($detailed,'Paket 1 | Ueberlauf NEIN | abgelaufen NEIN')
+    &&str_contains($detailed,'MEILENSTEIN QUELLENQUALIFIKATION: CORE_READ_ONLY_VALIDATED')
+    &&str_contains($detailed,'NAECHSTE QUELLENARBEIT (NUR LESEN): ')
+    &&str_contains($detailed,'CARINA_QUALIFY_EXISTING_PHONE_REPORTED_SSID_SOURCE')
     &&str_contains($detailed,'SELBSTPRUEFUNG: REVIEW_REQUIRED')
     &&str_contains($detailed,'P03_PROOF_ACROSS_LOG_GAP')
     &&str_ends_with($detailed,'=== ENDE TESTBERICHT ==='),
