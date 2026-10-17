@@ -70,6 +70,19 @@ latestAssert(str_contains($carina['wlanHome'],'15:25:00')
     &&str_contains($html,'16:29:32')
     &&!str_contains($html,'Carina: <span style="color:#1f8b55">ANWESEND'),
     'latest geo time visible in expanded tile and true older MAC history explicit');
+require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
+$handoff=JVResidentEveningHandoff::build(
+    $tile,$visu['report'],$wlan,$company,$jGeo,$cGeo,
+    [],[],[],[],[],[],[],[],[],$now,true,$depart
+);
+latestAssert(str_contains($handoff,
+    'KACHEL letzte relevante Erfassung: '
+    .'Letztes Geofence-IN (Haus/Firma, nicht Hauseingang) | '
+    .'17.10.2026 16:29:32'),
+    'single copy-paste TestReport preserves exact verified newer Geofence-IN');
+latestAssert(str_contains($handoff,'KACHEL: NICHT BESTÄTIGT')
+    &&str_contains($handoff,'KACHEL: ANWESEND'),
+    'new formatted handoff preserves different resident statuses');
 latestAssert($tile['mayArmAlarm']===false
     &&$tile['mayTriggerAbsenceActions']===false,
     'no alarm or external absence permission');
