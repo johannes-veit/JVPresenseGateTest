@@ -56,6 +56,18 @@ $c1=$eval();
 detectionCheck($c1['detected']===false
     &&in_array('JOHANNES_WLAN_ONLY',$c1['supportingContext'],true),
     'lone WLAN signal can be forgotten phone');
+$wlan['people']['johannes']['lastMacContactAt']=$now-45;
+$cFresh=$eval();
+detectionCheck($cFresh['detected']===true
+    &&$cFresh['sources']['johannesRecentHomeMacPositive']===true
+    &&$cFresh['mayArmAlarm']===false,
+    'fresh verified home MAC matches tile without alarm authorization');
+$wlan['people']['johannes']['lastMacContactAt']=$now-301;
+$cExpired=$eval();
+detectionCheck($cExpired['detected']===false
+    &&$cExpired['sources']['johannesRecentHomeMacPositive']===false,
+    'retained WLAN Boolean past 300 seconds cannot imply current home');
+$wlan['people']['johannes']['lastMacContactAt']=$now-45;
 $j['insideRecent']=true;
 $d=$eval();
 detectionCheck($d['detected']===true
