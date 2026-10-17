@@ -20,7 +20,8 @@ $work=['schema'=>1,'authority'=>'PHONE_CURRENT_SSID_READ_ONLY_WORK_CONTEXT',
     'enabled'=>true,'people'=>[]];
 $proof=['source'=>'P03_TWO_MAST_VERIFIED','direction'=>'LAGER_TO_HOME',
     'route'=>'P03_2CAM_WORK_THEN_JV','at'=>$now-20];
-$p=['schema'=>1,'authority'=>'P03_LIVE_PROOFS_DIRECTION_ONLY','recentDirectionProofs'=>[$proof]];
+$p=['schema'=>1,'authority'=>'P03_LIVE_PROOFS_DIRECTION_ONLY',
+    'logContinuity'=>'OK','recentDirectionProofs'=>[$proof]];
 $run=static function(int $at,array $prior=[])use(&$w,&$jg,&$cg,&$work,&$p):array {
     return JVResidentEventFusion::evaluate($w,$jg,$cg,$work,$p,$prior,$at);
 };
