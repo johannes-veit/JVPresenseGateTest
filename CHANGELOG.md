@@ -1,3 +1,10 @@
+# v0.8.54 (Build 135) – WLAN-Haltezeit ist kein frischer persönlicher Standortnachweis
+
+- Praxis-Korrektur: Das bestehende Carina-WLAN-Skript lässt `WLAN anwesend #38430` trotz älterem Kontakt bis zu 660 s auf AN. Erst danach schaltet es beim nächsten Lauf AUS. Der Kachelzustand `ZUHAUSE (Handy-WLAN bestätigt)` gilt nun **maximal 300 Sekunden** nach dem wirklich zuletzt bestätigten WLAN-MAC-Kontakt, nicht während der ganzen alten 660-s-Haltefrist. Ein älterer positiver Kontakt wird nur noch `UNBESTÄTIGT (zuletzt Zuhause)` angezeigt; nie Personen-Abwesenheit.
+- Entsprechend sind `FIRMA (Handy-WLAN bestätigt)` bzw. persönlicher Heim-SSID-Nachweis nur bei verifizierter, persönlich zugeordneter Aktualisierung innerhalb von 300 s gültig. Die bestehende 900-s-Quellfrist bleibt für Diagnose und veraltete Hinweise erhalten. Für ganztägige bestätigte WORK-Anzeigen ist später ein echter per-Smartphone-SSID-Heartbeat alle höchstens 5 Minuten erforderlich. Ein einmaliger iPhone-WLAN-Beitrittsimpuls reicht nicht.
+- Weder Kameras, P03, GUS, WLAN-Skripte, Geofences noch ihre Haltefristen werden verändert. Persönliche Anwesenheit und Abwesenheit bleiben explizit UNZERTIFIZIERT, Haus leer und Alarm- oder Abwesenheitsaktionen dauerhaft gesperrt.
+- Neue Tests prüfen Carinas `WLAN AN` bei 360 Sekunden altem echtem Kontakt, 600 Sekunden alte Firmen-SSID, weiterhin gültigen frischen Nachweis, Konflikte und sichere Zurückhaltung.
+
 # v0.8.53 (Build 134) – Belastbare Smartphone-Hinweise für die bestehenden zwei Kachelvariablen
 
 - Bestehende SHADOW-Strings „Johannes anwesend“ (**#10570**) und „Carina anwesend“ (**#38612**) werden klar für die Kachelvisualisierung beschriftet, ohne neue Variablen/Objekte: `ZUHAUSE (Handy-WLAN bestätigt)`, `FIRMA (Handy-WLAN bestätigt)`, `WIDERSPRUCH (Heim-/Firmen-WLAN)`, `UNBESTÄTIGT (zuletzt Zuhause/Firma)` und `NICHT BESTÄTIGT`. Es handelt sich **ausdrücklich um Smartphones, nicht zertifizierte körperliche Personenerkennung**. Es wird niemals ein `ABWESEND` aus WLAN-Fehlen oder Kamera gezählt. Die vorhandene alte Auswertung `residentDisplay` bleibt im EvidenceJSON für Diagnosen und Alt-Kompatibilität.
