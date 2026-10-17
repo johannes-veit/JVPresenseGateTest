@@ -146,6 +146,30 @@ expectHandoff(str_contains($full,'WEG-HANDY-KORRELATION: ONE_PHONE_TIMELINE_COMP
     &&str_contains($full,'AUTO: NICHT NACHGEWIESEN')
     &&str_ends_with($full,'=== ENDE TESTBERICHT ==='),
     'new evidence categories displayed in single complete copyable report');
+$fusionExample['people']['johannes']['eventHistory']=[
+    ['code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP','at'=>$now-120],
+    ['code'=>'PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC','at'=>$now-190]
+];
+$fusionExample['people']['johannes']['eventHistoryCount']=2;
+$fusionExample['p03']['logContinuity']='LOG_GAP_OR_RESET';
+$fusionExample['p03']['logInterrupted']=true;
+$integrity=['schema'=>1,'authority'=>'SHADOW_INTEGRITY_AUDIT_READ_ONLY',
+    'status'=>'REVIEW_REQUIRED','verifiedChecks'=>9,
+    'issues'=>['P03_PROOF_ACROSS_LOG_GAP'],
+    'p03LogContinuity'=>'LOG_GAP_OR_RESET'];
+$detailed=JVResidentEveningHandoff::build(
+    $tile,$phoneState,$wlan,$work,$jGeo,$cGeo,$p03,$timing,
+    $mast,$house,$activity,$local,$boundary,$gate,[],$now,true,
+    [],[],[],[],$fusionExample,$routeDemo,$candidateJourney,
+    $readinessFixture,$integrity
+);
+expectHandoff(str_contains($detailed,'HANDY-VERLAUF/24h: 2')
+    &&str_contains($detailed,'HANDY-EVENT/24h: PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC')
+    &&str_contains($detailed,'P03 PROTOKOLL-KONTINUITAET: LOG_GAP_OR_RESET')
+    &&str_contains($detailed,'SELBSTPRUEFUNG: REVIEW_REQUIRED')
+    &&str_contains($detailed,'P03_PROOF_ACROSS_LOG_GAP')
+    &&str_ends_with($detailed,'=== ENDE TESTBERICHT ==='),
+    'historical phone events, P03 discontinuity and self-check visible together');
 expectHandoff(strlen($report)>1800 &&strlen($report)<13000
     &&str_starts_with($report,'=== TESTBERICHT AN CHATGPT')
     &&str_ends_with($report,'=== ENDE TESTBERICHT ==='),
