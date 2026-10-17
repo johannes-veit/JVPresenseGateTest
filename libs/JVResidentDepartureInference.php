@@ -58,6 +58,21 @@ final class JVResidentDepartureInference
                     $out['people'][$person]=$entry;
                     continue;
                 }
+                if(($personal['macSourceContinuous']??true)!==true
+                    ||($personal['geoSourceContinuous']??true)!==true
+                    ||($personal['sourceRebaselineRequired']??false)===true){
+                    $entry['reason']='PHONE_SOURCE_SEQUENCE_INTERRUPTED';
+                    $out['people'][$person]=$entry;
+                    continue;
+                }
+                $boundAt=$personal['lastSourceRebindAt']??null;
+                if(is_int($boundAt)&&$boundAt>0
+                    &&(!is_int($home)||!is_int($geo)
+                        ||$home<$boundAt||$geo<$boundAt)){
+                    $entry['reason']='PHONE_EVENTS_PRECEDE_CURRENT_SOURCE_BINDING';
+                    $out['people'][$person]=$entry;
+                    continue;
+                }
             }
             if(!$wifiValid||($w['validatedExistingVariablePair']??false)!==true
                 ||!$outside||!is_int($home)||!is_int($geo)
