@@ -92,6 +92,32 @@ final class JVExistingWlanPhoneHints
                 $report['warnings'][]=$person.':'.$warning;
             $report['people'][$person]=$entry;
         }
+        // The same existing WLAN variable pair must never count as two
+        // residents, e.g. after an incorrect duplicated Symcon mapping.
+        $j=$report['people']['johannes']??[];
+        $c=$report['people']['carina']??[];
+        if(($j['validatedExistingVariablePair']??false)===true
+            &&($c['validatedExistingVariablePair']??false)===true
+            &&is_string($j['sourceKey']??null)
+            &&$j['sourceKey']===$c['sourceKey']){
+            foreach(['johannes','carina'] as $person){
+                $row=&$report['people'][$person];
+                if($row['recentMacEvidence']){
+                    $report['freshMacConfirmedDeviceCount']--;
+                    $report['phonesUnavailableOrUnconfirmed']++;
+                }
+                $row['state']='SOURCE_IDENTITY_COLLISION';
+                $row['validatedExistingVariablePair']=false;
+                $row['recentMacEvidence']=false;
+                $row['sourceKey']=null;
+                $row['wlanBoolean']=null;
+                $row['lastMacContactAt']=null;
+                $row['lastMacContactAgeSeconds']=null;
+                $row['warnings'][]='SAME_WLAN_SOURCE_MAPPED_TO_BOTH_RESIDENTS';
+                unset($row);
+            }
+            $report['warnings'][]='BOTH_RESIDENTS_SHARE_ONE_WLAN_SOURCE';
+        }
         if($enabled){
             $confirmed=$report['freshMacConfirmedDeviceCount'];
             $report['combinedContext']=$confirmed===2
