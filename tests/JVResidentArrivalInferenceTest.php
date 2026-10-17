@@ -19,7 +19,7 @@ $p=['schema'=>1,'authority'=>'P03_LIVE_PROOFS_DIRECTION_ONLY',
 $run=static function()use(&$w,&$j,&$g,&$p,$now):array {
     return JVResidentArrivalInference::evaluate($w,$j,$g,$p,$now);
 };
-$r=$run();checkArrival($r['people']['carina']['assessment']==='LIKELY_PHONE_ASSOCIATED_HOME_ARRIVAL'
+$r=$run();checkArrival($r['people']['carina']['assessment']==='ANONYMOUS_ENTRY_NEAR_HOME_PHONE'
     &&$r['people']['carina']['vehicle']==='UNVERIFIED'
     &&!$r['mayArmAlarm'],'ordered phone and anonymous p03 IN');
 $p['recentDirectionProofs']=[];
