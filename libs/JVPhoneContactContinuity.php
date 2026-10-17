@@ -75,6 +75,16 @@ final class JVPhoneContactContinuity
             $outAt=self::time($previous['pendingOutAt']??null,$now,self::GEO_WINDOW_SECONDS);
             $inAt=self::time($previous['pendingInAt']??null,$now,self::GEO_WINDOW_SECONDS);
             $lastReturn=self::time($previous['lastPhoneReturnAt']??null,$now,self::HISTORY_SECONDS);
+            $recoveredAt=self::time($previous['lastRecoveryAt']??null,
+                $now,self::HISTORY_SECONDS);
+            $recoveredGap=$previous['lastRecoveryGapSeconds']??null;
+            if(!is_int($recoveredGap)||$recoveredGap<=self::GAP_SECONDS
+                ||$recoveredGap>self::HISTORY_SECONDS||$recoveredAt===null)
+                $recoveredGap=null;
+            if($advanced&&$gap>self::GAP_SECONDS){
+                $recoveredAt=$mac;
+                $recoveredGap=$gap;
+            }
             $newGeo=false;
             // Initial read is only a baseline; never backfill an old
             // Geofence event as a newly observed departure/return.
@@ -110,7 +120,9 @@ final class JVPhoneContactContinuity
                 'startedAt'=>$start,
                 'lastMacAt'=>$lastMac,'lastGeoAt'=>$priorGeo,
                 'pendingOutAt'=>$outAt,'pendingInAt'=>$inAt,
-                'lastPhoneReturnAt'=>$lastReturn
+                'lastPhoneReturnAt'=>$lastReturn,
+                'lastRecoveryAt'=>$recoveredAt,
+                'lastRecoveryGapSeconds'=>$recoveredGap
             ];
             $report['people'][$person]=[
                 'status'=>$status,'freshHomeMac'=>$fresh,
@@ -118,6 +130,10 @@ final class JVPhoneContactContinuity
                 'lastActualMacAgeSeconds'=>$lastMac!==null?$now-$lastMac:null,
                 'contactResumedAfterGap'=>$advanced&&$gap>self::GAP_SECONDS,
                 'observedMacGapSeconds'=>$gap,
+                'lastRecoveredHomeMacAt'=>$recoveredAt,
+                'lastObservedRecoveryGapSeconds'=>$recoveredGap,
+                'lastRecoveredHomeMacAgeSeconds'=>$recoveredAt!==null?$now-$recoveredAt:null,
+                'lastPhoneReturnAt'=>$lastReturn,
                 'newGeofenceEventObserved'=>$newGeo,
                 'phoneReturnAfterObservedOutIn'=>$returnNew,
                 'phoneReturnAt'=>$returnNew?$lastReturn:null,
