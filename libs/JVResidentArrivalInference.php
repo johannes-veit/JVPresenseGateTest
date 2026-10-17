@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 final class JVResidentArrivalInference
 {
-    public static function evaluate(array $wlan,array $jGeo,array $cGeo,array $p03,int $now):array
+    public static function evaluate(array $wlan,array $jGeo,array $cGeo,array $p03,int $now,array $fusion=[]):array
     {
         $out=['schema'=>1,'authority'=>'PHONE_ARRIVAL_CORRELATION_READ_ONLY',
             'people'=>[],'vehicleTripsCertified'=>false,
@@ -58,13 +58,26 @@ final class JVResidentArrivalInference
                 }
             }
             $entry['p03AnonymousEntryAt']=$p03At;
+            $fp=($fusion['authority']??null)==='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'
+                &&is_array($fusion['people'][$person]??null)
+                ?$fusion['people'][$person]:[];
+            $last=is_array($fp['lastEvent']??null)?$fp['lastEvent']:[];
+            $retAt=($last['code']??null)==='PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC'
+                &&is_int($last['at']??null)&&$last['at']>0
+                &&$last['at']<=$now+5&&$now-$last['at']<=3600
+                ?$last['at']:null;
+            $entry['verifiedPhoneReturnAt']=$retAt;
             if($fresh){
-                if($p03At!==null){
+                if($retAt!==null){
+                    $entry['assessment']='PHONE_RETURN_AFTER_OUT_IN_HOME_MAC';
+                    $entry['reason']='PERSISTENT_PERSONAL_HANDSET_EVENT_NOT_HUMAN_IDENTITY';
+                    $entry['phoneAssociatedArrivalOnly']=true;
+                }elseif($p03At!==null){
                     $entry['assessment']='ANONYMOUS_ENTRY_NEAR_HOME_PHONE';
                     $entry['reason']='P03_ENTRY_ANONYMOUS_NO_PERSONAL_ARRIVAL_PROOF';
                 }elseif($geoIn){
-                    $entry['assessment']='POSSIBLE_PHONE_RETURN_HOME';
-                    $entry['reason']='GEOFENCE_IN_THEN_RECENT_HOME_WIFI_SHARED_HOME_WORK_RADIUS';
+                    $entry['assessment']='GEOFENCE_IN_NOT_SUFFICIENT_FOR_HOME_RETURN';
+                    $entry['reason']='SHARED_RADIUS_IN_WITHOUT_OBSERVED_PRIOR_OUT';
                 }else{
                     $entry['assessment']='HOME_PHONE_CURRENT_ARRIVAL_NOT_PROVEN';
                     $entry['reason']='FRESH_HOME_WIFI_WITHOUT_VERIFIED_ENTRY_SEQUENCE';
