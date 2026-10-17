@@ -299,8 +299,15 @@ final class JVResidentEveningHandoff
                 ?($commissioning['state']??'UNBEKANNT'):'NICHT_VERIFIZIERT')
             .' | Fahrzeug '.self::code($gateOk
                 ?($commissioning['vehicle']??'UNBEKANNT'):'UNBEKANNT'));
-        if($gateOk)$add('NAECHSTE QUELLENARBEIT (NUR LESEN): '.self::code(
-            implode(', ',array_slice($commissioning['actions']??[],0,3))));
+        if($gateOk){
+            $priorities=is_array($commissioning['actions']??null)
+                ?array_slice($commissioning['actions'],0,3):[];
+            foreach($priorities as $i=>$priority){
+                $add(($i===0?'NAECHSTE QUELLENARBEIT (NUR LESEN): '
+                    :'WEITERE QUELLENARBEIT '.($i+1).': ')
+                    .self::code($priority));
+            }
+        }
         $raw=$timingVerified&&is_array($timing['rawStreetIVS24h']??null)
             ?$timing['rawStreetIVS24h']:[];
         $add('ROHE Strassen-IVS/24h (kein Hauswechsel!): IN '
