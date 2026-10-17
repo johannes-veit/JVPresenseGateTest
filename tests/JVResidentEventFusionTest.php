@@ -74,4 +74,17 @@ $p['recentDirectionProofs'][]=['source'=>'P03_TWO_MAST_VERIFIED',
     'direction'=>'HOME_TO_LAGER','route'=>'P03_2CAM_JV_THEN_WORK','at'=>$now+90000];
 $future=$run($now+1350,$restart['next']);
 chk(count($future['report']['p03']['newAnonymousProofs'])===0,'reject future P03 proof');
+// Same proof must not be used as an arrival of BOTH residents.
+$p['recentDirectionProofs'][]=['source'=>'P03_TWO_MAST_VERIFIED',
+    'direction'=>'LAGER_TO_HOME','route'=>'P03_2CAM_WORK_THEN_JV','at'=>$now+1360];
+$twoHome=$run($now+1370,$future['next']);
+chk(count($twoHome['report']['p03']['newAnonymousProofs'])===1,'new P03 IN recognized');
+chk(!$twoHome['report']['p03']['phoneAssociatedWithCrossing'],'P03 never phone identity');
+chk($twoHome['report']['people']['carina']['lastEvent']===null,'Carina stays home despite P03 IN');
+$work['people']['carina']=['sourceVerified'=>true,'ageSeconds'=>20,
+    'workRecent'=>true,'status'=>'WORK_FIRMEN_WLAN_PHONE'];
+$w['people']['carina']=$phone($now+1375);
+$conflict=$run($now+1380,$twoHome['next']);
+chk($conflict['report']['people']['carina']['state']==='HOME_WORK_PHONE_SOURCE_CONFLICT',
+    'current opposite HOME and WORK sources report conflict, no forced location');
 echo "Resident event fusion PASS\n";
