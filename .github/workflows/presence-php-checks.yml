@@ -29,6 +29,7 @@ jobs:
       - name: Syntax check relevant modules
         run: |
           php -l JVPresenceIdentityShadow/module.php
+          php -l libs/JVShadowStateCheckpoint.php
           php -l libs/JVResidentEventFusion.php
           php -l libs/JVRouteEpisodeLedger.php
           php -l libs/JVResidentJourneyEvidence.php
@@ -50,3 +51,14 @@ jobs:
           php tests/JVResidentTileDashboardTest.php
           php tests/JVResidentEveningHandoffTest.php
           php tests/JVCombinedPresenceBooleanTest.php
+      - name: Complete repository standalone PHP regression sweep
+        run: |
+          set -euo pipefail
+          n=0
+          for test in tests/*Test.php tests/test_logic.php; do
+            echo "::group::$test"
+            php "$test"
+            echo "::endgroup::"
+            n=$((n+1))
+          done
+          echo "Full regression suite passed ($n standalone test files)"
