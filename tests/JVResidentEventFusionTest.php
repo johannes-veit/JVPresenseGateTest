@@ -112,4 +112,66 @@ chk(count($afterPause['report']['p03']['newAnonymousProofs'])===0,
 $afterPauseAgain=$run($now+6060,$afterPause['next']);
 chk(count($afterPauseAgain['report']['p03']['newAnonymousProofs'])===0,
     'no P03 proof replay after offline baseline');
+
+// Regression: preserve the original observed personal OUT/IN/MAC return
+// after a later ordinary network-contact recovery has become "lastEvent".
+$h=$now+20000;
+$hw=['schema'=>1,'authority'=>'EXISTING_WLAN_MAC_HINTS_READ_ONLY',
+    'enabled'=>true,'people'=>[
+      'johannes'=>$phone($h-60),'carina'=>$phone($h-60)]];
+$hg=['schema'=>1,'authority'=>'EXISTING_JOHANNES_EGIGEOZONE_READ_ONLY',
+    'enabled'=>true,'validatedSource'=>true,'insideRecent'=>false,
+    'outsideRecent'=>false,'geofenceReportedInside'=>null,'lastEventAt'=>null];
+$hc=['schema'=>1,'authority'=>'EXISTING_CARINA_GEOFENCY_READ_ONLY',
+    'enabled'=>true,'validatedSource'=>true,'insideRecent'=>false,
+    'outsideRecent'=>false,'geofenceReportedInside'=>null,'lastEventAt'=>null];
+$hp=['schema'=>1,'authority'=>'P03_LIVE_PROOFS_DIRECTION_ONLY',
+    'logContinuity'=>'OK','recentDirectionProofs'=>[]];
+$h0=JVResidentEventFusion::evaluate($hw,$hg,$hc,$work,$hp,[],$h);
+$hg['outsideRecent']=true;$hg['geofenceReportedInside']=false;
+$hg['lastEventAt']=$h+100;
+$h1=JVResidentEventFusion::evaluate($hw,$hg,$hc,$work,$hp,$h0['next'],$h+120);
+$hg['outsideRecent']=false;$hg['insideRecent']=true;
+$hg['geofenceReportedInside']=true;$hg['lastEventAt']=$h+180;
+$h2=JVResidentEventFusion::evaluate($hw,$hg,$hc,$work,$hp,$h1['next'],$h+200);
+$hw['people']['johannes']=$phone($h+220);
+$h3=JVResidentEventFusion::evaluate($hw,$hg,$hc,$work,$hp,$h2['next'],$h+240);
+chk($h3['report']['people']['johannes']['newPhoneReturn'],
+    'observed personal phone return before later network event');
+chk(count($h3['report']['people']['johannes']['eventHistory'])===3,
+    'persist geo OUT, geo IN, phone return separately');
+$hw['people']['johannes']=$phone($h+990);
+$h4=JVResidentEventFusion::evaluate($hw,$hg,$hc,$work,$hp,$h3['next'],$h+1010);
+chk($h4['report']['people']['johannes']['lastEvent']['code']
+    ==='HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP',
+    'later WiFi recovery becomes most recent event');
+chk(count($h4['report']['people']['johannes']['eventHistory'])===4
+    &&in_array('PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC',
+        array_column($h4['report']['people']['johannes']['eventHistory'],'code'),true),
+    'prior phone return remains in bounded eventHistory');
+$h5=JVResidentEventFusion::evaluate($hw,$hg,$hc,$work,$hp,$h4['next'],$h+1040);
+chk(count($h5['report']['people']['johannes']['eventHistory'])===4
+    &&!$h5['report']['people']['johannes']['newPhoneReturn'],
+    'idempotent replay preserves history but creates no duplicate');
+// A source pair failing validation must never inject fake MAC contact
+// timestamps into the chronology or qualify a personal departure.
+$hw['people']['johannes']['validatedExistingVariablePair']=false;
+$hw['people']['johannes']['lastMacContactAt']=$h+1070;
+$forged=JVResidentEventFusion::evaluate(
+    $hw,$hg,$hc,$work,$hp,$h5['next'],$h+1090
+);
+chk($forged['report']['people']['johannes']['lastMacAt']===$h+990
+    &&$forged['report']['people']['johannes']['newPersonalPhoneEvent']===null,
+    'unverified source MAC timestamp is never accepted');
+$hp['recentDirectionProofs']=[[
+    'source'=>'P03_TWO_MAST_VERIFIED','at'=>$h+1100,
+    'direction'=>'HOME_TO_LAGER','route'=>'P03_2CAM_JV_THEN_WORK'
+]];
+$hp['logContinuity']='LOG_GAP_OR_RESET';
+$gapResult=JVResidentEventFusion::evaluate(
+    $hw,$hg,$hc,$work,$hp,$forged['next'],$h+1110
+);
+chk($gapResult['report']['p03']['logInterrupted']===true
+    &&count($gapResult['report']['p03']['newAnonymousProofs'])===0,
+    'P03 protocol reset never supplies a new continuous route proof');
 echo "Resident event fusion PASS\n";
