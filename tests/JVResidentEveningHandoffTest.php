@@ -151,6 +151,13 @@ $fusionExample['people']['johannes']['eventHistory']=[
     ['code'=>'PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC','at'=>$now-190]
 ];
 $fusionExample['people']['johannes']['eventHistoryCount']=2;
+$fusionExample['p03']['unackedRouteProofCount']=2;
+$fusionExample['p03']['routeDeliveryProofs']=[
+    ['source'=>'P03_TWO_MAST_VERIFIED','direction'=>'HOME_TO_LAGER',
+        'route'=>'P03_2CAM_JV_THEN_WORK','at'=>$now-200]
+];
+$fusionExample['p03']['routeJournalOverflow']=false;
+$fusionExample['p03']['routeJournalExpired']=false;
 $fusionExample['p03']['logContinuity']='LOG_GAP_OR_RESET';
 $fusionExample['p03']['logInterrupted']=true;
 $integrity=['schema'=>1,'authority'=>'SHADOW_INTEGRITY_AUDIT_READ_ONLY',
@@ -166,6 +173,8 @@ $detailed=JVResidentEveningHandoff::build(
 expectHandoff(str_contains($detailed,'HANDY-VERLAUF/24h: 2')
     &&str_contains($detailed,'HANDY-EVENT/24h: PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC')
     &&str_contains($detailed,'P03 PROTOKOLL-KONTINUITAET: LOG_GAP_OR_RESET')
+    &&str_contains($detailed,'P03 BEWEIS-UEBERGABE: Journal vor diesem Durchlauf 2')
+    &&str_contains($detailed,'Paket 1 | Ueberlauf NEIN | abgelaufen NEIN')
     &&str_contains($detailed,'SELBSTPRUEFUNG: REVIEW_REQUIRED')
     &&str_contains($detailed,'P03_PROOF_ACROSS_LOG_GAP')
     &&str_ends_with($detailed,'=== ENDE TESTBERICHT ==='),
