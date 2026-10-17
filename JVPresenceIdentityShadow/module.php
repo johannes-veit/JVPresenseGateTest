@@ -33,6 +33,7 @@ require_once dirname(__DIR__).'/libs/JVPhoneContactContinuity.php';
 require_once dirname(__DIR__).'/libs/JVResidentEventFusion.php';
 require_once dirname(__DIR__).'/libs/JVRouteEpisodeLedger.php';
 require_once dirname(__DIR__).'/libs/JVResidentJourneyEvidence.php';
+require_once dirname(__DIR__).'/libs/JVPresenceEvidenceReadiness.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
@@ -1726,6 +1727,11 @@ class JVPresenceIdentityShadow extends IPSModule
             $routeEpisodes['report'],$residentFusion['report'],
             $tileWork,$boundary['report'],time()
         );
+        $evidenceReadiness=JVPresenceEvidenceReadiness::evaluate(
+            $temporalCrossCheck,$mastHealth,$residentFusion['report'],
+            $tileWork,$boundary['report'],$houseObservation,
+            $residentJourney,time()
+        );
         $tilePrior=json_decode($this->readShadowState('TileResidentState'),true);
         $tileResident=JVResidentVisuState::evaluate(
             $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
@@ -1797,6 +1803,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentEventFusion'=>$residentFusion['report'],
             'anonymousRouteEpisodes'=>$routeEpisodes['report'],
             'residentJourneyCorrelation'=>$residentJourney,
+            'presenceEvidenceReadiness'=>$evidenceReadiness,
             'roomMovementPaths'=>$roomPaths,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
@@ -1918,7 +1925,8 @@ class JVPresenceIdentityShadow extends IPSModule
             $activity,$local,$boundary['report'],$gateDisplay,
             $warnings,time(),true,$departureHint,$roomPaths,$arrivalHint,
             $contactHistory['report'],$residentFusion['report'],
-            $routeEpisodes['report'],$residentJourney
+            $routeEpisodes['report'],$residentJourney,
+            $evidenceReadiness
         ));
         $this->publish($report,$state);
     }
