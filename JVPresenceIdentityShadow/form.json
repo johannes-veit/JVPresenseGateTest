@@ -22,6 +22,10 @@
       "caption": "NEU v0.8.53: Die BEIDEN BESTEHENDEN STRING-KACHELVARIABLEN #10570 Johannes anwesend und #38612 Carina anwesend zeigen jetzt eindeutige HANDY-Hinweise: ZUHAUSE (Handy-WLAN bestätigt), FIRMA (Handy-WLAN bestätigt), WIDERSPRUCH (Heim-/Firmen-WLAN), UNBESTÄTIGT (zuletzt Zuhause/Firma) oder NICHT BESTÄTIGT. Ein letzter WLAN-Kontakt (660s Haltezeit) ist KEINE garantierte Menschenanwesenheit; ein nicht erreichbares Handy (besonders iPhone-Standby) ist KEIN Abwesenheitsbeweis. Jede Person wird separat anhand ihrer eigenen Quellen bewertet; der gemeinsame 150-m-Geofence reicht in die Firma und darf NICHT HOME entscheiden. Haus-GUS/P03 sind anonym und bleiben reine Plausibilitätskontexte. Die zuletzt bestätigte Handy-Zone wird NUR als unbestätigter Verlaufs-Hinweis höchstens 24h in einem persistenten Instanzattribut gespeichert. Mehrere widersprüchliche WLAN-Beweise werden zeitlich geprüft. Keine neue Symcon-Variable, keine Fremdmodule geändert, und Kachelstatus DARF NOCH KEINE Abwesenheits-/Alarmaktionen schalten. Vollständige Gründe und Zeitstempel unter EvidenceJSON.residentVisuState."
     },
     {
+      "type": "Label",
+      "caption": "SICHERHEIT v0.8.54: WLAN Carina/Johannes kann nach echtem positivem Kontakt bis 660s weiterhin AN bleiben. Die Johannes/Carina-Kachel zeigt 'ZUHAUSE (Handy-WLAN bestätigt)' nur bei nachgewiesenem MAC-Kontakt aus den letzten 300s. Für Firmen-/Heim-SSID-Meldungen vom Smartphone gelten ebenfalls höchstens 300s. Ältere Kontakte bleiben ausschließlich 'UNBESTÄTIGT (zuletzt Zuhause/Firma)', auch wenn die alten Quellvariablen noch AN heißen. Einmalige iPhone-WLAN-Beitrittsautomationen reichen ohne regelmäßige Aktualisierung nicht für dauerhafte bestätigte WORK-Anzeigen. GUS/P03 werden nie persönlich zugeordnet. Keine automatische Person-Abwesenheit oder Alarmsteuerung."
+    },
+    {
       "type": "NumberSpinner",
       "name": "P03InstanceID",
       "caption": "Bestehende P03-Hauptinstanz (bekannt: #53879)",

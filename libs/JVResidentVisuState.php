@@ -18,6 +18,10 @@ declare(strict_types=1);
 final class JVResidentVisuState
 {
     private const PAST_CONTEXT_SECONDS=86400;
+    // The original 660s MAC and 900s SSID grace windows exist for source
+    // delivery/recovery, NOT as a guarantee of current device location.
+    // Display CONFIRMED only for truly recent positive updates.
+    private const CURRENT_PHONE_SECONDS=300;
     private const CLOCK_TOLERANCE=5;
     private const CONFLICT_WINDOW_SECONDS=45;
     private const PEOPLE=['johannes','carina'];
@@ -35,6 +39,7 @@ final class JVResidentVisuState
             'phoneIsNotProofOfPersonLocation'=>true,
             'phoneLeftBehindOrBorrowedPossible'=>true,
             'noPhoneSignalNeverProvesAway'=>true,
+            'currentPhoneMaxAgeSeconds'=>self::CURRENT_PHONE_SECONDS,
             'allResidentsAwayCertified'=>false,
             'houseEmptyCertified'=>false,
             'futureAbsenceActionsApproved'=>false,
@@ -55,14 +60,14 @@ final class JVResidentVisuState
             if(($wp['validatedExistingVariablePair']??false)===true
                 &&($wp['state']??null)==='MAC_CONFIRMED_RECENT_DEVICE_HINT'
                 &&($wp['recentMacEvidence']??false)===true)
-                $homeMacAt=self::validTime($wp['lastMacContactAt']??null,$now,660);
+                $homeMacAt=self::validTime($wp['lastMacContactAt']??null,$now,self::CURRENT_PHONE_SECONDS);
             $ssid=$ssidAuthorized&&is_array($work['people'][$person]??null)
                 ?$work['people'][$person]:[];
             $ssidAt=null;
             if(($ssid['sourceVerified']??false)===true
                 &&is_int($ssid['ageSeconds']??null)
-                &&$ssid['ageSeconds']>=0&&$ssid['ageSeconds']<=900)
-                $ssidAt=self::validTime($now-$ssid['ageSeconds'],$now,900);
+                &&$ssid['ageSeconds']>=0&&$ssid['ageSeconds']<=self::CURRENT_PHONE_SECONDS)
+                $ssidAt=self::validTime($now-$ssid['ageSeconds'],$now,self::CURRENT_PHONE_SECONDS);
             $workAt=$ssidAt!==null
                 &&($ssid['workRecent']??false)===true
                 &&($ssid['status']??null)==='WORK_FIRMEN_WLAN_PHONE'
