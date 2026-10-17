@@ -1,3 +1,11 @@
+# v0.8.65 (Build 146) – Handy-Kontinuität und WLAN-Lücken ohne Schein-Abwesenheit
+
+- Neuer persistenter, ausschließlich lesender `JVPhoneContactContinuity`: pro Smartphone validierter letzter MAC-Kontakt, Empfangslücken (>660 s), nach WLAN-Lücke erneut erkannte Kontakte und sequenzierte Geofence-OUT/IN-Ereignisse. Bestehende SHADOW-Attribute dienen als Speicher; keine neuen Variablen oder fremden Skriptänderungen.
+- Grundfall 17.10. 18:03: Johannes Heim-WLAN-Boolean AN mit 792 s altem MAC-Kontakt wird als `WLAN_ON_BUT_MAC_CONTACT_STALE_NOT_AWAY` diagnostiziert; der Kachelstatus bleibt bewusst NICHT BESTÄTIGT, nicht ABWESEND. Fortlaufende LCN-Bewegung bleibt anonym.
+- Erneuter MAC-Kontakt nach einer Lücke wird nicht als Haus-Ankunft fehlinterpretiert. Ein Handy-Rückkehrhinweis verlangt ein seit Aktivierung zeitlich beobachtetes persönliches Geofence OUT, danach IN und einen frischen MAC-Kontakt; selbst das belegt kein Fahrzeug und keine physisch identifizierte Person. Erstes Quellereignis dient als Baseline, neue Ereignisse nach der erfassten Startzeit können ausgewertet werden.
+- Diagnose über bestehende `EvidenceJSON.phoneContactContinuity` und vorhandene Variable `Testergebnis an ChatGPT`; die zuvor abgeschnittene ANKUNFT/AUTO-Zeile ist getrennt. Regressionstest für Alt-WLAN, Wiederkontakt und OUT/IN-Rückkehr ergänzt.
+- Unverändert: P03-Modus, fremde WLAN/Geo-Skripte, LCN, Kameras, Symcon-Objektanzahl, Abwesenheits-/Alarmfreigaben (gesperrt). Personenkachel bleibt konservativ. Keine automatischen Schaltbefehle.
+
 # v0.8.64 (Build 145) – Keine doppelte persönliche P03-Ankunft
 
 - Ein anonymer P03-IN-Übergang darf nicht mehreren Personen als wahrscheinliche persönliche Heimkehr zugeschrieben werden. Der vorher irreführende Befund LIKELY_PHONE_ASSOCIATED_HOME_ARRIVAL heißt nun ANONYMOUS_ENTRY_NEAR_HOME_PHONE. Das Heim-WLAN belegt nur das jeweilige Smartphone, nicht dessen erneuten Eintritt.
