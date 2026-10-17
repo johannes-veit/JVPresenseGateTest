@@ -15,6 +15,7 @@ final class JVResidentEventFusion
     private const HOME_TO_OUT=1800;
     private const CLOCK_SKEW=5;
     private const MAX_P03_KEYS=48;
+    private const MAX_PHONE_EVENTS=24;
     private const MAX_OBSERVATION_GAP=3600;
 
     public static function evaluate(
@@ -48,9 +49,13 @@ final class JVResidentEventFusion
             if($initialAt===null)$initialAt=$now;
             $wp=$okWlan&&is_array($wlan['people'][$person]??null)
                 ?$wlan['people'][$person]:[];
-            $mac=self::ts($wp['lastMacContactAt']??null,$now,self::MAX_AGE);
-            $oldMac=self::ts($prev['lastMacAt']??null,$now,self::MAX_AGE);
             $verifiedPair=($wp['validatedExistingVariablePair']??false)===true;
+            // Do not persist arbitrary timestamps from failed/unverified
+            // WLAN source pairs. A forged MAC could unlock an OUT/IN chain.
+            $mac=$verifiedPair
+                ?self::ts($wp['lastMacContactAt']??null,$now,self::MAX_AGE)
+                :null;
+            $oldMac=self::ts($prev['lastMacAt']??null,$now,self::MAX_AGE);
             $fresh=$verifiedPair
                 &&($wp['wlanBoolean']??null)===true
                 &&($wp['recentMacEvidence']??false)===true
@@ -82,6 +87,15 @@ final class JVResidentEventFusion
             $inAt=self::ts($prev['pendingInAt']??null,$now,self::GEO_MAX_AGE);
             $returnAt=self::ts($prev['lastPhoneReturnAt']??null,$now,self::MAX_AGE);
             $event=self::safeEvent($prev['lastEvent']??null,$now);
+            $history=[];
+            foreach(array_slice(is_array($prev['eventHistory']??null)
+                ?$prev['eventHistory']:[],0,self::MAX_PHONE_EVENTS*2) as $row){
+                $valid=self::safeEvent($row,$now);
+                if($valid!==null)$history[$valid['at'].'|'.$valid['code']]=$valid;
+            }
+            // Seamless migration of the legacy one-event state; no replay.
+            if($event!==null)
+                $history[$event['at'].'|'.$event['code']]=$event;
             $newEvent=null;
             $ssid=$okWork&&is_array($work['people'][$person]??null)
                 ?$work['people'][$person]:[];
@@ -125,8 +139,16 @@ final class JVResidentEventFusion
             if(!$boot &&$newMac &&$gap>660 &&$newEvent===null)
                 $newEvent=['code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP',
                     'at'=>$mac,'certainty'=>'NETWORK_CONTACT_ONLY'];
-            if($newEvent!==null && ($event===null||$newEvent['at']>=$event['at']))
-                $event=$newEvent;
+            if($newEvent!==null){
+                $valid=self::safeEvent($newEvent,$now);
+                if($valid!==null)
+                    $history[$valid['at'].'|'.$valid['code']]=$valid;
+                if($event===null||$newEvent['at']>=$event['at'])
+                    $event=$newEvent;
+            }
+            uasort($history,static fn(array $a,array $b)=>
+                ($b['at']<=>$a['at'])?:strcmp($a['code'],$b['code']));
+            $history=array_slice(array_values($history),0,self::MAX_PHONE_EVENTS);
             $phoneState=$workFresh?'PHONE_WORK_SSID_RECENT':($fresh
                 ?'PHONE_HOME_MAC_RECENT':($verifiedPair&&($wp['wlanBoolean']??null)===true
                     ?'PHONE_HOME_MAC_STALE_NOT_AWAY':'PHONE_LOCATION_UNCONFIRMED'));
@@ -142,13 +164,16 @@ final class JVResidentEventFusion
                 'lastMacAt'=>$lastMac,
                 'lastGeoAt'=>$lastGeo,'pendingOutAt'=>$outAt,
                 'pendingInAt'=>$inAt,'lastPhoneReturnAt'=>$returnAt,
-                'lastEvent'=>$event
+                'lastEvent'=>$event,
+                'eventHistory'=>$history
             ];
             $out['people'][$person]=[
                 'state'=>$phoneState,'lastMacAt'=>$lastMac,
                 'lastMacAgeSeconds'=>$lastMac!==null?$now-$lastMac:null,
                 'lastGeoAt'=>$lastGeo,'lastGeoKind'=>$geoKind,
-                'lastEvent'=>$event,'lastEventIsHistorical'=>$newEvent===null,
+                'lastEvent'=>$event,'eventHistory'=>$history,
+                'eventHistoryCount'=>count($history),
+                'lastEventIsHistorical'=>$newEvent===null,
                 'newPersonalPhoneEvent'=>$newEvent,
                 'newPhoneReturn'=>$returnNew,
                 'wlanContactGapSeconds'=>$gap,
@@ -161,6 +186,10 @@ final class JVResidentEventFusion
         }
         $p03Valid=($p03['schema']??null)===1
             &&($p03['authority']??null)==='P03_LIVE_PROOFS_DIRECTION_ONLY';
+        $logContinuity=$p03Valid&&is_string($p03['logContinuity']??null)
+            ?$p03['logContinuity']:'UNVERIFIED';
+        $logInterrupted=in_array($logContinuity,
+            ['LOG_GAP_OR_RESET','BASELINE_ONLY'],true);
         $oldP03=$validPrior&&is_array($prior['p03']??null)?$prior['p03']:[];
         $seen=is_array($oldP03['seen']??null)?$oldP03['seen']:[];
         $clean=[];
@@ -175,7 +204,7 @@ final class JVResidentEventFusion
             &&$lastP03Read!==null
             &&$now-$lastP03Read<=self::MAX_OBSERVATION_GAP;
         $newProofs=[];
-        if($p03Valid){
+        if($p03Valid&&!$logInterrupted){
             $proofs=$p03['recentDirectionProofs']??[];
             if(is_array($proofs)){
                 foreach(array_slice($proofs,0,64) as $proof){
@@ -203,7 +232,10 @@ final class JVResidentEventFusion
             'newAnonymousProofs'=>$newProofs,'lastAnonymousProof'=>$latest,
             'identityConfirmed'=>false,'phoneAssociatedWithCrossing'=>false,
             'homeLagerIsNotPropertyExit'=>true,
-            'oldProofReplayed'=>false
+            'oldProofReplayed'=>false,
+            'logContinuity'=>$logContinuity,
+            'logInterrupted'=>$logInterrupted,
+            'proofSourceValidated'=>$p03Valid
         ];
         return ['report'=>$out,'next'=>$next];
     }
