@@ -26,6 +26,7 @@ final class JVRouteEpisodeLedger
             'lastEpisode'=>null,'lastPassage'=>null,
             'newPassagesThisRefresh'=>0,'openOutgoingPassages'=>0,
             'newEpisodeThisRefresh'=>false,'ambiguityResetThisRefresh'=>false,
+            'lastAmbiguousAt'=>null,'lastAmbiguityReason'=>null,
             'vehicleSignalCoverage'=>'UNKNOWN',
             'personIdentityCertified'=>false,'samePersonRoundTripCertified'=>false,
             'vehicleJourneyCertified'=>false,'travelModeCertified'=>false,
@@ -51,6 +52,12 @@ final class JVRouteEpisodeLedger
         $seen=[];$open=[];
         $episode=self::safeEpisode($prior['lastEpisode']??null,$now);
         $lastPassage=self::safePassage($prior['lastPassage']??null,$now);
+        $lastAmbiguousAt=self::time($prior['lastAmbiguousAt']??null,$now);
+        $lastAmbiguityReason=$lastAmbiguousAt!==null
+            &&in_array($prior['lastAmbiguityReason']??null,[
+                'MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN',
+                'IN_OUT_TIME_ORDER_INVALID'
+            ],true)?$prior['lastAmbiguityReason']:null;
         if($continuous){
             foreach(($prior['seen']??[]) as $key=>$at){
                 if(is_string($key)&&strlen($key)<=64
@@ -117,6 +124,8 @@ final class JVRouteEpisodeLedger
                     $open=[];
                 }else{
                     $report['warnings'][]='IN_OUT_TIME_ORDER_INVALID';
+                    $lastAmbiguousAt=$now;
+                    $lastAmbiguityReason='IN_OUT_TIME_ORDER_INVALID';
                     // A corrupted/contradictory temporal pair cannot
                     // remain pending and contaminate later passages.
                     $open=[];
@@ -128,6 +137,8 @@ final class JVRouteEpisodeLedger
                 // uniquely pairable route: this unresolved group must
                 // NOT contaminate a completely new future OUT/IN pair.
                 $report['warnings'][]='MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN';
+                $lastAmbiguousAt=$now;
+                $lastAmbiguityReason='MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN';
                 $report['warnings'][]='AMBIGUOUS_ROUTE_WINDOW_RESET';
                 $open=[];
             }else{
@@ -139,13 +150,17 @@ final class JVRouteEpisodeLedger
         $report['lastEpisode']=$episode;
         $report['lastPassage']=$lastPassage;
         $report['openOutgoingPassages']=count($open);
+        $report['lastAmbiguousAt']=$lastAmbiguousAt;
+        $report['lastAmbiguityReason']=$lastAmbiguityReason;
         $report['ambiguityResetThisRefresh']=in_array(
             'AMBIGUOUS_ROUTE_WINDOW_RESET',$report['warnings'],true
         );
         $report['warnings']=array_values(array_unique($report['warnings']));
         $next=['schema'=>1,'initialized'=>true,'lastScanAt'=>$now,
             'seen'=>$seen,'open'=>$open,
-            'lastEpisode'=>$episode,'lastPassage'=>$lastPassage];
+            'lastEpisode'=>$episode,'lastPassage'=>$lastPassage,
+            'lastAmbiguousAt'=>$lastAmbiguousAt,
+            'lastAmbiguityReason'=>$lastAmbiguityReason];
         return ['report'=>$report,'next'=>$next];
     }
 
