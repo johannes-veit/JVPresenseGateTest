@@ -388,6 +388,16 @@ checkGate(($repeat['gateSignalAudit']['newStatusEdgesThisRead']??null)===0,
 // previous scan, opt-in gate watch, GUS baseline, P03 timeline and gate edges.
 // Runtime buffers are intentionally NOT copied to the replacement object.
 $beforeRestart=json_decode((string)$m->GetValue('EvidenceJSON'),true);
+checkGate(($beforeRestart['temporalPresenceCrossCheck']['schema']??null)===1
+    &&($beforeRestart['temporalPresenceCrossCheck']['authority']??null)
+        ==='READ_ONLY_TIME_ALIGNMENT_DIAGNOSTIC_NOT_IDENTITY'
+    &&($beforeRestart['temporalPresenceCrossCheck']['p03OperatingMode']??null)
+        ==='UNKNOWN_NOT_VERIFIED'
+    &&($beforeRestart['temporalPresenceCrossCheck']['mayArmAlarm']??true)===false,
+    'no camera instance means temporal audit exists but does not invent active P03');
+checkGate($m->registered===['Status','EvidenceJSON','JohannesPresence','CarinaPresence','PresenceDetected'],
+    'temporal crosscheck adds NO new Symcon variables');
+
 $attrs=$m->exportPersistedAttributes();
 checkGate(($attrs['PersistExitCandidateInventory']??'{}')!=='{}',
     'inventory stored durably in Symcon attribute');
