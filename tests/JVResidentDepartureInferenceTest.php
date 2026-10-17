@@ -146,6 +146,12 @@ depOK($withoutObservedOut['people']['carina']['assessment']==='NOT_ESTABLISHED'
     &&$withoutObservedOut['people']['carina']['reason']
         ==='NO_OBSERVED_PERSONAL_GEOFENCE_OUT_SEQUENCE',
     'stale OUT status without persistent per-device OUT is not departure');
+$corrupt=JVResidentDepartureInference::evaluate(
+    $w,$firm,$jo,$ca,$p03,$now,['schema'=>99,'authority'=>'UNTRUSTED']
+);
+depOK($corrupt['people']['carina']['assessment']==='NOT_ESTABLISHED'
+    &&$corrupt['people']['carina']['reason']==='PERSONAL_EVENT_LEDGER_UNVERIFIED',
+    'bad personal event ledger cannot fall back to older snapshot departure');
 $authoritative['people']['carina']['pendingGeofenceOut']=$geo;
 $verifiedPhoneOut=JVResidentDepartureInference::evaluate(
     $w,$firm,$jo,$ca,$p03,$now,$authoritative
