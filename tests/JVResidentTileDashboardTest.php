@@ -113,4 +113,15 @@ tileAssert(str_contains($eventHtml,'Letztes Handy-Ereignis:')
     &&str_contains($eventHtml,'Kein neuer bestaetigter Handy-Zustandswechsel')
     &&substr_count($eventHtml,'<details')===2,
     'one last phone event per person inside existing single tile');
+$routes=['authority'=>'ANONYMOUS_ROUTE_EPISODES_READ_ONLY',
+    'lastEpisode'=>['kind'=>'ANONYMOUS_OUT_IN_CORRIDOR_SEQUENCE',
+        'outAt'=>$now-500,'inAt'=>$now-100]];
+$anon=JVResidentTileDashboard::evaluate(
+    $people,$wlan,$ssid,[],$house,$now,[],[],$phoneEvents,$routes
+);
+$anonHtml=JVResidentTileDashboard::render($anon);
+tileAssert(str_contains($anonHtml,'Wegfolge:')
+    &&str_contains($anonHtml,'anonyme Reihenfolge, Person nicht festgestellt')
+    &&substr_count($anonHtml,'<details')===2,
+    'show observed anonymous corridor without attributing either resident');
 echo "Single resident current-state expandable HTML Tile PASS\n";
