@@ -44,7 +44,14 @@ final class JVResidentDepartureInference
             // A snapshot of an OUT Geofence is not enough: the normal
             // production path supplies the persistent, individually observed
             // OUT event. No event -> no new phone departure diagnosis.
-            if(($fusion['authority']??null)==='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'){
+            if($fusion!==[]){
+                if(($fusion['schema']??null)!==1
+                    ||($fusion['authority']??null)
+                        !=='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'){
+                    $entry['reason']='PERSONAL_EVENT_LEDGER_UNVERIFIED';
+                    $out['people'][$person]=$entry;
+                    continue;
+                }
                 if(!is_array($personal)
                     ||($personal['pendingGeofenceOut']??null)!==$geo){
                     $entry['reason']='NO_OBSERVED_PERSONAL_GEOFENCE_OUT_SEQUENCE';
