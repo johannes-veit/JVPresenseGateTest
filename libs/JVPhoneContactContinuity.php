@@ -29,6 +29,9 @@ final class JVPhoneContactContinuity
         foreach(['johannes','carina'] as $person) {
             $previous=is_array($prior['people'][$person]??null)
                 ?$prior['people'][$person]:[];
+            $start=self::time($previous['startedAt']??null,$now,self::HISTORY_SECONDS);
+            $hadBaseline=$start!==null;
+            if($start===null)$start=$now;
             $w=$wlanValid&&is_array($wlan['people'][$person]??null)
                 ?$wlan['people'][$person]:[];
             $paired=($w['validatedExistingVariablePair']??false)===true;
@@ -76,9 +79,9 @@ final class JVPhoneContactContinuity
             // Initial read is only a baseline; never backfill an old
             // Geofence event as a newly observed departure/return.
             if($geoAt!==null&&$kind!==null){
-                if($priorGeo===null) {
-                    $priorGeo=$geoAt;
-                }elseif($geoAt>$priorGeo){
+                if($priorGeo===null)
+                    $priorGeo=$hadBaseline&&$geoAt>$start?$start:$geoAt;
+                if($geoAt>$priorGeo){
                     $newGeo=true;$priorGeo=$geoAt;
                     if($kind==='OUT'){
                         $outAt=$oldMac!==null&&$oldMac<$geoAt
@@ -104,6 +107,7 @@ final class JVPhoneContactContinuity
             $lastMac=$mac!==null&&($oldMac===null||$mac>$oldMac)
                 ?$mac:$oldMac;
             $next['people'][$person]=[
+                'startedAt'=>$start,
                 'lastMacAt'=>$lastMac,'lastGeoAt'=>$priorGeo,
                 'pendingOutAt'=>$outAt,'pendingInAt'=>$inAt,
                 'lastPhoneReturnAt'=>$lastReturn
