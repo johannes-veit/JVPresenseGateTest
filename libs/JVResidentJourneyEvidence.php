@@ -87,22 +87,30 @@ final class JVResidentJourneyEvidence
             $p=$fusion['people'][$person]??null;
             if(!is_array($p))continue;
             $candidate=null;
-            $event=$p['lastEvent']??null;
-            // This is a REAL, individual, sequentially observed PHONE
-            // OUT -> IN -> new MAC cycle (not a periodic MAC refresh).
-            if(is_array($event)
-                &&($event['code']??null)==='PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC'
-                &&is_int($event['at']??null)){
+            // The last event might only be a routine WLAN reconnection.
+            // Inspect the bounded personal history to recover a previously
+            // verified OUT->IN->MAC phone-return event. Pre-upgrade reports
+            // without eventHistory retain the legacy lastEvent fallback.
+            $history=is_array($p['eventHistory']??null)
+                ?array_slice($p['eventHistory'],0,24)
+                :[$p['lastEvent']??null];
+            $bestAt=null;
+            foreach($history as $event){
+                if(!is_array($event)
+                    ||($event['code']??null)!=='PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC'
+                    ||!is_int($event['at']??null))continue;
                 $when=$event['at'];
                 if($when>=$inAt-self::CLOCK_SLACK
                     &&$when<=$inAt+self::PHONE_AFTER_IN
-                    &&$when<=$now+self::CLOCK_SLACK){
-                    $candidate=[
-                        'person'=>$person,'signal'=>'PHONE_RETURN_AFTER_OWN_OUT_IN',
-                        'at'=>$when,'routeDirection'=>'RETURN',
-                        'identityProof'=>false,'vehicleProof'=>false
-                    ];
-                }
+                    &&$when<=$now+self::CLOCK_SLACK
+                    &&($bestAt===null||$when>$bestAt))$bestAt=$when;
+            }
+            if($bestAt!==null){
+                $candidate=[
+                    'person'=>$person,'signal'=>'PHONE_RETURN_AFTER_OWN_OUT_IN',
+                    'at'=>$bestAt,'routeDirection'=>'RETURN',
+                    'identityProof'=>false,'vehicleProof'=>false
+                ];
             }
             if($candidate===null&&$workOK){
                 $wp=$work['people'][$person]??null;
