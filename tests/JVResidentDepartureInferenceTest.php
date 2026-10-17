@@ -102,4 +102,35 @@ $w['people']['carina']['validatedExistingVariablePair']=true;
 $w['enabled']=false;
 depOK(evaluateDeparture()['people']['carina']['assessment']!=='LIKELY_PHONE_DEPARTED',
     'disabled read source cannot assert away');
-echo "Simplified resident WLAN->Geofence departure 15 real-case and safety scenarios PASS\n";
+require_once dirname(__DIR__).'/libs/JVResidentTileDashboard.php';
+$w['enabled']=true;
+$w['people']['carina']['validatedExistingVariablePair']=true;
+$firm['people']['carina']=['sourceVerified'=>false];
+$ca['validatedSource']=true;
+$ca['lastEventAt']=$geo;
+$ca['outsideRecent']=true;
+$ca['geofenceReportedInside']=false;
+$journey=evaluateDeparture();
+$visu=['schema'=>1,'authority'=>'RESIDENT_PHONE_VISU_HINTS_READ_ONLY',
+ 'people'=>[
+   'johannes'=>['decision'=>'UNKNOWN'],
+   'carina'=>['decision'=>'LAST_KNOWN_UNCONFIRMED',
+     'deviceEvidenceAt'=>null,'lastKnownDeviceAt'=>$mac,
+     'geofenceEventFresh'=>true,'geofenceInsideSharedHomeWorkZone'=>false,
+     'geofenceLastEventAgeSeconds'=>140]
+ ]];
+$h=JVResidentTileDashboard::evaluate($visu,$w,$firm,$p03,[],$now,$journey);
+$html=JVResidentTileDashboard::render($h);
+depOK($h['people']['carina']['status']==='ABWESEND (WAHRSCHEINLICH)'
+    &&$h['people']['carina']['at']===$geo
+    &&$h['people']['johannes']['status']==='NICHT BESTÄTIGT',
+    'same live report yields Carina likely absent, Johannes unconfirmed');
+depOK(str_contains($html,'ABWESEND (WAHRSCHEINLICH)')
+    &&str_contains($html,'Letztes bestätigtes Geofence-OUT')
+    &&str_contains($html,'Zu Fuß / Auto / Filzener Weg: nicht personenbezogen nachgewiesen')
+    &&!str_contains($html,'Mit Auto abgefahren'),
+    'current-status tile reports exact last phone OUT but does not invent driving');
+depOK($h['mayArmAlarm']===false
+    &&$h['mayTriggerAbsenceActions']===false,
+    'combined tile cannot control physical presence or alarms');
+echo "Simplified resident WLAN->Geofence departure and HTML tile safety scenarios PASS\n";
