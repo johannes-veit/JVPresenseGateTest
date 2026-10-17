@@ -112,6 +112,8 @@ jobs:
         run: php tests/JVResidentLatestPhoneEventTest.php
       - name: One complete evening ChatGPT pasteable redacted safety-audited resident test report
         run: php tests/JVResidentEveningHandoffTest.php
+      - name: Existing 15-GUS anonymous office bathroom loop and kitchen to upstairs room-path regression
+        run: php tests/JVResidentRoomPathsTest.php
       - name: Company WLAN exact SSIDs, iOS/Android sources, stale and overlap safety
         run: php tests/JVCompanyWiFiEvidenceTest.php
       - name: Standalone secure phone SSID WebHook script installer is idempotent
