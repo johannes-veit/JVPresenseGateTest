@@ -53,7 +53,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.59 Build 140 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.60 Build 141 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -92,6 +92,20 @@ final class JVResidentEveningHandoff
 
             $add('--- '.$label.' ---');
             $add('KACHEL: '.$summary.' | Entscheidung: '.$decision);
+            // Human-readable meanings are authored by our own tile
+            // evaluator. Allow only these known fixed labels, not any text
+            // supplied by phone, WLAN, camera or camera diagnostics.
+            $knownTileMeanings=[
+                'Letztes bestätigtes Geofence-OUT (Handy)',
+                'Letztes Geofence-IN (Haus/Firma, nicht Hauseingang)',
+                'Letztes Geofence-OUT (Handy)',
+                'Letzte bestätigte WLAN-Erfassung',
+                'Letzter gültiger WLAN-Hinweis'
+            ];
+            $tileMeaning=in_array(($t['timeMeaning']??null),
+                $knownTileMeanings,true)?$t['timeMeaning']:'NICHT VERIFIZIERT';
+            $add('KACHEL letzte relevante Erfassung: '
+                .$tileMeaning.' | '.self::date($t['at']??null));
             $add('Quelle/Grund: '.self::code($v['deviceEvidenceReason']??'UNKNOWN'));
             $add('Handy-Erfassung: '.self::date($v['deviceEvidenceAt']??null)
                 .' | zuletzt bekannt: '.self::date($v['lastKnownDeviceAt']??null));
@@ -187,9 +201,10 @@ final class JVResidentEveningHandoff
 
         $add('');
         $add('--- HEUTE ABEND: PRUEFERGEBNIS + OFFENE PUNKTE ---');
-        $add('Diagnose vollständig aus lesbaren Quellen: '
+        $add('Technischer Diagnosebericht aus vorhandenen Daten: '
             .self::yes($validTile&&$validVisu&&$wlanVerified
-                &&$timingVerified&&$p03Verified&&$localVerified));
+                &&$timingVerified&&$p03Verified&&$localVerified)
+            .' | Sichere menschliche An-/Abwesenheit: NICHT ZERTIFIZIERT');
         $add('Erkannter IST-Zustand: '
             .self::code($tile['people']['johannes']['status']??'UNBEKANNT')
             .' / '.self::code($tile['people']['carina']['status']??'UNBEKANNT'));

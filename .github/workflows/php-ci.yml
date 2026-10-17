@@ -108,6 +108,8 @@ jobs:
         run: php tests/JVResidentTileDashboardTest.php
       - name: Three-event phone departure with real Carina timestamps and contradictory source safety
         run: php tests/JVResidentDepartureInferenceTest.php
+      - name: Replay actual latest Carina Geofence IN, Johannes WLAN clock edge and stale source guards
+        run: php tests/JVResidentLatestPhoneEventTest.php
       - name: One complete evening ChatGPT pasteable redacted safety-audited resident test report
         run: php tests/JVResidentEveningHandoffTest.php
       - name: Company WLAN exact SSIDs, iOS/Android sources, stale and overlap safety

@@ -15,6 +15,10 @@
     },
     {
       "type": "Label",
+      "caption": "v0.8.60: Aktuelle Erfassung bedeutet jetzt die zeitlich neueste gültige Handy-Beobachtung. Beispiel Carina 17.10. 16:29:32: Geofency IN im gemeinsamen Haus-/Firmenbereich, noch NICHT automatisch Zuhause. Veraltete MAC-WLAN-Zeit 15:25 wird darunter weiterhin gezeigt. Johannes: Heim-WLAN-Kontakt 284 s alt nahe der 300-s-Anzeigeschwelle – nur Diagnose, nicht automatisch Abwesend. Keine weiteren Einstellungen und keine neuen Variablen. Die bereits vorhandene 'Testergebnis an ChatGPT (Kopieren)' enthält beide Uhrzeiten."
+    },
+    {
+      "type": "Label",
       "caption": "v0.8.59 – EINFACHE ABFAHRTLOGIK: Ohne weitere Einstellungen vergleicht die vorhandene SHADOW-Kachel pro Smartphone den letzten echten Heim-WLAN-MAC-Kontakt mit dem verifizierten Geofence-OUT und prüft, ob danach erneut Heim-WLAN bestätigt wurde. Erst wenn der vorherige MAC-Kontakt mindestens 300 Sekunden alt ist, der Geofence-Austritt seit mindestens 120 Sekunden vorliegt und beide Ereignisse höchstens 30 Minuten auseinanderliegen, wird die Person vorläufig als 'ABWESEND (WAHRSCHEINLICH)' angezeigt. Das ist ein sehr plausibler HANDY-Abreise-Hinweis, kein Beweis der Person oder des Autos. Ein neuer Heim-WLAN-Kontakt, frische persönliche Heim-/Firmen-SSID, Geofence-IN, fehlende/falsche Quell-IDs oder veraltete Ereignisse verhindern den Schluss. Zwei-Mast-P03-OUT (falls tatsächlich live verifiziert) verstärkt nur anonym den Hinweis. Der Status erscheint in der vorhandenen EINEN aufklappbaren Kachel sowie im bisherigen 'Testergebnis an ChatGPT (Kopieren)' mit Grund und Uhrzeit. Keine zusätzlichen Symcon-Variablen; P03 wird NICHT eingeschaltet, Fahrzeuge NICHT erraten und automatische Abwesenheit/Alarm bleiben GESPERRT."
     },
     {

@@ -62,16 +62,39 @@ final class JVResidentTileDashboard
             $lastKnown=$v['lastKnownDeviceAt']??null;
             if(!is_int($lastKnown)||$lastKnown<=0||$lastKnown>$now+5
                 ||$lastKnown<$now-86400)$lastKnown=null;
-            $when=$likely&&is_int($d['eventAt']??null)
-                ?$d['eventAt']:($last??$lastKnown);
-            $hint=$likely
-                ?'Letztes bestätigtes Geofence-OUT'
-                :(in_array($decision,[
-                    'HOME_PHONE_CONFIRMED','WORK_PHONE_CONFIRMED'
+            $geoAt=($v['geofenceEventFresh']??false)===true
+                &&is_int($v['geofenceLastEventAt']??null)
+                &&($v['geofenceLastEventAt']??0)>0
+                &&($v['geofenceLastEventAt']??0)<=$now+5
+                ?$v['geofenceLastEventAt']:null;
+            $geoKind=in_array(($v['geofenceLastEventKind']??null),
+                ['IN','OUT'],true)?$v['geofenceLastEventKind']:null;
+            $geoIsLatest=!$likely
+                &&!in_array($decision,[
+                    'HOME_PHONE_CONFIRMED','WORK_PHONE_CONFIRMED','CONFLICT'
                 ],true)
-                    ?'Letzte bestätigte WLAN-Erfassung'
-                    :'Letzter gültiger WLAN-Hinweis');
-            if($likely)$qualifier='Heim-WLAN nicht mehr bestätigt, danach Geofence OUT – Handy wahrscheinlich weggefahren';
+                &&$geoAt!==null&&$geoKind!==null
+                &&$geoAt>($last??$lastKnown??0);
+            $when=$likely&&is_int($d['eventAt']??null)
+                ?$d['eventAt']:($geoIsLatest?$geoAt:($last??$lastKnown));
+            $hint=$likely
+                ?'Letztes bestätigtes Geofence-OUT (Handy)'
+                :($geoIsLatest
+                    ?($geoKind==='IN'
+                        ?'Letztes Geofence-IN (Haus/Firma, nicht Hauseingang)'
+                        :'Letztes Geofence-OUT (Handy)')
+                    :(in_array($decision,[
+                        'HOME_PHONE_CONFIRMED','WORK_PHONE_CONFIRMED'
+                    ],true)
+                        ?'Letzte bestätigte WLAN-Erfassung'
+                        :'Letzter gültiger WLAN-Hinweis'));
+            if($likely){
+                $qualifier='Heim-WLAN nicht mehr bestätigt, danach Geofence OUT – Handy wahrscheinlich weggefahren';
+            }elseif($geoIsLatest &&$geoKind==='IN'){
+                $qualifier='Handy wieder im gemeinsamen Haus-/Firmenbereich; Zuhause nicht bestätigt';
+            }elseif($geoIsLatest &&$geoKind==='OUT'){
+                $qualifier='Handy meldete Geofence-OUT; ohne weitere Nachweise keine bestätigte Abwesenheit';
+            }
             $people[$key]=[
                 'name'=>$name,
                 'status'=>$status,
@@ -81,7 +104,17 @@ final class JVResidentTileDashboard
                 'timeMeaning'=>$hint,
                 'wlanHome'=>is_int($macAt)
                     &&$macAt>0&&$macAt<=$now+5
-                    ?'Heim-WLAN zuletzt '.self::formatTime($macAt):'Kein frischer Heim-WLAN-Kontakt',
+                    ?'Heim-WLAN bestätigt '.self::formatTime($macAt)
+                        .(is_int($wp['lastMacContactAgeSeconds']??null)
+                            &&$wp['lastMacContactAgeSeconds']>=270
+                            ?' (nächste WLAN-Prüfung abwarten)':'')
+                    :(($wp['validatedExistingVariablePair']??false)===true
+                        &&is_int($wp['lastMacContactAt']??null)
+                        &&$wp['lastMacContactAt']>0
+                        &&$wp['lastMacContactAt']<=$now
+                        ?'Heim-WLAN letzter Kontakt '.self::formatTime(
+                            $wp['lastMacContactAt']).' (nicht aktuell)'
+                        :'Kein frischer Heim-WLAN-Kontakt'),
                 'phoneSsid'=>($sp['sourceVerified']??false)===true
                     ?(string)($sp['ssid']??''):'',
                 'ssidStatus'=>($sp['status']??null)==='WORK_FIRMEN_WLAN_PHONE'
@@ -95,8 +128,10 @@ final class JVResidentTileDashboard
                         true=>'Geofence meldete Haus-/Firmenbereich',
                         false=>'Geofence meldete außerhalb des gemeinsamen Bereichs',
                         default=>'Geofence-Ereignis unklar'
-                    }).(is_int($v['geofenceLastEventAgeSeconds']??null)
-                        ?' (Ereignis vor '.(int)floor($v['geofenceLastEventAgeSeconds']/60).' Min.)'
+                    }).($geoAt!==null
+                        ?' um '.self::formatTime($geoAt):'')
+                        .(is_int($v['geofenceLastEventAgeSeconds']??null)
+                        ?' (vor '.(int)floor($v['geofenceLastEventAgeSeconds']/60).' Min.)'
                         :'')
                     :(($v['geofenceInsideSharedHomeWorkZone']??null)!==null
                         ?'Geofence zuletzt gemeldet, aber veraltet – kein Live-Standort'

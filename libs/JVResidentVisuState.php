@@ -154,6 +154,24 @@ final class JVResidentVisuState
                 &&($geo['authority']??null)===$expected
                 &&($geo['enabled']??false)===true
                 &&($geo['validatedSource']??false)===true;
+            // A Geofence event is a PHONE-area observation, not a
+            // HOME/WORK decision. Keep its original timestamp so the one
+            // resident tile can show the LATEST real observation instead of
+            // showing an older MAC contact as the most recent information.
+            $geoEventAt=$geoValid
+                &&(($geo['insideRecent']??false)===true
+                    ||($geo['outsideRecent']??false)===true)
+                &&is_int($geo['lastEventAt']??null)
+                &&$geo['lastEventAt']>0
+                &&$geo['lastEventAt']<=$now+5
+                &&$geo['lastEventAt']>=$now-21600
+                ?$geo['lastEventAt']:null;
+            $geoEventKind=$geoEventAt===null?null
+                :(($geo['insideRecent']??false)===true
+                    &&($geo['geofenceReportedInside']??null)===true
+                    ?'IN':((($geo['outsideRecent']??false)===true
+                        &&($geo['geofenceReportedInside']??null)===false)
+                        ?'OUT':null));
             $out['people'][$person]=[
                 'decision'=>$decision,
                 'display'=>$label,
@@ -177,6 +195,8 @@ final class JVResidentVisuState
                 'geofenceEventFresh'=>$geoValid
                     &&(($geo['insideRecent']??false)===true
                         ||($geo['outsideRecent']??false)===true),
+                'geofenceLastEventAt'=>$geoEventAt,
+                'geofenceLastEventKind'=>$geoEventKind,
                 'geofenceUsedToDecideHomeOrWork'=>false,
                 'cameraAssignedThisPerson'=>false,
                 'lcnAssignedThisPerson'=>false,
