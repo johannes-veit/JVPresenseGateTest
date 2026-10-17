@@ -171,6 +171,12 @@ final class JVResidentVisuState
                 'lastKnownDeviceAgeSeconds'=>$lastAt!==null?$now-$lastAt:null,
                 'geofenceInsideSharedHomeWorkZone'=>$geoValid
                     ?($geo['geofenceReportedInside']??null):null,
+                'geofenceLastEventAgeSeconds'=>$geoValid
+                    &&is_int($geo['lastEventAgeSeconds']??null)
+                    ?$geo['lastEventAgeSeconds']:null,
+                'geofenceEventFresh'=>$geoValid
+                    &&(($geo['insideRecent']??false)===true
+                        ||($geo['outsideRecent']??false)===true),
                 'geofenceUsedToDecideHomeOrWork'=>false,
                 'cameraAssignedThisPerson'=>false,
                 'lcnAssignedThisPerson'=>false,

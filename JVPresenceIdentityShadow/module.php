@@ -25,6 +25,7 @@ require_once dirname(__DIR__).'/libs/JVJohannesEgiGeoZoneHints.php';
 require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
 require_once dirname(__DIR__).'/libs/JVResidentPresenceDisplay.php';
 require_once dirname(__DIR__).'/libs/JVResidentVisuState.php';
+require_once dirname(__DIR__).'/libs/JVResidentTileDashboard.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
 require_once dirname(__DIR__).'/libs/JVCompanyWiFiEvidence.php';
@@ -45,6 +46,7 @@ class JVPresenceIdentityShadow extends IPSModule
         'LocalSensorState',
         'LocalActivityLedger',
         'ResidentVisuState',
+        'TileResidentState',
         'P03IncrementalTimeline',
         'BoundaryLedger',
         'ExitCandidateInventory',
@@ -121,6 +123,7 @@ class JVPresenceIdentityShadow extends IPSModule
         ], JSON_UNESCAPED_UNICODE) ?: '[]');
         $this->RegisterAttributeString('SensorSubscriptions','[]');
         $this->RegisterAttributeString('GateSubscriptions','[]');
+        $this->RegisterAttributeString('AutoPhoneSSIDInventory','{}');
         // Attributes persist across Symcon / module restarts; buffers DO NOT.
         // Never add hidden Status variables for storage.
         foreach(self::STORED_STATE_NAMES as $name)
@@ -134,6 +137,10 @@ class JVPresenceIdentityShadow extends IPSModule
         // Exactly one additional user-requested Boolean inside SHADOW.
         // FALSE means NO CURRENT POSITIVE SIGNAL, never confirmed empty.
         $this->RegisterVariableBoolean('PresenceDetected','Anwesenheit erkannt','',4);
+        // Exactly one requested additional VISU tile; the five historical
+        // status IDs, types, names and idents remain unmodified.
+        $this->RegisterVariableString('ResidentTile',
+            'Anwesenheit – Johannes & Carina','~HTMLBox',5);
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
     }
 
@@ -1205,11 +1212,103 @@ class JVPresenceIdentityShadow extends IPSModule
         return $out;
     }
 
+    /**
+     * Discover existing per-person WifiSSID values by object metadata only.
+     *
+     * This is a READ of existing Symcon values, never a WLAN scan, command,
+     * AP/controller request, system script or foreign module mutation.
+     * Cached for five minutes to avoid expensive full-tree inspection each
+     * minute. Missing/ambiguous candidates are unverified, never WORK.
+     */
+    private function readAutoKnownPhoneSSIDs():array
+    {
+        $out=['johannes'=>['verified'=>false],
+            'carina'=>['verified'=>false]];
+        $cache=json_decode($this->ReadAttributeString('AutoPhoneSSIDInventory'),true);
+        $now=time();
+        if(!is_array($cache) || !is_int($cache['checkedAt']??null)
+            ||($cache['checkedAt']??0)>$now+5
+            ||($cache['checkedAt']??0)<$now-300
+            ||!is_array($cache['people']??null)){
+            $possible=['johannes'=>[],'carina'=>[]];
+            try{
+                $all=IPS_GetVariableList();
+                // Complete scan required. A partial scan must NEVER select
+                // a seemingly unique phone from a truncated inventory.
+                if(!is_array($all)||count($all)>15000)
+                    return $out;
+                foreach($all as $id){
+                    if(!is_int($id)||$id<=0)continue;
+                    $name=(string)IPS_GetName($id);
+                    if(!in_array($name,[
+                        'WifiSSID','WLAN SSID','WLAN-SSID','Aktuelle SSID'
+                    ],true))continue;
+                    $meta=IPS_GetVariable($id);
+                    if(($meta['VariableType']??null)!==3)continue;
+                    $parent=(int)(IPS_GetObject($id)['ParentID']??0);
+                    if($parent<=0)continue;
+                    $parentName=(string)IPS_GetName($parent);
+                    $grand=(int)(IPS_GetObject($parent)['ParentID']??0);
+                    foreach(['johannes'=>'Johannes',
+                        'carina'=>'Carina'] as $key=>$personName){
+                        $bridge=$parentName===$personName
+                            .' Smartphone SSID Quelle';
+                        $known=$key==='johannes'
+                            ?($parent===50000&&$grand===35965)
+                            :($parent===45439&&$grand===48903);
+                        if($bridge||$known)
+                            $possible[$key][]=['id'=>$id,'parent'=>$parent,
+                                'name'=>$name,'parentName'=>$parentName,
+                                'grand'=>$grand];
+                    }
+                }
+            }catch(Throwable $ignored){return $out;}
+            $cache=['checkedAt'=>$now,'people'=>[]];
+            foreach(['johannes','carina'] as $person){
+                $cache['people'][$person]=count($possible[$person])===1
+                    ?$possible[$person][0]:null;
+            }
+            $json=json_encode($cache,JSON_UNESCAPED_SLASHES);
+            if(is_string($json)&&strlen($json)<2048)
+                $this->WriteAttributeString('AutoPhoneSSIDInventory',$json);
+        }
+        $j=$cache['people']['johannes']['id']??null;
+        $c=$cache['people']['carina']['id']??null;
+        if($j!==null&&$c!==null&&$j===$c)return $out;
+        foreach(['johannes','carina'] as $person){
+            $p=$cache['people'][$person]??null;
+            if(!is_array($p)||!is_int($p['id']??null)
+                ||!is_int($p['parent']??null)
+                ||!is_string($p['name']??null))continue;
+            try{
+                $id=$p['id'];$parent=$p['parent'];
+                if(!IPS_VariableExists($id)
+                    ||IPS_GetName($id)!==$p['name']
+                    ||(int)(IPS_GetObject($id)['ParentID']??0)!==$parent
+                    ||IPS_GetName($parent)!==($p['parentName']??null)
+                    ||(int)(IPS_GetObject($parent)['ParentID']??0)!==($p['grand']??-1))
+                    continue;
+                $meta=IPS_GetVariable($id);
+                $when=$meta['VariableUpdated']??null;
+                if(($meta['VariableType']??null)!==3
+                    ||!is_int($when)||$when<=0||$when>$now+5)
+                    continue;
+                $value=GetValue($id);
+                if(!is_string($value)||strlen($value)>64)continue;
+                $out[$person]=['verified'=>true,'ssid'=>$value,
+                    'updatedAt'=>$when];
+            }catch(Throwable $ignored){}
+        }
+        return $out;
+    }
+
     public function Refresh(): void
     {
         if (!$this->ReadPropertyBoolean('Enabled')) {
             $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
             $this->setPresenceDetected(false);
+            $this->setResidentTile('<section>SHADOW deaktiviert – '
+                .'Anwesenheit derzeit nicht bestätigt.</section>');
             $this->publish([
                 'schema'=>1,'authority'=>'SHADOW_DISABLED',
                 'personPresenceMayBeChanged'=>false,
@@ -1511,6 +1610,50 @@ class JVPresenceIdentityShadow extends IPSModule
         if(is_string($residentNext)
             &&$this->readShadowState('ResidentVisuState')!==$residentNext)
             $this->writeShadowState('ResidentVisuState',$residentNext);
+        // Independent, read-only AUTO-source detection for the requested
+        // single tile. It NEVER mutates other modules or overrides the
+        // explicit manual opt-in flags of existing SHADOW diagnostics.
+        $tileWlan=$existingWlanEnabled?$wlan:
+            JVExistingWlanPhoneHints::evaluate(
+                $this->readExistingWLANPhones(),time(),true
+            );
+        $tileGeoJ=$egiEnabled?$egi:
+            JVJohannesEgiGeoZoneHints::evaluate(
+                $this->readExistingJohannesEgiGeoZone(),time(),true,
+                $this->ReadPropertyInteger('JohannesEgiRadiusMeters')
+            );
+        $tileGeoC=$carinaGeoEnabled?$carinaGeo:
+            JVCarinaGeofencyHints::evaluate(
+                $this->readCarinaGeofencySnapshot(),time(),true,'AUTO_READ_ONLY'
+            );
+        $autoSsid=$this->readAutoKnownPhoneSSIDs();
+        $tileWork=JVCompanyWiFiEvidence::evaluate($autoSsid,time(),true);
+        // Explicitly configured sources keep their precedence when
+        // properly validated; AUTO may fill only missing personal sources.
+        foreach(['johannes','carina'] as $person){
+            if(($workWiFi['people'][$person]['sourceVerified']??false)===true
+                &&in_array(($workWiFi['people'][$person]['status']??''),[
+                    'WORK_FIRMEN_WLAN_PHONE','HOME_SSID_PHONE_HINT',
+                    'WORK_OR_PRIVATE_PROPERTY_EXT_UNCERTAIN'
+                ],true))
+                $tileWork['people'][$person]=$workWiFi['people'][$person];
+        }
+        $tilePrior=json_decode($this->readShadowState('TileResidentState'),true);
+        $tileResident=JVResidentVisuState::evaluate(
+            $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
+            $houseObservation,$p03Timeline['report'],
+            is_array($tilePrior)?$tilePrior:[],time()
+        );
+        $tileNext=json_encode($tileResident['next'],
+            JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+        if(is_string($tileNext)
+            &&$this->readShadowState('TileResidentState')!==$tileNext)
+            $this->writeShadowState('TileResidentState',$tileNext);
+        $tileData=JVResidentTileDashboard::evaluate(
+            $tileResident['report'],$tileWlan,$tileWork,
+            $p03Timeline['report'],$houseObservation,time()
+        );
+        $tileHTML=JVResidentTileDashboard::render($tileData);
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
             $combined,$houseObservation,$wlan,$egi,$carinaGeo,
             $p03Timeline['report'],$gateDisplay,$indoorHints,time(),$workWiFi
@@ -1560,6 +1703,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'carinaGeofency'=>$carinaGeo,
             'residentDisplay'=>$residentDisplay,
             'residentVisuState'=>$residentVisu['report'],
+            'residentTileEvidence'=>$tileData,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
             'carinaGeofencyInventory'=>json_decode($this->readShadowState('CarinaGeofencyInventory'),true),
@@ -1672,6 +1816,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $residentVisu['report']['people']['carina']['display']
         );
         $this->setPresenceDetected($presenceDetected['detected']);
+        $this->setResidentTile($tileHTML);
         $this->publish($report,$state);
     }
 
@@ -1989,6 +2134,13 @@ class JVPresenceIdentityShadow extends IPSModule
         } catch(Throwable $e) {
             return null;
         }
+    }
+
+    /** Update only the one new read-only HTMLBox display output on change. */
+    private function setResidentTile(string $html):void
+    {
+        if($this->GetValue('ResidentTile')!==$html)
+            $this->SetValue('ResidentTile',$html);
     }
 
     /** Write only our TWO requested SHADOW display variables. */
