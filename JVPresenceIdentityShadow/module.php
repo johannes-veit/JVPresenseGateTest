@@ -1678,8 +1678,8 @@ class JVPresenceIdentityShadow extends IPSModule
         );
         $tileHTML=JVResidentTileDashboard::render($tileData);
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
-            $combined,$houseObservation,$wlan,$egi,$carinaGeo,
-            $p03Timeline['report'],$gateDisplay,$indoorHints,time(),$workWiFi
+            $combined,$houseObservation,$tileWlan,$tileGeoJ,$tileGeoC,
+            $p03Timeline['report'],$gateDisplay,$indoorHints,time(),$tileWork
         );
         // Existing gate display is context only, NOT a verified exit route.
         $boundary['report']['existingGateDisplay']=$gateDisplay;
