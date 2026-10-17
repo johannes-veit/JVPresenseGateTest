@@ -75,4 +75,29 @@ $w['people']['johannes']=['validatedExistingVariablePair'=>true,
 $two=JVResidentArrivalInference::evaluate($w,$j,$g,$p,$now,$confirmedReturn);
 checkArrival($two['people']['johannes']['assessment']==='PHONE_RETURN_AFTER_OUT_IN_HOME_MAC',
     'two independently observed phone return sequences may report two phones');
+
+// A later WLAN recovery must not overwrite the personal return signal in
+// a proper bounded event ledger. Never infer camera identity from it.
+$withHistory=['authority'=>'PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY',
+    'people'=>['carina'=>[
+        'lastEvent'=>['code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP',
+            'at'=>$now-8],
+        'eventHistory'=>[
+            ['code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP','at'=>$now-8],
+            ['code'=>'PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC','at'=>$now-35]
+        ]
+    ]]];
+$historyArrival=JVResidentArrivalInference::evaluate($w,$j,$g,$p,$now,$withHistory);
+checkArrival(
+    $historyArrival['people']['carina']['assessment']==='PHONE_RETURN_AFTER_OUT_IN_HOME_MAC'
+    &&$historyArrival['people']['carina']['verifiedPhoneReturnAt']===$now-35
+    &&$historyArrival['people']['carina']['personIdentifiedByCamera']===false,
+    'prior personal phone return remains visible after ordinary WLAN refresh'
+);
+$withHistory['people']['carina']['eventHistory']=[
+    ['code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP','at'=>$now-8]
+];
+$noReturn=JVResidentArrivalInference::evaluate($w,$j,$g,$p,$now,$withHistory);
+checkArrival($noReturn['people']['carina']['assessment']!=='PHONE_RETURN_AFTER_OUT_IN_HOME_MAC',
+    'explicit event history without return overrides lastEvent');
 echo "Arrival correlation tests PASS\n";
