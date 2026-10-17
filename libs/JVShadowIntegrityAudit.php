@@ -85,6 +85,18 @@ final class JVShadowIntegrityAudit
                     &&count(is_array($p['newAnonymousProofs']??null)
                         ?$p['newAnonymousProofs']:[])>0)
                     $issues[]='P03_PROOF_ACROSS_LOG_GAP';
+                $delivery=$p['routeDeliveryProofs']??[];
+                $queueCount=$p['unackedRouteProofCount']??0;
+                if(!is_array($delivery)||count($delivery)>32
+                    ||!is_int($queueCount)||$queueCount<0||$queueCount>128)
+                    $issues[]='P03_ROUTE_DELIVERY_BOUNDS_INVALID';
+                if(($p['logInterrupted']??false)===true
+                    &&is_array($delivery)&&count($delivery)>0)
+                    $issues[]='P03_DELIVERY_DURING_SOURCE_GAP';
+                if(($p['routeJournalOverflow']??false)===true)
+                    $issues[]='P03_ROUTE_JOURNAL_OVERFLOW';
+                if(($p['routeJournalExpired']??false)===true)
+                    $issues[]='P03_ROUTE_JOURNAL_EXPIRED';
                 $checks++;
             }
         }
