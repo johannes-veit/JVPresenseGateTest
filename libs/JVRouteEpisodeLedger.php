@@ -25,6 +25,7 @@ final class JVRouteEpisodeLedger
             'schema'=>1,'authority'=>'ANONYMOUS_ROUTE_EPISODES_READ_ONLY',
             'lastEpisode'=>null,'lastPassage'=>null,
             'newPassagesThisRefresh'=>0,'openOutgoingPassages'=>0,
+            'ambiguousOutstanding'=>0,
             'newEpisodeThisRefresh'=>false,'ambiguityResetThisRefresh'=>false,
             'lastAmbiguousAt'=>null,'lastAmbiguityReason'=>null,
             'vehicleSignalCoverage'=>'UNKNOWN',
@@ -50,6 +51,11 @@ final class JVRouteEpisodeLedger
             &&($prior['initialized']??false)===true
             &&$oldScan!==null&&$now-$oldScan<=self::MAX_GAP;
         $seen=[];$open=[];
+        $ambiguousOutstanding=$continuous
+            &&is_int($prior['ambiguousOutstanding']??null)
+            &&$prior['ambiguousOutstanding']>=0
+            &&$prior['ambiguousOutstanding']<=self::MAX_OPEN
+                ?$prior['ambiguousOutstanding']:0;
         $episode=self::safeEpisode($prior['lastEpisode']??null,$now);
         $lastPassage=self::safePassage($prior['lastPassage']??null,$now);
         $lastAmbiguousAt=self::time($prior['lastAmbiguousAt']??null,$now);
@@ -83,7 +89,7 @@ final class JVRouteEpisodeLedger
         if($p03Off||$p03LogInterrupted){
             // Camera stream/proof log was not continuous: an OUT before
             // the interruption cannot form a reliable pair with a later IN.
-            $open=[];
+            $open=[];$ambiguousOutstanding=0;
             if($p03Off)$report['warnings'][]='P03_OFF_CORRIDOR_CONTINUITY_INTERRUPTED';
             if($p03LogInterrupted)
                 $report['warnings'][]='P03_LOG_GAP_CORRIDOR_CONTINUITY_INTERRUPTED';
@@ -105,6 +111,20 @@ final class JVRouteEpisodeLedger
             $lastPassage=$pass;
             $report['newPassagesThisRefresh']++;
             if(!$continuous)continue; // initial snapshot is ONLY baseline
+            if($ambiguousOutstanding>0){
+                // Still at least one anonymous outward passage from an
+                // unpairable group. A new OUT cannot be called independent
+                // while an earlier traveller may yet return.
+                if($pass['direction']==='HOME_TO_LAGER'){
+                    $ambiguousOutstanding=min(
+                        self::MAX_OPEN,$ambiguousOutstanding+1
+                    );
+                }else{
+                    $ambiguousOutstanding--;
+                }
+                $report['warnings'][]='UNRESOLVED_MULTIPERSON_CROSSINGS_QUARANTINED';
+                continue;
+            }
             if($pass['direction']==='HOME_TO_LAGER'){
                 if(count($open)>=self::MAX_OPEN){
                     $report['warnings'][]='TOO_MANY_UNMATCHED_OUT_TRIPS';
@@ -139,6 +159,7 @@ final class JVRouteEpisodeLedger
                 $report['warnings'][]='MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN';
                 $lastAmbiguousAt=$now;
                 $lastAmbiguityReason='MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN';
+                $ambiguousOutstanding=count($open)-1;
                 $report['warnings'][]='AMBIGUOUS_ROUTE_WINDOW_RESET';
                 $open=[];
             }else{
@@ -150,6 +171,7 @@ final class JVRouteEpisodeLedger
         $report['lastEpisode']=$episode;
         $report['lastPassage']=$lastPassage;
         $report['openOutgoingPassages']=count($open);
+        $report['ambiguousOutstanding']=$ambiguousOutstanding;
         $report['lastAmbiguousAt']=$lastAmbiguousAt;
         $report['lastAmbiguityReason']=$lastAmbiguityReason;
         $report['ambiguityResetThisRefresh']=in_array(
@@ -158,6 +180,7 @@ final class JVRouteEpisodeLedger
         $report['warnings']=array_values(array_unique($report['warnings']));
         $next=['schema'=>1,'initialized'=>true,'lastScanAt'=>$now,
             'seen'=>$seen,'open'=>$open,
+            'ambiguousOutstanding'=>$ambiguousOutstanding,
             'lastEpisode'=>$episode,'lastPassage'=>$lastPassage,
             'lastAmbiguousAt'=>$lastAmbiguousAt,
             'lastAmbiguityReason'=>$lastAmbiguityReason];
