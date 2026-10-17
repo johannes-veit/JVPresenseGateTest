@@ -36,4 +36,20 @@ $p['recentDirectionProofs']=[['source'=>'P03_TWO_MAST_VERIFIED',
     'direction'=>'HOME_TO_LAGER','at'=>$now-70]];
 $r=$run();checkArrival($r['people']['carina']['assessment']==='HOME_PHONE_CURRENT_ARRIVAL_NOT_PROVEN',
     'opposite route cannot prove return');
+
+// Field regression 17.10.2026: Johannes walked, Carina stayed home.
+// Same anonymous P03 passage plus two refreshed MAC contacts must NOT
+// create two personal arrivals.
+$g['insideRecent']=false;
+$w['people']['johannes']=$w['people']['carina'];
+$p['recentDirectionProofs']=[['source'=>'P03_TWO_MAST_VERIFIED',
+    'direction'=>'LAGER_TO_HOME','at'=>$now-70]];
+$both=$run();
+checkArrival(
+    $both['people']['carina']['assessment']==='ANONYMOUS_ENTRY_NEAR_HOME_PHONE'
+    &&$both['people']['johannes']['assessment']==='ANONYMOUS_ENTRY_NEAR_HOME_PHONE'
+    &&!$both['people']['carina']['phoneAssociatedArrivalOnly']
+    &&!$both['people']['johannes']['phoneAssociatedArrivalOnly'],
+    'single anonymous crossing cannot identify either resident'
+);
 echo "Arrival correlation tests PASS\n";
