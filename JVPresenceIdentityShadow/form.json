@@ -26,6 +26,10 @@
     },
     {
       "type": "Label",
+      "caption": "NEU v0.8.52: Unter EvidenceJSON.temporalPresenceCrossCheck stehen aktuelle P03-Betriebsart (TEST/PRODUKTION AUS oder AKTIV, nur bei frischer P03 Socket-Diagnose), rohe Straßen-IVS OUT/IN mit Zeitstempeln, unverifizierte Straßenevent + JV_LEFT Human-Sequenzen (maximal 50 Sekunden), 24-h-Summen, letzter WLAN-MAC-Kontakt von Johannes/Carina und letzte GUS-Hausbewegung. WLAN-Kontakt ist periodische MAC-Prüfung, NICHT der WLAN-Beitritt. Roh-IVS ist KEIN geprüfter Zwei-Mast-Treppenbeweis oder Beleg für eine bestimmte Person. P03-Produktion wird NICHT automatisch gestartet. Bei Bedarf nur in der P03-Hauptinstanz #53879 nach Sicherheitsprüfung die bestehende Aktion 'P03 Produktivbetrieb aktivieren' verwenden. Beide Geofences bleiben bis zur manuellen Aktivierung in SHADOW AUS; keine Fremdmodule verändert. Alle fünf bestehenden Variablen/IDs bleiben identisch."
+    },
+    {
+      "type": "Label",
       "caption": "PERSONENZÄHLUNG / KAMERAPRIORITÄT: WORK_LEFT IPC-HFW5442E-ZE hat Vorrang an der Straßen-IVS; JV_LEFT + WORK_LEFT gemeinsam für Haus↔Lager. Bereits bekannte TiOC: JV Terrasse und JV Hof/Garage jeweils IPC-PDW3849-A180-AS-PV (180° Panorama, 2×4 MP, SMD 4.0, IVS Mensch/Fahrzeug). Diese Panorama-Kameras können, falls der Weg im Sichtfeld liegt, eine mögliche Gruppe zusätzlich erkennen, haben laut Modell-Datenblatt aber keine eigenständige People-Counting-Funktion. Ein 180°-Bild beweist keine Anzahl von zwei Personen. Die IPC besitzt einen separaten People-Counting-Smart-Plan, der die laufenden P03-IVS-Funktionen nicht verdrängen darf. Optionaler NumberStat-Diagnose-Link bleibt AUS."
     },
     {

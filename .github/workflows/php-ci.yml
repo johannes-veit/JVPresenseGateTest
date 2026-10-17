@@ -58,6 +58,8 @@ jobs:
         run: php tests/JVP03ProofLogReplayTest.php
       - name: Incremental live P03 shadow timeline and existing commissioning baseline
         run: php tests/JVP03IncrementalTimelineTest.php
+      - name: Crosscheck P03 raw street IVS, real mode diagnostic and smartphone WLAN LCN timeline
+        run: php tests/JVTemporalPresenceCrossCheckTest.php
       - name: Existing LCN and GUS evidence safety and clock suppression
         run: php tests/JVLocalSensorEvidenceTest.php
       - name: Local-only 24-hour room movement ledger, no phones or headcount

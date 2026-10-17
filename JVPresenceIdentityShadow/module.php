@@ -27,6 +27,7 @@ require_once dirname(__DIR__).'/libs/JVResidentPresenceDisplay.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
 require_once dirname(__DIR__).'/libs/JVCompanyWiFiEvidence.php';
+require_once dirname(__DIR__).'/libs/JVTemporalPresenceCrossCheck.php';
 
 /**
  * Read-only SHADOW observer. Consumes only already-existing local Symcon
@@ -1512,6 +1513,17 @@ class JVPresenceIdentityShadow extends IPSModule
         $parallelPassage['individualPeopleCount']='UNKNOWN';
         $parallelPassage['cameraCountCapabilityPriority']='IPC_WIZMIND_FIRST_WHEN_PEOPLE_COUNTING_VERIFIED';
         $boundary['report']['individualsOrEntireGroupExitedCertified']=false;
+        $temporalCrossCheck=JVTemporalPresenceCrossCheck::evaluate(
+            $p03Raw??'',
+            $this->readLocalVariable(
+                $this->ReadPropertyInteger('P03InstanceID'),
+                self::P03_GUID,'P03ConnectionDiagnosis'
+            ),
+            $p03Timeline['report'],$wlan,$activity,$egi,$carinaGeo,
+            $workWiFi,
+            ($p03['street']['directionMappingCertified']??false)===true,
+            time()
+        );
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'personPresenceMayBeChanged'=>false,
@@ -1520,6 +1532,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'p03Live'=>$this->readP03LiveCounters(),
             'p03MastHealth'=>$mastHealth,
             'p03LiveTimeline'=>$p03Timeline['report'],
+            'temporalPresenceCrossCheck'=>$temporalCrossCheck,
             'parallelPersonPassage'=>$parallelPassage,
             'cameraCapabilityPriority'=>$cameraCapability,
             'additionalIPCInventory'=>$otherCameraInventory,
@@ -1588,6 +1601,14 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | GUS-Impulse/24h: '.$activity['totalMotionEdges24h']
             .' | P03-neue Beweise/24h: '
             .array_sum($p03Timeline['report']['directionProofs24h'])
+            .' | P03-Betrieb: '.($temporalCrossCheck['p03OperatingMode']==='TEST_AND_PRODUCTION_OFF'
+                ?'TEST/PRODUKTION AUS – IVS nur roh'
+                :($temporalCrossCheck['p03OperatingMode']==='PRODUCTION_ACTIVE'
+                    ?'PRODUKTION AKTIV'
+                    :($temporalCrossCheck['p03OperatingMode']==='TEST_ACTIVE'
+                        ?'TEST AKTIV':'NICHT VERIFIZIERT')))
+            .' | P03-Roh-STRASSE/24h: '
+            .array_sum($temporalCrossCheck['rawStreetIVS24h'])
             .' | Haus: '.$houseLabel
             .' | Grundstuecksausgaenge: '.(
                 $boundary['report']['configuredBoundarySignals']===0
