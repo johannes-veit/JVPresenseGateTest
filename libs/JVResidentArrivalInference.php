@@ -70,6 +70,9 @@ final class JVResidentArrivalInference
                     ||($last['code']??null)!=='PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC'
                     ||!is_int($last['at']??null))continue;
                 $at=$last['at'];
+                $bindingAt=$fp['lastSourceRebindAt']??null;
+                if(is_int($bindingAt)&&$bindingAt>0&&$at<$bindingAt)
+                    continue;
                 if($at>0&&$at<=$now+5&&$now-$at<=3600
                     &&($retAt===null||$at>$retAt))$retAt=$at;
             }
