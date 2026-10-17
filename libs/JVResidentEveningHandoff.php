@@ -109,6 +109,13 @@ final class JVResidentEveningHandoff
             $add('EREIGNISKERN: '.self::code($fp['state']??'NO_STATE')
                 .' | Letztes Handy-Ereignis: '.self::code($evt['code']??'KEINES')
                 .' | Zeit: '.self::date($evt['at']??null));
+            $add('QUELLENBINDUNG: Heim-WLAN fortlaufend '
+                .self::yes(($fp['macSourceContinuous']??false)===true)
+                .' | Geofence fortlaufend '
+                .self::yes(($fp['geoSourceContinuous']??false)===true)
+                .' | Objekt-ID-Wechsel/24h '
+                .self::yes(($fp['sourceRebindRecent']??false)===true)
+                .' | zuletzt '.self::date($fp['lastSourceRebindAt']??null));
             $add('HANDY-VERLAUF/24h: '.self::number(
                 $fp['eventHistoryCount']??null)
                 .' qualifizierte Ereignisse (maximal 24 pro Handy, keine Identitaet)');
