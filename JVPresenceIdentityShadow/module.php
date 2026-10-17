@@ -31,6 +31,7 @@ require_once dirname(__DIR__).'/libs/JVResidentDepartureInference.php';
 require_once dirname(__DIR__).'/libs/JVResidentArrivalInference.php';
 require_once dirname(__DIR__).'/libs/JVPhoneContactContinuity.php';
 require_once dirname(__DIR__).'/libs/JVResidentEventFusion.php';
+require_once dirname(__DIR__).'/libs/JVRouteEpisodeLedger.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
@@ -54,6 +55,7 @@ class JVPresenceIdentityShadow extends IPSModule
         'ResidentVisuState',
         'ResidentPhoneContinuity',
         'ResidentEventFusion',
+        'RouteEpisodeLedger',
         'TileResidentState',
         'P03IncrementalTimeline',
         'BoundaryLedger',
@@ -1691,6 +1693,32 @@ class JVPresenceIdentityShadow extends IPSModule
         if(is_string($fusionNext)
             &&$this->readShadowState('ResidentEventFusion')!==$fusionNext)
             $this->writeShadowState('ResidentEventFusion',$fusionNext);
+        $temporalCrossCheck=JVTemporalPresenceCrossCheck::evaluate(
+            $p03Raw??'',
+            $this->readLocalVariable(
+                $this->ReadPropertyInteger('P03InstanceID'),
+                self::P03_GUID,'P03ConnectionDiagnosis'
+            ),
+            $p03Timeline['report'],$wlan,$activity,$egi,$carinaGeo,
+            $workWiFi,
+            ($p03['street']['directionMappingCertified']??false)===true,
+            time()
+        );
+        // New anonymous two-mast OUT/IN corridor episodes, safely kept
+        // separate from residents' own handset events and from car claims.
+        $routePrior=json_decode(
+            $this->readShadowState('RouteEpisodeLedger'),true
+        );
+        $routeEpisodes=JVRouteEpisodeLedger::evaluate(
+            $residentFusion['report'],$boundary['report'],
+            $roomPaths,$temporalCrossCheck,
+            is_array($routePrior)?$routePrior:[],time()
+        );
+        $routeNext=json_encode($routeEpisodes['next'],
+            JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+        if(is_string($routeNext)
+            &&$this->readShadowState('RouteEpisodeLedger')!==$routeNext)
+            $this->writeShadowState('RouteEpisodeLedger',$routeNext);
         $tilePrior=json_decode($this->readShadowState('TileResidentState'),true);
         $tileResident=JVResidentVisuState::evaluate(
             $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
@@ -1713,7 +1741,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $tileData=JVResidentTileDashboard::evaluate(
             $tileResident['report'],$tileWlan,$tileWork,
             $p03Timeline['report'],$houseObservation,time(),$departureHint,$roomPaths,
-            $residentFusion['report']
+            $residentFusion['report'],$routeEpisodes['report']
         );
         $tileHTML=JVResidentTileDashboard::render($tileData);
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
@@ -1732,17 +1760,6 @@ class JVPresenceIdentityShadow extends IPSModule
         $parallelPassage['individualPeopleCount']='UNKNOWN';
         $parallelPassage['cameraCountCapabilityPriority']='IPC_WIZMIND_FIRST_WHEN_PEOPLE_COUNTING_VERIFIED';
         $boundary['report']['individualsOrEntireGroupExitedCertified']=false;
-        $temporalCrossCheck=JVTemporalPresenceCrossCheck::evaluate(
-            $p03Raw??'',
-            $this->readLocalVariable(
-                $this->ReadPropertyInteger('P03InstanceID'),
-                self::P03_GUID,'P03ConnectionDiagnosis'
-            ),
-            $p03Timeline['report'],$wlan,$activity,$egi,$carinaGeo,
-            $workWiFi,
-            ($p03['street']['directionMappingCertified']??false)===true,
-            time()
-        );
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'personPresenceMayBeChanged'=>false,
@@ -1770,6 +1787,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentArrivalInference'=>$arrivalHint,
             'phoneContactContinuity'=>$contactHistory['report'],
             'residentEventFusion'=>$residentFusion['report'],
+            'anonymousRouteEpisodes'=>$routeEpisodes['report'],
             'roomMovementPaths'=>$roomPaths,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
@@ -1890,7 +1908,8 @@ class JVPresenceIdentityShadow extends IPSModule
             $temporalCrossCheck,$mastHealth,$houseObservation,
             $activity,$local,$boundary['report'],$gateDisplay,
             $warnings,time(),true,$departureHint,$roomPaths,$arrivalHint,
-            $contactHistory['report'],$residentFusion['report']
+            $contactHistory['report'],$residentFusion['report'],
+            $routeEpisodes['report']
         ));
         $this->publish($report,$state);
     }
