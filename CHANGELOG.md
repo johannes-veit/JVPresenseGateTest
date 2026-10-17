@@ -1,3 +1,10 @@
+# v0.8.55 (Build 136) – IP-Symcon Modulverwaltung: Bibliotheksfehler „!“ beseitigen
+
+- Fehlerursache: Der eigenständige Repository-Hauptordner `tools/` aus der optionalen Phone-WiFi-Webhook-Anbindung ist **kein zulässiger IP-Symcon-Modulordner** (besitzt keine `module.json`) und steht auch nicht auf der Liste erlaubter Sonderordner. Die Modulliste zeigte deshalb bei `JV Presence Gate Test` ein schwarzes Ausrufezeichen, obwohl GitHub-PHP-CI und Build 135 korrekt waren. Laut offizieller Symcon-Modulstruktur sind u. a. `libs/`, `docs/`, `imgs/`, `tests/` und `actions/` ausgenommen; unbekannte Root-Ordner werden als fehlerhaft markiert.
+- Die beiden Dateien `tools/phone-wifi-bridge/JVPhoneWiFiWebhook.php` und `README.md` wurden ohne Funktionsänderung in den erlaubten Pfad `docs/phone-wifi-bridge/` verschoben. Der alte Ordner wurde **vollständig entfernt**. Standalone-Test referenziert den neuen Pfad.
+- NEU: `tests/JVModuleRepositoryStructureTest.php` und eine eigene GitHub-CI-Stufe prüfen erlaubte Root-Verzeichnisse, vorhandene `module.json`/ `module.php`, eindeutige Modul-GUIDs und die verschobenen Dateien. Zukünftige Uploads unzulässiger Root-Ordner lassen den CI-Lauf scheitern, BEVOR ein Symcon-Update empfohlen wird.
+- Keine Änderungen an `JVPresenceIdentityShadow/module.php`, den fünf Ausgabevariablen, bestehenden Quell-IDs, P03, Kameras, LCN, WLAN, Geofences, Smartphone-Apps, Firewall oder Alarm. Ausschließlich Ablage/Validierung und Bibliotheks-Version erhöht. Bestehende Instanzen NICHT löschen; nach Update Modulverwaltung neu prüfen.
+
 # v0.8.54 (Build 135) – WLAN-Haltezeit ist kein frischer persönlicher Standortnachweis
 
 - Praxis-Korrektur: Das bestehende Carina-WLAN-Skript lässt `WLAN anwesend #38430` trotz älterem Kontakt bis zu 660 s auf AN. Erst danach schaltet es beim nächsten Lauf AUS. Der Kachelzustand `ZUHAUSE (Handy-WLAN bestätigt)` gilt nun **maximal 300 Sekunden** nach dem wirklich zuletzt bestätigten WLAN-MAC-Kontakt, nicht während der ganzen alten 660-s-Haltefrist. Ein älterer positiver Kontakt wird nur noch `UNBESTÄTIGT (zuletzt Zuhause)` angezeigt; nie Personen-Abwesenheit.
