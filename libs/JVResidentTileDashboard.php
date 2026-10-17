@@ -14,7 +14,7 @@ declare(strict_types=1);
 final class JVResidentTileDashboard
 {
     public static function evaluate(array $visu,array $wlan,array $work,array $p03,
-        array $house,int $now,array $depart=[],array $rooms=[],array $fusion=[]):array
+        array $house,int $now,array $depart=[],array $rooms=[],array $fusion=[],array $routes=[]):array
     {
         $people=[];
         $valid=($visu['schema']??null)===1
@@ -208,10 +208,26 @@ final class JVResidentTileDashboard
                     $roomSummary[]=$label.' (bis '.self::formatTime($rooms[$key]['at']).')';
             }
         }
+        $routeText='Keine vollständig gepaarte P03-Hin-/Rückweg-Folge';
+        if(($routes['authority']??null)==='ANONYMOUS_ROUTE_EPISODES_READ_ONLY'
+            &&is_array($routes['lastEpisode']??null)){
+            $ep=$routes['lastEpisode'];
+            $outAt=$ep['outAt']??null;
+            $inAt=$ep['inAt']??null;
+            if(($ep['kind']??null)==='ANONYMOUS_OUT_IN_CORRIDOR_SEQUENCE'
+                &&is_int($outAt)&&is_int($inAt)
+                &&$outAt>0&&$outAt<$inAt&&$inAt<=$now+5
+                &&$inAt>=$now-86400){
+                $routeText='Haus → Lager '.self::formatTime($outAt)
+                    .' · Lager → Haus '.self::formatTime($inAt)
+                    .' (anonyme Reihenfolge, Person nicht festgestellt)';
+            }
+        }
         return [
             'schema'=>1,
             'authority'=>'CURRENT_STATUS_ONLY_SAFE_HTML_TILE',
             'roomPathsAnonymous'=>$roomSummary,
+            'anonymousRouteEpisodeText'=>$routeText,
             'people'=>$people,
             'p03Anonymized'=>$p03Text,
             'lcnAnonymized'=>$houseText,
@@ -270,6 +286,8 @@ final class JVResidentTileDashboard
         $parts[]='<div style="font-size:.83em;opacity:.8;margin-top:8px">';
         foreach(array_slice($data['roomPathsAnonymous']??[],0,2) as $roomPath)
             $parts[]='<div>LCN Raumfolge (Person unbekannt): '.$esc((string)$roomPath).'</div>';
+        $parts[]='<div>Wegfolge: '.$esc((string)(
+            $data['anonymousRouteEpisodeText']??'Keine Daten')).'</div>';
         $parts[]='<div>P03: '.$esc((string)($data['p03Anonymized']??'Keine Daten')).'</div>'
             .'<div>LCN: '.$esc((string)($data['lcnAnonymized']??'Keine Daten')).'</div>'
             .'<div style="margin-top:5px">Anwesenheit/Abwesenheit nach '
