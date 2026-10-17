@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -53,7 +53,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.68 Build 149 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.69 Build 150 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -217,6 +217,20 @@ final class JVResidentEveningHandoff
             .' | Fahrzeugvariable aktiv nahebei '
             .self::yes(($ep['vehicleVariableActiveNearby']??false)===true)
             .' | Auto/Fussweg weiterhin NICHT NACHGEWIESEN');
+        $journeyOK=($journey['schema']??null)===1
+            &&($journey['authority']??null)
+                ==='READ_ONLY_RESIDENT_ROUTE_PHONE_ASSOCIATIONS';
+        $candidate=$journeyOK
+            ?($journey['candidatePerson']??null):null;
+        $candidateLabel=in_array($candidate,['johannes','carina'],true)
+            ?strtoupper($candidate):'KEINER';
+        $add('WEG-HANDY-KORRELATION: '.self::code(
+                $journeyOK?($journey['status']??'NO_STATUS'):'NOT_VERIFIED')
+            .' | zeitlich passendes Handy '.self::code($candidateLabel)
+            .' | Kameraperson NICHT IDENTIFIZIERT');
+        $add('FAHRZEUG-NACHWEIS: '.self::code(
+                $journeyOK?($journey['vehicleEvidence']??'NO_DATA'):'NOT_VERIFIED')
+            .' | Auto, Fahrtrichtung und Bewohner NICHT BEWIESEN');
         $raw=$timingVerified&&is_array($timing['rawStreetIVS24h']??null)
             ?$timing['rawStreetIVS24h']:[];
         $add('ROHE Strassen-IVS/24h (kein Hauswechsel!): IN '
