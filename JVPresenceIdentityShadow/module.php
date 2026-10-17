@@ -1391,14 +1391,10 @@ class JVPresenceIdentityShadow extends IPSModule
             // Invalid source is NEVER interpreted as an empty reset log.
             $p03Timeline['report']['warnings'][]='P03_SOURCE_NOT_READABLE';
             $p03Timeline['next']=$p03Previous??[];
-        } else {
-            $newState=json_encode($p03Timeline['next'],
-                JSON_UNESCAPED_SLASHES);
-            if(is_string($newState)
-                && $this->readShadowState('P03IncrementalTimeline')!==$newState) {
-                $this->writeShadowState('P03IncrementalTimeline',$newState);
-            }
         }
+        // Important commit order: do not advance the P03 log cursor until
+        // the fused delivery journal has been persisted below. A crash at
+        // either boundary can then replay or deduplicate the same proof.
         if($p03Timeline['report']['warnings']) {
             $warnings=array_merge($warnings,
                 $p03Timeline['report']['warnings']);
@@ -1722,6 +1718,14 @@ class JVPresenceIdentityShadow extends IPSModule
         if(is_string($fusionNext)
             &&$this->readShadowState('ResidentEventFusion')!==$fusionNext)
             $this->writeShadowState('ResidentEventFusion',$fusionNext);
+        // Durable fused proof journal first; P03 raw cursor second.
+        // On restart between those writes, source proofs replay safely.
+        if($p03Raw!==null){
+            $newState=json_encode($p03Timeline['next'],JSON_UNESCAPED_SLASHES);
+            if(is_string($newState)
+                &&$this->readShadowState('P03IncrementalTimeline')!==$newState)
+                $this->writeShadowState('P03IncrementalTimeline',$newState);
+        }
         $temporalCrossCheck=JVTemporalPresenceCrossCheck::evaluate(
             $p03Raw??'',
             $this->readLocalVariable(
@@ -1745,9 +1749,28 @@ class JVPresenceIdentityShadow extends IPSModule
         );
         $routeNext=json_encode($routeEpisodes['next'],
             JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
-        if(is_string($routeNext)
-            &&$this->readShadowState('RouteEpisodeLedger')!==$routeNext)
-            $this->writeShadowState('RouteEpisodeLedger',$routeNext);
+        $delivered=$residentFusion['report']['p03']['routeDeliveryProofs']??[];
+        $hasDelivery=is_array($delivered)&&count($delivered)>0;
+        if(is_string($routeNext)){
+            if($hasDelivery){
+                // Delivery acknowledgment requires a durable route checkpoint,
+                // not just the runtime cache. Duplicated proofs are harmless.
+                if($this->ReadAttributeString('PersistRouteEpisodeLedger')!==$routeNext)
+                    $this->WriteAttributeString('PersistRouteEpisodeLedger',$routeNext);
+                if($this->GetBuffer('RouteEpisodeLedger')!==$routeNext)
+                    $this->SetBuffer('RouteEpisodeLedger',$routeNext);
+                $acked=JVResidentEventFusion::acknowledgeRouteDelivery(
+                    $residentFusion['next'],$delivered,time()
+                );
+                $ackedJSON=json_encode($acked,JSON_UNESCAPED_SLASHES|
+                    JSON_UNESCAPED_UNICODE);
+                if(is_string($ackedJSON)
+                    &&$this->readShadowState('ResidentEventFusion')!==$ackedJSON)
+                    $this->writeShadowState('ResidentEventFusion',$ackedJSON);
+            }elseif($this->readShadowState('RouteEpisodeLedger')!==$routeNext){
+                $this->writeShadowState('RouteEpisodeLedger',$routeNext);
+            }
+        }
         // Correlate individual phone sequences with the *anonymous*
         // route timeline. No camera identity, auto or occupancy certificate.
         $residentJourney=JVResidentJourneyEvidence::evaluate(
