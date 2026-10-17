@@ -1063,7 +1063,8 @@ class JVPresenceIdentityShadow extends IPSModule
             $value=GetValue($zone);
             $at=GetValue($timestamp);
             if(!is_bool($value)||!is_int($at))return $snapshot;
-            return ['verified'=>true,'inside'=>$value,'timestamp'=>$at];
+            return ['verified'=>true,'inside'=>$value,'timestamp'=>$at,
+                'sourceKey'=>'EGI:'.$root.':'.$device.':'.$zone.':'.$timestamp];
         }catch(Throwable $ignored){
             return $snapshot;
         }
@@ -1178,6 +1179,7 @@ class JVPresenceIdentityShadow extends IPSModule
             if(!is_bool($inside)||!is_int($when))return $none;
             return ['verified'=>true,'inside'=>$inside,
                 'timestamp'=>$when,'zoneName'=>$zoneName,
+                'sourceKey'=>'GEOFENCY:'.$root.':'.$device.':'.$zone.':'.$timestamp,
                 'selectionStatus'=>'EXACT_SOURCE_IDS_VERIFIED'];
         }catch(Throwable $ignored){return $none;}
     }
