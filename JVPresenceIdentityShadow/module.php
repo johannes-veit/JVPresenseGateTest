@@ -33,6 +33,7 @@ require_once dirname(__DIR__).'/libs/JVPhoneContactContinuity.php';
 require_once dirname(__DIR__).'/libs/JVResidentEventFusion.php';
 require_once dirname(__DIR__).'/libs/JVRouteEpisodeLedger.php';
 require_once dirname(__DIR__).'/libs/JVResidentJourneyEvidence.php';
+require_once dirname(__DIR__).'/libs/JVShadowStateCheckpoint.php';
 require_once dirname(__DIR__).'/libs/JVPresenceEvidenceReadiness.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
@@ -229,6 +230,17 @@ class JVPresenceIdentityShadow extends IPSModule
      */
     private function readShadowState(string $name): string
     {
+        // Only the two write-optimized event ledgers use their current
+        // runtime buffer. After a SymBox restart it is empty; the durable
+        // attribute is then the authoritative checkpoint.
+        if(JVShadowStateCheckpoint::useRuntimeCache($name)){
+            $runtime=$this->GetBuffer($name);
+            if($runtime!=='' &&$runtime!=='{}'){
+                $decoded=json_decode($runtime,true);
+                if(is_array($decoded)&&($decoded['schema']??null)===1)
+                    return $runtime;
+            }
+        }
         $stored=$this->ReadAttributeString('Persist'.$name);
         if($stored!=='' && $stored!=='{}')return $stored;
         $legacy=$this->GetBuffer($name);
@@ -239,9 +251,12 @@ class JVPresenceIdentityShadow extends IPSModule
     private function writeShadowState(string $name,string $value): void
     {
         if($value==='')return;
-        if($this->ReadAttributeString('Persist'.$name)!==$value)
-            $this->WriteAttributeString('Persist'.$name,$value);
-        // Buffer is only a compatibility cache, NEVER source of persistence.
+        $durable=$this->ReadAttributeString('Persist'.$name);
+        if(JVShadowStateCheckpoint::shouldPersist(
+            $name,$durable,$value,time()
+        ))$this->WriteAttributeString('Persist'.$name,$value);
+        // Runtime cache keeps the complete latest state between 60-second
+        // polls; all semantic changes are already durable immediately.
         if($this->GetBuffer($name)!==$value)
             $this->SetBuffer($name,$value);
     }
