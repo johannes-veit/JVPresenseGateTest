@@ -1,3 +1,9 @@
+# v0.8.64 (Build 145) – Keine doppelte persönliche P03-Ankunft
+
+- Ein anonymer P03-IN-Übergang darf nicht mehreren Personen als wahrscheinliche persönliche Heimkehr zugeschrieben werden. Der vorher irreführende Befund LIKELY_PHONE_ASSOCIATED_HOME_ARRIVAL heißt nun ANONYMOUS_ENTRY_NEAR_HOME_PHONE. Das Heim-WLAN belegt nur das jeweilige Smartphone, nicht dessen erneuten Eintritt.
+- Praxisfall 17.10.: Johannes ging Haus–Lager–Werkstatt–Haus, Carina blieb zu Hause. Beide persönlichen Ankunftsbehauptungen sind daher gesperrt; P03-Kamerapassage bleibt als anonymer Zeitkontext sichtbar.
+- Keine Änderungen an Fremdmodulen, Kameras, P03-Modus oder Alarmen; keine zusätzlichen Symcon-Variablen.
+
 # v0.8.63 (Build 144) – Zeitliche Rückkehrkorrelation für Carina/Johannes
 
 - Neu: `JVResidentArrivalInference` verbindet den frischen (max. 300 Sekunden) verifizierten persönlichen Heim-WLAN-MAC-Kontakt mit einem verifizierten, zeitlich vorausgehenden anonymen P03-Zweimast-IN (max. 10 Minuten Abstand) oder einem vorherigen verifizierten Geofence-IN (max. 30 Minuten; Kreis umfasst Haus und Firma).
