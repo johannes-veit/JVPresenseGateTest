@@ -124,4 +124,23 @@ tileAssert(str_contains($anonHtml,'Wegfolge:')
     &&str_contains($anonHtml,'anonyme Reihenfolge, Person nicht festgestellt')
     &&substr_count($anonHtml,'<details')===2,
     'show observed anonymous corridor without attributing either resident');
+$jOne=['schema'=>1,'authority'=>'READ_ONLY_RESIDENT_ROUTE_PHONE_ASSOCIATIONS',
+    'status'=>'ONE_PHONE_TIMELINE_COMPATIBLE_NOT_IDENTIFIED',
+    'candidatePerson'=>'carina'];
+$jTile=JVResidentTileDashboard::evaluate(
+    $people,$wlan,$ssid,[],$house,$now,[],[],$phoneEvents,$routes,$jOne
+);
+$jHTML=JVResidentTileDashboard::render($jTile);
+tileAssert(str_contains($jHTML,'Carina-Handy zeitlich passend')
+    &&str_contains($jHTML,'Kamera-Person NICHT identifiziert')
+    &&substr_count($jHTML,'<details')===2,
+    'single phone match does not change individual status or create extra tiles');
+$jOne['status']='MULTIPLE_PHONE_TIMELINES_CANNOT_ATTRIBUTE_ROUTE';
+$jOne['candidatePerson']=null;
+$many=JVResidentTileDashboard::render(JVResidentTileDashboard::evaluate(
+    $people,$wlan,$ssid,[],$house,$now,[],[],$phoneEvents,$routes,$jOne
+));
+tileAssert(str_contains($many,'Mehrere Handys passen zeitlich')
+    &&!str_contains($many,'Carina-Handy zeitlich passend'),
+    'ambiguous phone candidates are never attributed');
 echo "Single resident current-state expandable HTML Tile PASS\n";
