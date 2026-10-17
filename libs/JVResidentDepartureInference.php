@@ -8,7 +8,7 @@ declare(strict_types=1);
  */
 final class JVResidentDepartureInference
 {
-    public static function evaluate(array $wlan,array $work,array $jGeo,array $cGeo,array $p03,int $now):array
+    public static function evaluate(array $wlan,array $work,array $jGeo,array $cGeo,array $p03,int $now,array $fusion=[]):array
     {
         $out=['schema'=>1,'authority'=>'PHONE_DEPARTURE_CORRELATION_READ_ONLY',
             'people'=>[],'vehicleSourceAvailable'=>false,
@@ -25,6 +25,10 @@ final class JVResidentDepartureInference
             $home=$w['lastMacContactAt']??null;
             $geo=$g['lastEventAt']??null;
             $s=$work['people'][$person]??[];
+            $personal=($fusion['schema']??null)===1
+                &&($fusion['authority']??null)==='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'
+                &&is_array($fusion['people'][$person]??null)
+                ?$fusion['people'][$person]:null;
             $entry=['assessment'=>'NOT_ESTABLISHED',
                 'reason'=>'MISSING_OR_UNRELATED_SIGNALS',
                 'homeWlanAt'=>is_int($home)?$home:null,
@@ -37,6 +41,17 @@ final class JVResidentDepartureInference
                 &&($g['outsideRecent']??false)===true
                 &&($g['geofenceReportedInside']??null)===false;
             if($outside&&is_int($geo))$entry['geoOutAt']=$geo;
+            // A snapshot of an OUT Geofence is not enough: the normal
+            // production path supplies the persistent, individually observed
+            // OUT event. No event -> no new phone departure diagnosis.
+            if(($fusion['authority']??null)==='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'){
+                if(!is_array($personal)
+                    ||($personal['pendingGeofenceOut']??null)!==$geo){
+                    $entry['reason']='NO_OBSERVED_PERSONAL_GEOFENCE_OUT_SEQUENCE';
+                    $out['people'][$person]=$entry;
+                    continue;
+                }
+            }
             if(!$wifiValid||($w['validatedExistingVariablePair']??false)!==true
                 ||!$outside||!is_int($home)||!is_int($geo)
                 ||$home<=0||$home>$now||$geo<=0||$geo>$now){
