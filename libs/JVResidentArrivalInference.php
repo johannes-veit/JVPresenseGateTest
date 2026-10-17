@@ -33,7 +33,7 @@ final class JVResidentArrivalInference
             $entry=['assessment'=>'NOT_ESTABLISHED','reason'=>'NO_FRESH_HOME_PHONE_CONTACT',
                 'homeMacAt'=>is_int($mac)?$mac:null,'geoInAt'=>null,
                 'p03AnonymousEntryAt'=>null,'vehicle'=>'UNVERIFIED',
-                'phoneAssociatedArrivalOnly'=>true,'personIdentifiedByCamera'=>false];
+                'phoneAssociatedArrivalOnly'=>false,'personIdentifiedByCamera'=>false];
             $geoAt=$g['lastEventAt']??null;
             $geoIn=($g['schema']??null)===1
                 &&($g['authority']??null)===$expected
@@ -60,8 +60,8 @@ final class JVResidentArrivalInference
             $entry['p03AnonymousEntryAt']=$p03At;
             if($fresh){
                 if($p03At!==null){
-                    $entry['assessment']='LIKELY_PHONE_ASSOCIATED_HOME_ARRIVAL';
-                    $entry['reason']='RECENT_HOME_WIFI_AFTER_VERIFIED_ANONYMOUS_P03_IN';
+                    $entry['assessment']='ANONYMOUS_ENTRY_NEAR_HOME_PHONE';
+                    $entry['reason']='P03_ENTRY_ANONYMOUS_NO_PERSONAL_ARRIVAL_PROOF';
                 }elseif($geoIn){
                     $entry['assessment']='POSSIBLE_PHONE_RETURN_HOME';
                     $entry['reason']='GEOFENCE_IN_THEN_RECENT_HOME_WIFI_SHARED_HOME_WORK_RADIUS';
