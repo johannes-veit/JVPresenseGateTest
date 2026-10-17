@@ -1,3 +1,11 @@
+# v0.8.63 (Build 144) – Zeitliche Rückkehrkorrelation für Carina/Johannes
+
+- Neu: `JVResidentArrivalInference` verbindet den frischen (max. 300 Sekunden) verifizierten persönlichen Heim-WLAN-MAC-Kontakt mit einem verifizierten, zeitlich vorausgehenden anonymen P03-Zweimast-IN (max. 10 Minuten Abstand) oder einem vorherigen verifizierten Geofence-IN (max. 30 Minuten; Kreis umfasst Haus und Firma).
+- Es gibt getrennte Befunde: `LIKELY_PHONE_ASSOCIATED_HOME_ARRIVAL`, `POSSIBLE_PHONE_RETURN_HOME`, `HOME_PHONE_CURRENT_ARRIVAL_NOT_PROVEN` und `NOT_ESTABLISHED`. Ein bloß weiterhin vorhandenes Heim-WLAN-Handy begründet **keine** neue Ankunft.
+- Ausgabe im existierenden `EvidenceJSON.residentArrivalInference` sowie in der bestehenden einzigen kopierbaren Diagnosevariable `Testergebnis an ChatGPT`, einschließlich einzelner Zeitpunkte. Keine neuen Variablen oder Kamera-/Netzwerkzugriffe.
+- Fahrzeug-Ankunft/-Abfahrt bleibt `UNVERIFIED`, solange keine tatsächlich verifizierte zeitlich passende Fahrzeugereigniskette verarbeitet ist. Keine Identifizierung von Personen aus anonymen Kameras, keine automatische Haus-leer-Freigabe, keine Alarm- oder Fremdmodulschaltung.
+- Zusätzlicher Regressionstest für Rückkehr, Geofence-Variante, altes WLAN und Gegenrichtung. Die bestehenden P03-, WLAN-, Egi-/Geofency-, LCN- und Raumwegregeln bleiben unverändert.
+
 # v0.8.62 (Build 143) – Anwesenheit erkannt und Bewohnerkachel konsistent
 
 - Fehler behoben: Die Bewohnerkachel nutzte automatische, nur lesende WLAN-/Geofence-Daten, während der gemeinsame Boolean weiterhin die deaktivierbaren manuellen Diagnosequellen verwendete. Beide werten nun dieselben automatisch geprüften Quellen aus.
