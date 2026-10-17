@@ -25,7 +25,8 @@ final class JVRouteEpisodeLedger
             'schema'=>1,'authority'=>'ANONYMOUS_ROUTE_EPISODES_READ_ONLY',
             'lastEpisode'=>null,'lastPassage'=>null,
             'newPassagesThisRefresh'=>0,'openOutgoingPassages'=>0,
-            'newEpisodeThisRefresh'=>false,'vehicleSignalCoverage'=>'UNKNOWN',
+            'newEpisodeThisRefresh'=>false,'ambiguityResetThisRefresh'=>false,
+            'vehicleSignalCoverage'=>'UNKNOWN',
             'personIdentityCertified'=>false,'samePersonRoundTripCertified'=>false,
             'vehicleJourneyCertified'=>false,'travelModeCertified'=>false,
             'propertyExitCertified'=>false,'houseEmptyCertified'=>false,
@@ -116,11 +117,19 @@ final class JVRouteEpisodeLedger
                     $open=[];
                 }else{
                     $report['warnings'][]='IN_OUT_TIME_ORDER_INVALID';
+                    // A corrupted/contradictory temporal pair cannot
+                    // remain pending and contaminate later passages.
+                    $open=[];
+                    $report['warnings'][]='AMBIGUOUS_ROUTE_WINDOW_RESET';
                 }
             }elseif(count($open)>1){
-                // No arbitrary FIFO attribution when several people/crossings
-                // have overlapping OUT passages. No unique pairing possible.
+                // Several anonymous OUTs + one IN do not prove which,
+                // or how many, people returned. Keep neither as a
+                // uniquely pairable route: this unresolved group must
+                // NOT contaminate a completely new future OUT/IN pair.
                 $report['warnings'][]='MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN';
+                $report['warnings'][]='AMBIGUOUS_ROUTE_WINDOW_RESET';
+                $open=[];
             }else{
                 $report['warnings'][]='IN_WITHOUT_OBSERVED_OUT';
             }
@@ -130,6 +139,9 @@ final class JVRouteEpisodeLedger
         $report['lastEpisode']=$episode;
         $report['lastPassage']=$lastPassage;
         $report['openOutgoingPassages']=count($open);
+        $report['ambiguityResetThisRefresh']=in_array(
+            'AMBIGUOUS_ROUTE_WINDOW_RESET',$report['warnings'],true
+        );
         $report['warnings']=array_values(array_unique($report['warnings']));
         $next=['schema'=>1,'initialized'=>true,'lastScanAt'=>$now,
             'seen'=>$seen,'open'=>$open,
