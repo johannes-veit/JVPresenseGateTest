@@ -246,6 +246,10 @@ final class JVResidentEveningHandoff
         $add('WEGFOLGE: Dauer '.self::age($ep['durationSeconds']??null)
             .' | offene Hinwege '.self::number($re['openOutgoingPassages']??null)
             .' | Mehrpersonen-/Identitaetsnachweis NEIN');
+        $add('MEHRPERSONEN-KONFLIKT: letzte unaufloesbare Weggruppe '
+            .self::date($re['lastAmbiguousAt']??null)
+            .' | Ursache '.self::code($re['lastAmbiguityReason']??'KEINE')
+            .' | keine willkuerliche Zuordnung');
         $add('WEGFOLGE KONTEXT: Hausbewegung vorher '
             .self::yes(($ep['anonymousIndoorMotionBeforeOut']??false)===true)
             .' | Hausbewegung danach '
