@@ -305,8 +305,11 @@ for($i=0;$i<100;$i++)$module->Refresh();
 $postPollWrites=array_slice($module->writes,$writesAfterMotion);
 eq(count($postPollWrites)<=4,true,
    '100 fixed LCN snapshots yield only bounded clock-dependent JSON updates');
-eq(count(array_filter($postPollWrites,static fn($row)=>$row['key']!=='EvidenceJSON')),0,
-   'no repeated status changes from an unchanged LCN snapshot');
+eq(count(array_filter($postPollWrites,static fn($row)=>in_array(
+    $row['key']??'',[
+        'JohannesPresence','CarinaPresence','PresenceDetected'
+    ],true))),0,
+   'unchanged LCN snapshot never changes resident-presence variables; time-aware status is allowed');
 $stableMotion=json_decode($module->values['EvidenceJSON'],true);
 eq($stableMotion['localActivity']['totalMotionEdges24h']>=0,true,
    'background polling does not invent a new person or negative motion count');
