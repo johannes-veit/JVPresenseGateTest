@@ -100,6 +100,25 @@ expectHandoff(str_contains($reportedFusion,'EREIGNISKERN: PHONE_HOME_MAC_RECENT'
     &&str_contains($reportedFusion,'P03_BEWUSST_INAKTIV_KEINE_NEUEN_ZONENUEBERGAENGE')
     &&!str_contains($reportedFusion,'P03_KEIN_VERIFIZIERTER_LIVE_BETRIEB'),
     'persistent phone event, anonymous P03 and intentionally inactive mode');
+$routeDemo=['authority'=>'ANONYMOUS_ROUTE_EPISODES_READ_ONLY',
+    'vehicleSignalCoverage'=>'NO_VERIFIED_VEHICLE_SIGNAL_CONFIGURED',
+    'openOutgoingPassages'=>0,
+    'lastEpisode'=>[
+        'kind'=>'ANONYMOUS_OUT_IN_CORRIDOR_SEQUENCE',
+        'outAt'=>$now-900,'inAt'=>$now-500,'durationSeconds'=>400,
+        'anonymousIndoorMotionBeforeOut'=>true,
+        'anonymousIndoorMotionAfterIn'=>true,
+        'rawStreetHumanNearby'=>true,'vehicleVariableActiveNearby'=>false
+    ]];
+$rich=JVResidentEveningHandoff::build(
+    $tile,$phoneState,$wlan,$work,$jGeo,$cGeo,$p03,$timing,
+    $mast,$house,$activity,$local,$boundary,$gate,[],
+    $now,true,[],[],[],[],$fusionExample,$routeDemo
+);
+expectHandoff(str_contains($rich,'WEGFOLGE: ANONYMOUS_OUT_IN_CORRIDOR_SEQUENCE')
+    &&str_contains($rich,'FAHRZEUGKONTEXT: NO_VERIFIED_VEHICLE_SIGNAL_CONFIGURED')
+    &&str_contains($rich,'Auto/Fussweg weiterhin NICHT NACHGEWIESEN'),
+    'last two-mast anonymous trip and honest vehicle limitations in report');
 expectHandoff(strlen($report)>1800 &&strlen($report)<13000
     &&str_starts_with($report,'=== TESTBERICHT AN CHATGPT')
     &&str_ends_with($report,'=== ENDE TESTBERICHT ==='),
