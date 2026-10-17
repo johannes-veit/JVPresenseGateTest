@@ -50,6 +50,8 @@ jobs:
           PY
       - name: Symcon repository loader folder structure compliance
         run: php tests/JVModuleRepositoryStructureTest.php
+      - name: Symcon all module configuration forms support correct field types
+        run: php tests/JVConfigurationFormTypesTest.php
       - name: Standalone WLAN Johannes isolation boundary
         run: php tests/StandaloneWLANBoundaryTest.php
       - name: Smartphone evidence and Symcon lifecycle regression
