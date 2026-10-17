@@ -972,6 +972,9 @@ $firm->setProp('EnableWorkWiFiHints',true);
 // simultaneous contradictory network proof.
 $GLOBALS['gateDevices'][26497]['value']=$now-400;
 $GLOBALS['gateDevices'][10760]['value']=$now-400;
+// Carina had a more recent HOME snapshot on the module's prior Refresh.
+// Send an even newer verified Firmen-WLAN event before evaluating WORK.
+$GLOBALS['gateDevices'][60502]['updated']=$now-1;
 $readsBefore=count($GLOBALS['readCalls']);
 $firm->Refresh();
 $atFirm=json_decode((string)$firm->GetValue('EvidenceJSON'),true);
