@@ -14,7 +14,7 @@ declare(strict_types=1);
 final class JVResidentTileDashboard
 {
     public static function evaluate(array $visu,array $wlan,array $work,array $p03,
-        array $house,int $now,array $depart=[],array $rooms=[],array $fusion=[],array $routes=[]):array
+        array $house,int $now,array $depart=[],array $rooms=[],array $fusion=[],array $routes=[],array $journey=[]):array
     {
         $people=[];
         $valid=($visu['schema']??null)===1
@@ -228,6 +228,7 @@ final class JVResidentTileDashboard
             'authority'=>'CURRENT_STATUS_ONLY_SAFE_HTML_TILE',
             'roomPathsAnonymous'=>$roomSummary,
             'anonymousRouteEpisodeText'=>$routeText,
+            'residentPhoneRouteAssociation'=>self::safeJourneyText($journey),
             'people'=>$people,
             'p03Anonymized'=>$p03Text,
             'lcnAnonymized'=>$houseText,
@@ -286,6 +287,8 @@ final class JVResidentTileDashboard
         $parts[]='<div style="font-size:.83em;opacity:.8;margin-top:8px">';
         foreach(array_slice($data['roomPathsAnonymous']??[],0,2) as $roomPath)
             $parts[]='<div>LCN Raumfolge (Person unbekannt): '.$esc((string)$roomPath).'</div>';
+        $parts[]='<div>Weg-/Handy-Abgleich: '.$esc((string)(
+            $data['residentPhoneRouteAssociation']??'Nicht verfügbar')).'</div>';
         $parts[]='<div>Wegfolge: '.$esc((string)(
             $data['anonymousRouteEpisodeText']??'Keine Daten')).'</div>';
         $parts[]='<div>P03: '.$esc((string)($data['p03Anonymized']??'Keine Daten')).'</div>'
@@ -296,6 +299,30 @@ final class JVResidentTileDashboard
             .'Keine Freigabe für Alarm oder Schaltungen.</div>'
             .'</div></section>';
         return implode('',$parts);
+    }
+
+    private static function safeJourneyText(array $journey):string
+    {
+        if(($journey['authority']??null)!=='READ_ONLY_RESIDENT_ROUTE_PHONE_ASSOCIATIONS'
+            ||($journey['schema']??null)!==1)
+            return 'Quellennachweis fehlt';
+        $status=$journey['status']??null;
+        if($status==='ONE_PHONE_TIMELINE_COMPATIBLE_NOT_IDENTIFIED'){
+            $person=$journey['candidatePerson']??null;
+            $label=$person==='johannes'?'Johannes':($person==='carina'?'Carina':null);
+            return $label!==null
+                ?$label.'-Handy zeitlich passend; Kamera-Person NICHT identifiziert'
+                :'Handy zeitlich passend; Identitaet unbekannt';
+        }
+        return match($status){
+            'MULTIPLE_PHONE_TIMELINES_CANNOT_ATTRIBUTE_ROUTE'=>
+                'Mehrere Handys passen zeitlich; keine Zuordnung',
+            'ANONYMOUS_ROUTE_NO_PERSONAL_PHONE_SEQUENCE'=>
+                'Anonymer Weg ohne belegte persoenliche Handyfolge',
+            'NO_RECENT_VERIFIED_ROUTE_EPISODE'=>
+                'Keine aktuelle vollstaendige Wegfolge',
+            default=>'Keine verlaessliche Weg-/Handy-Zuordnung'
+        };
     }
 
     private static function formatTime(int $at):string
