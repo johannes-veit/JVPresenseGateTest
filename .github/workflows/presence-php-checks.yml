@@ -7,6 +7,8 @@ on:
       - 'libs/**'
       - 'tests/**'
       - 'library.json'
+      - 'CHANGELOG.md'
+      - 'docs/ANWESENHEIT_EVIDENCE_MATRIX.md'
       - '.github/workflows/presence-php-checks.yml'
   pull_request:
     paths:
@@ -14,6 +16,8 @@ on:
       - 'libs/**'
       - 'tests/**'
       - 'library.json'
+      - 'CHANGELOG.md'
+      - 'docs/ANWESENHEIT_EVIDENCE_MATRIX.md'
       - '.github/workflows/presence-php-checks.yml'
 
 permissions:
