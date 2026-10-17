@@ -1039,6 +1039,8 @@ $readsBefore=count($GLOBALS['readCalls']);
 $firm->Refresh();
 $offFirm=json_decode((string)$firm->GetValue('EvidenceJSON'),true);
 checkGate(($offFirm['workWiFi']['enabled']??true)===false
-    &&!in_array(60502,array_slice($GLOBALS['readCalls'],$readsBefore),true),
-    'opt-out reads no phone SSIDs and does not break existing geo sources');
+    &&in_array(60502,array_slice($GLOBALS['readCalls'],$readsBefore),true)
+    &&($offFirm['residentTileEvidence']['authority']??null)
+        ==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE',
+    'old company SSID opt-out stays OFF while user requested AUTO tile safely reads a uniquely matched personal Carina source');
 echo "Gate Shadow integration / initialization 101->102, failure 201 recovery PASS\n";
