@@ -92,9 +92,20 @@ final class JVResidentEveningHandoff
 
             $add('--- '.$label.' ---');
             $add('KACHEL: '.$summary.' | Entscheidung: '.$decision);
+            // Human-readable meanings are authored by our own tile
+            // evaluator. Allow only these known fixed labels, not any text
+            // supplied by phone, WLAN, camera or camera diagnostics.
+            $knownTileMeanings=[
+                'Letztes bestätigtes Geofence-OUT (Handy)',
+                'Letztes Geofence-IN (Haus/Firma, nicht Hauseingang)',
+                'Letztes Geofence-OUT (Handy)',
+                'Letzte bestätigte WLAN-Erfassung',
+                'Letzter gültiger WLAN-Hinweis'
+            ];
+            $tileMeaning=in_array(($t['timeMeaning']??null),
+                $knownTileMeanings,true)?$t['timeMeaning']:'NICHT VERIFIZIERT';
             $add('KACHEL letzte relevante Erfassung: '
-                .self::code($t['timeMeaning']??'NICHT PRUEFBAR')
-                .' | '.self::date($t['at']??null));
+                .$tileMeaning.' | '.self::date($t['at']??null));
             $add('Quelle/Grund: '.self::code($v['deviceEvidenceReason']??'UNKNOWN'));
             $add('Handy-Erfassung: '.self::date($v['deviceEvidenceAt']??null)
                 .' | zuletzt bekannt: '.self::date($v['lastKnownDeviceAt']??null));
