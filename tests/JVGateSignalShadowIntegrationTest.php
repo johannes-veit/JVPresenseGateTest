@@ -978,7 +978,14 @@ $atFirm=json_decode((string)$firm->GetValue('EvidenceJSON'),true);
 checkGate(($atFirm['workWiFi']['workPhoneCount']??null)===2
     &&$firm->GetValue('JohannesPresence')==='FIRMA (Handy-WLAN bestätigt)'
     &&$firm->GetValue('CarinaPresence')==='FIRMA (Handy-WLAN bestätigt)',
-    'exact two phone SSIDs report company as WORK, not HOME');
+    'exact two phone SSIDs report company as WORK, not HOME: '
+    .json_encode([
+        'count'=>$atFirm['workWiFi']['workPhoneCount']??null,
+        'j'=>$atFirm['residentVisuState']['people']['johannes']??[],
+        'c'=>$atFirm['residentVisuState']['people']['carina']??[],
+        'jssid'=>$atFirm['workWiFi']['people']['johannes']??[],
+        'cssid'=>$atFirm['workWiFi']['people']['carina']??[]
+    ],JSON_UNESCAPED_UNICODE));
 checkGate($firm->GetValue('PresenceDetected')===false
     &&($atFirm['combinedPresenceEvidence']['status']??null)
       ==='PHONE_ON_FIRMEN_WIFI_HOME_NOT_CONFIRMED',
