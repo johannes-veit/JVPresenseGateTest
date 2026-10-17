@@ -4,6 +4,7 @@ require_once dirname(__DIR__).'/libs/JVP03ProofLogReplay.php';
 require_once dirname(__DIR__).'/libs/JVLocalSensorEvidence.php';
 require_once dirname(__DIR__).'/libs/JVLCNGUSInventory.php';
 require_once dirname(__DIR__).'/libs/JVLocalActivityLedger.php';
+require_once dirname(__DIR__).'/libs/JVResidentRoomPaths.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
 require_once dirname(__DIR__).'/libs/JVHomeOccupancyEvidence.php';
 require_once dirname(__DIR__).'/libs/JVBoundaryEvidence.php';
@@ -1443,6 +1444,9 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->writeShadowState('LocalActivityLedger',$ledgerNext);
         }
         $activity=$ledger['report'];
+        // Extract recent room paths from the EXISTING verified 15-GUS
+        // ledger. No person labeling, new variable or source subscriptions.
+        $roomPaths=JVResidentRoomPaths::evaluate($ledger['next'],$activity,time());
         $wlanMotionHint=is_int($activity['lastMotionAt']??null)
             &&$activity['lastMotionAt']<=time()
             &&$activity['lastMotionAt']>=time()-600;
@@ -1670,7 +1674,7 @@ class JVPresenceIdentityShadow extends IPSModule
         );
         $tileData=JVResidentTileDashboard::evaluate(
             $tileResident['report'],$tileWlan,$tileWork,
-            $p03Timeline['report'],$houseObservation,time(),$departureHint
+            $p03Timeline['report'],$houseObservation,time(),$departureHint,$roomPaths
         );
         $tileHTML=JVResidentTileDashboard::render($tileData);
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
@@ -1724,6 +1728,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentVisuState'=>$residentVisu['report'],
             'residentTileEvidence'=>$tileData,
             'residentDepartureInference'=>$departureHint,
+            'roomMovementPaths'=>$roomPaths,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
             'carinaGeofencyInventory'=>json_decode($this->readShadowState('CarinaGeofencyInventory'),true),
@@ -1842,7 +1847,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $tileGeoJ,$tileGeoC,$p03Timeline['report'],
             $temporalCrossCheck,$mastHealth,$houseObservation,
             $activity,$local,$boundary['report'],$gateDisplay,
-            $warnings,time(),true,$departureHint
+            $warnings,time(),true,$departureHint,$roomPaths
         ));
         $this->publish($report,$state);
     }
