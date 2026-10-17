@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled
+        int $now,bool $enabled,array $departure=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -53,7 +53,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.58 Build 139 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.59 Build 140 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -113,7 +113,17 @@ final class JVResidentEveningHandoff
                 .self::yes(($v['wifiConflict']??false)===true)
                 .' | altes Gegensignal gesperrt: '
                 .self::yes(($v['rejectedOlderOppositeZoneSource']??false)===true));
-            $add('Kamera-Zuordnung: NICHT PERSONENBEZOGEN | Auto/Fussweg: NICHT NACHGEWIESEN');
+            $trip=($departure['authority']??null)
+                ==='PHONE_DEPARTURE_CORRELATION_READ_ONLY'
+                ?($departure['people'][$person]??[]):[];
+            $add('Abreise-Korrelation (Handy): '
+                .self::code($trip['assessment']??'NICHT GEPRUEFT')
+                .' | Grund: '.self::code($trip['reason']??'UNKNOWN')
+                .' | Zeit: '.self::date($trip['eventAt']??null));
+            $add('Treppen-OUT nur anonym passend: '
+                .self::yes(($trip['p03AnonymousExitNearby']??false)===true)
+                .' | Auto/Fussweg: NICHT NACHGEWIESEN');
+            $add('Kamera-Zuordnung: NICHT PERSONENBEZOGEN');
             if(($w['validatedExistingVariablePair']??false)!==true)
                 $needs[]=$label.':WLAN_QUELLE_NICHT_VERIFIZIERT';
             if(!$sourceVerified)

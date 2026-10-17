@@ -26,6 +26,7 @@ require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
 require_once dirname(__DIR__).'/libs/JVResidentPresenceDisplay.php';
 require_once dirname(__DIR__).'/libs/JVResidentVisuState.php';
 require_once dirname(__DIR__).'/libs/JVResidentTileDashboard.php';
+require_once dirname(__DIR__).'/libs/JVResidentDepartureInference.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
@@ -1663,9 +1664,13 @@ class JVPresenceIdentityShadow extends IPSModule
         if(is_string($tileNext)
             &&$this->readShadowState('TileResidentState')!==$tileNext)
             $this->writeShadowState('TileResidentState',$tileNext);
+        $departureHint=JVResidentDepartureInference::evaluate(
+            $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
+            $p03Timeline['report'],time()
+        );
         $tileData=JVResidentTileDashboard::evaluate(
             $tileResident['report'],$tileWlan,$tileWork,
-            $p03Timeline['report'],$houseObservation,time()
+            $p03Timeline['report'],$houseObservation,time(),$departureHint
         );
         $tileHTML=JVResidentTileDashboard::render($tileData);
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
@@ -1718,6 +1723,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentDisplay'=>$residentDisplay,
             'residentVisuState'=>$residentVisu['report'],
             'residentTileEvidence'=>$tileData,
+            'residentDepartureInference'=>$departureHint,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
             'carinaGeofencyInventory'=>json_decode($this->readShadowState('CarinaGeofencyInventory'),true),
@@ -1836,7 +1842,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $tileGeoJ,$tileGeoC,$p03Timeline['report'],
             $temporalCrossCheck,$mastHealth,$houseObservation,
             $activity,$local,$boundary['report'],$gateDisplay,
-            $warnings,time(),true
+            $warnings,time(),true,$departureHint
         ));
         $this->publish($report,$state);
     }
