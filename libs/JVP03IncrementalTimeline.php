@@ -14,6 +14,7 @@ final class JVP03IncrementalTimeline
     public const SCHEMA=1;
     private const MAX_LOG_BYTES=262144;
     private const MAX_EVENTS=256;
+    private const MAX_NEW_BATCH=128;
     private const WINDOW=86400;
     private const KEEP_LOG_BYTES=65536;
 
@@ -116,6 +117,7 @@ final class JVP03IncrementalTimeline
             $entries[$key]=$event;
         }
         $newProofs=0;
+        $acceptedNew=[];
         foreach($fresh as $event) {
             $key=$event['localTime'].'|'.$event['direction'].'|'.$event['route'];
             if(isset($entries[$key])) {
@@ -125,8 +127,13 @@ final class JVP03IncrementalTimeline
                 continue;
             }
             $entries[$key]=$event;
+            $acceptedNew[]=$event;
             $newProofs++;
         }
+        $newBatchOverflow=count($acceptedNew)>self::MAX_NEW_BATCH;
+        if($newBatchOverflow)$warnings[]='P03_NEW_PROOF_BATCH_OVERFLOW';
+        usort($acceptedNew,static fn($a,$b)=>
+            ($a['at']<=>$b['at'])?:strcmp($a['direction'],$b['direction']));
         usort($entries,static fn($a,$b)=>($b['at']<=>$a['at'])
             ?:strcmp($a['direction'],$b['direction']));
         if(count($entries)>self::MAX_EVENTS) {
@@ -149,6 +156,9 @@ final class JVP03IncrementalTimeline
             'baselineOnly'=>$historicBaseline,
             'logContinuity'=>$continuity,
             'newDirectionProofsThisRead'=>$newProofs,
+            'newlyVerifiedDirectionProofs'=>$newBatchOverflow
+                ?[]:$acceptedNew,
+            'newProofBatchOverflow'=>$newBatchOverflow,
             'directionProofs24h'=>['HOME_TO_LAGER'=>$out,
                 'LAGER_TO_HOME'=>$in],
             'lastDirectionAt'=>($entries[0]['at']??null),
@@ -188,6 +198,8 @@ final class JVP03IncrementalTimeline
             'baselineOnly'=>true,
             'logContinuity'=>'UNKNOWN',
             'newDirectionProofsThisRead'=>0,
+            'newlyVerifiedDirectionProofs'=>[],
+            'newProofBatchOverflow'=>false,
             'directionProofs24h'=>['HOME_TO_LAGER'=>0,'LAGER_TO_HOME'=>0],
             'lastDirectionAt'=>null,'recentDirectionProofs'=>[],
             'warnings'=>$warnings
