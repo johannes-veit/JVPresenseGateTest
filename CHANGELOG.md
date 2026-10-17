@@ -1,3 +1,10 @@
+# v0.8.62 (Build 143) – Anwesenheit erkannt und Bewohnerkachel konsistent
+
+- Fehler behoben: Die Bewohnerkachel nutzte automatische, nur lesende WLAN-/Geofence-Daten, während der gemeinsame Boolean weiterhin die deaktivierbaren manuellen Diagnosequellen verwendete. Beide werten nun dieselben automatisch geprüften Quellen aus.
+- Ein tatsächlich innerhalb der vergangenen 300 Sekunden bestätigter, metadatengeprüfter HOME-WLAN-MAC-Kontakt liefert auch ohne zusätzlichen frischen Geofence ein **positives Handy-Anwesenheitsindiz** für den gemeinsamen Boolean. WLAN-Halte-Boolean ohne frischen MAC-Zeitstempel reicht nicht; verifiziertes Firmen-WLAN oder aktueller Geofence-OUT widersprechen dem HOME-Indiz.
+- AUS bedeutet weiterhin nur: kein ausreichend frischer positiver Hinweis, niemals Haus leer. Keine individuelle körperliche Anwesenheit oder Abwesenheit zertifiziert; Alarm, Licht, LCN, Kameras, P03 und fremde Skripte bleiben unverändert. Keine neuen Symcon-Variablen oder Instanzen.
+- Regressionstests ergänzt: gültiger 45-Sekunden-Heim-WLAN-MAC-Kontakt, abgelaufener 301-Sekunden-Kontakt, Alarmfreigabe bleibt gesperrt. Die Raumwege aus 0.8.61 bleiben erhalten.
+
 # v0.8.61 (Build 142) – Raumwege aus den bereits vorhandenen 15 LCN-Bewegungsmeldern
 
 - Neu: ausschließlich lesende, kleine `JVResidentRoomPaths`-Auswertung des bereits seit früheren Versionen persistenten `LocalActivityLedger` (kein neuer Sensor, Timer, P03-Abruf, Objekt oder Ereignis-Abo). Quelle ist **dieselbe echte registrierte Bewegungsmelder-Edge-Historie** aus Symcon, nicht der anonyme „Hausbewegung“-Summenzähler; pro Raum werden die letzten tatsächlichen positiven LCN-Impulse mit Europe/Berlin-Uhrzeit ausgewiesen, wenn sie innerhalb der vergangenen 90 Minuten und anhand Original-SourceID, Zone und normalisiertem Namen geprüft sind.
