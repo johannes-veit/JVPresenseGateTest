@@ -25,6 +25,7 @@ require_once dirname(__DIR__).'/libs/JVJohannesEgiGeoZoneHints.php';
 require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
 require_once dirname(__DIR__).'/libs/JVResidentPresenceDisplay.php';
 require_once dirname(__DIR__).'/libs/JVResidentVisuState.php';
+require_once dirname(__DIR__).'/libs/JVResidentTileDashboard.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
 require_once dirname(__DIR__).'/libs/JVCompanyWiFiEvidence.php';
@@ -45,6 +46,7 @@ class JVPresenceIdentityShadow extends IPSModule
         'LocalSensorState',
         'LocalActivityLedger',
         'ResidentVisuState',
+        'TileResidentState',
         'P03IncrementalTimeline',
         'BoundaryLedger',
         'ExitCandidateInventory',
@@ -121,6 +123,7 @@ class JVPresenceIdentityShadow extends IPSModule
         ], JSON_UNESCAPED_UNICODE) ?: '[]');
         $this->RegisterAttributeString('SensorSubscriptions','[]');
         $this->RegisterAttributeString('GateSubscriptions','[]');
+        $this->RegisterAttributeString('AutoPhoneSSIDInventory','{}');
         // Attributes persist across Symcon / module restarts; buffers DO NOT.
         // Never add hidden Status variables for storage.
         foreach(self::STORED_STATE_NAMES as $name)
@@ -134,6 +137,10 @@ class JVPresenceIdentityShadow extends IPSModule
         // Exactly one additional user-requested Boolean inside SHADOW.
         // FALSE means NO CURRENT POSITIVE SIGNAL, never confirmed empty.
         $this->RegisterVariableBoolean('PresenceDetected','Anwesenheit erkannt','',4);
+        // Exactly one requested additional VISU tile; the five historical
+        // status IDs, types, names and idents remain unmodified.
+        $this->RegisterVariableString('ResidentTile',
+            'Anwesenheit – Johannes & Carina','~HTMLBox',5);
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
     }
 
@@ -1210,6 +1217,8 @@ class JVPresenceIdentityShadow extends IPSModule
         if (!$this->ReadPropertyBoolean('Enabled')) {
             $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
             $this->setPresenceDetected(false);
+            $this->setResidentTile('<section>SHADOW deaktiviert – '
+                .'Anwesenheit derzeit nicht bestätigt.</section>');
             $this->publish([
                 'schema'=>1,'authority'=>'SHADOW_DISABLED',
                 'personPresenceMayBeChanged'=>false,
@@ -1511,6 +1520,50 @@ class JVPresenceIdentityShadow extends IPSModule
         if(is_string($residentNext)
             &&$this->readShadowState('ResidentVisuState')!==$residentNext)
             $this->writeShadowState('ResidentVisuState',$residentNext);
+        // Independent, read-only AUTO-source detection for the requested
+        // single tile. It NEVER mutates other modules or overrides the
+        // explicit manual opt-in flags of existing SHADOW diagnostics.
+        $tileWlan=$existingWlanEnabled?$wlan:
+            JVExistingWlanPhoneHints::evaluate(
+                $this->readExistingWLANPhones(),time(),true
+            );
+        $tileGeoJ=$egiEnabled?$egi:
+            JVJohannesEgiGeoZoneHints::evaluate(
+                $this->readExistingJohannesEgiGeoZone(),time(),true,
+                $this->ReadPropertyInteger('JohannesEgiRadiusMeters')
+            );
+        $tileGeoC=$carinaGeoEnabled?$carinaGeo:
+            JVCarinaGeofencyHints::evaluate(
+                $this->readCarinaGeofencySnapshot(),time(),true,'AUTO_READ_ONLY'
+            );
+        $autoSsid=$this->readAutoKnownPhoneSSIDs();
+        $tileWork=JVCompanyWiFiEvidence::evaluate($autoSsid,time(),true);
+        // Explicitly configured sources keep their precedence when
+        // properly validated; AUTO may fill only missing personal sources.
+        foreach(['johannes','carina'] as $person){
+            if(($workWiFi['people'][$person]['sourceVerified']??false)===true
+                &&in_array(($workWiFi['people'][$person]['status']??''),[
+                    'WORK_FIRMEN_WLAN_PHONE','HOME_SSID_PHONE_HINT',
+                    'WORK_OR_PRIVATE_PROPERTY_EXT_UNCERTAIN'
+                ],true))
+                $tileWork['people'][$person]=$workWiFi['people'][$person];
+        }
+        $tilePrior=json_decode($this->readShadowState('TileResidentState'),true);
+        $tileResident=JVResidentVisuState::evaluate(
+            $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
+            $houseObservation,$p03Timeline['report'],
+            is_array($tilePrior)?$tilePrior:[],time()
+        );
+        $tileNext=json_encode($tileResident['next'],
+            JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+        if(is_string($tileNext)
+            &&$this->readShadowState('TileResidentState')!==$tileNext)
+            $this->writeShadowState('TileResidentState',$tileNext);
+        $tileData=JVResidentTileDashboard::evaluate(
+            $tileResident['report'],$tileWlan,$tileWork,
+            $p03Timeline['report'],$houseObservation,time()
+        );
+        $tileHTML=JVResidentTileDashboard::render($tileData);
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
             $combined,$houseObservation,$wlan,$egi,$carinaGeo,
             $p03Timeline['report'],$gateDisplay,$indoorHints,time(),$workWiFi
@@ -1560,6 +1613,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'carinaGeofency'=>$carinaGeo,
             'residentDisplay'=>$residentDisplay,
             'residentVisuState'=>$residentVisu['report'],
+            'residentTileEvidence'=>$tileData,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
             'carinaGeofencyInventory'=>json_decode($this->readShadowState('CarinaGeofencyInventory'),true),
@@ -1672,6 +1726,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $residentVisu['report']['people']['carina']['display']
         );
         $this->setPresenceDetected($presenceDetected['detected']);
+        $this->setResidentTile($tileHTML);
         $this->publish($report,$state);
     }
 
@@ -1989,6 +2044,13 @@ class JVPresenceIdentityShadow extends IPSModule
         } catch(Throwable $e) {
             return null;
         }
+    }
+
+    /** Update only the one new read-only HTMLBox display output on change. */
+    private function setResidentTile(string $html):void
+    {
+        if($this->GetValue('ResidentTile')!==$html)
+            $this->SetValue('ResidentTile',$html);
     }
 
     /** Write only our TWO requested SHADOW display variables. */
