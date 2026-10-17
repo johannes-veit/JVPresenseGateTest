@@ -73,6 +73,11 @@ final class JVResidentTileDashboard
                 'ssidStatus'=>($sp['status']??null)==='WORK_FIRMEN_WLAN_PHONE'
                     ?'Firmen-WLAN erkannt':(($sp['status']??null)==='HOME_SSID_PHONE_HINT'
                         ?'Heim-SSID gemeldet':'Keine aktuelle eindeutige SSID'),
+                'geofenceContext'=>match($v['geofenceInsideSharedHomeWorkZone']??null){
+                    true=>'Geofence: im gemeinsamen Bereich Haus/Firma',
+                    false=>'Geofence: außerhalb Haus/Firma (Handy)',
+                    default=>'Geofence: kein geprüfter aktueller Zustand'
+                },
                 'phoneFoundNotHumanCertified'=>true,
                 'travelMode'=>'NICHT NACHGEWIESEN',
                 'travelRoute'=>'NICHT NACHGEWIESEN',
@@ -156,6 +161,7 @@ final class JVResidentTileDashboard
                 .'<div>'.$qualifier.'</div>'
                 .'<div>'.$esc($wifiInfo).'</div>'
                 .'<div>'.$esc($ssidInfo).'</div>'
+                .'<div>'.$esc((string)($row['geofenceContext']??'' )).'</div>'
                 .'<div>'.$event.': '.$esc($time).'</div>'
                 .'<div>Zu Fuß / Auto / Filzener Weg: '
                 .'nicht personenbezogen nachgewiesen</div>'
