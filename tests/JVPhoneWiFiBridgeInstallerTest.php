@@ -17,9 +17,9 @@ function IPS_GetName(int $id):string {global $objects;return $objects[$id]['name
 function IPS_SetHidden(int $id,bool $b):void {global $hidden;$hidden[$id]=$b;}
 function SetValue(int $id,mixed $val):void {global $values;$values[$id]=$val;}
 function GetValue(int $id):mixed {global $values;return $values[$id];}
-ob_start();require dirname(__DIR__).'/tools/phone-wifi-bridge/JVPhoneWiFiWebhook.php';$first=ob_get_clean();
+ob_start();require dirname(__DIR__).'/docs/phone-wifi-bridge/JVPhoneWiFiWebhook.php';$first=ob_get_clean();
 $count=count($objects);$vals=$values;
-ob_start();require dirname(__DIR__).'/tools/phone-wifi-bridge/JVPhoneWiFiWebhook.php';$second=ob_get_clean();
+ob_start();require dirname(__DIR__).'/docs/phone-wifi-bridge/JVPhoneWiFiWebhook.php';$second=ob_get_clean();
 if(count($objects)!==$count||$vals!==$values)throw new RuntimeException('installer mutated on rerun');
 if(count($variables)!==4||count($hidden)!==2)throw new RuntimeException('not exactly two SSIDs and two hidden secrets');
 foreach($values as $v)if(strlen($v)!==0&&strlen($v)!==48)throw new RuntimeException('invalid token length');
