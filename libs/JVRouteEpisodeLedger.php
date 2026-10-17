@@ -65,7 +65,19 @@ final class JVRouteEpisodeLedger
             $report['warnings'][]='AFTER_LONG_GAP_OPEN_ROUTES_RESET';
         }
 
-        $new=$fusionOK&&is_array($p03['newAnonymousProofs']??null)
+        $modeTrusted=($timing['authority']??null)
+            ==='READ_ONLY_TIME_ALIGNMENT_DIAGNOSTIC_NOT_IDENTITY'
+            &&($timing['p03ModeTrustedFromFreshDiagnosis']??false)===true;
+        $p03Off=$modeTrusted
+            &&($timing['p03OperatingMode']??null)==='TEST_AND_PRODUCTION_OFF';
+        if($p03Off){
+            // A verified OUT followed by a period with P03 disabled
+            // cannot be paired to a future IN as continuous proof.
+            $open=[];
+            $report['warnings'][]='P03_OFF_CORRIDOR_CONTINUITY_INTERRUPTED';
+        }
+        $new=$fusionOK&&!$p03Off
+            &&is_array($p03['newAnonymousProofs']??null)
             ?array_slice($p03['newAnonymousProofs'],0,32):[];
         usort($new,static fn($a,$b)=>($a['at']??0)<=>($b['at']??0));
         foreach($new as $proof){
