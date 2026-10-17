@@ -94,4 +94,18 @@ assertSnapshot(($restarted['exitCandidateInventory']['candidateCount']??null)===
     'erased runtime buffers do NOT erase persistent exit inventory');
 assertSnapshot(($restarted['exitCandidateInventory']['scannedAt']??null)===$initial['scannedAt'],
     'original scan timestamp survives volatile buffer loss');
+// A timer refresh competing with a live GUS edge must not race, and
+// its pending refresh must be coalesced after the semaphore is released.
+$sem='JVPresenceShadow_0'; // Runtime-only test mock has no InstanceID.
+assertSnapshot(IPS_SemaphoreEnter($sem,0),'mock semaphore first owner entered');
+$before=$m->GetValue('EvidenceJSON');
+$m->Refresh();
+assertSnapshot($m->GetBuffer('RefreshPending')==='1'
+    &&$m->GetValue('EvidenceJSON')===$before,
+    'concurrent refresh queues instead of mutating mid-transaction');
+IPS_SemaphoreLeave($sem);
+$m->Refresh();
+assertSnapshot($m->GetBuffer('RefreshPending')==='0'
+    &&$m->GetBuffer('RefreshDraining')==='0',
+    'one delayed refresh completes and resets coalescing state');
 echo "Shadow exit-inventory refresh retention PASS\n";
