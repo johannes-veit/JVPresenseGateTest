@@ -119,6 +119,33 @@ expectHandoff(str_contains($rich,'WEGFOLGE: ANONYMOUS_OUT_IN_CORRIDOR_SEQUENCE')
     &&str_contains($rich,'FAHRZEUGKONTEXT: NO_VERIFIED_VEHICLE_SIGNAL_CONFIGURED')
     &&str_contains($rich,'Auto/Fussweg weiterhin NICHT NACHGEWIESEN'),
     'last two-mast anonymous trip and honest vehicle limitations in report');
+$candidateJourney=['schema'=>1,
+    'authority'=>'READ_ONLY_RESIDENT_ROUTE_PHONE_ASSOCIATIONS',
+    'status'=>'ONE_PHONE_TIMELINE_COMPATIBLE_NOT_IDENTIFIED',
+    'candidatePerson'=>'carina',
+    'vehicleEvidence'=>'NO_VEHICLE_SOURCE_MAPPED'];
+$readinessFixture=['schema'=>1,
+    'authority'=>'READ_ONLY_PRESENCE_EVIDENCE_READINESS',
+    'p03Mode'=>'P03_INTENTIONALLY_OFF_NO_NEW_TRANSFERS',
+    'mastStreams'=>'BOTH_OBSERVERS_LIVE_NOT_PROOF_OF_TRANSITION',
+    'roomMotionCoverage'=>'FIFTEEN_GUS_SOURCES_VERIFIED_ANONYMOUS',
+    'nextEvidencePriority'=>[
+        'CARINA_VALIDATE_EXISTING_CURRENT_PERSONAL_SSID_SOURCE',
+        'VERIFY_EXISTING_CAMERA_VEHICLE_EVENT_WITH_DIRECTION_READ_ONLY'
+    ]];
+$full=JVResidentEveningHandoff::build(
+    $tile,$phoneState,$wlan,$work,$jGeo,$cGeo,$p03,$timing,
+    $mast,$house,$activity,$local,$boundary,$gate,[],$now,true,
+    [],[],[],[],$fusionExample,$routeDemo,$candidateJourney,$readinessFixture
+);
+expectHandoff(str_contains($full,'WEG-HANDY-KORRELATION: ONE_PHONE_TIMELINE_COMPATIBLE_NOT_IDENTIFIED')
+    &&str_contains($full,'zeitlich passendes Handy CARINA')
+    &&str_contains($full,'Kameraperson NICHT IDENTIFIZIERT')
+    &&str_contains($full,'QUELLENSTATUS: P03 P03_INTENTIONALLY_OFF_NO_NEW_TRANSFERS')
+    &&str_contains($full,'NAECHSTE QUELLENLUECKEN: ')
+    &&str_contains($full,'AUTO: NICHT NACHGEWIESEN')
+    &&str_ends_with($full,'=== ENDE TESTBERICHT ==='),
+    'new evidence categories displayed in single complete copyable report');
 expectHandoff(strlen($report)>1800 &&strlen($report)<13000
     &&str_starts_with($report,'=== TESTBERICHT AN CHATGPT')
     &&str_ends_with($report,'=== ENDE TESTBERICHT ==='),
