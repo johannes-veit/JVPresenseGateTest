@@ -14,7 +14,7 @@ declare(strict_types=1);
 final class JVResidentTileDashboard
 {
     public static function evaluate(array $visu,array $wlan,array $work,array $p03,
-        array $house,int $now,array $depart=[]):array
+        array $house,int $now,array $depart=[],array $rooms=[]):array
     {
         $people=[];
         $valid=($visu['schema']??null)===1
@@ -177,9 +177,21 @@ final class JVResidentTileDashboard
             &&$house['lastHomeMotionAgeSeconds']>=0
             &&$house['lastHomeMotionAgeSeconds']<=300)
             $houseText='Hausbewegung erkannt (Person unbekannt)';
+        $roomSummary=[];
+        if(($rooms['authority']??null)==='LCN_ROOM_MOTION_PATHS_ANONYMOUS_ONLY'
+            &&($rooms['coverageStatus']??null)==='AVAILABLE_ANONYMOUS_EDGES'){
+            foreach([
+                'officeGuestWcReturn'=>'Büro → Flur → Gäste-WC → Flur → Büro',
+                'kitchenToUpperDressing'=>'Küche → OG Flur → Ankleide'
+            ] as $key=>$label){
+                if(is_int($rooms[$key]['at']??null))
+                    $roomSummary[]=$label.' (bis '.self::formatTime($rooms[$key]['at']).')';
+            }
+        }
         return [
             'schema'=>1,
             'authority'=>'CURRENT_STATUS_ONLY_SAFE_HTML_TILE',
+            'roomPathsAnonymous'=>$roomSummary,
             'people'=>$people,
             'p03Anonymized'=>$p03Text,
             'lcnAnonymized'=>$houseText,
@@ -233,8 +245,10 @@ final class JVResidentTileDashboard
                 .'nicht personenbezogen nachgewiesen</div>'
                 .'</div></details>';
         }
-        $parts[]='<div style="font-size:.83em;opacity:.8;margin-top:8px">'
-            .'<div>P03: '.$esc((string)($data['p03Anonymized']??'Keine Daten')).'</div>'
+        $parts[]='<div style="font-size:.83em;opacity:.8;margin-top:8px">';
+        foreach(array_slice($data['roomPathsAnonymous']??[],0,2) as $roomPath)
+            $parts[]='<div>LCN Raumfolge (Person unbekannt): '.$esc((string)$roomPath).'</div>';
+        $parts[]='<div>P03: '.$esc((string)($data['p03Anonymized']??'Keine Daten')).'</div>'
             .'<div>LCN: '.$esc((string)($data['lcnAnonymized']??'Keine Daten')).'</div>'
             .'<div style="margin-top:5px">Anwesenheit/Abwesenheit nach '
             .'Smartphone-Hinweisen; kein sicherer Personennachweis. '
