@@ -133,4 +133,30 @@ depOK(str_contains($html,'ABWESEND (WAHRSCHEINLICH)')
 depOK($h['mayArmAlarm']===false
     &&$h['mayTriggerAbsenceActions']===false,
     'combined tile cannot control physical presence or alarms');
+
+// Production integration no longer trusts a current OUT snapshot alone.
+// Require an individually observed OUT transition in the persistent ledger.
+$authoritative=['schema'=>1,
+    'authority'=>'PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY',
+    'people'=>['carina'=>['pendingGeofenceOut'=>null]]];
+$withoutObservedOut=JVResidentDepartureInference::evaluate(
+    $w,$firm,$jo,$ca,$p03,$now,$authoritative
+);
+depOK($withoutObservedOut['people']['carina']['assessment']==='NOT_ESTABLISHED'
+    &&$withoutObservedOut['people']['carina']['reason']
+        ==='NO_OBSERVED_PERSONAL_GEOFENCE_OUT_SEQUENCE',
+    'stale OUT status without persistent per-device OUT is not departure');
+$authoritative['people']['carina']['pendingGeofenceOut']=$geo;
+$verifiedPhoneOut=JVResidentDepartureInference::evaluate(
+    $w,$firm,$jo,$ca,$p03,$now,$authoritative
+);
+depOK($verifiedPhoneOut['people']['carina']['assessment']==='LIKELY_PHONE_DEPARTED'
+    &&!$verifiedPhoneOut['people']['carina']['humanAbsenceCertified'],
+    'observed individual phone OUT enables phone-only departure hint');
+$authoritative['people']['carina']['pendingGeofenceOut']=$geo-60;
+$disagreeingOut=JVResidentDepartureInference::evaluate(
+    $w,$firm,$jo,$ca,$p03,$now,$authoritative
+);
+depOK($disagreeingOut['people']['carina']['assessment']==='NOT_ESTABLISHED',
+    'unmatched event timestamp must not confirm departure');
 echo "Simplified resident WLAN->Geofence departure and HTML tile safety scenarios PASS\n";
