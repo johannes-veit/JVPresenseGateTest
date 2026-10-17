@@ -137,6 +137,7 @@ final class JVCarinaGeofencyHints
             'lastEventAt'=>null,'lastEventAgeSeconds'=>null,
             'freshEventMaxAgeSeconds'=>self::MAX_EVENT_AGE_SECONDS,
             'validatedSource'=>false,
+            'sourceKey'=>null,
             'insideRecent'=>false,'outsideRecent'=>false,
             'phoneIsNotPerson'=>true,
             'eventCouldBeDelayedOrMissed'=>true,
@@ -158,6 +159,10 @@ final class JVCarinaGeofencyHints
             return $report;
         }
         $report['validatedSource']=true;
+        $sourceKey=$snapshot['sourceKey']??null;
+        if(is_string($sourceKey)
+            &&preg_match('/^GEOFENCY:(?:[1-9][0-9]*:){3}[1-9][0-9]*$/D',$sourceKey))
+            $report['sourceKey']=$sourceKey;
         $report['zoneName']=$snapshot['zoneName'];
         $report['geofenceReportedInside']=$snapshot['inside'];
         $at=$snapshot['timestamp'];
