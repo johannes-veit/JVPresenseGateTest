@@ -76,6 +76,20 @@ journeyAssert($workRoute['candidateCount']===1
     &&$workRoute['phoneCandidates'][0]['routeDirection']==='OUTBOUND'
     &&$workRoute['candidatePerson']==='carina',
     'verified personal work SSID after earlier home MAC is an OUT candidate');
+$fusion['people']['carina']['macSourceContinuous']=false;
+journeyAssert($run()['candidateCount']===0,
+    'invalid current home-WLAN source cannot be paired with work SSID from historical MAC');
+$fusion['people']['carina']['macSourceContinuous']=true;
+$fusion['people']['carina']['sourceRebaselineRequired']=true;
+journeyAssert($run()['candidateCount']===0,
+    'newly rebound WLAN pair cannot inherit earlier home MAC');
+$fusion['people']['carina']['sourceRebaselineRequired']=false;
+$fusion['people']['carina']['lastSourceRebindAt']=$t-600;
+journeyAssert($run()['candidateCount']===0,
+    'home MAC from before verified source-ID change cannot match camera OUT');
+unset($fusion['people']['carina']['lastSourceRebindAt']);
+journeyAssert($run()['candidateCount']===1,
+    'verified continuous MAC and current WORK SSID recover outbound phone hint');
 $ssid['people']['carina']['ageSeconds']=500;
 journeyAssert($run()['candidateCount']===0,
     'stale work SSID fails closed');
@@ -104,6 +118,10 @@ $fusion['people']['carina']['lastEvent']=[
     'code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP','at'=>$t-20
 ];
 $ssid['people']['carina']['status']='WORK_OR_PRIVATE_PROPERTY_EXT_UNCERTAIN';
+$fusion['people']['carina']['lastSourceRebindAt']=$t-50;
+journeyAssert($run()['candidateCount']===0,
+    'old return event cannot identify source rebound after it');
+unset($fusion['people']['carina']['lastSourceRebindAt']);
 $fromHistory=$run();
 journeyAssert($fromHistory['candidateCount']===1
     &&$fromHistory['candidatePerson']==='carina'
