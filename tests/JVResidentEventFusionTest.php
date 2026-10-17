@@ -87,6 +87,17 @@ $w['people']['carina']=$phone($now+1375);
 $conflict=$run($now+1380,$twoHome['next']);
 chk($conflict['report']['people']['carina']['state']==='HOME_WORK_PHONE_SOURCE_CONFLICT',
     'current opposite HOME and WORK sources report conflict, no forced location');
+$w['people']['carina']=$phone($now+1360);
+$work['people']['carina']['ageSeconds']=20;
+$newerWork=$run($now+1450,$conflict['next']);
+chk($newerWork['report']['people']['carina']['state']==='PHONE_WORK_SSID_RECENT',
+    'clearly newer verified WORK SSID overrides older HOME MAC');
+$w['people']['carina']=$phone($now+1470);
+$work['people']['carina']['ageSeconds']=100;
+$newerHome=$run($now+1480,$newerWork['next']);
+chk($newerHome['report']['people']['carina']['state']==='PHONE_HOME_MAC_RECENT',
+    'clearly newer validated HOME MAC overrides older WORK SSID');
+
 // More than one hour without observations must rebaseline, not create
 // artificial phone departures or historic P03 arrivals when timers resume.
 $jg['insideRecent']=false;$jg['outsideRecent']=true;
