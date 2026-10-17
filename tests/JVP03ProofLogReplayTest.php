@@ -223,9 +223,13 @@ eq($observed['personPresenceMayBeChanged'],false,'P03 and phone cannot alter pre
 eq($observed['propertyEmptyMayBeCertified'],false,'P03 and phone cannot certify vacancy');
 // First post-baseline sample legitimately changes the baselineInitialized flag.
 $module->Refresh();
-$writeCount=count($module->writes);
+$stableWrites=static fn(array $writes):array=>array_values(
+    array_filter($writes,static fn($w)=>($w['key']??'')!=='TestReport')
+);
+$beforeStable=$stableWrites($module->writes);
 for($i=0;$i<100;$i++)$module->Refresh();
-eq(count($module->writes),$writeCount,'100 unchanged refreshes add zero variable writes');
+eq($stableWrites($module->writes),$beforeStable,
+    '100 unchanged refreshes add zero writes to six existing actual status/HTML outputs; TestReport may refresh its clock');
 
 // Local LCN and output-variable integration without any real Symcon writes.
 // Sensor snapshots are initially BASELINED, not replayed as new movements.
