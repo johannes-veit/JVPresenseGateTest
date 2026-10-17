@@ -39,6 +39,15 @@ $house=['authority'=>'ANONYMOUS_HOME_OBSERVATION_ONLY',
     'sourcesHealthy'=>true,'lastHomeMotionAgeSeconds'=>30];
 $r=JVResidentTileDashboard::evaluate($people,$wlan,$ssid,$p03,$house,$now);
 $h=JVResidentTileDashboard::render($r);
+$people['people']['johannes']['geofenceInsideSharedHomeWorkZone']=true;
+$people['people']['johannes']['geofenceEventFresh']=false;
+$people['people']['johannes']['geofenceLastEventAgeSeconds']=82800;
+$staleGeoTile=JVResidentTileDashboard::render(
+    JVResidentTileDashboard::evaluate($people,$wlan,$ssid,$p03,$house,$now)
+);
+tileAssert(str_contains($staleGeoTile,'veraltet')
+    &&!str_contains($staleGeoTile,'Geofence meldete Haus-/Firmenbereich'),
+    'a 23h old shared Geofence TRUE cannot be shown as current HOME evidence');
 tileAssert($r['people']['johannes']['status']==='ANWESEND'
     &&$r['people']['carina']['status']==='NICHT BESTÄTIGT',
     'individually confirmed home phone vs unknown person');
