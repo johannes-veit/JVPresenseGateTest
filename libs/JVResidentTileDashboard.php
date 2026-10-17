@@ -14,7 +14,7 @@ declare(strict_types=1);
 final class JVResidentTileDashboard
 {
     public static function evaluate(array $visu,array $wlan,array $work,array $p03,
-        array $house,int $now,array $depart=[],array $rooms=[]):array
+        array $house,int $now,array $depart=[],array $rooms=[],array $fusion=[]):array
     {
         $people=[];
         $valid=($visu['schema']??null)===1
@@ -95,6 +95,23 @@ final class JVResidentTileDashboard
             }elseif($geoIsLatest &&$geoKind==='OUT'){
                 $qualifier='Handy meldete Geofence-OUT; ohne weitere Nachweise keine bestätigte Abwesenheit';
             }
+            $f=($fusion['authority']??null)==='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'
+                &&is_array($fusion['people'][$key]??null)
+                ?$fusion['people'][$key]:[];
+            $lastEvent=$f['lastEvent']??null;
+            $allowed=[
+                'PHONE_GEOFENCE_OUT_OBSERVED'=>'Handy meldete Geofence-OUT (Haus/Firma)',
+                'PHONE_GEOFENCE_IN_OBSERVED'=>'Handy meldete Geofence-IN (Haus/Firma)',
+                'PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC'=>'Handy nach OUT/IN wieder im Heim-WLAN',
+                'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP'=>'WLAN-Kontakt nach Messluecke, keine Heimkehr bewiesen'
+            ];
+            $eventCode=is_array($lastEvent)?($lastEvent['code']??null):null;
+            $lastEventAt=is_array($lastEvent)?($lastEvent['at']??null):null;
+            $safePhoneEvent=is_string($eventCode)
+                &&isset($allowed[$eventCode])
+                &&is_int($lastEventAt)
+                &&$lastEventAt>0&&$lastEventAt<=$now+5
+                &&$lastEventAt>=$now-86400;
             $people[$key]=[
                 'name'=>$name,
                 'status'=>$status,
@@ -143,6 +160,9 @@ final class JVResidentTileDashboard
                         .((($d['p03AnonymousExitNearby']??false)===true)
                             ?' · passender Treppen-OUT (Person unbekannt)':'')
                     :'Kein ausreichend belegter Abfahrtsweg',
+                'lastPersonalPhoneEvent'=>$safePhoneEvent
+                    ?$allowed[$eventCode].' · '.self::formatTime($lastEventAt)
+                    :'Kein neuer bestaetigter Handy-Zustandswechsel',
                 'phoneFoundNotHumanCertified'=>true,
                 'travelMode'=>'NICHT NACHGEWIESEN',
                 'travelRoute'=>'NICHT NACHGEWIESEN',
@@ -241,6 +261,8 @@ final class JVResidentTileDashboard
                 .'<div>'.$esc($ssidInfo).'</div>'
                 .'<div>'.$esc((string)($row['geofenceContext']??'' )).'</div>'
                 .'<div>'.$event.': '.$esc($time).'</div>'
+                .'<div>Letztes Handy-Ereignis: '.$esc((string)(
+                    $row['lastPersonalPhoneEvent']??'Kein Ereignis')).'</div>'
                 .'<div>Zu Fuß / Auto / Filzener Weg: '
                 .'nicht personenbezogen nachgewiesen</div>'
                 .'</div></details>';
