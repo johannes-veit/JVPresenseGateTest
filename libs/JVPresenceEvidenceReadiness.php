@@ -77,11 +77,26 @@ final class JVPresenceEvidenceReadiness
                 &&($wp['workRecent']??false)===true
                 &&is_int($wp['ageSeconds']??null)
                 &&$wp['ageSeconds']>=0&&$wp['ageSeconds']<=300;
+            $bindingRecent=is_array($fp)
+                &&($fp['sourceRebindRecent']??false)===true;
             $report['phones'][$person]=[
                 'currentPhoneState'=>is_string($state)?$state:'PHONE_NOT_VERIFIED',
                 'personalWorkSSIDCurrent'=>$workAvailable,
+                'macSourceContinuous'=>is_array($fp)
+                    &&($fp['macSourceContinuous']??false)===true,
+                'geoSourceContinuous'=>is_array($fp)
+                    &&($fp['geoSourceContinuous']??false)===true,
+                'sourceIdentityChanged24h'=>$bindingRecent,
+                'sourceRebindingAt'=>is_array($fp)
+                    ?($fp['lastSourceRebindAt']??null):null,
                 'phoneNotHuman'=>true
             ];
+            if($bindingRecent){
+                $report['sourceBlocks'][]=strtoupper($person)
+                    .'_VERIFIED_SOURCE_BINDING_CHANGED';
+                $report['nextEvidencePriority'][]=strtoupper($person)
+                    .'_WAIT_FOR_NEW_PERSONAL_EVENTS_AFTER_SOURCE_REBIND';
+            }
             if(!$workAvailable){
                 $report['sourceBlocks'][]=strtoupper($person).'_PERSONAL_WORK_SSID_NOT_CURRENT';
                 $report['nextEvidencePriority'][]=strtoupper($person)
