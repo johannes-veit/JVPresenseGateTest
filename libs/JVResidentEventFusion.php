@@ -202,8 +202,17 @@ final class JVResidentEventFusion
             &&($p03['authority']??null)==='P03_LIVE_PROOFS_DIRECTION_ONLY';
         $logContinuity=$p03Valid&&is_string($p03['logContinuity']??null)
             ?$p03['logContinuity']:'UNVERIFIED';
-        $logInterrupted=in_array($logContinuity,
-            ['LOG_GAP_OR_RESET','BASELINE_ONLY'],true);
+        // Only proved append-only or anchored rotation can continue a
+        // two-mast route. UNKNOWN/missing source and malformed batches
+        // interrupt the anonymous corridor just as a proven reset does.
+        $logWarnings=$p03Valid&&is_array($p03['warnings']??null)
+            ?$p03['warnings']:[];
+        $logInterrupted=!in_array($logContinuity,
+            ['OK','TAIL_OVERLAP_AFTER_ROTATION'],true)
+            ||count(array_intersect($logWarnings,[
+                'P03_LOG_BATCH_INVALID','INVALID_CLOCK_OR_LOG_SIZE',
+                'P03_SOURCE_NOT_READABLE','P03_LOG_GAP_OR_RESET'
+            ]))>0;
         $oldP03=$validPrior&&is_array($prior['p03']??null)?$prior['p03']:[];
         $seen=is_array($oldP03['seen']??null)?$oldP03['seen']:[];
         $clean=[];
