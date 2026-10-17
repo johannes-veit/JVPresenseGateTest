@@ -28,6 +28,7 @@ require_once dirname(__DIR__).'/libs/JVResidentPresenceDisplay.php';
 require_once dirname(__DIR__).'/libs/JVResidentVisuState.php';
 require_once dirname(__DIR__).'/libs/JVResidentTileDashboard.php';
 require_once dirname(__DIR__).'/libs/JVResidentDepartureInference.php';
+require_once dirname(__DIR__).'/libs/JVResidentArrivalInference.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
@@ -1672,6 +1673,9 @@ class JVPresenceIdentityShadow extends IPSModule
             $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
             $p03Timeline['report'],time()
         );
+        $arrivalHint=JVResidentArrivalInference::evaluate(
+            $tileWlan,$tileGeoJ,$tileGeoC,$p03Timeline['report'],time()
+        );
         $tileData=JVResidentTileDashboard::evaluate(
             $tileResident['report'],$tileWlan,$tileWork,
             $p03Timeline['report'],$houseObservation,time(),$departureHint,$roomPaths
@@ -1728,6 +1732,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentVisuState'=>$residentVisu['report'],
             'residentTileEvidence'=>$tileData,
             'residentDepartureInference'=>$departureHint,
+            'residentArrivalInference'=>$arrivalHint,
             'roomMovementPaths'=>$roomPaths,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
@@ -1847,7 +1852,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $tileGeoJ,$tileGeoC,$p03Timeline['report'],
             $temporalCrossCheck,$mastHealth,$houseObservation,
             $activity,$local,$boundary['report'],$gateDisplay,
-            $warnings,time(),true,$departureHint,$roomPaths
+            $warnings,time(),true,$departureHint,$roomPaths,$arrivalHint
         ));
         $this->publish($report,$state);
     }
