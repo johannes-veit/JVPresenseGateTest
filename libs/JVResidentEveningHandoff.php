@@ -221,6 +221,15 @@ final class JVResidentEveningHandoff
             .' | Unterbrechung erkannt '.self::yes(
                 ($fp03['logInterrupted']??false)===true)
             .' | offene Korridorwege bei Unterbrechung gesperrt');
+        $add('P03 BEWEIS-UEBERGABE: Journal vor diesem Durchlauf '
+            .self::number($fp03['unackedRouteProofCount']??null)
+            .' | Paket '.self::number(
+                is_array($fp03['routeDeliveryProofs']??null)
+                    ?count($fp03['routeDeliveryProofs']):null)
+            .' | Ueberlauf '.self::yes(
+                ($fp03['routeJournalOverflow']??false)===true)
+            .' | abgelaufen '.self::yes(
+                ($fp03['routeJournalExpired']??false)===true));
         $re=($routeEpisodes['authority']??null)==='ANONYMOUS_ROUTE_EPISODES_READ_ONLY'
             ?$routeEpisodes:[];
         $ep=is_array($re['lastEpisode']??null)?$re['lastEpisode']:[];
