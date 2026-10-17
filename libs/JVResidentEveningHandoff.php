@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -53,7 +53,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.66 Build 147 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.67 Build 148 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -102,6 +102,14 @@ final class JVResidentEveningHandoff
                 .' | KEIN Ankunftsnachweis');
             $add('Geofence OUT/IN + neuer MAC in diesem Zyklus: '.self::yes(
                 ($contactHistory['people'][$person]['phoneReturnAfterObservedOutIn']??false)===true));
+            $fp=($fusion['authority']??null)==='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'
+                &&is_array($fusion['people'][$person]??null)
+                ?$fusion['people'][$person]:[];
+            $evt=is_array($fp['lastEvent']??null)?$fp['lastEvent']:[];
+            $add('EREIGNISKERN: '.self::code($fp['state']??'NO_STATE')
+                .' | Letztes Handy-Ereignis: '.self::code($evt['code']??'KEINES')
+                .' | Zeit: '.self::date($evt['at']??null));
+            $add('Handy-Ereignis ist KEIN Nachweis der Person oder einer Autofahrt.');
             $add('ANKUNFT: '.self::code($a['assessment']??'NOT_ESTABLISHED')
                 .' | Grund: '.self::code($a['reason']??'NO_DATA')
                 );
@@ -179,6 +187,16 @@ final class JVResidentEveningHandoff
             .' | Lager->Haus '.self::number($proofs['LAGER_TO_HOME']??null)
             .' | Letzter '.self::date($p03Verified
                 ?($p03['lastDirectionAt']??null):null));
+        $fp03=($fusion['authority']??null)==='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'
+            &&is_array($fusion['p03']??null)?$fusion['p03']:[];
+        $lastAnon=is_array($fp03['lastAnonymousProof']??null)
+            ?$fp03['lastAnonymousProof']:[];
+        $add('EREIGNISKERN P03: letzter anonymer Uebergang '
+            .self::code($lastAnon['direction']??'KEINER')
+            .' | '.self::date($lastAnon['at']??null)
+            .' | neue seit letztem SHADOW-Durchlauf: '
+            .self::number(is_array($fp03['newAnonymousProofs']??null)
+                ?count($fp03['newAnonymousProofs']):null));
         $raw=$timingVerified&&is_array($timing['rawStreetIVS24h']??null)
             ?$timing['rawStreetIVS24h']:[];
         $add('ROHE Strassen-IVS/24h (kein Hauswechsel!): IN '
@@ -242,9 +260,10 @@ final class JVResidentEveningHandoff
             .' zugeordnet | Schiebetor-Hinweis: '
             .self::code($gate['positionHint']??'UNKNOWN'));
         $add('Filzener Weg / Lagerplatz: Person+Route+zu Fuss/Auto derzeit NICHT BEWEISBAR.');
-        if(!$p03Verified||$mode==='TEST_AND_PRODUCTION_OFF'
-            ||$mode==='UNKNOWN_NOT_VERIFIED')
-            $needs[]='P03_KEIN_VERIFIZIERTER_LIVE_BETRIEB';
+        if(!$p03Verified||$mode==='UNKNOWN_NOT_VERIFIED')
+            $needs[]='P03_QUELLE_ODER_MODUS_NICHT_VERIFIZIERT';
+        elseif($mode==='TEST_AND_PRODUCTION_OFF')
+            $needs[]='P03_BEWUSST_INAKTIV_KEINE_NEUEN_ZONENUEBERGAENGE';
         if(!$houseVerified||($house['sourcesHealthy']??false)!==true)
             $needs[]='LCN_HAUSQUELLEN_NICHT_VOLLSTAENDIG';
         $needs[]='ROUTE_AUTO_FUSSWEG_NICHT_PERSONENBEZOGEN_BEWIESEN';
