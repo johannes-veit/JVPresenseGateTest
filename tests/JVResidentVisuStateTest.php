@@ -48,6 +48,17 @@ rv($r['report']['allResidentsAwayCertified']===false
     &&$r['report']['people']['carina']['mayBeUsedForAbsenceAutomation']===false,
     'never approve automatic alarm or away');
 $prior=$r['next'];
+$withinGrace=$mac;
+$withinGrace['people']['carina']['lastMacContactAt']=$now-360;
+// Real WLAN Carina still shows AN for up to 660 seconds, but the
+// 360-second-old MAC proof must NOT remain a live HOME status.
+$staleMac=JVResidentVisuState::evaluate(
+    $withinGrace,$work,$geo,$cGeo,$home,$p03,$prior,$now
+);
+rv($staleMac['report']['people']['carina']['decision']==='LAST_KNOWN_UNCONFIRMED'
+    &&$staleMac['report']['people']['carina']['deviceEvidenceAt']===null,
+    '11-minute WLAN hold does not masquerade as current home confirmation');
+
 $mac['people']['carina']['recentMacEvidence']=false;
 $mac['people']['carina']['state']='NO_RECENT_MAC_CONFIRMATION_NOT_ABSENCE';
 $sleep=$eval($prior,$now+700);
@@ -109,7 +120,7 @@ rv($go['report']['people']['carina']['decision']==='WORK_PHONE_CONFIRMED'
     'fresh firm SSID supersedes lingering 11-min home MAC grace');
 // Simulate an older 11-minute MAC-held HOME event that arrives AFTER the
 // already captured WORK evidence. Never roll back to HOME.
-$mac['people']['carina']['lastMacContactAt']=$at-350;
+$mac['people']['carina']['lastMacContactAt']=$switchNow-220;
 $mac['people']['carina']['recentMacEvidence']=true;
 $mac['people']['carina']['state']='MAC_CONFIRMED_RECENT_DEVICE_HINT';
 $work['people']['carina']['ageSeconds']=901;
@@ -141,4 +152,14 @@ $homeSSID=JVResidentVisuState::evaluate(
 rv($homeSSID['report']['people']['carina']['decision']==='HOME_PHONE_CONFIRMED'
     &&$homeSSID['report']['people']['carina']['deviceEvidenceReason']==='PHONE_HOME_SSID',
     'phone actively reports exact home SSID even if MAC polling off');
+$delayedWork=$work;
+$delayedWork['people']['carina']['homeSsidRecent']=false;
+$delayedWork['people']['carina']['workRecent']=true;
+$delayedWork['people']['carina']['status']='WORK_FIRMEN_WLAN_PHONE';
+$delayedWork['people']['carina']['ageSeconds']=600;
+$delayed=JVResidentVisuState::evaluate(
+    $mac,$delayedWork,$geo,$cGeo,$home,$p03,$go['next'],$switchNow
+);
+rv($delayed['report']['people']['carina']['decision']==='LAST_KNOWN_UNCONFIRMED',
+    'an old 10-minute SSID report is not current WORK');
 echo "Per-phone home/work/unknown/conflict, standby and safe VISU state PASS\n";
