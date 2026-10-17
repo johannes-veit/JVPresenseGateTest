@@ -59,4 +59,22 @@ $f['people']['johannes']['eventHistory'][]=[
 $a=$run();
 auditOK(in_array('JOHANNES_EVENT_DUPLICATE',$a['issues'],true),
     'replayed individual event is flagged');
+$f['people']['johannes']['eventHistory']=array_slice(
+    $f['people']['johannes']['eventHistory'],0,3);
+$f['p03']['logInterrupted']=true;$f['p03']['newAnonymousProofs']=[];
+$f['p03']['routeJournalExpired']=true;
+$f['p03']['routeDeliveryProofs']=[];
+$a=$run();
+auditOK(in_array('P03_ROUTE_JOURNAL_EXPIRED',$a['issues'],true),
+    'expired durable route handoff requires explicit diagnostic review');
+$f['p03']['routeJournalExpired']=false;
+$f['p03']['routeJournalOverflow']=true;
+$a=$run();
+auditOK(in_array('P03_ROUTE_JOURNAL_OVERFLOW',$a['issues'],true),
+    'bounded route proof overflow is reported');
+$f['p03']['routeJournalOverflow']=false;
+$f['p03']['routeDeliveryProofs']=[['at'=>$t-5]];
+$a=$run();
+auditOK(in_array('P03_DELIVERY_DURING_SOURCE_GAP',$a['issues'],true),
+    'proof delivery while verified log continuity broken is prohibited');
 echo "SHADOW integrity audit PASS\n";
