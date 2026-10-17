@@ -100,6 +100,18 @@ $go=JVResidentVisuState::evaluate(
 rv($go['report']['people']['carina']['decision']==='WORK_PHONE_CONFIRMED'
     &&$go['next']['people']['carina']['zone']==='WORK',
     'fresh firm SSID supersedes lingering 11-min home MAC grace');
+// Simulate an older 11-minute MAC-held HOME event that arrives AFTER the
+// already captured WORK evidence. Never roll back to HOME.
+$mac['people']['carina']['lastMacContactAt']=$at-350;
+$mac['people']['carina']['recentMacEvidence']=true;
+$mac['people']['carina']['state']='MAC_CONFIRMED_RECENT_DEVICE_HINT';
+$work['people']['carina']['ageSeconds']=901;
+$outOfOrder=JVResidentVisuState::evaluate(
+    $mac,$work,$geo,$cGeo,$home,$p03,$go['next'],$at);
+rv($outOfOrder['report']['people']['carina']['decision']==='LAST_KNOWN_UNCONFIRMED'
+    &&$outOfOrder['report']['people']['carina']['rejectedOlderOppositeZoneSource']===true
+    &&$outOfOrder['next']['people']['carina']['zone']==='WORK',
+    'older stale HOME MAC cannot undo more recent WORK in retained ledger');
 $mac['enabled']=false;
 $work['people']['carina']['ageSeconds']=901;
 $after=JVResidentVisuState::evaluate(
