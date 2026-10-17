@@ -76,17 +76,35 @@ $m2=$run($m1['next'],$t+930);
 $f['p03']['newAnonymousProofs']=[$proof('LAGER_TO_HOME',$t+945)];
 $amb=$run($m2['next'],$t+950);
 routeCheck(!$amb['report']['newEpisodeThisRefresh']
+    &&$amb['report']['openOutgoingPassages']===0
+    &&$amb['report']['ambiguityResetThisRefresh']===true
     &&in_array('MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN',
-        $amb['report']['warnings'],true),'two people parallel passage ambiguous');
+        $amb['report']['warnings'],true)
+    &&in_array('AMBIGUOUS_ROUTE_WINDOW_RESET',
+        $amb['report']['warnings'],true),
+    'two people parallel passage ambiguous: clear all unpairable OUTs');
+// New independent route may start immediately, without waiting 12h.
+$f['p03']['newAnonymousProofs']=[$proof('HOME_TO_LAGER',$t+980)];
+$independentOut=$run($amb['next'],$t+990);
+routeCheck($independentOut['report']['openOutgoingPassages']===1,
+    'after ambiguous returns the next independent OUT can start a clean route');
+$f['p03']['newAnonymousProofs']=[$proof('LAGER_TO_HOME',$t+1040)];
+$independentIn=$run($independentOut['next'],$t+1050);
+routeCheck($independentIn['report']['newEpisodeThisRefresh']===true
+    &&$independentIn['report']['lastEpisode']['outAt']===$t+980
+    &&$independentIn['report']['lastEpisode']['inAt']===$t+1040
+    &&$independentIn['report']['lastEpisode']['identity']==='UNKNOWN'
+    &&!$independentIn['report']['samePersonRoundTripCertified'],
+    'clean new anonymous route paired without stealing old ambiguous passages');
 // Down time rebaseline: no pairing old OUT after an hour gap.
 $f['p03']['newAnonymousProofs']=[];
-$pause=$run($amb['next'],$t+5000);
+$pause=$run($independentIn['next'],$t+5000);
 routeCheck($pause['report']['openOutgoingPassages']===0
     &&in_array('AFTER_LONG_GAP_OPEN_ROUTES_RESET',
         $pause['report']['warnings'],true),'offline reset');
 $f['p03']['newAnonymousProofs']=[$proof('LAGER_TO_HOME',$t+5100)];
 $soloIn=$run($pause['next'],$t+5110);
-routeCheck($soloIn['report']['lastEpisode']['inAt']===$t+820
+routeCheck($soloIn['report']['lastEpisode']['inAt']===$t+1040
     &&in_array('IN_WITHOUT_OBSERVED_OUT',
         $soloIn['report']['warnings'],true),'unpaired in no new trip');
 // Bad proof time / route cannot enter ledger.
