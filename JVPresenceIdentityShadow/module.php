@@ -34,6 +34,7 @@ require_once dirname(__DIR__).'/libs/JVResidentEventFusion.php';
 require_once dirname(__DIR__).'/libs/JVRouteEpisodeLedger.php';
 require_once dirname(__DIR__).'/libs/JVResidentJourneyEvidence.php';
 require_once dirname(__DIR__).'/libs/JVShadowStateCheckpoint.php';
+require_once dirname(__DIR__).'/libs/JVShadowIntegrityAudit.php';
 require_once dirname(__DIR__).'/libs/JVPresenceEvidenceReadiness.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
@@ -1758,6 +1759,10 @@ class JVPresenceIdentityShadow extends IPSModule
             $tileWork,$boundary['report'],$houseObservation,
             $residentJourney,time()
         );
+        $integrityAudit=JVShadowIntegrityAudit::evaluate(
+            $residentFusion['report'],$routeEpisodes['report'],
+            $residentJourney,$evidenceReadiness,time()
+        );
         $tilePrior=json_decode($this->readShadowState('TileResidentState'),true);
         $tileResident=JVResidentVisuState::evaluate(
             $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
@@ -1830,6 +1835,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'anonymousRouteEpisodes'=>$routeEpisodes['report'],
             'residentJourneyCorrelation'=>$residentJourney,
             'presenceEvidenceReadiness'=>$evidenceReadiness,
+            'shadowIntegrityAudit'=>$integrityAudit,
             'roomMovementPaths'=>$roomPaths,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
@@ -1952,7 +1958,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $warnings,time(),true,$departureHint,$roomPaths,$arrivalHint,
             $contactHistory['report'],$residentFusion['report'],
             $routeEpisodes['report'],$residentJourney,
-            $evidenceReadiness
+            $evidenceReadiness,$integrityAudit
         ));
         $this->publish($report,$state);
         } finally {
