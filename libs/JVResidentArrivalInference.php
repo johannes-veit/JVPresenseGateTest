@@ -73,8 +73,8 @@ final class JVResidentArrivalInference
                     $entry['reason']='PERSISTENT_PERSONAL_HANDSET_EVENT_NOT_HUMAN_IDENTITY';
                     $entry['phoneAssociatedArrivalOnly']=true;
                 }elseif($p03At!==null){
-                    $entry['assessment']='ANONYMOUS_ENTRY_NEAR_HOME_PHONE';
-                    $entry['reason']='P03_ENTRY_ANONYMOUS_NO_PERSONAL_ARRIVAL_PROOF';
+                    $entry['assessment']='HOME_PHONE_CURRENT_ARRIVAL_NOT_PROVEN';
+                    $entry['reason']='ANONYMOUS_P03_ENTRY_CANNOT_IDENTIFY_THIS_PHONE';
                 }elseif($geoIn){
                     $entry['assessment']='GEOFENCE_IN_NOT_SUFFICIENT_FOR_HOME_RETURN';
                     $entry['reason']='SHARED_RADIUS_IN_WITHOUT_OBSERVED_PRIOR_OUT';
