@@ -14,7 +14,7 @@ declare(strict_types=1);
 final class JVResidentTileDashboard
 {
     public static function evaluate(array $visu,array $wlan,array $work,array $p03,
-        array $house,int $now):array
+        array $house,int $now,array $depart=[]):array
     {
         $people=[];
         $valid=($visu['schema']??null)===1
@@ -29,17 +29,26 @@ final class JVResidentTileDashboard
             $v=$valid&&is_array($visu['people'][$key]??null)
                 ?$visu['people'][$key]:[];
             $decision=$v['decision']??'UNKNOWN';
+            $d=($depart['authority']??null)==='PHONE_DEPARTURE_CORRELATION_READ_ONLY'
+                &&is_array($depart['people'][$key]??null)
+                ?$depart['people'][$key]:[];
+            $likely=$decision!=='HOME_PHONE_CONFIRMED'
+                &&$decision!=='WORK_PHONE_CONFIRMED'
+                &&$decision!=='CONFLICT'
+                &&($d['assessment']??null)==='LIKELY_PHONE_DEPARTED';
             $status=match($decision){
                 'HOME_PHONE_CONFIRMED'=>'ANWESEND',
                 'WORK_PHONE_CONFIRMED'=>'ABWESEND',
-                default=>'NICHT BESTÄTIGT'
+                default=>$likely?'ABWESEND (WAHRSCHEINLICH)':'NICHT BESTÄTIGT'
             };
             $qualifier=match($decision){
                 'HOME_PHONE_CONFIRMED'=>'Handy im Heim-WLAN erkannt',
                 'WORK_PHONE_CONFIRMED'=>'Handy im Firmen-WLAN erkannt',
                 'LAST_KNOWN_UNCONFIRMED'=>'Letzter WLAN-Ort, nicht mehr aktuell',
                 'CONFLICT'=>'Widersprüchliche WLAN-Meldungen',
-                default=>'Kein aktueller eindeutiger WLAN-Nachweis'
+                default=>$likely
+                    ?'Heim-WLAN nicht mehr bestätigt, danach Geofence OUT – Handy wahrscheinlich weggefahren'
+                    :'Kein aktueller eindeutiger WLAN-Nachweis'
             };
             $wp=$wlanValid&&is_array($wlan['people'][$key]??null)
                 ?$wlan['people'][$key]:[];
@@ -53,8 +62,10 @@ final class JVResidentTileDashboard
             $lastKnown=$v['lastKnownDeviceAt']??null;
             if(!is_int($lastKnown)||$lastKnown<=0||$lastKnown>$now+5
                 ||$lastKnown<$now-86400)$lastKnown=null;
-            $when=$last??$lastKnown;
-            $hint=($decision==='HOME_PHONE_CONFIRMED'
+            $when=$likely&&is_int($d['eventAt']??null)
+                ?$d['eventAt']:($last??$lastKnown);
+            $hint=$likely?'Letztes bestätigtes Geofence-OUT':
+                ($decision==='HOME_PHONE_CONFIRMED'
                 ||$decision==='WORK_PHONE_CONFIRMED')
                 ?'Letzte bestätigte WLAN-Erfassung'
                 :'Letzter gültiger WLAN-Hinweis';
@@ -87,6 +98,13 @@ final class JVResidentTileDashboard
                     :(($v['geofenceInsideSharedHomeWorkZone']??null)!==null
                         ?'Geofence zuletzt gemeldet, aber veraltet – kein Live-Standort'
                         :'Geofence: keine geprüfte Meldung'),
+                'departureAssessment'=>$likely?'LIKELY_PHONE_DEPARTED':'NOT_ESTABLISHED',
+                'p03DepartureAnonymous'=>($d['p03AnonymousExitNearby']??false)===true,
+                'departureContext'=>$likely
+                    ?'Handy vermutlich außerhalb von Haus/Firma'
+                        .((($d['p03AnonymousExitNearby']??false)===true)
+                            ?' · passender Treppen-OUT (Person unbekannt)':'')
+                    :'Kein ausreichend belegter Abfahrtsweg',
                 'phoneFoundNotHumanCertified'=>true,
                 'travelMode'=>'NICHT NACHGEWIESEN',
                 'travelRoute'=>'NICHT NACHGEWIESEN',
@@ -146,7 +164,7 @@ final class JVResidentTileDashboard
             if($row===null)continue;
             $st=(string)($row['status']??'NICHT BESTÄTIGT');
             $color=$st==='ANWESEND'?'#1f8b55'
-                :($st==='ABWESEND'?'#aa6424':'#777b82');
+                :(str_starts_with($st,'ABWESEND')?'#aa6424':'#777b82');
             $name=$esc((string)$row['name']);
             $status=$esc($st);
             $qualifier=$esc((string)($row['qualifier']??''));
@@ -168,6 +186,7 @@ final class JVResidentTileDashboard
                 .'</summary>'
                 .'<div style="font-size:.91em;line-height:1.65;padding:8px 2px 2px">'
                 .'<div>'.$qualifier.'</div>'
+                .'<div>'.$esc((string)($row['departureContext']??'')).'</div>'
                 .'<div>'.$esc($wifiInfo).'</div>'
                 .'<div>'.$esc($ssidInfo).'</div>'
                 .'<div>'.$esc((string)($row['geofenceContext']??'' )).'</div>'
