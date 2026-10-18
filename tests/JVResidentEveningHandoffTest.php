@@ -184,7 +184,9 @@ $detailed=JVResidentEveningHandoff::build(
     [],[],[],[],$fusionExample,$routeDemo,$candidateJourney,
     $readinessFixture,$integrity,$gateFixture
 );
-expectHandoff(str_contains($detailed,'HANDY-VERLAUF/24h: 2')
+expectHandoff(str_contains($detailed,'P03-UEBERGANG/24h: HOME_TO_LAGER')
+    &&substr_count($detailed,'P03-UEBERGANG/24h: ')===1
+    &&str_contains($detailed,'HANDY-VERLAUF/24h: 2')
     &&str_contains($detailed,'HANDY-EVENT/24h: PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC')
     &&str_contains($detailed,'P03 PROTOKOLL-KONTINUITAET: LOG_GAP_OR_RESET')
     &&str_contains($detailed,'MEHRPERSONEN-KONFLIKT: letzte unaufloesbare Weggruppe')
