@@ -54,11 +54,19 @@ final class JVFieldObservationComparator
         $out['referencePeople']=$people;
         $car=$field['knownVehicleContext']??null;
         if(is_array($car)
-            &&($car['ownerOrDriver']??null)==='carina'
-            &&($car['makeModel']??null)==='Seat Leon'
-            &&($car['color']??null)==='grey')
+            &&in_array($car['ownerOrDriver']??null,
+                self::ALLOWED_PEOPLE,true)
+            &&is_string($car['makeModel']??null)
+            &&is_string($car['color']??null)
+            &&strlen($car['makeModel'])>0
+            &&strlen($car['makeModel'])<=80
+            &&strlen($car['color'])>0
+            &&strlen($car['color'])<=40)
             $out['reportedVehicle']=[
-                'person'=>'carina','model'=>'Seat Leon','color'=>'grey',
+                'person'=>$car['ownerOrDriver'],
+                // Do not put a resident's vehicle details into a public
+                // repo fixture, diagnostic report or returned proof.
+                'descriptionHeldByObserver'=>true,
                 'usedForThisDeparture'=>'NOT_REPORTED'
             ];
         if($now-$at>self::MAX_HISTORY_SECONDS){
@@ -122,7 +130,7 @@ final class JVFieldObservationComparator
         else
             $out['notes'][]='P03_OUT_NEAR_REFERENCE_IS_ANONYMOUS_CORRIDOR_ONLY';
         $out['notes'][]='ONE_P03_HUMAN_EVENT_MAY_INCLUDE_MULTIPLE_PEOPLE';
-        $out['notes'][]='SEAT_LEON_GREY_IS_USER_CONTEXT_NOT_VEHICLE_RECOGNITION';
+        $out['notes'][]='USER_VEHICLE_DESCRIPTION_NOT_CAMERA_RECOGNITION';
         $out['notes'][]='TWO_REPORTED_LEAVERS_DO_NOT_CERTIFY_PROPERTY_EMPTY';
         return $out;
     }
