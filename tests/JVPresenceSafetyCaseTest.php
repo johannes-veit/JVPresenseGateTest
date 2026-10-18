@@ -72,6 +72,10 @@ safetyOK($vehicle['workPhoneHints']===1
     &&$vehicle['identifiedHumanAtHome']==='UNKNOWN'
     &&$vehicle['propertyEmpty']==='UNKNOWN',
     'work SSID, P03 route and gate vehicle contact still do not identify driver');
+$route['lastEpisode']['inAt']=$t-18000;
+safetyOK($run()['cameraRoute']==='NO_RECENT_COMPLETE_ANONYMOUS_SEQUENCE',
+    'historical camera corridor is not fresh current arrival evidence');
+$route['lastEpisode']['inAt']=$t-45;
 $route['ambiguousOutstanding']=1;
 safetyOK($run()['cameraRoute']==='AMBIGUOUS_MULTIPERSON_QUARANTINE',
     'unresolved anonymous people cannot be route-certified');
