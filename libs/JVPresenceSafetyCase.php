@@ -95,10 +95,14 @@ final class JVPresenceSafetyCase
                 $out['workPhoneHints']++;
         }
         $episode=$route['lastEpisode']??null;
-        $out['cameraRoute']=is_array($episode)
+        $completeRecent=is_array($episode)
             &&($episode['kind']??null)==='ANONYMOUS_OUT_IN_CORRIDOR_SEQUENCE'
+            &&is_int($episode['inAt']??null)
+            &&$episode['inAt']>0&&$episode['inAt']<=$now+5
+            &&$now-$episode['inAt']<=14400;
+        $out['cameraRoute']=$completeRecent
             ?'ANONYMOUS_HOUSE_LAGER_SEQUENCE'
-            :'NO_COMPLETE_ANONYMOUS_SEQUENCE';
+            :'NO_RECENT_COMPLETE_ANONYMOUS_SEQUENCE';
         if(($route['ambiguousOutstanding']??0)>0)
             $out['cameraRoute']='AMBIGUOUS_MULTIPERSON_QUARANTINE';
         $vehicleSources=$boundary['vehicleSignals']??0;
