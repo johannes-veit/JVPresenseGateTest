@@ -37,6 +37,7 @@ require_once dirname(__DIR__).'/libs/JVShadowStateCheckpoint.php';
 require_once dirname(__DIR__).'/libs/JVShadowIntegrityAudit.php';
 require_once dirname(__DIR__).'/libs/JVShadowUpgradePreflight.php';
 require_once dirname(__DIR__).'/libs/JVPresenceSafetyCase.php';
+require_once dirname(__DIR__).'/libs/JVShadowReportBudget.php';
 require_once dirname(__DIR__).'/libs/JVPresenceEvidenceReadiness.php';
 require_once dirname(__DIR__).'/libs/JVPresenceCommissioningGate.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
