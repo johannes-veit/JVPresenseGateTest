@@ -4,6 +4,11 @@ declare(strict_types=1);
 class IPSModule {
     private array $attrs=[],$props=[],$vars=[],$buffers=[];
     public array $registered=[];
+    public int $instanceStatus=0;
+    public function ApplyChanges():void {}
+    public function SetTimerInterval(string $name,int $ms):void {}
+    public function SetStatus(int $status):bool{$this->instanceStatus=$status;return true;}
+    public function SendDebug(string $name,string $message,int $format):void {}
     public function Create():void {}
     public function RegisterPropertyBoolean(string $n,bool $v):void{$this->props[$n]=$v;}
     public function RegisterPropertyInteger(string $n,int $v):void{$this->props[$n]=$v;}
@@ -38,6 +43,9 @@ $m->setProperty('P03InstanceID',0);
 $m->setProperty('SensorSources','[]');
 $damaged='{invalid private historic proof';
 $m->WriteAttributeString('PersistResidentEventFusion',$damaged);
+$m->ApplyChanges();
+upgradeIntegration($m->instanceStatus===201,
+    'critical persisted journal never appears as active status after ApplyChanges');
 $m->Refresh();
 $blocked=json_decode((string)$m->GetValue('EvidenceJSON'),true);
 upgradeIntegration(($blocked['authority']??null)==='SHADOW_UPGRADE_READ_ONLY_BLOCK'
@@ -55,6 +63,9 @@ $m->Refresh();
 upgradeIntegration($m->ReadAttributeString('PersistResidentEventFusion')===$damaged,
     'second restart cannot destroy persisted bad evidence');
 $m->WriteAttributeString('PersistResidentEventFusion','{}');
+$m->ApplyChanges();
+upgradeIntegration($m->instanceStatus===102,
+    'after deliberate repair, ApplyChanges re-enters native active status');
 // After a deliberate repair of an invalid saved critical value, ordinary
 // SHADOW can bootstrap from baseline without a new user variable.
 $m->Refresh();
