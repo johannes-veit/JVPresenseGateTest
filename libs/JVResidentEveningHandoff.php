@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/JVShadowReportBudget.php';
 
 /**
  * One pasteable, human-readable evidence handoff, always regenerated from
