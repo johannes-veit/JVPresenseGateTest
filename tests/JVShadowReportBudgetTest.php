@@ -14,6 +14,8 @@ $lines=[
     '--- KAMERAS / LCN / ROUTE ---'
 ];
 for($i=0;$i<300;$i++)$lines[]='RAUMIMPULS: 18:30:00 | EG Flur | '.str_repeat('X',100);
+$lines[]='P03-UEBERGANG/24h: HOME_TO_LAGER | 20.10.2026 11:00:00 | anonym';
+$lines[]='HANDY-EVENT/24h: PHONE_GEOFENCE_OUT_OBSERVED | 20.10.2026 11:01:00';
 $lines[]='UPGRADE-SPEICHERPRUEFUNG: EXISTING_STATE_VALIDATED | keine automatische Loeschung';
 $lines[]='MEILENSTEIN QUELLENQUALIFIKATION: CORE_READ_ONLY_VALIDATED';
 $lines[]='ENDPRUEFUNG HAUS: QUIET_NO_ABSENCE_PROOF | Haus leer NICHT ZERTIFIZIERT';
@@ -31,6 +33,7 @@ budgetAssert(strlen($compressed)<=4000
     'large report respects hard limit and retains copyable start/end');
 foreach([
     '--- Johannes ---','--- Carina ---',
+    'P03-UEBERGANG/24h:', 'HANDY-EVENT/24h:',
     'UPGRADE-SPEICHERPRUEFUNG:',
     'ENDPRUEFUNG HAUS:',
     'ENDPRUEFUNG AUTO/FUSSWEG:',
