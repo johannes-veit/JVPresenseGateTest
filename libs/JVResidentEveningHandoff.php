@@ -430,11 +430,7 @@ final class JVResidentEveningHandoff
         $add('Keine weiteren Passwoerter, Roh-GPS-Daten oder Kamerakonfigurationen mitsenden.');
         $add('=== ENDE TESTBERICHT ===');
 
-        $text=implode("\n",$lines);
-        if(strlen($text)>self::MAX_TEXT_BYTES)
-            return mb_strcut($text,0,self::MAX_TEXT_BYTES-130,'UTF-8')
-                ."\n[BERICHT GEKUERZT – NUR SAFE DIAGNOSTIK]\n=== ENDE TESTBERICHT ===";
-        return $text;
+        return JVShadowReportBudget::fit($lines,self::MAX_TEXT_BYTES);
     }
 
     private static function date(mixed $at):string
