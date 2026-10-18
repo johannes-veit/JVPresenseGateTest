@@ -126,7 +126,7 @@ final class JVResidentEveningHandoff
                     'PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC',
                     'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP'
                 ];
-                foreach(array_slice($fp['eventHistory'],0,8) as $hEvent){
+                foreach(array_slice($fp['eventHistory'],0,12) as $hEvent){
                     if(!is_array($hEvent)
                         ||!in_array($hEvent['code']??null,$validTypes,true)
                         ||!is_int($hEvent['at']??null)
@@ -218,7 +218,7 @@ final class JVResidentEveningHandoff
         // departure) requires time-stamped anonymous transitions, not just
         // counts. Show at most ten VERIFIED observations, never identities.
         if($p03Verified&&is_array($p03['recentDirectionProofs']??null)){
-            foreach(array_slice($p03['recentDirectionProofs'],0,10) as $proof){
+            foreach(array_slice($p03['recentDirectionProofs'],0,15) as $proof){
                 if(!is_array($proof)
                     ||($proof['source']??null)!=='P03_TWO_MAST_VERIFIED'
                     ||!in_array($proof['direction']??null,
