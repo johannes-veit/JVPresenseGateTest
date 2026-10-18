@@ -35,6 +35,8 @@ require_once dirname(__DIR__).'/libs/JVRouteEpisodeLedger.php';
 require_once dirname(__DIR__).'/libs/JVResidentJourneyEvidence.php';
 require_once dirname(__DIR__).'/libs/JVShadowStateCheckpoint.php';
 require_once dirname(__DIR__).'/libs/JVShadowIntegrityAudit.php';
+require_once dirname(__DIR__).'/libs/JVShadowUpgradePreflight.php';
+require_once dirname(__DIR__).'/libs/JVPresenceSafetyCase.php';
 require_once dirname(__DIR__).'/libs/JVPresenceEvidenceReadiness.php';
 require_once dirname(__DIR__).'/libs/JVPresenceCommissioningGate.php';
 require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
@@ -230,6 +232,16 @@ class JVPresenceIdentityShadow extends IPSModule
      * module updates or a restart. A pre-v0.8.29 buffer is migrated only when
      * the persistent attribute has not yet been populated.
      */
+    /** No state mutation: only the fifteen known SHADOW attributes. */
+    private function auditStoredUpgradeState(): array
+    {
+        $stored=[];
+        foreach(self::STORED_STATE_NAMES as $name){
+            $stored[$name]=$this->ReadAttributeString('Persist'.$name);
+        }
+        return JVShadowUpgradePreflight::evaluate($stored,time());
+    }
+
     private function readShadowState(string $name): string
     {
         // Only the two write-optimized event ledgers use their current
@@ -1372,6 +1384,29 @@ class JVPresenceIdentityShadow extends IPSModule
             ],'SHADOW AUS – alle anderen Module unverändert');
             return;
         }
+        // Inspect durable state BEFORE any cursor, phone or route writes.
+        // Invalid critical state is preserved for review, not overwritten
+        // automatically by a seemingly clean first-run baseline.
+        $upgradePreflight=$this->auditStoredUpgradeState();
+        if(($upgradePreflight['safeToRefresh']??false)!==true){
+            $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
+            $this->setPresenceDetected(false);
+            $this->setResidentTile('<section>SHADOW: gespeicherte Beweiskette '
+                .'muss geprueft werden. Keine Fremdsteuerung.</section>');
+            $issues=$upgradePreflight['criticalIssues']??[];
+            $this->setTestReport('SHADOW UPGRADE-SCHUTZ: '
+                .implode('; ',array_slice(is_array($issues)?$issues:[],0,3))
+                .' | Persistente Beweise UNVERAENDERT. '
+                .'Kein Nachweis fuer Abwesenheit, Fahrzeug oder Alarm.');
+            $this->publish([
+                'schema'=>1,'authority'=>'SHADOW_UPGRADE_READ_ONLY_BLOCK',
+                'upgradePreflight'=>$upgradePreflight,
+                'personPresenceMayBeChanged'=>false,
+                'propertyEmptyMayBeCertified'=>false,
+                'mayArmAlarm'=>false,'warnings'=>['CRITICAL_PERSISTENCE_REVIEW']
+            ],'SHADOW Zustand pruefen – kein automatisches Ueberschreiben');
+            return;
+        }
         $warnings=[];
         $p03Raw=$this->readLocalVariable(
             $this->ReadPropertyInteger('P03InstanceID'),
@@ -1794,6 +1829,11 @@ class JVPresenceIdentityShadow extends IPSModule
             $evidenceReadiness,$boundary['report'],$extraIpcEvidence,
             $numberStat,$integrityAudit,time()
         );
+        $presenceSafetyCase=JVPresenceSafetyCase::evaluate(
+            $houseObservation,$tileWlan,$tileWork,$boundary['report'],
+            $routeEpisodes['report'],$residentJourney,$commissioningGate,
+            $integrityAudit,$upgradePreflight,time()
+        );
         $tilePrior=json_decode($this->readShadowState('TileResidentState'),true);
         $tileResident=JVResidentVisuState::evaluate(
             $tileWlan,$tileWork,$tileGeoJ,$tileGeoC,
@@ -1868,6 +1908,8 @@ class JVPresenceIdentityShadow extends IPSModule
             'presenceEvidenceReadiness'=>$evidenceReadiness,
             'shadowIntegrityAudit'=>$integrityAudit,
             'presenceCommissioningGate'=>$commissioningGate,
+            'shadowUpgradePreflight'=>$upgradePreflight,
+            'presenceSafetyCase'=>$presenceSafetyCase,
             'roomMovementPaths'=>$roomPaths,
             'workWiFi'=>$workWiFi,
             'presenceDetected'=>$presenceDetected,
@@ -1990,7 +2032,8 @@ class JVPresenceIdentityShadow extends IPSModule
             $warnings,time(),true,$departureHint,$roomPaths,$arrivalHint,
             $contactHistory['report'],$residentFusion['report'],
             $routeEpisodes['report'],$residentJourney,
-            $evidenceReadiness,$integrityAudit,$commissioningGate
+            $evidenceReadiness,$integrityAudit,$commissioningGate,
+            $upgradePreflight,$presenceSafetyCase
         ));
         $this->publish($report,$state);
         } finally {
