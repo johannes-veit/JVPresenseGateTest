@@ -194,6 +194,15 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->syncGateSubscriptions();
             $step='INITIAL_READ_ONLY_REFRESH';
             $this->Refresh();
+            // A blocked upgrade must not be advertised as an initialized
+            // GREEN/active Symcon instance. Preserve the specific already
+            // displayed report, and leave foreign modules untouched.
+            $first=json_decode((string)$this->GetValue('EvidenceJSON'),true);
+            if(is_array($first)
+                &&($first['authority']??null)==='SHADOW_UPGRADE_READ_ONLY_BLOCK'){
+                $this->SetStatus(201);
+                return;
+            }
             $step='SET_ACTIVE_STATUS';
             // Only after the successful complete bootstrap: clear a stuck
             // IS_CREATING=101 left by an earlier, incomplete initialization.
