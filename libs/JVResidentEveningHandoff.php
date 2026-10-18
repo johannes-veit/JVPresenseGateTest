@@ -19,7 +19,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[],array $commissioning=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[],array $commissioning=[],array $upgrade=[],array $safety=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -314,6 +314,29 @@ final class JVResidentEveningHandoff
                     .self::code($priority));
             }
         }
+        $upgradeOK=($upgrade['schema']??null)===1
+            &&($upgrade['authority']??null)==='READ_ONLY_SHADOW_UPGRADE_PREFLIGHT';
+        $add('UPGRADE-SPEICHERPRUEFUNG: '.self::code(
+            $upgradeOK?($upgrade['status']??'UNKNOWN'):'NICHT_VERIFIZIERT')
+            .' | vorhandene Speicher '.self::number($upgrade['existingAttributes']??null)
+            .' | P03-Warteschlange '.self::number($upgrade['fusionJournalPending']??null)
+            .' | keine automatische Loeschung');
+        if($upgradeOK &&is_array($upgrade['reviewRequired']??null)
+            &&$upgrade['reviewRequired']!==[]){
+            // Only fixed local labels, no raw JSON/phone metadata.
+            foreach(array_slice($upgrade['reviewRequired'],0,2) as $issue)
+                $add('UPGRADE PRUEFPUNKT: '.self::code($issue));
+        }
+        $safeOK=($safety['schema']??null)===1
+            &&($safety['authority']??null)==='READ_ONLY_FINAL_PRESENCE_SAFETY_CASE';
+        $add('ENDPRUEFUNG HAUS: '.self::code(
+                $safeOK?($safety['homeActivity']??'UNKNOWN'):'NICHT_VERIFIZIERT')
+            .' | aktuelle Heim-Handys '.self::number($safety['homePhoneHints']??null)
+            .' | Firma-Handys '.self::number($safety['workPhoneHints']??null)
+            .' | Haus leer NICHT ZERTIFIZIERT');
+        $add('ENDPRUEFUNG AUTO/FUSSWEG: '.self::code(
+                $safeOK?($safety['vehicle']??'UNKNOWN'):'NICHT_VERIFIZIERT')
+            .' | Fahrer, Fahrtrichtung und Person NICHT BEWIESEN');
         $raw=$timingVerified&&is_array($timing['rawStreetIVS24h']??null)
             ?$timing['rawStreetIVS24h']:[];
         $add('ROHE Strassen-IVS/24h (kein Hauswechsel!): IN '
