@@ -6,21 +6,21 @@ declare(strict_types=1);
  */
 $root=dirname(__DIR__);
 $meta=json_decode((string)file_get_contents($root.'/library.json'),true);
-if(!is_array($meta)||($meta['version']??null)!=='0.8.74'
-    ||($meta['build']??null)!==155)
+if(!is_array($meta)||($meta['version']??null)!=='0.8.75'
+    ||($meta['build']??null)!==156)
     throw new RuntimeException('WRONG_RELEASE_META');
 $handoff=(string)file_get_contents($root.'/libs/JVResidentEveningHandoff.php');
 $form=json_decode((string)file_get_contents(
     $root.'/JVPresenceIdentityShadow/form.json'),true);
 $changelog=(string)file_get_contents($root.'/CHANGELOG.md');
 $main=(string)file_get_contents($root.'/JVPresenceIdentityShadow/module.php');
-if(!str_contains($handoff,"SHADOW v0.8.74 Build 155")
-    ||!str_starts_with($changelog,"# v0.8.74 (Build 155)"))
+if(!str_contains($handoff,"SHADOW v0.8.75 Build 156")
+    ||!str_starts_with($changelog,"# v0.8.75 (Build 156)"))
     throw new RuntimeException('MISMATCHED_REPORT_OR_CHANGELOG_VERSION');
 $found=false;
 foreach(($form['elements']??[]) as $item)
     if(($item['type']??null)==='Label'
-        &&str_starts_with($item['caption']??'','SHADOW v0.8.74:'))$found=true;
+        &&str_starts_with($item['caption']??'','SHADOW v0.8.75:'))$found=true;
 if(!$found)throw new RuntimeException('STALE_USER_VISIBLE_HELP');
 foreach([
     'JVShadowStateCheckpoint',
@@ -30,6 +30,9 @@ foreach([
     'JVResidentJourneyEvidence',
     'JVPresenceEvidenceReadiness',
     'JVPresenceCommissioningGate',
+    'JVShadowUpgradePreflight',
+    'JVPresenceSafetyCase',
+    'JVShadowReportBudget',
     'JVResidentArrivalInference',
     'JVResidentDepartureInference'
 ] as $class){
@@ -102,6 +105,25 @@ if(!str_contains($routes,'ambiguousOutstanding')
     ||!str_contains($handoff,'MEHRPERSONEN-KONFLIKT: ')
     ||!str_contains($main,'JVShadowIntegrityAudit::evaluate('))
     throw new RuntimeException('MULTIPERSON_RECOVERY_OR_PERSONAL_SOURCE_GUARDS_MISSING');
+$preflight=(string)file_get_contents(
+    $root.'/libs/JVShadowUpgradePreflight.php');
+$safety=(string)file_get_contents(
+    $root.'/libs/JVPresenceSafetyCase.php');
+$budget=(string)file_get_contents(
+    $root.'/libs/JVShadowReportBudget.php');
+if(!str_contains($main,'JVShadowUpgradePreflight::evaluate(')
+    ||!str_contains($main,'JVPresenceSafetyCase::evaluate(')
+    ||!str_contains($main,"'shadowUpgradePreflight'=>$upgradePreflight")
+    ||!str_contains($main,"'presenceSafetyCase'=>$presenceSafetyCase")
+    ||!str_contains($main,'SHADOW_UPGRADE_READ_ONLY_BLOCK')
+    ||!str_contains($main,"$" . "this->SetStatus(201);")
+    ||!str_contains($handoff,'JVShadowReportBudget::fit(')
+    ||!str_contains($handoff,'ENDPRUEFUNG AUTO/FUSSWEG:')
+    ||!str_contains($handoff,'UPGRADE-SPEICHERPRUEFUNG:')
+    ||!str_contains($preflight,'BLOCKED_PRESERVE_CRITICAL_STATE')
+    ||!str_contains($safety,"'propertyEmpty'=>'UNKNOWN'")
+    ||!str_contains($budget,'ABWESENHEIT-AKTIONEN / ALARMFREIGABE:'))
+    throw new RuntimeException('UPGRADE_OR_SAFETY_CASE_NOT_FAIL_CLOSED_OR_REPORT_NOT_BOUNDED');
 $identifiers=[];
 if(preg_match_all("/RegisterVariable(?:String|Boolean|Integer|Float)\\('([^']+)'/",
     $main,$m))$identifiers=$m[1];
@@ -112,4 +134,4 @@ sort($expected);
 if($identifiers!==$expected)
     throw new RuntimeException('SYSCON_VARIABLE_BUDGET_REGRESSION: '.
         implode(',',$identifiers));
-echo "SHADOW v0.8.74 release contracts PASS (7 variables, serialized Refresh, durable events)\n";
+echo "SHADOW v0.8.75 release contracts PASS (7 variables, serialized Refresh, durable events)\n";
