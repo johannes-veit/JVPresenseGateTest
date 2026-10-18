@@ -174,6 +174,10 @@ $gateFixture=['schema'=>1,
     ]];
 $routeDemo['lastAmbiguousAt']=$now-20;
 $routeDemo['lastAmbiguityReason']='MULTIPLE_OUT_CANNOT_PAIR_UNIQUE_RETURN';
+$p03['recentDirectionProofs']=[
+    ['source'=>'P03_TWO_MAST_VERIFIED','direction'=>'HOME_TO_LAGER','at'=>$now-125],
+    ['source'=>'UNVERIFIED','direction'=>'HOME_TO_LAGER','at'=>$now-126]
+];
 $detailed=JVResidentEveningHandoff::build(
     $tile,$phoneState,$wlan,$work,$jGeo,$cGeo,$p03,$timing,
     $mast,$house,$activity,$local,$boundary,$gate,[],$now,true,
