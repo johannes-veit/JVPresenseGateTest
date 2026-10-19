@@ -1888,6 +1888,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $boundary['report']['individualsOrEntireGroupExitedCertified']=false;
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
+            'snapshotAt'=>time(),
             'personPresenceMayBeChanged'=>false,
             'propertyEmptyMayBeCertified'=>false,
             'p03'=>$p03,
