@@ -112,7 +112,12 @@ final class JVP03IncrementalTimeline
                     'HOME_TO_LAGER','LAGER_TO_HOME'
                 ],true)
                 || !is_string($event['localTime']??null)
-                || !is_string($event['route']??null))continue;
+                || !is_string($event['route']??null)
+                || ($event['source']??null)!=='P03_TWO_MAST_VERIFIED'
+                || (($event['direction']==='HOME_TO_LAGER'
+                    &&$event['route']!=='P03_2CAM_JV_THEN_WORK')
+                    ||($event['direction']==='LAGER_TO_HOME'
+                    &&$event['route']!=='P03_2CAM_WORK_THEN_JV')))continue;
             $key=$event['localTime'].'|'.$event['direction'].'|'.$event['route'];
             $entries[$key]=$event;
         }
@@ -140,6 +145,18 @@ final class JVP03IncrementalTimeline
             $warnings[]='P03_EVENT_HISTORY_LIMITED';
             $entries=array_slice($entries,0,self::MAX_EVENTS);
         }
+        // Compact, time-only view of all retained P03 proofs for an
+        // externally supplied field-observation comparison. The ordinary
+        // 15-entry display and durable cursor remain unchanged.
+        // One anonymous P03 proof NEVER counts identifiable people.
+        $comparisonTimeline=[];
+        foreach($entries as $entry){
+            $comparisonTimeline[]=[
+                'at'=>$entry['at'],
+                'direction'=>$entry['direction'],
+                'source'=>'P03_TWO_MAST_VERIFIED'
+            ];
+        }
         $out=0;$in=0;
         foreach($entries as $event) {
             if($event['direction']==='HOME_TO_LAGER')$out++;
@@ -163,6 +180,10 @@ final class JVP03IncrementalTimeline
                 'LAGER_TO_HOME'=>$in],
             'lastDirectionAt'=>($entries[0]['at']??null),
             'recentDirectionProofs'=>array_slice($entries,0,15),
+            'verifiedDirectionTimeline24h'=>$comparisonTimeline,
+            'verifiedTimeline24hCount'=>count($comparisonTimeline),
+            'verifiedTimelineTruncated'=>in_array(
+                'P03_EVENT_HISTORY_LIMITED',$warnings,true),
             'warnings'=>array_values(array_unique($warnings))
         ];
         return ['report'=>$report,'next'=>[
@@ -202,6 +223,8 @@ final class JVP03IncrementalTimeline
             'newProofBatchOverflow'=>false,
             'directionProofs24h'=>['HOME_TO_LAGER'=>0,'LAGER_TO_HOME'=>0],
             'lastDirectionAt'=>null,'recentDirectionProofs'=>[],
+            'verifiedDirectionTimeline24h'=>[],
+            'verifiedTimeline24hCount'=>0,'verifiedTimelineTruncated'=>false,
             'warnings'=>$warnings
         ];
     }
