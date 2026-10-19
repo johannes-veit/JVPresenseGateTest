@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.79 Build 160 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.80 Build 161 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -447,6 +447,51 @@ final class JVResidentEveningHandoff
                         .' | keine individuelle Route');
                 }
             }
+            $atlas=$rooms['routeAtlas']??[];
+            if(is_array($atlas)
+                &&($atlas['authority']??null)
+                    ==='ANONYMOUS_LCN_TEMPORAL_ROOM_SEQUENCE_ONLY'){
+                $add('RAUMWEGE-ATLAS: '.self::code($atlas['status']??'UNKNOWN')
+                    .' | erkannte Muster '
+                    .self::number($atlas['patternsFound']??null)
+                    .' | nur Zeitfolge, Person UNBEKANNT');
+                foreach(array_slice($atlas['latestPatterns']??[],0,3) as $pattern){
+                    if(!is_array($pattern))continue;
+                    $add('RAUMWEG-MUSTER: '.self::code($pattern['pattern']??'UNKNOWN')
+                        .' | '.self::date($pattern['startAt']??null)
+                        .' bis '.self::date($pattern['endAt']??null)
+                        .' | mehrere Personen moeglich');
+                }
+            }
+            $day=$rooms['dayDigest']??[];
+            if(is_array($day)
+                &&($day['authority']??null)
+                    ==='LCN_24H_ANONYMOUS_ACTIVITY_DIGEST_ONLY'){
+                $add('RAUMHISTORIE/24h: '.self::code($day['status']??'UNKNOWN')
+                    .' | qualifizierte Hausimpulse '
+                    .self::number($day['homeRoomEvents24h']??null)
+                    .' | verschiedene Raeume '
+                    .self::number($day['distinctRooms24h']??null)
+                    .' | KEIN Haus-leer-Beweis');
+                $add('RAUMHISTORIE/6h: '
+                    .self::number($day['motionEvents6h']??null)
+                    .' Impulse | letzte Stunde '
+                    .self::number($day['motionEvents1h']??null)
+                    .' | vollständige 24h '
+                    .self::yes(($day['complete24hCoverage']??false)===true));
+            }
+            $power=$rooms['powerContext']??[];
+            if(is_array($power)
+                &&($power['authority']??null)
+                    ==='EXISTING_WATT_SOURCE_AND_ANONYMOUS_KITCHEN_MOTION_ONLY'){
+                $add('STROM-KUECHEN-KONTEXT: '.self::code(
+                    $power['state']??'UNKNOWN')
+                    .' | aktuell '
+                    .self::number($power['watts']??null)
+                    .' W | >3000W '
+                    .self::yes(($power['highLoad3000W']??false)===true)
+                    .' | Kochen und Person UNBEWIESEN');
+            }
             $knownRooms=[
                 'EG Büro','EG Flur','EG Gäste-WC','EG Wohnen/Küche',
                 'EG Wohnen Kamin','EG Bad','EG Schlafen','OG Flur',
@@ -459,7 +504,7 @@ final class JVResidentEveningHandoff
                 $add('RAUMIMPULS: '.self::date($e['at']??null).' | '.$e['room']);
             }
         }
-        $add('Kochen: Strom >3000 W derzeit UNGEPRÜFT – keine zugeordnete Leistungsvariable.');
+        $add('Kochen: Auch Strom >3000 W und Kuechen-GUS zusammen beweisen weder Kochvorgang noch Person.');
         $add('OG-Ankleide: Bewegung ist kein Beweis für Umziehen.');
         $add('Auto/Terrasse: keine verifizierte Fahrzeug- und Terrassentür-Ereigniskette.');
         $add('Tor/Fahrzeug-Grenzsignale: '

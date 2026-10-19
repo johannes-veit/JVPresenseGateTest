@@ -6,6 +6,9 @@ require_once dirname(__DIR__).'/libs/JVLCNGUSInventory.php';
 require_once dirname(__DIR__).'/libs/JVLocalActivityLedger.php';
 require_once dirname(__DIR__).'/libs/JVResidentRoomPaths.php';
 require_once dirname(__DIR__).'/libs/JVRoomMotionInsight.php';
+require_once dirname(__DIR__).'/libs/JVAnonymousRoomRouteAtlas.php';
+require_once dirname(__DIR__).'/libs/JVRoomDayDigest.php';
+require_once dirname(__DIR__).'/libs/JVHousePowerContext.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
 require_once dirname(__DIR__).'/libs/JVHomeOccupancyEvidence.php';
 require_once dirname(__DIR__).'/libs/JVBoundaryEvidence.php';
@@ -86,6 +89,9 @@ class JVPresenceIdentityShadow extends IPSModule
         // source is available. Never request/switch camera Smart Plans.
         $this->RegisterPropertyBoolean('EnableCountTelemetryRead',false);
         $this->RegisterPropertyInteger('CountTelemetryVariableID',0);
+        // Explicit opt-in for an existing numerical W source, not a new meter.
+        $this->RegisterPropertyBoolean('EnableHousePowerRead',false);
+        $this->RegisterPropertyInteger('HousePowerVariableID',0);
         // WLAN/Smartphone is developed in a separate project. NEVER read it
         // until the user explicitly authorizes a future opt-in.
         $this->RegisterPropertyBoolean('EnablePhoneIntegration',false);
@@ -1527,11 +1533,22 @@ class JVPresenceIdentityShadow extends IPSModule
         $activity=$ledger['report'];
         // Extract recent room paths from the EXISTING verified 15-GUS
         // ledger. No person labeling, new variable or source subscriptions.
-        $roomPaths=JVResidentRoomPaths::evaluate($ledger['next'],$activity,time());
-        // Extend the already verified 15-GUS room ledger with anonymous
-        // short-window activity: no new attributes or foreign subscriptions.
+        $roomPaths=JVResidentRoomPaths::evaluate(
+            $ledger['next'],$activity,time(),true);
+        // Internal full 90-minute history is NEVER serialized to EvidenceJSON.
+        $fullRooms=$roomPaths['internalFullRoomEdges90m']??[];
+        unset($roomPaths['internalFullRoomEdges90m']);
         $roomPaths['activityInsight']=JVRoomMotionInsight::evaluate(
-            $roomPaths,time());
+            $roomPaths,time(),$fullRooms);
+        $roomPaths['routeAtlas']=JVAnonymousRoomRouteAtlas::evaluate(
+            $roomPaths,$fullRooms,time());
+        $roomPaths['dayDigest']=JVRoomDayDigest::evaluate(
+            $ledger['next'],$activity,time());
+        $powerEnabled=$this->ReadPropertyBoolean('EnableHousePowerRead');
+        $roomPaths['powerContext']=JVHousePowerContext::evaluate(
+            $powerEnabled?$this->readExistingWattPower():[],
+            $roomPaths,time(),$powerEnabled);
+        unset($fullRooms);
         $wlanMotionHint=is_int($activity['lastMotionAt']??null)
             &&$activity['lastMotionAt']<=time()
             &&$activity['lastMotionAt']>=time()-600;
@@ -2351,6 +2368,37 @@ class JVPresenceIdentityShadow extends IPSModule
             }catch(Throwable $ignored){}
         }
         return JVIndoorAutoReadHints::evaluate($selected,$snapshots,time());
+    }
+
+    /** Read an EXISTING numeric W source only after explicit manual opt-in.
+     * An absent watt profile is a source defect, never a reason to guess units.
+     */
+    private function readExistingWattPower():array
+    {
+        $id=$this->ReadPropertyInteger('HousePowerVariableID');
+        if($id<=0)return ['validatedWattMetadata'=>false];
+        try {
+            if(!IPS_VariableExists($id))return ['validatedWattMetadata'=>false];
+            $meta=IPS_GetVariable($id);
+            if(!in_array($meta['VariableType']??null,[1,2],true))
+                return ['validatedWattMetadata'=>false];
+            $profile=(string)($meta['VariableCustomProfile']??'');
+            if($profile==='')$profile=(string)($meta['VariableProfile']??'');
+            if($profile===''||!function_exists('IPS_GetVariableProfile'))
+                return ['validatedWattMetadata'=>false];
+            $units=IPS_GetVariableProfile($profile);
+            if(!is_array($units)||trim((string)($units['Suffix']??''))!=='W')
+                return ['validatedWattMetadata'=>false];
+            $updated=$meta['VariableUpdated']??null;
+            if(!is_int($updated))return ['validatedWattMetadata'=>false];
+            $val=GetValue($id);
+            if(!(is_int($val)||is_float($val)))
+                return ['validatedWattMetadata'=>false];
+            return ['validatedWattMetadata'=>true,'value'=>$val,
+                'updatedAt'=>$updated];
+        }catch(Throwable $ignored){
+            return ['validatedWattMetadata'=>false];
+        }
     }
 
     private function readSensorSnapshot(int $id,bool $indoorHint=false): ?array

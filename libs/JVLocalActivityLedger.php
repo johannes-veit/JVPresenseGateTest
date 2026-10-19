@@ -39,11 +39,23 @@ final class JVLocalActivityLedger
         $startedAt=$previous['startedAt']??$now;
         if (!is_int($startedAt) || $startedAt<=0 || $startedAt>$now+5)
             $startedAt=$now;
+        // Overflow invalidates claims of continuous 24h coverage until
+        // the full affected window has elapsed (also after module restart).
+        $capacityTruncatedAt=$previous['capacityTruncatedAt']??null;
+        if(!is_int($capacityTruncatedAt)||$capacityTruncatedAt<=0
+            ||$capacityTruncatedAt>$now+5
+            ||$capacityTruncatedAt<=$now-self::WINDOW)
+            $capacityTruncatedAt=null;
         $old=$previous['entries']??[];
         if (($previous['schema']??self::SCHEMA)!==self::SCHEMA
             || !is_array($old) || !array_is_list($old)
             || count($old)>self::MAX_ENTRIES) {
             $warnings[]='CORRUPT_LEDGER_BUFFER';
+            // No intact continuous observation can be asserted after
+            // corrupt local history. Restart only this anonymous baseline,
+            // never erase other resident/P03 state or take external actions.
+            $startedAt=$now;
+            $capacityTruncatedAt=$now;
             $old=[];
         }
         $registered=[];
@@ -96,6 +108,7 @@ final class JVLocalActivityLedger
         }
         if(count($entries)>self::MAX_ENTRIES) {
             $warnings[]='LEDGER_CAPACITY_REACHED';
+            $capacityTruncatedAt=$now;
             // Keep newest with truthful bounded-window label rather than
             // claiming an exact 24-hour count.
             uasort($entries,static fn($a,$b)=>$b['at']<=>$a['at']);
@@ -143,7 +156,9 @@ final class JVLocalActivityLedger
             'startedAt'=>$startedAt,
             'windowSeconds'=>self::WINDOW,
             'full24hWindowObserved'=>$now-$startedAt>=self::WINDOW
+                &&$capacityTruncatedAt===null
                 && !in_array('LEDGER_CAPACITY_REACHED',$warnings,true),
+            'capacityTruncatedAt'=>$capacityTruncatedAt,
             'lastMotionAt'=>$last,
             'totalMotionEdges24h'=>array_sum($totals),
             'perZoneMotionEdges24h'=>$totals,
@@ -156,6 +171,7 @@ final class JVLocalActivityLedger
             'report'=>$out,
             'next'=>[
                 'schema'=>self::SCHEMA,'startedAt'=>$startedAt,
+                'capacityTruncatedAt'=>$capacityTruncatedAt,
                 'entries'=>array_values($entries)
             ]
         ];
