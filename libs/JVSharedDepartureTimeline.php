@@ -1,9 +1,12 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/JVPhoneAreaCycleMatcher.php';
 
 /**
- * Bounded, stateless 24h review of TWO separately observed PHONE geofence
- * OUT events and independent ANONYMOUS verified P03 transfer timestamps.
+ * Bounded, stateless 24h review of two independent PHONE geofence
+ * OUT/IN cycles and separate ANONYMOUS verified P03 timestamps.
+ * Every phone cycle is paired at most once; repeated OUT without IN is
+ * never a new exit. No human/house ownership or travel claims.
  *
  * An app geofence includes both HOME and WORK in this installation; leaving
  * that shared area is NOT necessarily leaving the house. A phone can remain
@@ -35,6 +38,13 @@ final class JVSharedDepartureTimeline
             'pairedOutStartAt'=>null,'pairedOutEndAt'=>null,
             'pairedPhoneGapSeconds'=>null,
             'pairedEventsWithin24h'=>0,
+            'oneToOneCycleMatching'=>true,
+            'phoneAreaCycles24h'=>['johannes'=>0,'carina'=>0],
+            'repeatedPhoneOutIgnored'=>['johannes'=>0,'carina'=>0],
+            'orphanPhoneInIgnored'=>['johannes'=>0,'carina'=>0],
+            'competingPossiblePairings'=>false,
+            'sameSecondPhoneStateConflict'=>false,
+            'unmatchedPhoneCycles'=>['johannes'=>0,'carina'=>0],
             'verifiedP03NearPair'=>false,
             'verifiedP03NearPairAt'=>null,
             'p03ProofGapSeconds'=>null,
@@ -64,103 +74,45 @@ final class JVSharedDepartureTimeline
                 !=='READ_ONLY_TIME_ALIGNMENT_DIAGNOSTIC_NOT_IDENTITY')
             return $out;
 
-        $out['status']='NO_TWO_QUALIFIED_PHONE_AREA_EXITS_24H';
-        $outs=[];$ins=[];$sources=[];
-        foreach(['johannes','carina'] as $person){
-            $p=$fusion['people'][$person]??null;
-            if(!is_array($p)){
-                $out['sourceGaps'][]=strtoupper($person).'_PHONE_LEDGER_MISSING';
-                continue;
-            }
-            $continuous=($p['geoSourceContinuous']??false)===true
-                &&($p['macSourceContinuous']??false)===true
-                &&($p['sourceRebaselineRequired']??true)===false;
-            if(!$continuous){
-                $out['sourceGaps'][]=strtoupper($person).'_PHONE_SOURCE_NOT_CONTINUOUS';
-                continue;
-            }
-            $history=$p['eventHistory']??null;
-            if(!is_array($history)||!array_is_list($history)
-                ||count($history)>self::MAX_HISTORY){
-                $out['sourceGaps'][]=strtoupper($person).'_PHONE_EVENT_HISTORY_INVALID';
-                continue;
-            }
-            $rebind=$p['lastSourceRebindAt']??null;
-            if($rebind!==null&&(!is_int($rebind)||$rebind<=0
-                ||$rebind>$now+5)){
-                $out['sourceGaps'][]=strtoupper($person).'_SOURCE_REBIND_INVALID';
-                continue;
-            }
-            $seen=[];$seenIn=[];
-            foreach($history as $event){
-                if(!is_array($event)
-                    ||!is_int($event['at']??null))continue;
-                $code=$event['code']??null;
-                if(!in_array($code,[
-                    'PHONE_GEOFENCE_OUT_OBSERVED',
-                    'PHONE_GEOFENCE_IN_OBSERVED'
-                ],true))continue;
-                $at=$event['at'];
-                if($at<$now-self::WINDOW||$at>$now+5
-                    ||($rebind!==null&&$at<=$rebind))continue;
-                if($code==='PHONE_GEOFENCE_OUT_OBSERVED')
-                    $seen[$at]=$at;
-                else $seenIn[$at]=$at;
-            }
-            rsort($seen,SORT_NUMERIC);
-            rsort($seenIn,SORT_NUMERIC);
-            $outs[$person]=array_values($seen);
-            $ins[$person]=array_values($seenIn);
-            $out['latestPhoneAreaIn'][$person]=$ins[$person][0]??null;
-            $sources[$person]=true;
-            $out['latestPhoneOut'][$person]=$outs[$person][0]??null;
-        }
-        $out['phoneOutSourceCount']=count($sources);
-        if(count($sources)!==2){
+        // OUT events are reconstructed as individual phone-area cycles.
+        // Without a matching intervening IN, repeated OUT records from
+        // the same smartphone are NOT separate events or extra residents.
+        $cycles=JVPhoneAreaCycleMatcher::evaluate($fusion,$now);
+        $out['phoneOutSourceCount']=$cycles['qualifiedSources'];
+        $out['latestPhoneOut']=$cycles['latestOut'];
+        $out['latestPhoneAreaIn']=$cycles['latestIn'];
+        $out['phoneAreaCycles24h']=$cycles['cycles'];
+        $out['repeatedPhoneOutIgnored']=$cycles['repeatedOutIgnored'];
+        $out['orphanPhoneInIgnored']=$cycles['orphanInIgnored'];
+        $out['competingPossiblePairings']=$cycles['multiplePairingsPossible'];
+        $out['sameSecondPhoneStateConflict']=$cycles['sameSecondConflicts'];
+        $out['unmatchedPhoneCycles']=$cycles['unmatchedCycles'];
+        $out['pairedEventsWithin24h']=$cycles['pairedCycleCount'];
+        $out['sourceGaps']=array_merge(
+            $out['sourceGaps'],$cycles['sourceGaps']);
+        if($cycles['qualifiedSources']!==2){
             $out['status']='ONE_OR_BOTH_PHONE_SOURCES_UNVERIFIED';
             return $out;
         }
-        if($outs['johannes']===[]||$outs['carina']===[]){
-            $out['sourceGaps'][]='NO_INDEPENDENT_GEOFENCE_OUT_FOR_BOTH_PHONES';
+        $latest=$cycles['latestPair'];
+        if(is_array($latest)){
+            $out['pairedPhoneAreaOutObserved']=true;
+            $out['pairedOutStartAt']=$latest['start'];
+            $out['pairedOutEndAt']=$latest['end'];
+            $out['pairedPhoneGapSeconds']=$latest['gap'];
+            $out['pairedPhoneOutAt']=[
+                'johannes'=>$latest['johannesAt'],
+                'carina'=>$latest['carinaAt']
+            ];
+            $out['returnedAfterPairedOut']=$latest['returnedAfterOut'];
+            $out['pairedOutSupersededByAreaIn']=
+                $latest['returnedAfterOut']['johannes']
+                ||$latest['returnedAfterOut']['carina'];
+            $out['status']=$out['pairedOutSupersededByAreaIn']
+                ?'HISTORIC_PHONE_AREA_OUT_PAIR_FOLLOWED_BY_IN'
+                :'TWO_PHONE_AREA_OUT_EVENTS_NOT_RESIDENT_DEPARTURE';
         }else{
-            // Compare every independently observed pair; never count a
-            // recurring event by MAC reacquisition or by duplicate records.
-            $pairs=[];
-            foreach($outs['johannes'] as $j){
-                foreach($outs['carina'] as $c){
-                    $gap=abs($j-$c);
-                    if($gap>self::PAIR_SECONDS)continue;
-                    $pairs[$j.'|'.$c]=[
-                        'start'=>min($j,$c),'end'=>max($j,$c),'gap'=>$gap,
-                        'johannesAt'=>$j,'carinaAt'=>$c];
-                }
-            }
-            $out['pairedEventsWithin24h']=count($pairs);
-            if($pairs!==[]){
-                $latest=null;
-                foreach($pairs as $p){
-                    if($latest===null||$p['end']>$latest['end']
-                        ||($p['end']===$latest['end']&&$p['gap']<$latest['gap']))
-                        $latest=$p;
-                }
-                $out['pairedPhoneAreaOutObserved']=true;
-                $out['pairedOutStartAt']=$latest['start'];
-                $out['pairedOutEndAt']=$latest['end'];
-                $out['pairedPhoneGapSeconds']=$latest['gap'];
-                $out['pairedPhoneOutAt']=[
-                    'johannes'=>$latest['johannesAt'],
-                    'carina'=>$latest['carinaAt']];
-                foreach(['johannes','carina'] as $person){
-                    $lastIn=$ins[$person][0]??null;
-                    $followed=is_int($lastIn)
-                        &&$lastIn>$latest[$person.'At'];
-                    $out['returnedAfterPairedOut'][$person]=$followed;
-                    if($followed)$out['pairedOutSupersededByAreaIn']=true;
-                }
-                $out['status']=$out['pairedOutSupersededByAreaIn']
-                    ?'HISTORIC_PHONE_AREA_OUT_PAIR_FOLLOWED_BY_IN'
-                    :'TWO_PHONE_AREA_OUT_EVENTS_NOT_RESIDENT_DEPARTURE';
-            }
+            $out['status']='NO_TWO_QUALIFIED_PHONE_AREA_EXITS_24H';
         }
         $fresh=($timing['p03ModeTrustedFromFreshDiagnosis']??false)===true;
         $mode=$fresh?($timing['p03OperatingMode']??null):null;
