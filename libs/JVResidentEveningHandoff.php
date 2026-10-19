@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.82 Build 163 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.83 Build 164 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -455,6 +455,8 @@ final class JVResidentEveningHandoff
                     .self::yes(($atlas['sourceIntegrityTailValidated']??false)===true)
                     .' | Muster-Vorlagen '
                     .self::number($atlas['patternTemplates']??null)
+                    .' | Gleichzeitige Sekunden getrennt '
+                    .self::yes(($atlas['sameSecondStagesIsolated']??false)===true)
                     .' | Personen-Identitaet UNBEKANNT');
                 $add('RAUMWEGE-ATLAS: '.self::code($atlas['status']??'UNKNOWN')
                     .' | erkannte Muster '
@@ -496,6 +498,13 @@ final class JVResidentEveningHandoff
                     .' | getrennte Geofence-OUT: '
                     .self::yes(($pair['pairedPhoneAreaOutObserved']??false)===true)
                     .' | Person und Haus-Ausgang: NICHT BEWIESEN');
+                $add('HANDY-DOPPELABREISE-KONTEXT: Rueckkehr-IN nach OUT '
+                    .self::yes(($pair['pairedOutSupersededByAreaIn']??false)===true)
+                    .' | Johannes-IN '
+                    .self::yes(($pair['returnedAfterPairedOut']['johannes']??false)===true)
+                    .' / Carina-IN '
+                    .self::yes(($pair['returnedAfterPairedOut']['carina']??false)===true)
+                    .' | Kein Mensch identifiziert');
                 if(($pair['pairedPhoneAreaOutObserved']??false)===true){
                     $add('HANDY-GEMEINSAMES-OUT: '
                         .self::date($pair['pairedOutStartAt']??null)
