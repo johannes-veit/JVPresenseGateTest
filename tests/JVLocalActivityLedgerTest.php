@@ -67,8 +67,11 @@ eqActivity($c['report']['personPresenceMayBeChanged'],false,
 
 $expired=JVLocalActivityLedger::evaluate([],$readings,$c['next'],$now+86409);
 eqActivity($expired['report']['totalMotionEdges24h'],0,'older-than-24h edges expire');
-eqActivity($expired['report']['full24hWindowObserved'],true,
- 'continuous 24h window reaches full historic duration');
+eqActivity($expired['report']['full24hWindowObserved'],false,
+ 'a single poll after a 24h runtime interruption is not continuous observation');
+eqActivity(in_array('LEDGER_OBSERVATION_GAP_REBASELINED',
+ $expired['report']['warnings'],true),true,
+ 'long monitoring gap is explicitly diagnosed rather than silently accepted');
 eqActivity($expired['report']['propertyEmptyMayBeCertified'],false,
  'one day silence does not prove empty');
 eqActivity($expired['report']['lastMotionAt'],null,
