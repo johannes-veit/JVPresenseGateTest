@@ -70,7 +70,7 @@ $ids=array_keys($rooms);
 for($round=0;$round<48;$round++){
     $events=[];$time=$now-5000;
     for($i=0;$i<150;$i++){
-        $time+=mt_rand(0,85); // deliberate same-second duplicates
+        $time+=mt_rand(0,40); // deliberate same-second duplicates
         $id=$ids[mt_rand(0,count($ids)-1)];
         $events[]=$at($id,$time);
     }
@@ -82,26 +82,29 @@ for($round=0;$round<48;$round++){
     $expected=0;
     foreach($templates as $pattern=>$required){
         $stageCount=count($required);
-        $paths=[];
-        for($stage=0;$stage<$stageCount;$stage++)
-            $paths[$stage]=[];
-        for($i=0;$i<count($events);$i++){
-            $event=$events[$i];
-            for($stage=$stageCount-1;$stage>=0;$stage--){
-                if($event['id']!==$required[$stage])continue;
-                if($stage===0){
-                    $paths[0][]=[$event['at'],$event['at']];
-                    continue;
-                }
-                foreach($paths[$stage-1] as [$first,$last]){
-                    $gap=$event['at']-$last;
-                    if($gap<1||$gap>180||$event['at']-$first>600)
+        $n=count($events);
+        $reachable=array_fill(0,$stageCount,array_fill(0,$n,null));
+        for($i=0;$i<$n;$i++){
+            if($events[$i]['id']===$required[0])
+                $reachable[0][$i]=$events[$i]['at'];
+        }
+        for($stage=1;$stage<$stageCount;$stage++){
+            for($i=0;$i<$n;$i++){
+                if($events[$i]['id']!==$required[$stage])continue;
+                for($j=0;$j<$i;$j++){
+                    $start=$reachable[$stage-1][$j];
+                    if(!is_int($start))continue;
+                    $gap=$events[$i]['at']-$events[$j]['at'];
+                    if($gap<1||$gap>180||$events[$i]['at']-$start>600)
                         continue;
-                    $paths[$stage][]=[$first,$event['at']];
+                    if($reachable[$stage][$i]===null
+                        ||$start>$reachable[$stage][$i])
+                        $reachable[$stage][$i]=$start;
                 }
             }
         }
-        if($paths[$stageCount-1]!==[])$expected++;
+        if(count(array_filter($reachable[$stageCount-1],
+            static fn($v)=>$v!==null))>0)$expected++;
     }
     temporal83($fast['patternsFound']===$expected,
         'monotonic frontier disagrees with full DP in random replay '.$round
