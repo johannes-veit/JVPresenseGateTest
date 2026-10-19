@@ -58,6 +58,16 @@ historicalFieldCheck($full['status']==='COMPARED_AS_ANONYMOUS_HINTS_ONLY'
     &&!$full['houseExitVerifiedBySensors']
     &&!$full['alarmMayBeArmed'],
     'early anonymous OUT can be found in persisted 25 without identifying two humans');
+$gap=$evidence;
+$gap['p03LiveTimeline']['logContinuity']='LOG_GAP_OR_RESET';
+$gapResult=JVFieldObservationComparator::compare($field,$gap,$end+60);
+historicalFieldCheck(
+    $gapResult['p03HistoryCoverage']
+        ==='PERSISTED_HISTORY_LOG_CONTINUITY_UNCERTAIN'
+    &&in_array('P03_PROOF_LOG_CONTINUITY_NOT_CERTIFIED',
+        $gapResult['notes'],true)
+    &&!$gapResult['peopleIdentifiedBySensors'],
+    'P03 historical events alongside a log gap are hints, not complete corridor proof');
 $old=$evidence;
 unset($old['p03LiveTimeline']['verifiedDirectionTimeline24h'],
     $old['p03LiveTimeline']['verifiedTimeline24hCount'],
