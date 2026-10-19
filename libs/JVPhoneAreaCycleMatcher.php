@@ -92,14 +92,20 @@ final class JVPhoneAreaCycleMatcher
             }
             // Same source cannot assert OUT and IN in the same second
             // with a defensible ordering. Refuse the whole phone history.
+            $personalConflict=false;
             foreach($byTime as $types){
                 if(count($types)<=1)continue;
+                $personalConflict=true;
                 $out['sameSecondConflicts']=true;
                 $out['sourceGaps'][]=strtoupper($person)
                     .'_GEOFENCE_OUT_IN_SAME_SECOND_AMBIGUOUS';
                 break;
             }
-            if($out['sameSecondConflicts'])continue;
+            if($personalConflict){
+                $out['latestOut'][$person]=null;
+                $out['latestIn'][$person]=null;
+                continue;
+            }
             ksort($byTime,SORT_NUMERIC);
             $finished=[];$open=null;
             foreach($byTime as $at=>$types){
