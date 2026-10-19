@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.84 Build 165 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.85 Build 166 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -506,7 +506,19 @@ final class JVResidentEveningHandoff
                     .self::number($pair['pairedEventsWithin24h']??null)
                     .' | Mehrfach-Zuordnung moeglich '
                     .self::yes(($pair['competingPossiblePairings']??false)===true));
-                $add('HANDY-OUT-DOPPELMELDUNGEN VERWORFEN: Johannes '
+                $add('HANDY-ZONENUEBERSCHNEIDUNG: nahe aber zeitlich getrennte OUT-Zyklen '
+                    .self::number($pair['nearButDisjointPhonePeriods']??null)
+                    .' | neuestes gemeinsames Handy-Zonenintervall '
+                    .self::age($pair['latestPhoneAreaOverlapSeconds']??null)
+                    .' | KEINE menschliche Anwesenheit abgeleitet');
+                $add('P03-EINMALBELEGUNG: letzte '
+                    .self::number($pair['p03RecentPhonePairsChecked']??null)
+                    .' Handy-Paare | verschiedene Kamera-Beweise '
+                    .self::number($pair['p03UniquePairMatchesRecent']??null)
+                    .' | nur frueheres Paar passend '
+                    .self::yes(($pair['p03MatchPreviousNotLatest']??false)===true)
+                    .' | Kameraperson UNBEKANNT');
+                $add('HANDY-OUT-DOPPELMELDUNGEN VERWORFEN: Johannes 
                     .self::number($pair['repeatedPhoneOutIgnored']['johannes']??null)
                     .' / Carina '
                     .self::number($pair['repeatedPhoneOutIgnored']['carina']??null)
@@ -536,6 +548,24 @@ final class JVResidentEveningHandoff
                             $add('HANDY-GEMEINSAMES-OUT-QUELLENLUECKE: '
                                 .self::code($gap));
                     }
+            }
+            $overlap=$rooms['phoneRoomOverlapAudit']??[];
+            if(is_array($overlap)
+                &&($overlap['authority']??null)
+                    ==='READ_ONLY_PHONE_AREA_VS_ANONYMOUS_GUS_ACTIVITY'){
+                $add('HANDY-RAUM-GEGENCHECK: '
+                    .self::code($overlap['status']??'SOURCES_UNVERIFIED')
+                    .' | GUS-Impulse waehrend letztem doppelten Handy-OUT '
+                    .self::number($overlap['latestPairHomeMotionCount']??null)
+                    .' | unterschiedliche Hausmelder '
+                    .self::number($overlap['latestPairHomeMotionRooms']??null)
+                    .' | Person UNBEKANNT, ohne Impuls HAUS NICHT LEER BEWIESEN');
+                $add('HANDY-RAUM-24h: Paare mit anonymer Hausbewegung '
+                    .self::number($overlap['pairsWithAnonymousHomeMotion']??null)
+                    .' / gepruefte Handy-Paare '
+                    .self::number($overlap['scopedPhoneAreaPairs']??null)
+                    .' | GUS-Beobachtung 24h lueckenlos '
+                    .self::yes(($overlap['continuous24hGusMonitoring']??false)===true));
             }
             $day=$rooms['dayDigest']??[];
             if(is_array($day)
