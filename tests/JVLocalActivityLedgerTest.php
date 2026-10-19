@@ -120,8 +120,9 @@ eqActivity($missing['report']['personCountCertified'],false,
 $corrupt=JVLocalActivityLedger::evaluate([],$readings,[
  'schema'=>999,'entries'=>[['garbage'=>1]],'startedAt'=>$now
 ],$now+5);
-eqActivity($corrupt['report']['warnings'],['CORRUPT_LEDGER_BUFFER'],
- 'corrupt state is explicitly marked');
+eqActivity($corrupt['report']['warnings'],[
+    'LEDGER_OBSERVATION_GAP_REBASELINED','CORRUPT_LEDGER_BUFFER'],
+ 'corrupt legacy state records both observation gap and corrupt buffer');
 eqActivity($corrupt['report']['totalMotionEdges24h'],0,
  'corrupt buffer never fabricates retained events');
 $replay=JVLocalActivityLedger::evaluate($first,$readings,$corrupt['next'],$now+6);
