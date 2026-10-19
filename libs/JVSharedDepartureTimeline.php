@@ -26,6 +26,11 @@ final class JVSharedDepartureTimeline
             'status'=>'SOURCES_UNVERIFIED',
             'phoneOutSourceCount'=>0,
             'latestPhoneOut'=>['johannes'=>null,'carina'=>null],
+            'latestPhoneAreaIn'=>['johannes'=>null,'carina'=>null],
+            'pairedPhoneOutAt'=>['johannes'=>null,'carina'=>null],
+            'returnedAfterPairedOut'=>['johannes'=>false,'carina'=>false],
+            'pairedOutSupersededByAreaIn'=>false,
+            'historicPairIsNotCurrentPhoneState'=>true,
             'pairedPhoneAreaOutObserved'=>false,
             'pairedOutStartAt'=>null,'pairedOutEndAt'=>null,
             'pairedPhoneGapSeconds'=>null,
@@ -60,7 +65,7 @@ final class JVSharedDepartureTimeline
             return $out;
 
         $out['status']='NO_TWO_QUALIFIED_PHONE_AREA_EXITS_24H';
-        $outs=[];$sources=[];
+        $outs=[];$ins=[];$sources=[];
         foreach(['johannes','carina'] as $person){
             $p=$fusion['people'][$person]??null;
             if(!is_array($p)){
@@ -86,18 +91,27 @@ final class JVSharedDepartureTimeline
                 $out['sourceGaps'][]=strtoupper($person).'_SOURCE_REBIND_INVALID';
                 continue;
             }
-            $seen=[];
+            $seen=[];$seenIn=[];
             foreach($history as $event){
                 if(!is_array($event)
-                    ||($event['code']??null)!=='PHONE_GEOFENCE_OUT_OBSERVED'
                     ||!is_int($event['at']??null))continue;
+                $code=$event['code']??null;
+                if(!in_array($code,[
+                    'PHONE_GEOFENCE_OUT_OBSERVED',
+                    'PHONE_GEOFENCE_IN_OBSERVED'
+                ],true))continue;
                 $at=$event['at'];
                 if($at<$now-self::WINDOW||$at>$now+5
                     ||($rebind!==null&&$at<=$rebind))continue;
-                $seen[$at]=$at;
+                if($code==='PHONE_GEOFENCE_OUT_OBSERVED')
+                    $seen[$at]=$at;
+                else $seenIn[$at]=$at;
             }
             rsort($seen,SORT_NUMERIC);
+            rsort($seenIn,SORT_NUMERIC);
             $outs[$person]=array_values($seen);
+            $ins[$person]=array_values($seenIn);
+            $out['latestPhoneAreaIn'][$person]=$ins[$person][0]??null;
             $sources[$person]=true;
             $out['latestPhoneOut'][$person]=$outs[$person][0]??null;
         }
@@ -116,8 +130,9 @@ final class JVSharedDepartureTimeline
                 foreach($outs['carina'] as $c){
                     $gap=abs($j-$c);
                     if($gap>self::PAIR_SECONDS)continue;
-                    $pairs[min($j,$c).'|'.max($j,$c)]=[
-                        'start'=>min($j,$c),'end'=>max($j,$c),'gap'=>$gap];
+                    $pairs[$j.'|'.$c]=[
+                        'start'=>min($j,$c),'end'=>max($j,$c),'gap'=>$gap,
+                        'johannesAt'=>$j,'carinaAt'=>$c];
                 }
             }
             $out['pairedEventsWithin24h']=count($pairs);
@@ -132,7 +147,19 @@ final class JVSharedDepartureTimeline
                 $out['pairedOutStartAt']=$latest['start'];
                 $out['pairedOutEndAt']=$latest['end'];
                 $out['pairedPhoneGapSeconds']=$latest['gap'];
-                $out['status']='TWO_PHONE_AREA_OUT_EVENTS_NOT_RESIDENT_DEPARTURE';
+                $out['pairedPhoneOutAt']=[
+                    'johannes'=>$latest['johannesAt'],
+                    'carina'=>$latest['carinaAt']];
+                foreach(['johannes','carina'] as $person){
+                    $lastIn=$ins[$person][0]??null;
+                    $followed=is_int($lastIn)
+                        &&$lastIn>$latest[$person.'At'];
+                    $out['returnedAfterPairedOut'][$person]=$followed;
+                    if($followed)$out['pairedOutSupersededByAreaIn']=true;
+                }
+                $out['status']=$out['pairedOutSupersededByAreaIn']
+                    ?'HISTORIC_PHONE_AREA_OUT_PAIR_FOLLOWED_BY_IN'
+                    :'TWO_PHONE_AREA_OUT_EVENTS_NOT_RESIDENT_DEPARTURE';
             }
         }
         $fresh=($timing['p03ModeTrustedFromFreshDiagnosis']??false)===true;
@@ -145,7 +172,9 @@ final class JVSharedDepartureTimeline
         if(!$out['pairedPhoneAreaOutObserved'])return $out;
         if($out['p03Mode']==='TEST_AND_PRODUCTION_OFF'){
             $out['sourceGaps'][]='P03_INTENTIONALLY_OFF_NO_CURRENT_PROOF';
-            $out['status']='TWO_PHONE_AREA_OUT_EVENTS_P03_OFF';
+            $out['status']=$out['pairedOutSupersededByAreaIn']
+                ?'HISTORIC_PHONE_AREA_OUT_PAIR_P03_OFF'
+                :'TWO_PHONE_AREA_OUT_EVENTS_P03_OFF';
             return $out;
         }
         if($out['p03Mode']==='UNKNOWN_NOT_VERIFIED'){
@@ -189,7 +218,9 @@ final class JVSharedDepartureTimeline
         $out['verifiedP03NearPair']=true;
         $out['verifiedP03NearPairAt']=$nearestAt;
         $out['p03ProofGapSeconds']=$nearest;
-        $out['status']='TWO_PHONE_AREA_EXITS_AND_ANONYMOUS_P03_NEARBY';
+        $out['status']=$out['pairedOutSupersededByAreaIn']
+            ?'HISTORIC_PHONE_AREA_OUT_AND_ANONYMOUS_P03_NEARBY'
+            :'TWO_PHONE_AREA_EXITS_AND_ANONYMOUS_P03_NEARBY';
         return $out;
     }
 }
