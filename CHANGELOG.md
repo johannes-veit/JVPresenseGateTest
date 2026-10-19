@@ -1,3 +1,24 @@
+# v0.8.85 (Build 166) – drei gekoppelte SHADOW-Meilensteine: wirkliche OUT-Zeitueberdeckung, eindeutige P03-Korridorbeweise und anonyme Hausbewegung
+
+## A. Geofence-OUT-Zyklen nur bei zeitlicher Ueberdeckung
+- Die v0.8.84-Zuordnung konnte zeitlich nahe Ausgaenge zweier Telefone als Paar betrachten, selbst wenn das eine Smartphone vor dem OUT des anderen bereits wieder IN meldete. Das fuehrte zu falscher Gleichzeitigkeit. `JVPhoneAreaCycleMatcher` erfordert jetzt fuer JEDE Paarung eine positive Schnittmenge beider echten `OUT->IN`-Zeitintervalle. Zwei OUTs innerhalb 180 Sekunden reichen nicht, wenn der fruehere Zyklus schon abgeschlossen ist. Grenzfall IN und anderes OUT in derselben Sekunde gilt ebenfalls nicht als Ueberdeckung. Die weiterhin eins-zu-eins arbeitende, beschraenkte DP beruecksichtigt diese Regel bei der optimalen Paarung. Positive Zeitueberdeckung beschreibt nur App-Zonenstatus, niemals menschliche Ko-Praesenz oder Hausleerstand.
+- Neue maschinenlesbare Diagnosen: `nearButNonOverlappingCandidates`, `phoneAreaOverlapStartAt`, `phoneAreaOverlapEndAt`, `phoneAreaOverlapSeconds`, sowie die kohaerente Auswertung in `sharedDepartureTimeline`.
+
+## B. P03-Beweise koennen nicht mehr doppelt zugeordnet werden
+- `JVP03PhonePairMatrix` arbeitet mit bis zu acht letzten echten Smartphone-Paaren und maximal 256 bereits verifizierten P03-Durchgaengen. Die beschraenkte optimale one-to-one DP ordnet jeden P03-Zeitslot maximal einem Telefon-Paar zu, waehrend gleicher P03-Zeitstempel dedupliziert wird. Der aktuell neueste Telefon-Paarstatus darf niemals einen Beweis eines *aelteren* Paares erben. Historische P03-Nachweise nach erfasster Handy-IN-Rueckkehr werden nicht fuer den davor beendeten gemeinsamen Handy-Zeitraum verwendet. P03 ist weiter nur ein anonymer HOME->LAGER-Treppendurchgang, kein menschlicher Grundstuecksausgang.
+- Die bereits bestehende P03-Modus- und Protokollkontinuitaetspruefung ist um bekannte Parser-/Leseluecken ergaenzt. OFF, Baseline, Protokollreset, Batch-Overflow, gekuerzte Historie und widerspruechliche Daten schalten jede neue Zeitbeleg-Zuordnung auf unverifiziert, ohne andere Geraete anzusteuern.
+- Neue Berichtsfelder: `p03UniquePairMatchesRecent`, `p03RecentPhonePairsChecked`, `p03MatchPreviousNotLatest`, `p03ProofGapSeconds`. Alle 24h-Behauptungen bleiben auf tatsaechlich erfasste und begrenzte Historie beschraenkt.
+
+## C. Wirkliche GUS-Impulse als Gegencheck zum Telefonstatus
+- `JVPhoneRoomOverlapAudit` vergleicht bis zu 2048 bereits vorhandene, validierte LCN-Einzelimpulse in maximal 24 Stunden mit den bis zu acht qualifizierten Zweihandy-OUT-Zeitschnitten. Positiv festgestellte GUS-Impulse werden als anonyme Hausaktivitaet gemeldet, NICHT als Beweis, dass eines der beiden Telefone getragen oder ein bestimmter Bewohner zuhause war. Unbestaetigte Kamin-Impulse und anhand der bekannten Sensorraumbezeichnung verwechselte GUS-Quellen zaehlen nicht.
+- Vollstaendige Abtastzeit wird getrennt berichtet; null Bewegungen bedeutet *nicht* leeres Haus. Keine neue Variable, Attribute, Sensor-Abfrage oder speicherintensive Bewegungsprofil-Archivierung.
+- Der einzige kopierbare Bericht `Testergebnis an ChatGPT` zeigt `HANDY-ZONENUEBERSCHNEIDUNG`, `P03-EINMALBELEGUNG`, `HANDY-RAUM-GEGENCHECK` und `HANDY-RAUM-24h`, alle unter dem alten 13KB-Budget und bei unveraendert sieben Ausgabevariablen.
+
+## Regressionen und Sicherheitsvertrag
+- Bestehende 84 Handyzonen-Differenzialtests vergleichen nun in der unabhaengigen Referenz explizit ueberlappende OUT->IN-Intervalle.
+- Neuer `JVCoherentMultiSourceEpisodesReplayTest.php` simuliert 80 zusaetzliche deterministische Handy-Zyklusvergleiche, gegenteilige zeitlich nahe aber disjunkte OUTs, spaete P03-Nachweise, doppelte Kamerabeweise, zwei aufeinanderfolgende Paare und dazu zwei unterschiedliche P03-Beweise, fruehere nicht mehr dem neuesten Paar zugeordnete Beweise, reale anonyme GUS-Gegenbelege sowie nicht zugeordnete Raumquellen.
+- Saemtliche Ausgaben sind read-only, P03 TEST/PRODUKTION bleibt unveraendert, SymBox #32969 und alle fremden Module bleiben unberuehrt. Keine Mensch-Identifizierung, keine Fahrzeugfahrt-/Hausleer-Klassifikation, keine Alarm-, Tor- oder Lichtaktionen.
+
 # v0.8.84 (Build 165) – Sichere OUT/IN-Smartphone-Zyklen und eindeutige Paarung statt mehrfacher Abreisezuordnungen
 
 - **Fehlerkorrektur mehrfacher Smartphone-OUTs:** Die frühere SHADOW-Doppelabreise-Zeitachse verglich alle Johannes-OUTs mit allen Carina-OUTs. Ein wiederholtes OUT (z. B. App-Retry, verzögerte Geofence-Meldung oder Doppelprotokoll) konnte so mehrere angeblich gemeinsame Ereignisse liefern. Das neue reine `JVPhoneAreaCycleMatcher` wertet beide Zeitachsen streng chronologisch aus: ein OUT eröffnet einen Handy-Zonen-Zyklus; erst ein eigenes IN kann ihn schließen und ein späteres OUT als neuen Zyklus zulassen. Doppelte Zeitstempel, mehrfaches OUT ohne IN und IN ohne zugehöriges OUT werden separat diagnostiziert.
