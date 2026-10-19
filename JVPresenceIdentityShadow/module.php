@@ -5,6 +5,7 @@ require_once dirname(__DIR__).'/libs/JVLocalSensorEvidence.php';
 require_once dirname(__DIR__).'/libs/JVLCNGUSInventory.php';
 require_once dirname(__DIR__).'/libs/JVLocalActivityLedger.php';
 require_once dirname(__DIR__).'/libs/JVResidentRoomPaths.php';
+require_once dirname(__DIR__).'/libs/JVRoomMotionInsight.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
 require_once dirname(__DIR__).'/libs/JVHomeOccupancyEvidence.php';
 require_once dirname(__DIR__).'/libs/JVBoundaryEvidence.php';
@@ -1527,6 +1528,10 @@ class JVPresenceIdentityShadow extends IPSModule
         // Extract recent room paths from the EXISTING verified 15-GUS
         // ledger. No person labeling, new variable or source subscriptions.
         $roomPaths=JVResidentRoomPaths::evaluate($ledger['next'],$activity,time());
+        // Extend the already verified 15-GUS room ledger with anonymous
+        // short-window activity: no new attributes or foreign subscriptions.
+        $roomPaths['activityInsight']=JVRoomMotionInsight::evaluate(
+            $roomPaths,time());
         $wlanMotionHint=is_int($activity['lastMotionAt']??null)
             &&$activity['lastMotionAt']<=time()
             &&$activity['lastMotionAt']>=time()-600;
