@@ -29,6 +29,7 @@ final class JVP03HistoricalWindowDigest
         $r['baselineOnly']=($p03['baselineOnly']??false)===true;
         $r['historyMayBeIncomplete']=$r['baselineOnly']
             ||($p03['verifiedTimelineTruncated']??false)===true
+            ||($p03['newProofBatchOverflow']??false)===true
             ||count($full)===256
             ||!in_array($p03['logContinuity']??null,
                 ['OK','TAIL_OVERLAP_AFTER_ROTATION'],true);
