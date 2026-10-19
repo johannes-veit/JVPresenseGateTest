@@ -69,4 +69,56 @@ $old=JVFieldObservationComparator::compare($reference,
 fieldCheck($old['status']==='REFERENCE_OUTSIDE_24H_SOURCE_WINDOW'
     &&!$old['houseExitVerifiedBySensors'],
     'late submitted snapshots cannot reconstruct unavailable old telemetry');
+// High-traffic camera log exposes only newest 15 of 24-hour proof history.
+// A field reference older than those visible 15 is NOT a negative observation.
+$truncated=$report;
+$truncated['p03LiveTimeline']['logContinuity']='OK';
+$truncated['p03LiveTimeline']['directionProofs24h']=[
+    'HOME_TO_LAGER'=>20,'LAGER_TO_HOME'=>15
+];
+$truncated['p03LiveTimeline']['recentDirectionProofs']=[];
+for($i=0;$i<15;$i++){
+    $truncated['p03LiveTimeline']['recentDirectionProofs'][]=[
+        'source'=>'P03_TWO_MAST_VERIFIED',
+        'direction'=>'HOME_TO_LAGER',
+        'route'=>'P03_2CAM_JV_THEN_WORK','at'=>$at+1900+$i
+    ];
+}
+$recentOnly=JVFieldObservationComparator::compare(
+    $reference,$truncated,$at+3000
+);
+fieldCheck($recentOnly['p03HistoryCoverage']
+    ==='REFERENCE_OLDER_THAN_VISIBLE_15'
+    &&$recentOnly['p03AnonymousOutNearReference']===0
+    &&$recentOnly['p03Total24h']===35
+    &&in_array('OLDER_CAMERA_EVENTS_NOT_IN_15_ITEM_REPORT',
+        $recentOnly['notes'],true)
+    &&!$recentOnly['houseExitVerifiedBySensors'],
+    'bounded 15 P03 events cannot disprove earlier two-person departure');
+$truncated['p03LiveTimeline']['logContinuity']='LOG_GAP_OR_RESET';
+$logGap=JVFieldObservationComparator::compare(
+    $reference,$truncated,$at+3000
+);
+fieldCheck(in_array('P03_PROOF_LOG_CONTINUITY_NOT_CERTIFIED',
+    $logGap['notes'],true)
+    &&!$logGap['peopleIdentifiedBySensors'],
+    'live streams alone do not certify continuity across lost proof log');
+$truncated['p03LiveTimeline']['recentDirectionProofs'][14]['at']=$at+90;
+$partialPositive=JVFieldObservationComparator::compare(
+    $reference,$truncated,$at+3000
+);
+fieldCheck($partialPositive['p03AnonymousOutNearReference']===1
+    &&!$partialPositive['carTripVerifiedBySensors']
+    &&$partialPositive['sameNumberOfPeopleObserved']==='NOT_PROVABLE',
+    'even one matched event amid truncated list does not identify two people');
+$noPhoneHistory=$report;
+unset($noPhoneHistory['residentEventFusion']['people']['carina']['eventHistory']);
+$missingPhone=JVFieldObservationComparator::compare(
+    $reference,$noPhoneHistory,$at+3000
+);
+fieldCheck($missingPhone['phoneHistoryCoverage']['carina']
+    ==='NO_PERSONAL_EVENT_HISTORY_RECORDED'
+    &&$missingPhone['phoneEventNearReference']['carina']
+        ==='NO_COMPARABLE_PERSONAL_PHONE_OUT_NOT_DISPROOF',
+    'never equate nonexistent historic geofence ledger with stayed home');
 echo "Privacy-safe field truth versus anonymous evidence comparison PASS\n";
