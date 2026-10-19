@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/JVPhoneAreaCycleMatcher.php';
+require_once __DIR__.'/JVP03PhonePairMatrix.php';
 
 /**
  * Bounded, stateless 24h review of two independent PHONE geofence
@@ -38,6 +39,15 @@ final class JVSharedDepartureTimeline
             'pairedOutStartAt'=>null,'pairedOutEndAt'=>null,
             'pairedPhoneGapSeconds'=>null,
             'pairedEventsWithin24h'=>0,
+            'nearButDisjointPhonePeriods'=>0,
+            'latestPhoneAreaOverlapSeconds'=>null,
+            'latestPhoneAreaOverlapStartAt'=>null,
+            'latestPhoneAreaOverlapEndAt'=>null,
+            'phoneAreaOverlapIsNotHumanCoPresence'=>true,
+            'p03UniquePairMatchesRecent'=>0,
+            'p03RecentPhonePairsChecked'=>0,
+            'p03CorrelatedProofsNotReused'=>true,
+            'p03MatchPreviousNotLatest'=>false,
             'oneToOneCycleMatching'=>true,
             'phoneAreaCycles24h'=>['johannes'=>0,'carina'=>0],
             'repeatedPhoneOutIgnored'=>['johannes'=>0,'carina'=>0],
@@ -82,6 +92,7 @@ final class JVSharedDepartureTimeline
         $out['latestPhoneOut']=$cycles['latestOut'];
         $out['latestPhoneAreaIn']=$cycles['latestIn'];
         $out['phoneAreaCycles24h']=$cycles['cycles'];
+        $out['nearButDisjointPhonePeriods']=$cycles['nearButNonOverlappingCandidates'];
         $out['repeatedPhoneOutIgnored']=$cycles['repeatedOutIgnored'];
         $out['orphanPhoneInIgnored']=$cycles['orphanInIgnored'];
         $out['competingPossiblePairings']=$cycles['multiplePairingsPossible'];
@@ -100,6 +111,9 @@ final class JVSharedDepartureTimeline
             $out['pairedOutStartAt']=$latest['start'];
             $out['pairedOutEndAt']=$latest['end'];
             $out['pairedPhoneGapSeconds']=$latest['gap'];
+            $out['latestPhoneAreaOverlapStartAt']=$latest['phoneAreaOverlapStartAt'];
+            $out['latestPhoneAreaOverlapEndAt']=$latest['phoneAreaOverlapEndAt'];
+            $out['latestPhoneAreaOverlapSeconds']=$latest['phoneAreaOverlapSeconds'];
             $out['pairedPhoneOutAt']=[
                 'johannes'=>$latest['johannesAt'],
                 'carina'=>$latest['carinaAt']
@@ -112,7 +126,10 @@ final class JVSharedDepartureTimeline
                 ?'HISTORIC_PHONE_AREA_OUT_PAIR_FOLLOWED_BY_IN'
                 :'TWO_PHONE_AREA_OUT_EVENTS_NOT_RESIDENT_DEPARTURE';
         }else{
-            $out['status']='NO_TWO_QUALIFIED_PHONE_AREA_EXITS_24H';
+            $out['status']=$cycles['status']
+                ==='NEAR_PHONE_OUTS_BUT_NO_SHARED_AREA_INTERVAL'
+                    ?'PHONE_AREA_INTERVALS_DO_NOT_OVERLAP'
+                    :'NO_TWO_QUALIFIED_PHONE_AREA_EXITS_24H';
         }
         $fresh=($timing['p03ModeTrustedFromFreshDiagnosis']??false)===true;
         $mode=$fresh?($timing['p03OperatingMode']??null):null;
@@ -146,30 +163,27 @@ final class JVSharedDepartureTimeline
             $out['sourceGaps'][]='P03_VERIFIED_TIMELINE_INVALID';
             return $out;
         }
-        $nearest=null;$nearestAt=null;
-        foreach($history as $event){
-            if(!is_array($event)||($event['source']??null)
-                !=='P03_TWO_MAST_VERIFIED'
-                ||($event['direction']??null)!=='HOME_TO_LAGER'
-                ||!is_int($event['at']??null))continue;
-            $at=$event['at'];
-            if($at<$now-self::WINDOW||$at>$now+5)continue;
-            $gap=$at<$out['pairedOutStartAt']
-                ?$out['pairedOutStartAt']-$at
-                :($at>$out['pairedOutEndAt']
-                    ?$at-$out['pairedOutEndAt']:0);
-            if($gap>self::P03_NEAR_SECONDS)continue;
-            if($nearest===null||$gap<$nearest){
-                $nearest=$gap;$nearestAt=$at;
-            }
+        // Match *all* recently retained OUT-phone pairs against verified
+        // P03 events using disjoint one-to-one references. The latest pair
+        // is only credited if IT has its own non-reused anonymous proof.
+        // A P03 event observed after either phone's recorded IN is excluded.
+        $matrix=JVP03PhonePairMatrix::evaluate($cycles,$p03,$now);
+        if(($matrix['inputUntrusted']??true)===true){
+            $out['sourceGaps'][]='P03_PHONE_CORRELATION_MATRIX_UNVERIFIED';
+            return $out;
         }
-        if($nearest===null){
-            $out['sourceGaps'][]='NO_VERIFIED_OUT_P03_PROOF_NEAR_PHONE_PAIR';
+        $out['p03UniquePairMatchesRecent']=$matrix['matchedPhonePairs'];
+        $out['p03RecentPhonePairsChecked']=$matrix['scopedPhonePairs'];
+        $latestMatch=$matrix['latestPhonePairP03']??null;
+        $out['p03MatchPreviousNotLatest']=$latestMatch===null
+            &&($matrix['matchedPhonePairs']??0)>0;
+        if(!is_array($latestMatch)){
+            $out['sourceGaps'][]='NO_DISTINCT_P03_PROOF_FOR_LATEST_PHONE_PAIR';
             return $out;
         }
         $out['verifiedP03NearPair']=true;
-        $out['verifiedP03NearPairAt']=$nearestAt;
-        $out['p03ProofGapSeconds']=$nearest;
+        $out['verifiedP03NearPairAt']=$latestMatch['p03At'];
+        $out['p03ProofGapSeconds']=$latestMatch['gapSeconds'];
         $out['status']=$out['pairedOutSupersededByAreaIn']
             ?'HISTORIC_PHONE_AREA_OUT_AND_ANONYMOUS_P03_NEARBY'
             :'TWO_PHONE_AREA_EXITS_AND_ANONYMOUS_P03_NEARBY';
