@@ -31,6 +31,7 @@ $phones=['schema'=>1,
         'carina'=>['eventHistory'=>[]]
     ]];
 $report=['schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
+    'snapshotAt'=>$at+2500,
     'p03LiveTimeline'=>$p03,'residentEventFusion'=>$phones];
 $x=JVFieldObservationComparator::compare($reference,$report,$at+3000);
 fieldCheck($x['status']==='COMPARED_AS_ANONYMOUS_HINTS_ONLY'
@@ -121,4 +122,33 @@ fieldCheck($missingPhone['phoneHistoryCoverage']['carina']
     &&$missingPhone['phoneEventNearReference']['carina']
         ==='NO_COMPARABLE_PERSONAL_PHONE_OUT_NOT_DISPROOF',
     'never equate nonexistent historic geofence ledger with stayed home');
+$initialRead=$report;
+$initialRead['p03LiveTimeline']['baselineOnly']=true;
+$initialRead['p03LiveTimeline']['logContinuity']='BASELINE_ONLY';
+$historic=JVFieldObservationComparator::compare(
+    $reference,$initialRead,$at+3000
+);
+fieldCheck($historic['p03HistoryCoverage']==='BASELINE_ARCHIVE_NOT_LIVE_EVIDENCE'
+    &&$historic['p03AnonymousOutNearReference']===0
+    &&in_array('P03_INITIAL_LOG_BASELINE_NOT_LIVE_PROOF',
+        $historic['notes'],true),
+    'first-read historical camera log cannot establish a live 2-person departure');
+$stale=$report;
+$stale['snapshotAt']=$at-1;
+$oldSnapshot=JVFieldObservationComparator::compare(
+    $reference,$stale,$at+3000
+);
+fieldCheck($oldSnapshot['status']==='SNAPSHOT_TOO_OLD_FOR_REFERENCE'
+    &&$oldSnapshot['sourceSnapshotFreshness']==='PREDATES_REPORTED_EVENT'
+    &&$oldSnapshot['p03AnonymousOutNearReference']===0,
+    'cached SHADOW report preceding departure cannot be compared as post-event capture');
+$legacy=$report;
+unset($legacy['snapshotAt']);
+$legacyMatch=JVFieldObservationComparator::compare(
+    $reference,$legacy,$at+3000
+);
+fieldCheck($legacyMatch['sourceSnapshotFreshness']
+    ==='LEGACY_SNAPSHOT_TIME_NOT_AVAILABLE'
+    &&$legacyMatch['p03AnonymousOutNearReference']===1,
+    'previous report schema remains comparable with snapshot provenance unknown');
 echo "Privacy-safe field truth versus anonymous evidence comparison PASS\n";
