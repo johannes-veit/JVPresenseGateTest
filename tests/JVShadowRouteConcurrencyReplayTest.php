@@ -164,22 +164,37 @@ for($round=0;$round<35;$round++){
     $fast=JVAnonymousRoomRouteAtlas::evaluate($snapshot,$sample,$now);
     $expected=[];
     foreach($patternSet as $kind=>$wanted){
+        // Independent exhaustive dynamic-programming reference:
+        // every possible prior edge for every position is considered.
+        // Unlike a greedy first-match implementation it cannot lose
+        // alternatives under 180s hops and 600s total duration.
         $rows=array_values(array_filter($sample,
             static fn($event)=>in_array($event['id'],$wanted,true)));
-        $match=false;
-        foreach($rows as $idx=>$first){
-            if($first['id']!==$wanted[0])continue;
-            $previous=$first['at'];$next=1;
-            for($j=$idx+1;$j<count($rows)&&$next<count($wanted);$j++){
-                $t=$rows[$j]['at'];
-                if($t-$previous>180||$t-$first['at']>600)break;
-                if($t>$previous&&$rows[$j]['id']===$wanted[$next]){
-                    $previous=$t;$next++;
+        $n=count($rows);$count=count($wanted);
+        $reach=array_fill(0,$count,array_fill(0,$n,null));
+        for($i=0;$i<$n;$i++){
+            if($rows[$i]['id']===$wanted[0])
+                $reach[0][$i]=$rows[$i]['at'];
+        }
+        for($stage=1;$stage<$count;$stage++){
+            for($i=0;$i<$n;$i++){
+                if($rows[$i]['id']!==$wanted[$stage])continue;
+                for($j=0;$j<$i;$j++){
+                    if(!is_int($reach[$stage-1][$j]))continue;
+                    $gap=$rows[$i]['at']-$rows[$j]['at'];
+                    if($gap<1||$gap>180
+                        ||$rows[$i]['at']-$reach[$stage-1][$j]>600)
+                        continue;
+                    $candidate=$reach[$stage-1][$j];
+                    if($reach[$stage][$i]===null
+                        ||$candidate>$reach[$stage][$i])
+                        $reach[$stage][$i]=$candidate;
                 }
             }
-            if($next===count($wanted)){$match=true;break;}
         }
-        if($match)$expected[]=$kind;
+        foreach($reach[$count-1] as $at){
+            if($at!==null){$expected[]=$kind;break;}
+        }
     }
     // The report caps listed patterns at five, but total count must
     // equal the brute-force reference across all templates.
