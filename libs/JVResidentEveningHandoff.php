@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/JVShadowReportBudget.php';
+require_once __DIR__.'/JVP03HistoricalWindowDigest.php';
 
 /**
  * One pasteable, human-readable evidence handoff, always regenerated from
@@ -232,6 +233,13 @@ final class JVResidentEveningHandoff
                     .' | anonym, keine Personenzuordnung');
             }
         }
+        $p03Digest=JVP03HistoricalWindowDigest::summarize($p03,$now);
+        $add('P03-5MIN-STATUS: '.self::code($p03Digest['status'])
+            .' | Belege '.self::number($p03Digest['sourceCount'])
+            .' | Fenster '.self::number($p03Digest['fiveMinuteWindows'])
+            .' | HISTORIE NICHT PERSONENANZAHL');
+        foreach($p03Digest['hourlyLines'] as $line)
+            $add('P03-5MIN/24h: '.$line);
         $fp03=($fusion['authority']??null)==='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'
             &&is_array($fusion['p03']??null)?$fusion['p03']:[];
         $lastAnon=is_array($fp03['lastAnonymousProof']??null)
