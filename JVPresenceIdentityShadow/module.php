@@ -10,6 +10,8 @@ require_once dirname(__DIR__).'/libs/JVAnonymousRoomRouteAtlas.php';
 require_once dirname(__DIR__).'/libs/JVJointDepartureReadiness.php';
 require_once dirname(__DIR__).'/libs/JVPhoneAreaCycleMatcher.php';
 require_once dirname(__DIR__).'/libs/JVSharedDepartureTimeline.php';
+require_once dirname(__DIR__).'/libs/JVP03PhonePairMatrix.php';
+require_once dirname(__DIR__).'/libs/JVPhoneRoomOverlapAudit.php';
 require_once dirname(__DIR__).'/libs/JVRoomDayDigest.php';
 require_once dirname(__DIR__).'/libs/JVHousePowerContext.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
@@ -1865,6 +1867,15 @@ class JVPresenceIdentityShadow extends IPSModule
         $roomPaths['sharedDepartureTimeline']=JVSharedDepartureTimeline::evaluate(
             $residentFusion['report'],$p03Timeline['report'],
             $temporalCrossCheck,time()
+        );
+        // Cross-check only positive, anonymous GUS events against the
+        // confirmed time intervals of two handset AREA-OUT cycles.
+        // Neither a zero motion count nor a match certifies people or home.
+        $areaCycles=JVPhoneAreaCycleMatcher::evaluate(
+            $residentFusion['report'],time()
+        );
+        $roomPaths['phoneRoomOverlapAudit']=JVPhoneRoomOverlapAudit::evaluate(
+            $areaCycles,$activity,$ledger['next'],time()
         );
         $integrityAudit=JVShadowIntegrityAudit::evaluate(
             $residentFusion['report'],$routeEpisodes['report'],

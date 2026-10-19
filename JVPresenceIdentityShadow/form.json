@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.84: Verlässliche Doppelabreise-Zeitachsen durch eigene OUT/IN-Zyklen für Johannes und Carina. Mehrere Geofence-OUT-Meldungen desselben Smartphones ohne dazwischenliegendes IN gelten als ein einziger Zyklus. Beide Telefone werden optimal und eins-zu-eins nach Zeitabstand (maximal 180 s) gepaart; konkurrierende Paarungen werden als mehrdeutig gemeldet. Kamera-P03 kann weiterhin nur zeitliche Nähe anonymer Übergänge liefern, keine persönlichen Identitäten, Fahrzeug- oder Hausabwesenheitsbeweise. Neues Diagnosefeld HANDY-ZYKLEN/24h und Doppelmeldungen-Verwurf in der bereits bestehenden Variable Testergebnis an ChatGPT. Sieben Ausgaben, bestehende 15 Zustandsattribute und Fremdmodule unverändert, keine Steuerung."
+      "caption": "SHADOW v0.8.85: Drei grosse SHADOW-Entwicklungsschritte ohne neue Hardware oder Symcon-Objekte: (1) Gemeinsames Smartphone-Zonen-OUT nur bei tatsaechlicher Ueberlappung beider individuellen OUT-bis-IN-Intervalle, nicht nur bei nahen OUT-Zeitstempeln; (2) anonyme P03-Zweimast-Bestaetigungen koennen nur einem Smartphone-Paar zugeordnet werden, nicht mehrfach; Beweise nach Handy-IN werden gesperrt, Quellenluecken und P03 OFF respektiert; (3) 24h GUS-Bewegungen werden nur als anonyme POSITIVE Ereignisse innerhalb solcher Telefonintervalle gegenuebergestellt. Weder Smartphone-Zonenlage noch GUS beweist menschliche Identitaet oder dass niemand im Haus ist. Die einzigen bestehenden 7 Ausgaben und 15 Zustandsattribute bleiben erhalten; keine neuen Variablen, keine fremden Befehle, P03-/Alarm-/Tor-/Licht-Einstellungen bleiben unberuehrt."
     },
     {
       "type": "Label",
