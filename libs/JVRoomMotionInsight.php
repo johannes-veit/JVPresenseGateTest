@@ -15,6 +15,7 @@ final class JVRoomMotionInsight
     public const AUTHORITY='ANONYMOUS_LCN_ROOM_ACTIVITY_CONTEXT_ONLY';
     private const WINDOW=5400;
     private const MAX_INPUT=80;
+    private const MAX_FULL=2048;
     private const DEBOUNCE=20;
     private const ROOMS=[
         'eg_buero'=>'EG Büro',
@@ -34,7 +35,7 @@ final class JVRoomMotionInsight
         'og_schlafen_2'=>'OG Schlafen 2'
     ];
 
-    public static function evaluate(array $rooms,int $now):array
+    public static function evaluate(array $rooms,int $now,array $fullHistory=[]):array
     {
         $out=[
             'schema'=>1,'authority'=>self::AUTHORITY,
@@ -43,6 +44,7 @@ final class JVRoomMotionInsight
             'roomEdgesSeen90m'=>null,
             'usableDebouncedEdges90m'=>0,
             'weakKaminEdgesExcluded'=>0,
+            'fullInternalHistoryUsed'=>false,
             'retriggerEdgesSuppressed'=>0,
             'events5m'=>0,'events15m'=>0,
             'distinctRooms15m'=>0,
@@ -72,10 +74,24 @@ final class JVRoomMotionInsight
             ||$rooms['roomEdgeCount90m']<0)return $out;
         $out['observationsAvailable']=true;
         $out['roomEdgesSeen90m']=$rooms['roomEdgeCount90m'];
-        $out['coverage']=$rooms['roomEdgeCount90m']<=count($rooms['recentRoomEdges'])
+        $source=$rooms['recentRoomEdges'];
+        $fullValid=false;
+        // Integrity link: full history must be produced by the same room
+        // validator as the displayed newest 80 events; no independent
+        // unverified ledger can silently replace it.
+        if($fullHistory!==[]&&array_is_list($fullHistory)
+            &&count($fullHistory)<=self::MAX_FULL
+            &&count($fullHistory)===$rooms['roomEdgeCount90m']
+            &&array_reverse(array_slice($fullHistory,-count($source)))===$source){
+            $source=$fullHistory;
+            $fullValid=true;
+        }
+        $out['fullInternalHistoryUsed']=$fullValid;
+        $out['coverage']=$fullValid
+            ||$rooms['roomEdgeCount90m']<=count($source)
             ?'ALL_REPORTED_EDGES_90M':'LATEST_80_ROOM_EDGES_ONLY';
         $valid=[];
-        foreach($rooms['recentRoomEdges'] as $edge){
+        foreach($source as $edge){
             if(!is_array($edge)||!is_string($edge['id']??null)
                 ||!isset(self::ROOMS[$edge['id']])
                 ||($edge['room']??null)!==self::ROOMS[$edge['id']]
@@ -91,7 +107,7 @@ final class JVRoomMotionInsight
             $valid[$key]=['id'=>$edge['id'],'room'=>$edge['room'],'at'=>$at];
         }
         if($out['weakKaminEdgesExcluded']>0
-            ||count($valid)<count($rooms['recentRoomEdges']))
+            ||count($valid)<count($source))
             $out['coverage']=$out['coverage']==='ALL_REPORTED_EDGES_90M'
                 ?'ALL_REPORTED_EDGES_WITH_EXCLUSIONS'
                 :$out['coverage'];
