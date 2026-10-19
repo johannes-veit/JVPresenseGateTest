@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.81: 14 statt 7 anonyme EG/OG-Raumfolgemuster mit nachweisbarer 80er-Tail-/Gesamtlisten-Uebereinstimmung und linear begrenzter Auswertung fuer bis zu 2048 vorhandene GUS-Ereignisse. Zusatzhinweis auf fremde/ueberlagerte Raumausloesungen ohne Annahme bestimmter Personen. DOPPELABREISE-Diagnose vergleicht die beiden bestaetigten WLAN-Geraete, den aktuellen P03-Betriebsmodus, nur verifizierte P03-Treppenuebergaenge und Quellenluecken. Ein gemeinsamer Austritt oder zwei menschliche Identitaeten werden daraus NICHT bewiesen. Weiterhin keine neuen Variablen/Instanzen, keine Steuerung von P03, Kameras, LCN, Tor oder Alarm. Bei bewusst deaktiviertem P03 bleibt eine Live-Wegbestimmung unmoeglich."
+      "caption": "SHADOW v0.8.82: GUS-24h-Historie jetzt mit echter Polling-Kontinuitaet. Bei Runtime-/SymBox-Ausfall ueber 300 s, Versionsmigration oder beschädigtem Verlauf bleiben historische Einzelimpulse erhalten; ein lueckenlos beobachteter Tag wird jedoch NICHT behauptet. Neue anonyme Doppelabreise-Zeitleiste vergleicht ausschliesslich persoenlich aufgezeichnete Smartphone-Geofence-OUT-Ereignisse beider Geraete innerhalb 180 s und optional eine bis 300 s nahe P03-zweifach verifizierte Haus→Lager-Treppenpassage. Die Geofence-Zone umfasst HAUS und FIRMA, und weder Kamera noch Geraet identifizieren eine Person. WLAN-Kontaktverlust kann kein Abreise-Ereignis erzeugen. Alle Angaben nur im bisherigen Ein-Variablen-Bericht und kompakten EvidenceJSON; keine neue Symcon-Variable, kein neuer Attributname und keinerlei Fremdmodul-Steuerung."
     },
     {
       "type": "Label",
