@@ -127,10 +127,18 @@ $next=JVLocalActivityLedger::evaluate([],$registered,$over['next'],$now+60);
 milestoneCheck(!$next['report']['full24hWindowObserved']
     &&$next['report']['capacityTruncatedAt']===$now,
     'persisted overflow remains incomplete on next poll and restart');
-$expired=JVLocalActivityLedger::evaluate([],$registered,$next['next'],$now+86500);
+// Rebuild an actually observed 24h span with repeated passive polls.
+$priorAfterOverflow=$next['next'];
+for($t=$now+300;$t<=$now+86400;$t+=300){
+    $poll=JVLocalActivityLedger::evaluate(
+        [],$registered,$priorAfterOverflow,$t);
+    $priorAfterOverflow=$poll['next'];
+}
+$expired=JVLocalActivityLedger::evaluate(
+    [],$registered,$priorAfterOverflow,$now+86490);
 milestoneCheck($expired['report']['capacityTruncatedAt']===null
     &&$expired['report']['full24hWindowObserved'],
-    'overflow incident eventually expires only after entire affected day');
+    'after 24h of uninterrupted polls the prior overflow ages out safely');
 
 // A recycled Symcon ID with the wrong room name is not a valid 24h room.
 // Fresh person claims must also stay impossible after corrupt local data.

@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.81 Build 162 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.82 Build 163 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -487,6 +487,34 @@ final class JVResidentEveningHandoff
                         .self::code($reason));
                 }
             }
+            $pair=$rooms['sharedDepartureTimeline']??[];
+            if(is_array($pair)
+                &&($pair['authority']??null)
+                    ==='READ_ONLY_SHARED_HANDSET_EXIT_SEQUENCE_NO_IDENTITY'){
+                $add('HANDY-DOPPELABREISE/24h: '
+                    .self::code($pair['status']??'SOURCES_UNVERIFIED')
+                    .' | getrennte Geofence-OUT: '
+                    .self::yes(($pair['pairedPhoneAreaOutObserved']??false)===true)
+                    .' | Person und Haus-Ausgang: NICHT BEWIESEN');
+                if(($pair['pairedPhoneAreaOutObserved']??false)===true){
+                    $add('HANDY-GEMEINSAMES-OUT: '
+                        .self::date($pair['pairedOutStartAt']??null)
+                        .' bis '.self::date($pair['pairedOutEndAt']??null)
+                        .' | Abstand '.self::age($pair['pairedPhoneGapSeconds']??null)
+                        .' | Geofence umfasst HAUS und FIRMA');
+                    $add('HANDY-P03-ZEITABGLEICH: verifizierte anonyme Treppenfolge nahebei '
+                        .self::yes(($pair['verifiedP03NearPair']??false)===true)
+                        .' | '.self::date($pair['verifiedP03NearPairAt']??null)
+                        .' | KEINE Personenzuordnung');
+                }
+                $gaps=$pair['sourceGaps']??[];
+                if(is_array($gaps))
+                    foreach(array_slice($gaps,0,2) as $gap){
+                        if(is_string($gap))
+                            $add('HANDY-GEMEINSAMES-OUT-QUELLENLUECKE: '
+                                .self::code($gap));
+                    }
+            }
             $day=$rooms['dayDigest']??[];
             if(is_array($day)
                 &&($day['authority']??null)
@@ -501,8 +529,9 @@ final class JVResidentEveningHandoff
                     .self::number($day['motionEvents6h']??null)
                     .' Impulse | letzte Stunde '
                     .self::number($day['motionEvents1h']??null)
-                    .' | vollständige 24h '
-                    .self::yes(($day['complete24hCoverage']??false)===true));
+                    .' | fortlaufende 24h '
+                    .self::yes(($day['complete24hCoverage']??false)===true)
+                    .' | Messungsluecken verhindern die Vollstaendigkeit');
             }
             $power=$rooms['powerContext']??[];
             if(is_array($power)

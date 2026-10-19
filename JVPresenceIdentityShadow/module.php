@@ -8,6 +8,7 @@ require_once dirname(__DIR__).'/libs/JVResidentRoomPaths.php';
 require_once dirname(__DIR__).'/libs/JVRoomMotionInsight.php';
 require_once dirname(__DIR__).'/libs/JVAnonymousRoomRouteAtlas.php';
 require_once dirname(__DIR__).'/libs/JVJointDepartureReadiness.php';
+require_once dirname(__DIR__).'/libs/JVSharedDepartureTimeline.php';
 require_once dirname(__DIR__).'/libs/JVRoomDayDigest.php';
 require_once dirname(__DIR__).'/libs/JVHousePowerContext.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
@@ -1859,6 +1860,10 @@ class JVPresenceIdentityShadow extends IPSModule
         $roomPaths['jointDepartureReadiness']=JVJointDepartureReadiness::evaluate(
             $roomPaths['routeAtlas'],$wlan,$temporalCrossCheck,
             $p03Timeline['report'],$evidenceReadiness,time()
+        );
+        $roomPaths['sharedDepartureTimeline']=JVSharedDepartureTimeline::evaluate(
+            $residentFusion['report'],$p03Timeline['report'],
+            $temporalCrossCheck,time()
         );
         $integrityAudit=JVShadowIntegrityAudit::evaluate(
             $residentFusion['report'],$routeEpisodes['report'],

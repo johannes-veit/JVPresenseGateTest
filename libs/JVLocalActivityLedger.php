@@ -12,6 +12,7 @@ final class JVLocalActivityLedger
     private const WINDOW=86400;
     private const MAX_ENTRIES=2048;
     private const MAX_REPORT=15;
+    private const MAX_OBSERVATION_GAP=300;
     private const ZONES=['HOME','WORK','PROPERTY_OTHER'];
     private const STATUSES=[
         'SINGLE_UNCERTAIN'=>1,
@@ -46,6 +47,24 @@ final class JVLocalActivityLedger
             ||$capacityTruncatedAt>$now+5
             ||$capacityTruncatedAt<=$now-self::WINDOW)
             $capacityTruncatedAt=null;
+        // Being installed for 24 hours is not proof of a continuous
+        // 24-hour observation. The real 60-second SHADOW timer can stop
+        // during a reboot, network fault or suspended SymBox runtime.
+        // Upgrade from an older buffer without lastScanAt starts a new
+        // continuity baseline but retains historical motion events.
+        $lastScan=$previous['lastScanAt']??null;
+        $continuousFrom=$previous['continuousFromAt']??null;
+        $sourceContinuous=is_int($lastScan)&&$lastScan>0
+            &&$lastScan<=$now+5&&$now-$lastScan<=self::MAX_OBSERVATION_GAP
+            &&is_int($continuousFrom)&&$continuousFrom>0
+            &&$continuousFrom<=$lastScan+5;
+        $previousHadHistory=is_array($previous['entries']??null)
+            &&count($previous['entries'])>0;
+        if(!$sourceContinuous){
+            if($previousHadHistory||is_int($lastScan))
+                $warnings[]='LEDGER_OBSERVATION_GAP_REBASELINED';
+            $continuousFrom=$now;
+        }
         $old=$previous['entries']??[];
         if (($previous['schema']??self::SCHEMA)!==self::SCHEMA
             || !is_array($old) || !array_is_list($old)
@@ -56,6 +75,7 @@ final class JVLocalActivityLedger
             // never erase other resident/P03 state or take external actions.
             $startedAt=$now;
             $capacityTruncatedAt=$now;
+            $continuousFrom=$now;
             $old=[];
         }
         $registered=[];
@@ -155,10 +175,13 @@ final class JVLocalActivityLedger
             'identityCertified'=>false,
             'startedAt'=>$startedAt,
             'windowSeconds'=>self::WINDOW,
-            'full24hWindowObserved'=>$now-$startedAt>=self::WINDOW
+            'full24hWindowObserved'=>$now-$continuousFrom>=self::WINDOW
                 &&$capacityTruncatedAt===null
                 && !in_array('LEDGER_CAPACITY_REACHED',$warnings,true),
             'capacityTruncatedAt'=>$capacityTruncatedAt,
+            'lastScanAt'=>$now,
+            'continuousFromAt'=>$continuousFrom,
+            'continuityWindowSeconds'=>max(0,$now-$continuousFrom),
             'lastMotionAt'=>$last,
             'totalMotionEdges24h'=>array_sum($totals),
             'perZoneMotionEdges24h'=>$totals,
@@ -172,6 +195,8 @@ final class JVLocalActivityLedger
             'next'=>[
                 'schema'=>self::SCHEMA,'startedAt'=>$startedAt,
                 'capacityTruncatedAt'=>$capacityTruncatedAt,
+                'lastScanAt'=>$now,
+                'continuousFromAt'=>$continuousFrom,
                 'entries'=>array_values($entries)
             ]
         ];
@@ -185,6 +210,8 @@ final class JVLocalActivityLedger
             'personCountCertified'=>false,
             'identityCertified'=>false,
             'full24hWindowObserved'=>false,
+            'lastScanAt'=>null,'continuousFromAt'=>null,
+            'continuityWindowSeconds'=>0,
             'lastMotionAt'=>null,'totalMotionEdges24h'=>0,
             'perZoneMotionEdges24h'=>[],
             'perZoneCorroboratedEdges24h'=>[],
