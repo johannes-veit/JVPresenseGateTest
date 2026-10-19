@@ -138,7 +138,11 @@ final class JVFieldObservationComparator
                 ?((($p03['verifiedTimelineTruncated']??false)===true
                     ||count($checked)===256)
                     ?'AT_256_HISTORY_CAP_POTENTIALLY_INCOMPLETE'
-                    :'FULL_PERSISTED_TIMELINE_24H')
+                    :(!in_array($out['p03LogContinuity'],
+                        ['OK','TAIL_OVERLAP_AFTER_ROTATION'],true)
+                        ||($p03['newProofBatchOverflow']??false)===true
+                        ?'PERSISTED_HISTORY_LOG_CONTINUITY_UNCERTAIN'
+                        :'FULL_PERSISTED_TIMELINE_24H'))
                 :($limited?'TRUNCATED_TO_LATEST_15'
                     :($uncertainCap?'COUNT_MISSING_LIST_AT_DISPLAY_CAP'
                         :'NO_TRUNCATION_REPORTED'));
