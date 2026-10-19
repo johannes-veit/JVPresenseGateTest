@@ -21,6 +21,11 @@ final class JVFieldObservationComparator
             'p03AnonymousOutNearReference'=>0,
             'p03AnonymousInNearReference'=>0,
             'p03CorridorCoverage'=>'NOT_VERIFIED',
+            'p03VisibleHistoryCount'=>0,
+            'p03Total24h'=>null,
+            'p03HistoryCoverage'=>'UNVERIFIED',
+            'p03LogContinuity'=>'UNVERIFIED',
+            'phoneHistoryCoverage'=>[],
             'phoneEventNearReference'=>[],
             'vehicleIdentity'=>'USER_REPORTED_NOT_CAMERA_IDENTIFIED',
             'reportedVehicle'=>null,
@@ -85,7 +90,45 @@ final class JVFieldObservationComparator
             &&($p03['authority']??null)==='P03_LIVE_PROOFS_DIRECTION_ONLY';
         if($p03OK &&is_array($p03['recentDirectionProofs']??null)){
             $out['p03CorridorCoverage']='ONLY_CAMERA_CORRIDOR_NOT_HOUSE_EXIT';
-            foreach(array_slice($p03['recentDirectionProofs'],0,15) as $proof){
+            $continuity=$p03['logContinuity']??null;
+            $out['p03LogContinuity']=is_string($continuity)
+                &&in_array($continuity,[
+                    'OK','TAIL_OVERLAP_AFTER_ROTATION','BASELINE_ONLY',
+                    'LOG_GAP_OR_RESET','UNKNOWN'
+                ],true)?$continuity:'UNVERIFIED';
+            $visible=$p03['recentDirectionProofs'];
+            $out['p03VisibleHistoryCount']=min(count($visible),15);
+            $counter=$p03['directionProofs24h']??null;
+            $countOK=is_array($counter)
+                &&is_int($counter['HOME_TO_LAGER']??null)
+                &&is_int($counter['LAGER_TO_HOME']??null)
+                &&$counter['HOME_TO_LAGER']>=0
+                &&$counter['LAGER_TO_HOME']>=0;
+            $total=$countOK
+                ?$counter['HOME_TO_LAGER']+$counter['LAGER_TO_HOME']:null;
+            $out['p03Total24h']=$total;
+            $limited=$total!==null&&$total>$out['p03VisibleHistoryCount'];
+            $out['p03HistoryCoverage']=$limited
+                ?'TRUNCATED_TO_LATEST_15'
+                :'NO_TRUNCATION_REPORTED';
+            $oldest=null;
+            foreach(array_slice($visible,0,15) as $proof){
+                if(is_array($proof)&&($proof['source']??null)
+                    ==='P03_TWO_MAST_VERIFIED'
+                    &&is_int($proof['at']??null)
+                    &&$proof['at']>0&&$proof['at']<=$now+5)
+                    $oldest=$oldest===null
+                        ?$proof['at']:min($oldest,$proof['at']);
+            }
+            if($limited&&$oldest!==null
+                &&$at+self::MAX_WINDOW_SECONDS<$oldest){
+                $out['p03HistoryCoverage']='REFERENCE_OLDER_THAN_VISIBLE_15';
+                $out['notes'][]='CAMERA_HISTORY_TRUNCATED_REFERENCE_MAY_BE_MISSING';
+            }
+            if(!in_array($out['p03LogContinuity'],
+                ['OK','TAIL_OVERLAP_AFTER_ROTATION'],true))
+                $out['notes'][]='P03_PROOF_LOG_CONTINUITY_NOT_CERTIFIED';
+            foreach(array_slice($visible,0,15) as $proof){
                 if(!is_array($proof)
                     ||($proof['source']??null)!=='P03_TWO_MAST_VERIFIED'
                     ||!is_int($proof['at']??null)
@@ -97,6 +140,7 @@ final class JVFieldObservationComparator
             }
         }else{
             $out['p03CorridorCoverage']='NO_VERIFIED_P03_EVENT_LIST';
+            $out['notes'][]='CAMERA_HISTORY_SOURCE_UNAVAILABLE';
         }
         $fusion=$evidence['residentEventFusion']??null;
         $fusionOK=is_array($fusion)&&($fusion['schema']??null)===1
@@ -107,7 +151,13 @@ final class JVFieldObservationComparator
             if($fusionOK){
                 $p=$fusion['people'][$person]??null;
                 if(is_array($p)){
-                    $history=$p['eventHistory']??[];
+                    $history=$p['eventHistory']??null;
+                    $out['phoneHistoryCoverage'][$person]=
+                        is_array($history)
+                        ?(count($history)>=24
+                            ?'BOUNDED_HISTORY_MAY_HAVE_DROPPED_OLDER_EVENTS'
+                            :'RECORDED_EVENTS_ONLY_NOT_CONTINUOUS')
+                        :'NO_PERSONAL_EVENT_HISTORY_RECORDED';
                     if(is_array($history)){
                         foreach(array_slice($history,0,24) as $e){
                             if(is_array($e)
@@ -120,14 +170,19 @@ final class JVFieldObservationComparator
                     }
                 }
             }
+            $out['phoneHistoryCoverage'][$person]??=
+                'SOURCE_NOT_VERIFIED_OR_HISTORY_UNAVAILABLE';
             $out['phoneEventNearReference'][$person]=
                 $matched!==[]?'PHONE_GEOFENCE_OUT_NEAR_REFERENCE_NOT_HUMAN_PROOF'
                     :'NO_COMPARABLE_PERSONAL_PHONE_OUT_NOT_DISPROOF';
         }
         $out['status']='COMPARED_AS_ANONYMOUS_HINTS_ONLY';
-        if($out['p03AnonymousOutNearReference']===0)
-            $out['notes'][]='NO_P03_OUT_NEAR_REFERENCE_DOES_NOT_REFUTE_HOUSE_EXIT';
-        else
+        if($out['p03AnonymousOutNearReference']===0){
+            if($out['p03HistoryCoverage']==='REFERENCE_OLDER_THAN_VISIBLE_15')
+                $out['notes'][]='OLDER_CAMERA_EVENTS_NOT_IN_15_ITEM_REPORT';
+            else
+                $out['notes'][]='NO_P03_OUT_NEAR_REFERENCE_DOES_NOT_REFUTE_HOUSE_EXIT';
+        }else
             $out['notes'][]='P03_OUT_NEAR_REFERENCE_IS_ANONYMOUS_CORRIDOR_ONLY';
         $out['notes'][]='ONE_P03_HUMAN_EVENT_MAY_INCLUDE_MULTIPLE_PEOPLE';
         $out['notes'][]='USER_VEHICLE_DESCRIPTION_NOT_CAMERA_RECOGNITION';
