@@ -64,7 +64,11 @@ final class JVResidentRoomPaths
                 '/[^\\p{L}\\p{N}]/u','',mb_strtolower($t,'UTF-8'));
             if(!str_contains($normal($name),$normal(substr($room,3))))continue;
             $valid[$id.'@'.$at]=[
-                'id'=>$id,'room'=>$room,'at'=>$at];
+                'id'=>$id,'room'=>$room,'at'=>$at,
+                // Preserve the already validated source quality so that
+                // uncorroborated Kamin events remain diagnostic only.
+                'status'=>is_string($item['status']??null)
+                    ?$item['status']:'SINGLE_UNCERTAIN'];
         }
         usort($valid,static fn($a,$b)=>($a['at']<=>$b['at'])
             ?:strcmp($a['id'],$b['id']));
