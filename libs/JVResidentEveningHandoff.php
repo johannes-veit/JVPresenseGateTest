@@ -518,7 +518,7 @@ final class JVResidentEveningHandoff
                     .' | nur frueheres Paar passend '
                     .self::yes(($pair['p03MatchPreviousNotLatest']??false)===true)
                     .' | Kameraperson UNBEKANNT');
-                $add('HANDY-OUT-DOPPELMELDUNGEN VERWORFEN: Johannes 
+                $add('HANDY-OUT-DOPPELMELDUNGEN VERWORFEN: Johannes '
                     .self::number($pair['repeatedPhoneOutIgnored']['johannes']??null)
                     .' / Carina '
                     .self::number($pair['repeatedPhoneOutIgnored']['carina']??null)
