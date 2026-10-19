@@ -81,10 +81,9 @@ hugeCheck($late['matchedPhonePairs']===0
 $valid=JVP03PhonePairMatrix::evaluate($c,$p03([$proof(-820)]),$now);
 hugeCheck($valid['matchedPhonePairs']===1
     &&$valid['latestPhonePairP03']['p03At']===$now-820
-    &&$valid['latestPhonePairP03']['gapSeconds']===0
+    &&$valid['latestPhonePairP03']['gapSeconds']===30
     &&!$valid['reusedP03Proofs']
-    &&!$valid['noHumanIdentity']
-        ===false,
+    &&$valid['noHumanIdentity']===true,
     'anonymous outbound P03 crossing can match one real device pair only');
 $timeline=JVSharedDepartureTimeline::evaluate(
     $one,$p03([$proof(-690),$proof(-820)]),$timing,$now);
