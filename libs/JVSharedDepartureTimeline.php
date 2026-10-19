@@ -153,7 +153,11 @@ final class JVSharedDepartureTimeline
         if(!in_array($continuity,['OK','TAIL_OVERLAP_AFTER_ROTATION'],true)
             ||($p03['newProofBatchOverflow']??false)===true
             ||($p03['baselineOnly']??false)===true
-            ||($p03['verifiedTimelineTruncated']??false)===true){
+            ||($p03['verifiedTimelineTruncated']??false)===true
+            ||count(array_intersect((array)($p03['warnings']??[]),[
+                'P03_LOG_BATCH_INVALID','INVALID_CLOCK_OR_LOG_SIZE',
+                'P03_SOURCE_NOT_READABLE','P03_LOG_GAP_OR_RESET',
+                'P03_NEW_PROOF_BATCH_OVERFLOW']))>0){
             $out['sourceGaps'][]='P03_LIVE_EVENT_CONTINUITY_UNVERIFIED';
             return $out;
         }
