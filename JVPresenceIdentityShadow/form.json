@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.80: GUS-Analysen jetzt auf kompletter vorhandener 90-min-Raumhistorie bis 2048 verifizierter Ereignisse, statt nur auf den sichtbaren letzten 80; anonymes 7-Muster-EG/OG-Raumfolge-Atlas, 24h-GUS-Stundenverteilung und optional validierter bestehender Watt-Wert. Nur die letzten 80 Raumimpulse erscheinen weiterhin in JSON, der Rest bleibt waehrend der Berechnung nur im Arbeitsspeicher. Zusaetzlicher Schutz vor falschem Vollstaendigkeitsnachweis nach Ledger-Ueberlauf. Weder Kochen, bestimmte Personen, Autofahrt noch Haus-leer werden daraus automatisch bewiesen. Unveraendert sieben Ausgaben, keine neuen Instanzen oder Fremdmodulaenderungen."
+      "caption": "SHADOW v0.8.81: 14 statt 7 anonyme EG/OG-Raumfolgemuster mit nachweisbarer 80er-Tail-/Gesamtlisten-Uebereinstimmung und linear begrenzter Auswertung fuer bis zu 2048 vorhandene GUS-Ereignisse. Zusatzhinweis auf fremde/ueberlagerte Raumausloesungen ohne Annahme bestimmter Personen. DOPPELABREISE-Diagnose vergleicht die beiden bestaetigten WLAN-Geraete, den aktuellen P03-Betriebsmodus, nur verifizierte P03-Treppenuebergaenge und Quellenluecken. Ein gemeinsamer Austritt oder zwei menschliche Identitaeten werden daraus NICHT bewiesen. Weiterhin keine neuen Variablen/Instanzen, keine Steuerung von P03, Kameras, LCN, Tor oder Alarm. Bei bewusst deaktiviertem P03 bleibt eine Live-Wegbestimmung unmoeglich."
     },
     {
       "type": "Label",
