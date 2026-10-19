@@ -711,12 +711,13 @@ eq($initialBoundary['phoneLink']['state'],'DISABLED_SEPARATE_PROJECT',
     'boundary observation does not activate WLAN');
 
 $GLOBALS['raw'][8889]=true;
-$GLOBALS['meta'][8889]['VariableChanged']=time();
+$expectedDoorChangeAt=time();
+$GLOBALS['meta'][8889]['VariableChanged']=$expectedDoorChangeAt;
 $module->MessageSink(1,8889,10603,[]);
 $changedBoundary=json_decode($module->values['EvidenceJSON'],true);
 eq($changedBoundary['boundaryEvidence']['boundaryChanges24h'],1,
     'real door status update appears once');
-eq($changedBoundary['boundaryEvidence']['lastBoundaryChangeAt'],time(),
+eq($changedBoundary['boundaryEvidence']['lastBoundaryChangeAt'],$expectedDoorChangeAt,
     'door status timestamp reflected');
 eq($changedBoundary['boundaryEvidence']['exitDirectionCertified'],false,
     'Boolean door status cannot prove exit direction');
