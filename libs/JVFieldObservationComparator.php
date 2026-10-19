@@ -22,6 +22,8 @@ final class JVFieldObservationComparator
             'p03AnonymousInNearReference'=>0,
             'p03CorridorCoverage'=>'NOT_VERIFIED',
             'p03VisibleHistoryCount'=>0,
+            'p03CheckedHistoryCount'=>0,
+            'p03FullPersistedHistoryUsed'=>false,
             'p03Total24h'=>null,
             'p03HistoryCoverage'=>'UNVERIFIED',
             'p03LogContinuity'=>'UNVERIFIED',
@@ -114,6 +116,13 @@ final class JVFieldObservationComparator
                 ],true)?$continuity:'UNVERIFIED';
             $visible=$p03['recentDirectionProofs'];
             $out['p03VisibleHistoryCount']=min(count($visible),15);
+            $full=$p03['verifiedDirectionTimeline24h']??null;
+            $useFull=is_array($full)&&array_is_list($full)
+                &&count($full)<=256
+                &&($p03['verifiedTimeline24hCount']??-1)===count($full);
+            $checked=$useFull?$full:array_slice($visible,0,15);
+            $out['p03CheckedHistoryCount']=count($checked);
+            $out['p03FullPersistedHistoryUsed']=$useFull;
             $counter=$p03['directionProofs24h']??null;
             $countOK=is_array($counter)
                 &&is_int($counter['HOME_TO_LAGER']??null)
@@ -125,12 +134,16 @@ final class JVFieldObservationComparator
             $out['p03Total24h']=$total;
             $limited=$total!==null&&$total>$out['p03VisibleHistoryCount'];
             $uncertainCap=$total===null&&$out['p03VisibleHistoryCount']>=15;
-            $out['p03HistoryCoverage']=$limited
-                ?'TRUNCATED_TO_LATEST_15'
-                :($uncertainCap?'COUNT_MISSING_LIST_AT_DISPLAY_CAP'
-                    :'NO_TRUNCATION_REPORTED');
+            $out['p03HistoryCoverage']=$useFull
+                ?((($p03['verifiedTimelineTruncated']??false)===true
+                    ||count($checked)===256)
+                    ?'AT_256_HISTORY_CAP_POTENTIALLY_INCOMPLETE'
+                    :'FULL_PERSISTED_TIMELINE_24H')
+                :($limited?'TRUNCATED_TO_LATEST_15'
+                    :($uncertainCap?'COUNT_MISSING_LIST_AT_DISPLAY_CAP'
+                        :'NO_TRUNCATION_REPORTED'));
             $oldest=null;
-            foreach(array_slice($visible,0,15) as $proof){
+            foreach($checked as $proof){
                 if(is_array($proof)&&($proof['source']??null)
                     ==='P03_TWO_MAST_VERIFIED'
                     &&is_int($proof['at']??null)
@@ -138,10 +151,16 @@ final class JVFieldObservationComparator
                     $oldest=$oldest===null
                         ?$proof['at']:min($oldest,$proof['at']);
             }
-            if(($limited||$uncertainCap)&&$oldest!==null
-                &&$at+self::MAX_WINDOW_SECONDS<$oldest){
-                $out['p03HistoryCoverage']='REFERENCE_OLDER_THAN_VISIBLE_15';
-                $out['notes'][]='CAMERA_HISTORY_TRUNCATED_REFERENCE_MAY_BE_MISSING';
+            if(($useFull
+                    &&$out['p03HistoryCoverage']
+                        ==='AT_256_HISTORY_CAP_POTENTIALLY_INCOMPLETE')
+                ||(!$useFull&&($limited||$uncertainCap))){
+                if($oldest!==null&&$at+self::MAX_WINDOW_SECONDS<$oldest){
+                    $out['p03HistoryCoverage']=$useFull
+                        ?'REFERENCE_OLDER_THAN_PERSISTED_256'
+                        :'REFERENCE_OLDER_THAN_VISIBLE_15';
+                    $out['notes'][]='CAMERA_HISTORY_TRUNCATED_REFERENCE_MAY_BE_MISSING';
+                }
             }
             $historyOnly=($p03['baselineOnly']??false)===true;
             if($historyOnly){
@@ -151,7 +170,7 @@ final class JVFieldObservationComparator
             if(!in_array($out['p03LogContinuity'],
                 ['OK','TAIL_OVERLAP_AFTER_ROTATION'],true))
                 $out['notes'][]='P03_PROOF_LOG_CONTINUITY_NOT_CERTIFIED';
-            foreach(array_slice($visible,0,15) as $proof){
+            foreach($checked as $proof){
                 if($historyOnly||!is_array($proof)
                     ||($proof['source']??null)!=='P03_TWO_MAST_VERIFIED'
                     ||!is_int($proof['at']??null)
@@ -203,6 +222,8 @@ final class JVFieldObservationComparator
         if($out['p03AnonymousOutNearReference']===0){
             if($out['p03HistoryCoverage']==='REFERENCE_OLDER_THAN_VISIBLE_15')
                 $out['notes'][]='OLDER_CAMERA_EVENTS_NOT_IN_15_ITEM_REPORT';
+            elseif($out['p03HistoryCoverage']==='REFERENCE_OLDER_THAN_PERSISTED_256')
+                $out['notes'][]='OLDER_CAMERA_EVENTS_NOT_IN_PERSISTED_256';
             else
                 $out['notes'][]='NO_P03_OUT_NEAR_REFERENCE_DOES_NOT_REFUTE_HOUSE_EXIT';
         }else
