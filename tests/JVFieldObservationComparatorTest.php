@@ -96,6 +96,15 @@ fieldCheck($recentOnly['p03HistoryCoverage']
         $recentOnly['notes'],true)
     &&!$recentOnly['houseExitVerifiedBySensors'],
     'bounded 15 P03 events cannot disprove earlier two-person departure');
+$unknownTotal=$truncated;
+unset($unknownTotal['p03LiveTimeline']['directionProofs24h']);
+$uncertain=JVFieldObservationComparator::compare(
+    $reference,$unknownTotal,$at+3000
+);
+fieldCheck($uncertain['p03HistoryCoverage']
+    ==='REFERENCE_OLDER_THAN_VISIBLE_15'
+    &&$uncertain['p03Total24h']===null,
+    '15 visible entries without a verified total still cannot disprove an older crossing');
 $truncated['p03LiveTimeline']['logContinuity']='LOG_GAP_OR_RESET';
 $logGap=JVFieldObservationComparator::compare(
     $reference,$truncated,$at+3000
