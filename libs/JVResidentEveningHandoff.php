@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.80 Build 161 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.81 Build 162 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -451,6 +451,11 @@ final class JVResidentEveningHandoff
             if(is_array($atlas)
                 &&($atlas['authority']??null)
                     ==='ANONYMOUS_LCN_TEMPORAL_ROOM_SEQUENCE_ONLY'){
+                $add('RAUMWEGE-PRUEFUNG: Vollstaendiger 80er-Abgleich '
+                    .self::yes(($atlas['sourceIntegrityTailValidated']??false)===true)
+                    .' | Muster-Vorlagen '
+                    .self::number($atlas['patternTemplates']??null)
+                    .' | Personen-Identitaet UNBEKANNT');
                 $add('RAUMWEGE-ATLAS: '.self::code($atlas['status']??'UNKNOWN')
                     .' | erkannte Muster '
                     .self::number($atlas['patternsFound']??null)
@@ -461,6 +466,25 @@ final class JVResidentEveningHandoff
                         .' | '.self::date($pattern['startAt']??null)
                         .' bis '.self::date($pattern['endAt']??null)
                         .' | mehrere Personen moeglich');
+                }
+            }
+            $joint=$rooms['jointDepartureReadiness']??[];
+            if(is_array($joint)
+                &&($joint['authority']??null)
+                    ==='JOINT_DEPARTURE_READINESS_NO_PERSON_COUNT_OR_ACTION'){
+                $add('DOPPELABREISE: '.self::code($joint['state']??'UNVERIFIED_SOURCES')
+                    .' | frische WLAN-Geraete '
+                    .self::number($joint['recentVerifiedHandsets']??null)
+                    .' | P03-Beweise/24h '
+                    .self::number($joint['verifiedAnonymousCorridorProofs24h']??null)
+                    .' | ZWEI PERSONEN NICHT BEWIESEN');
+                $add('DOPPELABREISE RAUMKONFLIKT: Raumwege mit ueberlagerten Sensoren '
+                    .self::number($atlas['patternsWithInterleavedRooms']??null)
+                    .' | Anonymitaet/Mehrpersonen-Offenheit: JA');
+                $prio=$joint['sourceGapPriorities']??[];
+                if(is_array($prio))foreach(array_slice($prio,0,4) as $j=>$reason){
+                    $add('DOPPELABREISE-QUELLENLUECKE '.($j+1).': '
+                        .self::code($reason));
                 }
             }
             $day=$rooms['dayDigest']??[];

@@ -7,6 +7,7 @@ require_once dirname(__DIR__).'/libs/JVLocalActivityLedger.php';
 require_once dirname(__DIR__).'/libs/JVResidentRoomPaths.php';
 require_once dirname(__DIR__).'/libs/JVRoomMotionInsight.php';
 require_once dirname(__DIR__).'/libs/JVAnonymousRoomRouteAtlas.php';
+require_once dirname(__DIR__).'/libs/JVJointDepartureReadiness.php';
 require_once dirname(__DIR__).'/libs/JVRoomDayDigest.php';
 require_once dirname(__DIR__).'/libs/JVHousePowerContext.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
@@ -1851,6 +1852,13 @@ class JVPresenceIdentityShadow extends IPSModule
             $temporalCrossCheck,$mastHealth,$residentFusion['report'],
             $tileWork,$boundary['report'],$houseObservation,
             $residentJourney,time()
+        );
+        // Interpret the recurring question about two simultaneous residents
+        // leaving together without attributing anonymous camera events to
+        // handset owners. Diagnostic only, not a property-exit decision.
+        $roomPaths['jointDepartureReadiness']=JVJointDepartureReadiness::evaluate(
+            $roomPaths['routeAtlas'],$wlan,$temporalCrossCheck,
+            $p03Timeline['report'],$evidenceReadiness,time()
         );
         $integrityAudit=JVShadowIntegrityAudit::evaluate(
             $residentFusion['report'],$routeEpisodes['report'],

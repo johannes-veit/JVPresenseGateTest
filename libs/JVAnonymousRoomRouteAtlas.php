@@ -2,33 +2,83 @@
 declare(strict_types=1);
 
 /**
- * Bounded, anonymous room transition templates. Temporal order is not a
- * person track: independent people may trigger different PIRs.
- * Input is ONLY the in-memory, name-validated JVResidentRoomPaths ledger.
+ * Efficient bounded temporal pattern matcher for EXISTING 15 LCN GUS edges.
+ *
+ * Temporal coincidence and an ordered sensor chain are NEVER proof that
+ * one person walked it. A group, a pet, or independent residents may
+ * produce identical traces. No person identification, door control or
+ * alarm operations; full input stays transient and is not published.
+ *
+ * Complexity O(events * templates * template length), with bounded
+ * per-pattern automaton state, not O(events^2) nested replay.
  */
 final class JVAnonymousRoomRouteAtlas
 {
     public const AUTHORITY='ANONYMOUS_LCN_TEMPORAL_ROOM_SEQUENCE_ONLY';
     private const MAX_EDGES=2048;
-    private const HOP=180;
-    private const TOTAL=600;
+    private const MAX_HOP=180;
+    private const MAX_TOTAL=600;
+    private const ROOMS=[
+        'eg_buero'=>'EG Büro',
+        'eg_flur'=>'EG Flur',
+        'eg_gaeste_wc'=>'EG Gäste-WC',
+        'eg_wohnen_kueche'=>'EG Wohnen/Küche',
+        'eg_wohnen_kamin'=>'EG Wohnen Kamin',
+        'eg_bad'=>'EG Bad',
+        'eg_schlafen'=>'EG Schlafen',
+        'og_flur'=>'OG Flur',
+        'og_ankleide'=>'OG Ankleide',
+        'og_ankleide_decke'=>'OG Ankleide Decke',
+        'og_bad'=>'OG Bad',
+        'og_bad_dusche'=>'OG Bad Dusche',
+        'og_bad_waschtisch'=>'OG Bad Waschtisch',
+        'og_schlafen_1'=>'OG Schlafen 1',
+        'og_schlafen_2'=>'OG Schlafen 2'
+    ];
     private const PATTERNS=[
-        'KITCHEN_EG_OG'=>['eg_wohnen_kueche','eg_flur','og_flur'],
-        'OG_EG_KITCHEN'=>['og_flur','eg_flur','eg_wohnen_kueche'],
-        'EG_TO_OG_BEDROOM1'=>['eg_flur','og_flur','og_schlafen_1'],
+        'KITCHEN_EG_OG'=>[
+            'eg_wohnen_kueche','eg_flur','og_flur'],
+        'OG_EG_KITCHEN'=>[
+            'og_flur','eg_flur','eg_wohnen_kueche'],
+        'EG_TO_OG_BEDROOM1'=>[
+            'eg_flur','og_flur','og_schlafen_1'],
         'OG_BEDROOM1_TO_KITCHEN'=>[
             'og_schlafen_1','og_flur','eg_flur','eg_wohnen_kueche'],
-        'OFFICE_TO_KITCHEN'=>['eg_buero','eg_flur','eg_wohnen_kueche'],
-        'KITCHEN_TO_OFFICE'=>['eg_wohnen_kueche','eg_flur','eg_buero'],
+        'OFFICE_TO_KITCHEN'=>[
+            'eg_buero','eg_flur','eg_wohnen_kueche'],
+        'KITCHEN_TO_OFFICE'=>[
+            'eg_wohnen_kueche','eg_flur','eg_buero'],
         'KITCHEN_TO_OG_DRESSING'=>[
-            'eg_wohnen_kueche','eg_flur','og_flur','og_ankleide']
+            'eg_wohnen_kueche','eg_flur','og_flur','og_ankleide'],
+        'OFFICE_GUESTWC_RETURN'=>[
+            'eg_buero','eg_flur','eg_gaeste_wc','eg_flur','eg_buero'],
+        'KITCHEN_TO_GUESTWC'=>[
+            'eg_wohnen_kueche','eg_flur','eg_gaeste_wc'],
+        'GUESTWC_TO_OFFICE'=>[
+            'eg_gaeste_wc','eg_flur','eg_buero'],
+        'OFFICE_TO_OG_BEDROOM1'=>[
+            'eg_buero','eg_flur','og_flur','og_schlafen_1'],
+        'OG_BEDROOM1_TO_OFFICE'=>[
+            'og_schlafen_1','og_flur','eg_flur','eg_buero'],
+        'OG_BATH_TO_KITCHEN'=>[
+            'og_bad','og_flur','eg_flur','eg_wohnen_kueche'],
+        'KITCHEN_TO_OG_BATH'=>[
+            'eg_wohnen_kueche','eg_flur','og_flur','og_bad']
     ];
+
     public static function evaluate(array $roomPaths,array $all,int $now):array
     {
         $out=[
-            'schema'=>1,'authority'=>self::AUTHORITY,'status'=>'NOT_VERIFIED',
-            'validatedRoomEvents90m'=>null,'patternsFound'=>0,
+            'schema'=>1,'authority'=>self::AUTHORITY,
+            'status'=>'NOT_VERIFIED',
+            'validatedRoomEvents90m'=>null,
+            'patternTemplates'=>count(self::PATTERNS),
+            'patternsFound'=>0,
             'latestPatterns'=>[],
+            'lastCrossTrafficAt'=>null,
+            'patternsWithInterleavedRooms'=>0,
+            'sourceIntegrityTailValidated'=>false,
+            'boundedMatcher'=>'LINEAR_TIME_PER_TEMPLATE',
             'eventsFromDifferentPeopleMayOverlap'=>true,
             'sameIndividualNotVerified'=>true,
             'actualRoomTransitionNotVerified'=>true,
@@ -37,66 +87,105 @@ final class JVAnonymousRoomRouteAtlas
             'homeEmptyCertified'=>false,
             'alarmMayBeControlled'=>false
         ];
-        if($now<=0 ||($roomPaths['schema']??null)!==1
-            ||($roomPaths['authority']??null)!=='LCN_ROOM_MOTION_PATHS_ANONYMOUS_ONLY'
+        if($now<=0||($roomPaths['schema']??null)!==1
+            ||($roomPaths['authority']??null)!==self::roomAuthority()
             ||($roomPaths['coverageStatus']??null)!=='AVAILABLE_ANONYMOUS_EDGES'
             ||!is_int($roomPaths['roomEdgeCount90m']??null)
-            ||!is_array($all)||!array_is_list($all)
+            ||!is_array($roomPaths['recentRoomEdges']??null)
+            ||!array_is_list($roomPaths['recentRoomEdges'])
+            ||!array_is_list($all)
             ||count($all)!==$roomPaths['roomEdgeCount90m']
-            ||count($all)>self::MAX_EDGES)return $out;
+            ||count($all)>self::MAX_EDGES
+            ||count($roomPaths['recentRoomEdges'])>80)return $out;
+
+        // Full transcript is generated by a different, authoritative source
+        // validator. Require exact correspondence to the published latest
+        // 80 to defend against accidental mixing of stale/new snapshots.
+        $tail=array_reverse(array_slice($all,-min(80,count($all))));
+        if($tail!==$roomPaths['recentRoomEdges'])return $out;
         $valid=[];$previous=-1;
-        foreach($all as $row){
-            if(!is_array($row)||!is_string($row['id']??null)
-                ||!is_int($row['at']??null)
-                ||$row['at']<$now-5400||$row['at']>$now+5
-                ||$row['at']<$previous
-                ||!in_array($row['status']??null,[
+        foreach($all as $edge){
+            if(!is_array($edge)||!is_string($edge['id']??null)
+                ||!isset(self::ROOMS[$edge['id']])
+                ||($edge['room']??null)!==self::ROOMS[$edge['id']]
+                ||!is_int($edge['at']??null)
+                ||$edge['at']<$now-5400||$edge['at']>$now+5
+                ||$edge['at']<$previous
+                ||!in_array($edge['status']??null,[
                     'SINGLE_UNCERTAIN','KAMIN_UNCORROBORATED',
                     'KAMIN_KITCHEN_CORROBORATED','MULTI_SENSOR_CORROBORATED'
                 ],true))return $out;
-            $previous=$row['at'];
-            // Already name-validated by the room path producer. Only listed
-            // keysets from the topology are allowed into route evidence.
-            if(!in_array($row['id'],array_merge(...array_values(self::PATTERNS)),true))
-                continue;
-            if($row['status']==='KAMIN_UNCORROBORATED')continue;
-            $valid[]=['id'=>$row['id'],'at'=>$row['at']];
+            $previous=$edge['at'];
+            if($edge['status']==='KAMIN_UNCORROBORATED')continue;
+            $valid[]=['id'=>$edge['id'],'at'=>$edge['at']];
         }
         $out['status']='ANONYMOUS_TEMPORAL_HISTORY_AVAILABLE';
+        $out['sourceIntegrityTailValidated']=true;
         $out['validatedRoomEvents90m']=count($all);
         $found=[];
         foreach(self::PATTERNS as $kind=>$wanted){
-            $matching=[];
-            foreach($valid as $edge)
-                if(in_array($edge['id'],$wanted,true))$matching[]=$edge;
+            $count=count($wanted);
+            $states=array_fill(0,$count,null);
             $latest=null;
-            $n=count($matching);
-            for($start=0;$start<$n;$start++){
-                if($matching[$start]['id']!==$wanted[0])continue;
-                $seq=[$matching[$start]];$next=1;
-                for($j=$start+1;$j<$n&&$next<count($wanted);$j++){
-                    $e=$matching[$j];
-                    $last=$seq[count($seq)-1]['at'];
-                    if($e['at']-$last>self::HOP
-                        ||$e['at']-$seq[0]['at']>self::TOTAL)break;
-                    if($e['at']>$last&&$e['id']===$wanted[$next]){
-                        $seq[]=$e;$next++;
+            foreach($valid as $event){
+                $id=$event['id'];$at=$event['at'];
+                // Descending stage order also protects against counting an
+                // event twice if a template happens to repeat the same PIR.
+                for($stage=$count-1;$stage>=0;$stage--){
+                    if($id!==$wanted[$stage])continue;
+                    if($stage===0){
+                        $states[0]=[$at];
+                        continue;
+                    }
+                    $previousPath=$states[$stage-1];
+                    if(!is_array($previousPath))continue;
+                    $last=$previousPath[count($previousPath)-1];
+                    if($at<=$last||$at-$last>self::MAX_HOP
+                        ||$at-$previousPath[0]>self::MAX_TOTAL)continue;
+                    $newPath=$previousPath;
+                    $newPath[]=$at;
+                    $states[$stage]=$newPath;
+                    if($stage!==$count-1)continue;
+                    if($latest===null||$at>$latest['endAt']){
+                        $latest=[
+                            'pattern'=>$kind,
+                            'startAt'=>$newPath[0],
+                            'endAt'=>$at,
+                            'durationSeconds'=>$at-$newPath[0],
+                            'observedKeys'=>$wanted,
+                            'matchedEdgeTimes'=>$newPath,
+                            'status'=>'TIME_ORDER_POSSIBLE_NOT_PERSON_ROUTE'
+                        ];
                     }
                 }
-                if($next===count($wanted)){
-                    $candidate=[
-                        'pattern'=>$kind,
-                        'startAt'=>$seq[0]['at'],
-                        'endAt'=>$seq[count($seq)-1]['at'],
-                        'durationSeconds'=>$seq[count($seq)-1]['at']-$seq[0]['at'],
-                        'observedKeys'=>$wanted,
-                        'status'=>'TIME_ORDER_POSSIBLE_NOT_PERSON_ROUTE'
-                    ];
-                    if($latest===null||$candidate['endAt']>$latest['endAt'])
-                        $latest=$candidate;
-                }
             }
-            if($latest!==null)$found[]=$latest;
+            if($latest===null)continue;
+            // "Interleaved" explicitly means a PIR outside the selected
+            // template fired in the same interval, never that two people
+            // were actually observed. One person can also take side paths.
+            $interleaved=0;$lastInterleaved=null;$foreignRooms=[];
+            $allowed=array_fill_keys($wanted,true);
+            foreach($valid as $event){
+                if($event['at']<$latest['startAt'])continue;
+                if($event['at']>$latest['endAt'])break;
+                if(isset($allowed[$event['id']]))continue;
+                $interleaved++;
+                $foreignRooms[$event['id']]=true;
+                $lastInterleaved=$event['at'];
+            }
+            $latest['interleavedEdges']=$interleaved;
+            $latest['distinctOtherRooms']=count($foreignRooms);
+            $latest['humanAmbiguity']=$interleaved>0
+                ?'INTERLEAVED_ROOM_ACTIVITY_MULTIPLE_EXPLANATIONS'
+                :'TEMPORAL_SEQUENCE_STILL_ANONYMOUS';
+            unset($latest['matchedEdgeTimes']);
+            if($interleaved>0){
+                $out['patternsWithInterleavedRooms']++;
+                if($out['lastCrossTrafficAt']===null
+                    ||$lastInterleaved>$out['lastCrossTrafficAt'])
+                    $out['lastCrossTrafficAt']=$lastInterleaved;
+            }
+            $found[]=$latest;
         }
         usort($found,static fn(array $a,array $b):int =>
             ($b['endAt']<=>$a['endAt'])
@@ -104,5 +193,10 @@ final class JVAnonymousRoomRouteAtlas
         $out['patternsFound']=count($found);
         $out['latestPatterns']=array_slice($found,0,5);
         return $out;
+    }
+
+    private static function roomAuthority():string
+    {
+        return 'LCN_ROOM_MOTION_PATHS_ANONYMOUS_ONLY';
     }
 }
