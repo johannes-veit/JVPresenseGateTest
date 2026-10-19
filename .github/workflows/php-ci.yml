@@ -21,7 +21,7 @@ jobs:
             php -l "$f"
           done < <(find . -type f -name '*.php' -print0)
       - name: Legacy direction/config logic
-        run: php tests/test_logic.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/test_logic.php
       - name: Module loader contracts
         run: |
           python3 - <<'PY'
@@ -49,113 +49,113 @@ jobs:
           print('Module loader contracts PASS')
           PY
       - name: Symcon repository loader folder structure compliance
-        run: php tests/JVModuleRepositoryStructureTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVModuleRepositoryStructureTest.php
       - name: Symcon all module configuration forms support correct field types
-        run: php tests/JVConfigurationFormTypesTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVConfigurationFormTypesTest.php
       - name: Standalone WLAN Johannes isolation boundary
-        run: php tests/StandaloneWLANBoundaryTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/StandaloneWLANBoundaryTest.php
       - name: Smartphone evidence and Symcon lifecycle regression
-        run: php tests/JVPhoneEvidenceTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVPhoneEvidenceTest.php
       - name: Shadow identity and presence invariant simulations
-        run: php tests/JVIdentityHypothesisEngineTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVIdentityHypothesisEngineTest.php
       - name: Replay completed P03 walk test and passive live-source observation
-        run: php tests/JVP03ProofLogReplayTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVP03ProofLogReplayTest.php
       - name: Incremental live P03 shadow timeline and existing commissioning baseline
-        run: php tests/JVP03IncrementalTimelineTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVP03IncrementalTimelineTest.php
       - name: Crosscheck P03 raw street IVS, real mode diagnostic and smartphone WLAN LCN timeline
-        run: php tests/JVTemporalPresenceCrossCheckTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVTemporalPresenceCrossCheckTest.php
       - name: Existing LCN and GUS evidence safety and clock suppression
-        run: php tests/JVLocalSensorEvidenceTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVLocalSensorEvidenceTest.php
       - name: Local-only 24-hour room movement ledger, no phones or headcount
-        run: php tests/JVLocalActivityLedgerTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVLocalActivityLedgerTest.php
       - name: Anonymous home occupancy and absent-vs-quiet safety simulations
-        run: php tests/JVHomeOccupancyEvidenceTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVHomeOccupancyEvidenceTest.php
       - name: Two people walking together - P03 events not person count or property exit
-        run: php tests/JVParallelPassageGuardTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVParallelPassageGuardTest.php
       - name: Camera capability priority and strict Dahua counting telemetry semantics
-        run: php tests/JVCameraCapabilityPriorityTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVCameraCapabilityPriorityTest.php
       - name: Passive inventory of additional IPC camera instances
-        run: php tests/JVAdditionalIPCInventoryTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVAdditionalIPCInventoryTest.php
       - name: Qualified installed IPC addresses and passive IVS evidence fail closed
-        run: php tests/JVKnownIpcMetadataTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVKnownIpcMetadataTest.php
       - name: Property boundary signal health and exit variable metadata discovery
-        run: php tests/JVBoundaryEvidenceTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVBoundaryEvidenceTest.php
       - name: Prioritized exit-status candidate filter and false-positive regression
-        run: php tests/JVExitCandidateInventoryPrecisionTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVExitCandidateInventoryPrecisionTest.php
       - name: Exit metadata audit remains available after 60s Shadow refresh
-        run: php tests/JVExitInventoryRetentionTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVExitInventoryRetentionTest.php
       - name: Indoor motion lights, TV power, legacy gate display and outside exclusions
-        run: php tests/JVIndoorPresenceEvidenceTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVIndoorPresenceEvidenceTest.php
       - name: Strict existing 21 Boolean indoor light statuses, no false positives
-        run: php tests/JVIndoorAutoReadHintsTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVIndoorAutoReadHintsTest.php
       - name: Read-only Schiebetor state snapshots and deduplicated status edges
-        run: php tests/JVGateSignalAuditTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVGateSignalAuditTest.php
       - name: Schiebetor Shadow activation, exact ID path verification and no writes
-        run: php tests/JVGateSignalShadowIntegrationTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVGateSignalShadowIntegrationTest.php
       - name: Two existing WLAN smartphone scripts and 660-second standby safety
-        run: php tests/JVExistingWlanPhoneHintsTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVExistingWlanPhoneHintsTest.php
       - name: Existing EgiGeoZone Johannes 150m inside/outside/stale safety
-        run: php tests/JVJohannesEgiGeoZoneHintsTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVJohannesEgiGeoZoneHintsTest.php
       - name: Existing Carina iOS Geofency source metadata, stale and no-away safety
-        run: php tests/JVCarinaGeofencyHintsTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVCarinaGeofencyHintsTest.php
       - name: Two named read-only resident display variables without false absence
-        run: php tests/JVResidentPresenceDisplayTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVResidentPresenceDisplayTest.php
       - name: Verified whole-home Anwesenheit erkannt Boolean (GUS/P03/WLAN/Geo/Light/Gate)
-        run: php tests/JVCombinedPresenceBooleanTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVCombinedPresenceBooleanTest.php
       - name: Reliable VISU handset HOME WORK UNKNOWN stale Standby and source contradiction
-        run: php tests/JVResidentVisuStateTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVResidentVisuStateTest.php
       - name: Collapsible single tile HTML current resident status no fabricated travel or alarm
-        run: php tests/JVResidentTileDashboardTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVResidentTileDashboardTest.php
       - name: Three-event phone departure with real Carina timestamps and contradictory source safety
-        run: php tests/JVResidentDepartureInferenceTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVResidentDepartureInferenceTest.php
       - name: Replay actual latest Carina Geofence IN, Johannes WLAN clock edge and stale source guards
-        run: php tests/JVResidentLatestPhoneEventTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVResidentLatestPhoneEventTest.php
       - name: One complete evening ChatGPT pasteable redacted safety-audited resident test report
-        run: php tests/JVResidentEveningHandoffTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVResidentEveningHandoffTest.php
       - name: Existing 15-GUS anonymous office bathroom loop and kitchen to upstairs room-path regression
-        run: php tests/JVResidentRoomPathsTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVResidentRoomPathsTest.php
       - name: Company WLAN exact SSIDs, iOS/Android sources, stale and overlap safety
-        run: php tests/JVCompanyWiFiEvidenceTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVCompanyWiFiEvidenceTest.php
       - name: Standalone secure phone SSID WebHook script installer is idempotent
-        run: php tests/JVPhoneWiFiBridgeInstallerTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVPhoneWiFiBridgeInstallerTest.php
       - name: Combined anonymous WLAN GUS P03 gate indoor occupancy evaluation
-        run: php tests/JVCombinedPresenceEvidenceTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVCombinedPresenceEvidenceTest.php
       - name: Fifteen verified real LCN GUS inventory imports and collision protection
-        run: php tests/JVLCNGUSInventoryTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/JVLCNGUSInventoryTest.php
       - name: P03 proof simulations
-        run: php tests/P03ProofEngineTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03ProofEngineTest.php
       - name: Independent ONVIF PullPoint event parser and safety tests
-        run: php tests/P03OnvifEventTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03OnvifEventTest.php
       - name: Full ONVIF connection, subscription, renewal, failure and no-event integration tests
-        run: php tests/P03OnvifProtocolIntegrationTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03OnvifProtocolIntegrationTest.php
       - name: P03 both-camera live-like human recognition simulation
-        run: php tests/P03RealisticHumanRecognitionSimulationTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03RealisticHumanRecognitionSimulationTest.php
       - name: P03 auxiliary Human IVS rule tests
-        run: php tests/P03AuxHumanRuleTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03AuxHumanRuleTest.php
       - name: P03 observer HTTP/Digest/Eventstream integration simulation
-        run: php tests/P03AuxObserverStreamTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03AuxObserverStreamTest.php
       - name: Optional third TERRACE IVS read-only observer and isolation integration
-        run: php tests/P03OptionalTerraceIntegrationTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03OptionalTerraceIntegrationTest.php
       - name: P03 TERRACE directional OUT backup with validated Human IVS and two-mast precedence
-        run: php tests/P03TerraceOutBackupTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03TerraceOutBackupTest.php
       - name: P03 TERRACE delayed IN backup matching real fourth return and false-positive cases
-        run: php tests/P03TerraceInBackupTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03TerraceInBackupTest.php
       - name: P03 WORK_LEFT street RuleID5 and combined OUT-IN training
-        run: php tests/P03WorkStreetLearningTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03WorkStreetLearningTest.php
       - name: P03 actual left-camera identity and safe existing instance migration
-        run: php tests/P03LeftCameraMigrationTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03LeftCameraMigrationTest.php
       - name: P03 one-click read-only socket diagnosis
-        run: php tests/P03ConnectionDiagnosisTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03ConnectionDiagnosisTest.php
       - name: Stable ChatGPT P03 test result and two-person guard
-        run: php tests/P03ChatGPTTestReportTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03ChatGPTTestReportTest.php
       - name: P03 Symcon Create and ApplyChanges registration safety
-        run: php tests/P03RegistrationLifecycleTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03RegistrationLifecycleTest.php
       - name: P03 physical variable budget and migration safety
-        run: php tests/P03VariableBudgetTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03VariableBudgetTest.php
       - name: Dahua IPC-HFW5442E-ZE 2.840 model config and wire security unit
-        run: php tests/P03IPC5442AuditTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03IPC5442AuditTest.php
       - name: P03 dedicated Client Socket creation/connection simulation
-        run: php tests/P03ClientSocketRepairTest.php
+        run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/P03ClientSocketRepairTest.php
       - name: P03 hardened module contract
         run: |
           python3 - <<'PY'

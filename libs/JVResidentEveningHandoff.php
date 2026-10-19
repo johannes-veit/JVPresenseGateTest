@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.78 Build 159 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.79 Build 160 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -407,6 +407,46 @@ final class JVResidentEveningHandoff
                 :'KEINE VOLLSTÄNDIGE FOLGE'));
         }
         if($roomsValid){
+            $insight=is_array($rooms['activityInsight']??null)
+                &&($rooms['activityInsight']['authority']??null)
+                    ==='ANONYMOUS_LCN_ROOM_ACTIVITY_CONTEXT_ONLY'
+                ?$rooms['activityInsight']:[];
+            if($insight!==[]){
+                $add('RAUMKONTEXT: '.self::code($insight['coverage']??'UNKNOWN')
+                    .' | qualifizierte Impulse 5min '
+                    .self::number($insight['events5m']??null)
+                    .' / 15min '.self::number($insight['events15m']??null)
+                    .' | verschiedene Raeume 15min '
+                    .self::number($insight['distinctRooms15m']??null)
+                    .' | KEINE PERSONENZAEHLUNG');
+                $hot=[];
+                foreach(array_slice($insight['hotRooms15m']??[],0,4) as $room){
+                    if(!is_array($room))continue;
+                    $hot[]=self::code($room['id']??'UNKNOWN')
+                        .'='.self::number($room['events']??null);
+                }
+                $add('RAUMSCHWERPUNKTE/15min: '
+                    .($hot!==[]?implode(' | ',$hot):'KEINE AKTUELLE BEWEGUNG')
+                    .' | unbekannt, welche Person');
+                $add('RAUMZUSAMMENHANG: Buero/Kueche <=30s '
+                    .self::yes(($insight['officeKitchenCloseTiming']??false)===true)
+                    .' | EG-Flur vor OG-Flur <=180s '
+                    .self::yes(($insight['egOgHallSequencePossible']??false)===true)
+                    .' | keine sichere gemeinsame Person oder Personenzahl');
+                $add('RAUMQUELLENFILTER: Kamin ungeprueft ausgeschlossen '
+                    .self::number($insight['weakKaminEdgesExcluded']??null)
+                    .' | GUS-Ruecktrigger unter 20s zusammengefasst '
+                    .self::number($insight['retriggerEdgesSuppressed']??null));
+                foreach(array_slice($insight['recentMotionBursts']??[],0,3) as $burst){
+                    if(!is_array($burst))continue;
+                    $add('RAUMAKTIVITAETSCLUSTER: '
+                        .self::date($burst['startAt']??null).' bis '
+                        .self::date($burst['endAt']??null)
+                        .' | Raumsensoren '
+                        .self::number($burst['distinctRooms']??null)
+                        .' | keine individuelle Route');
+                }
+            }
             $knownRooms=[
                 'EG Büro','EG Flur','EG Gäste-WC','EG Wohnen/Küche',
                 'EG Wohnen Kamin','EG Bad','EG Schlafen','OG Flur',
