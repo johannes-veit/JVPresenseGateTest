@@ -15,13 +15,13 @@ final class JVPhoneRoomOverlapAudit
     private const MAX_EDGES=2048;
     private const MAX_PAIRS=8;
     private const ROOMS=[
-        'eg_buero'=>true,'eg_flur'=>true,'eg_gaeste_wc'=>true,
-        'eg_wohnen_kueche'=>true,'eg_wohnen_kamin'=>true,
-        'eg_bad'=>true,'eg_schlafen'=>true,'og_flur'=>true,
-        'og_ankleide'=>true,'og_ankleide_decke'=>true,
-        'og_bad'=>true,'og_bad_dusche'=>true,
-        'og_bad_waschtisch'=>true,'og_schlafen_1'=>true,
-        'og_schlafen_2'=>true
+        'eg_buero'=>'EG Büro','eg_flur'=>'EG Flur','eg_gaeste_wc'=>'EG Gäste-WC',
+        'eg_wohnen_kueche'=>'EG Wohnen/Küche','eg_wohnen_kamin'=>'EG Wohnen Kamin',
+        'eg_bad'=>'EG Bad','eg_schlafen'=>'EG Schlafen','og_flur'=>'OG Flur',
+        'og_ankleide'=>'OG Ankleide','og_ankleide_decke'=>'OG Ankleide Decke',
+        'og_bad'=>'OG Bad','og_bad_dusche'=>'OG Bad Dusche',
+        'og_bad_waschtisch'=>'OG Bad Waschtisch','og_schlafen_1'=>'OG Schlafen 1',
+        'og_schlafen_2'=>'OG Schlafen 2'
     ];
 
     public static function evaluate(array $cycles,array $activity,
@@ -88,6 +88,11 @@ final class JVPhoneRoomOverlapAudit
             $source=$activity['perSource'][$id]??null;
             if(!is_array($source)||($source['zone']??null)!=='HOME')
                 continue;
+            $normal=static fn(string $v):string=>(string)preg_replace(
+                '/[^\\p{L}\\p{N}]/u','',mb_strtolower($v,'UTF-8'));
+            if(!is_string($source['name']??null)
+                ||!str_contains($normal($source['name']),
+                    $normal(substr(self::ROOMS[$id],3))))continue;
             // The known Kamin time filter can suppress spurious half-hour
             // motion: an UNCORROBORATED Kamin event is never corroboration.
             if($event['status']==='KAMIN_UNCORROBORATED')
