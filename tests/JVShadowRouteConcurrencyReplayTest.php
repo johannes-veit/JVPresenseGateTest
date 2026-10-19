@@ -142,6 +142,38 @@ $jointStale=JVJointDepartureReadiness::evaluate(
 routeLinearCheck($jointStale['state']==='P03_MODE_NEEDS_FRESH_DIAGNOSIS',
     'an old P03 OFF must not mask a later mode change');
 
+// Site-observed anonymous room sequence from the 19 Oct test:
+ // OG Schlafen 1 20:29:39 -> OG Flur 20:29:57 ->
+ // EG Flur 20:30:05 -> EG Wohnen/Kueche 20:30:21.
+ // Times independently come from the GUS report; never attach names.
+$caseNow=(new DateTimeImmutable('2026-10-19 20:31:57',
+    new DateTimeZone('Europe/Berlin')))->getTimestamp();
+$caseTimes=[
+    ['og_schlafen_1','OG Schlafen 1','20:29:39'],
+    ['og_flur','OG Flur','20:29:57'],
+    ['eg_flur','EG Flur','20:30:05'],
+    ['eg_wohnen_kueche','EG Wohnen/Küche','20:30:21']
+];
+$caseEdges=[];
+foreach($caseTimes as [$key,$label,$clock]){
+    $at=(new DateTimeImmutable('2026-10-19 '.$clock,
+        new DateTimeZone('Europe/Berlin')))->getTimestamp();
+    $caseEdges[]=['id'=>$key,'room'=>$label,'at'=>$at,
+        'status'=>'SINGLE_UNCERTAIN'];
+}
+$caseInput=['schema'=>1,
+    'authority'=>'LCN_ROOM_MOTION_PATHS_ANONYMOUS_ONLY',
+    'coverageStatus'=>'AVAILABLE_ANONYMOUS_EDGES',
+    'roomEdgeCount90m'=>count($caseEdges),
+    'recentRoomEdges'=>array_reverse($caseEdges)];
+$caseResult=JVAnonymousRoomRouteAtlas::evaluate(
+    $caseInput,$caseEdges,$caseNow);
+routeLinearCheck(in_array('OG_BEDROOM1_TO_KITCHEN',
+    array_column($caseResult['latestPatterns'],'pattern'),true)
+    &&$caseResult['personCountCertified']===false
+    &&$caseResult['personIdentityCertified']===false,
+    'actual 20:29:39-20:30:21 OG bedroom to EG kitchen GUS ordering recognized, human unknown');
+
 // Randomized equivalence with exhaustive reference for existence of
 // temporal patterns. Reproducible, no clock/network/camera needed.
 $ref=new ReflectionClass('JVAnonymousRoomRouteAtlas');
