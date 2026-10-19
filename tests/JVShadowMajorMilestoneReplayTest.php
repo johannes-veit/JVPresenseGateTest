@@ -131,4 +131,27 @@ $expired=JVLocalActivityLedger::evaluate([],$registered,$next['next'],$now+86500
 milestoneCheck($expired['report']['capacityTruncatedAt']===null
     &&$expired['report']['full24hWindowObserved'],
     'overflow incident eventually expires only after entire affected day');
+
+// A recycled Symcon ID with the wrong room name is not a valid 24h room.
+// Fresh person claims must also stay impossible after corrupt local data.
+$spoofActivity=$activity;
+$spoofActivity['perSource']['eg_wohnen_kueche']['name']='Bewegungsmelder fremde Halle';
+$spoof=JVRoomDayDigest::evaluate($state,$spoofActivity,$now);
+milestoneCheck($spoof['homeRoomEvents24h']===3
+    &&$spoof['distinctRooms24h']===3
+    &&!$spoof['mayCertifyHomeEmpty'],
+    '24h replay rejects a reused sensor ID with wrong original room');
+$corrupted=JVLocalActivityLedger::evaluate([],$registered,[
+    'schema'=>999,'entries'=>[['unexpected'=>'damaged']],
+    'startedAt'=>$now-86400
+],$now);
+milestoneCheck(!$corrupted['report']['full24hWindowObserved']
+    &&$corrupted['next']['startedAt']===$now
+    &&$corrupted['next']['capacityTruncatedAt']===$now,
+    'corrupted old 24h ledger rebaselines continuity instead of certifying');
+$corruptNext=JVLocalActivityLedger::evaluate(
+    [],$registered,$corrupted['next'],$now+60);
+milestoneCheck(!$corruptNext['report']['full24hWindowObserved']
+    &&$corruptNext['report']['capacityTruncatedAt']===$now,
+    'corrupt source continuity cannot silently repair itself at next poll');
 echo "SHADOW 0.8.80 deep replay: full 90m, 24h digest, 7 route patterns, watt safety, sticky overflow PASS\n";
