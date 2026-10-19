@@ -41,6 +41,7 @@ final class JVShadowReportBudget
         $priority=[
             '--- Johannes ---','--- Carina ---','--- KAMERAS / LCN / ROUTE ---',
             '--- HEUTE ABEND:', 'P03-UEBERGANG/24h:',
+            'P03-5MIN-STATUS:', 'P03-5MIN/24h:',
             'HANDY-EVENT/24h:', 'SELBSTPRUEFUNG:',
             'SELBSTPRUEFUNG HINWEISE:', 'UPGRADE-SPEICHERPRUEFUNG:',
             'UPGRADE PRUEFPUNKT:', 'ENDPRUEFUNG HAUS:',
