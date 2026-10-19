@@ -178,13 +178,26 @@ $p03['recentDirectionProofs']=[
     ['source'=>'P03_TWO_MAST_VERIFIED','direction'=>'HOME_TO_LAGER','at'=>$now-125],
     ['source'=>'UNVERIFIED','direction'=>'HOME_TO_LAGER','at'=>$now-126]
 ];
+// Synthetic, complete anonymous history exposed in same copied field.
+$p03['verifiedDirectionTimeline24h']=[
+    ['at'=>$now-125,'direction'=>'HOME_TO_LAGER',
+        'source'=>'P03_TWO_MAST_VERIFIED'],
+    ['at'=>$now-1925,'direction'=>'LAGER_TO_HOME',
+        'source'=>'P03_TWO_MAST_VERIFIED']
+];
+$p03['verifiedTimeline24hCount']=2;
+$p03['verifiedTimelineTruncated']=false;
+$p03['logContinuity']='OK';
 $detailed=JVResidentEveningHandoff::build(
     $tile,$phoneState,$wlan,$work,$jGeo,$cGeo,$p03,$timing,
     $mast,$house,$activity,$local,$boundary,$gate,[],$now,true,
     [],[],[],[],$fusionExample,$routeDemo,$candidateJourney,
     $readinessFixture,$integrity,$gateFixture
 );
-expectHandoff(str_contains($detailed,'P03-UEBERGANG/24h: HOME_TO_LAGER')
+expectHandoff(str_contains($detailed,'P03-5MIN-STATUS: RETAINED_ANONYMOUS_HISTORY_24H')
+    &&str_contains($detailed,'P03-5MIN/24h:')
+    &&str_contains($detailed,'19:55 O1/I0')
+    &&str_contains($detailed,'P03-UEBERGANG/24h: HOME_TO_LAGER')
     &&substr_count($detailed,'P03-UEBERGANG/24h: ')===1
     &&str_contains($detailed,'HANDY-VERLAUF/24h: 2')
     &&str_contains($detailed,'HANDY-EVENT/24h: PHONE_RETURN_AFTER_OUT_IN_AND_HOME_MAC')
