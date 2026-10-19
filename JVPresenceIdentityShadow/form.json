@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.82: GUS-24h-Historie jetzt mit echter Polling-Kontinuitaet. Bei Runtime-/SymBox-Ausfall ueber 300 s, Versionsmigration oder beschädigtem Verlauf bleiben historische Einzelimpulse erhalten; ein lueckenlos beobachteter Tag wird jedoch NICHT behauptet. Neue anonyme Doppelabreise-Zeitleiste vergleicht ausschliesslich persoenlich aufgezeichnete Smartphone-Geofence-OUT-Ereignisse beider Geraete innerhalb 180 s und optional eine bis 300 s nahe P03-zweifach verifizierte Haus→Lager-Treppenpassage. Die Geofence-Zone umfasst HAUS und FIRMA, und weder Kamera noch Geraet identifizieren eine Person. WLAN-Kontaktverlust kann kein Abreise-Ereignis erzeugen. Alle Angaben nur im bisherigen Ein-Variablen-Bericht und kompakten EvidenceJSON; keine neue Symcon-Variable, kein neuer Attributname und keinerlei Fremdmodul-Steuerung."
+      "caption": "SHADOW v0.8.83: 14 GUS-Raumfolgemuster mit zeitstempelgruppierter, linear begrenzter Auswertung. Mehrere Melderimpulse innerhalb derselben Sekunde gelten nicht als aufeinanderfolgende Wegstationen; verbleibende zeitlich moegliche alternative Quellen werden beruecksichtigt. Die anonyme Doppel-Handy-OUT-Historie meldet jetzt auch persoenliche Geofence-IN-Ereignisse nach der Paarung, damit bereits abgeschlossene Handy-Zonenaustritte nicht als aktuell dargestellt werden. Keine Personenidentifikation, keine Aussage Haus-leer, keine neue Symcon-Variable, keine Fremdmodule oder Geraetesteuerung; weiterhin nur in EvidenceJSON und Testergebnis an ChatGPT."
     },
     {
       "type": "Label",
