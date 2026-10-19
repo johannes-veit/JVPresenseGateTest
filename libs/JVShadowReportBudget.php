@@ -49,6 +49,8 @@ final class JVShadowReportBudget
             'DOPPELABREISE:', 'DOPPELABREISE RAUMKONFLIKT:',
             'DOPPELABREISE-QUELLENLUECKE ',
             'HANDY-DOPPELABREISE/24h:',
+            'HANDY-ZYKLEN/24h:',
+            'HANDY-OUT-DOPPELMELDUNGEN VERWORFEN:',
             'HANDY-DOPPELABREISE-KONTEXT:',
             'HANDY-GEMEINSAMES-OUT:',
             'HANDY-P03-ZEITABGLEICH:',

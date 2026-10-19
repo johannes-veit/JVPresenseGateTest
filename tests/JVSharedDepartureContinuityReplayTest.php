@@ -122,6 +122,20 @@ $twoRounds['people']['johannes']['eventHistory'][]=[
     'code'=>'PHONE_GEOFENCE_OUT_OBSERVED','at'=>$now-1210];
 $twoRounds['people']['carina']['eventHistory'][]=[
     'code'=>'PHONE_GEOFENCE_OUT_OBSERVED','at'=>$now-1200];
+// A second OUT without a real intervening IN is a duplicate handset
+// state report, not a second independently observed departure cycle.
+$withoutIn=JVSharedDepartureTimeline::evaluate(
+    $twoRounds,$p03,$timing,$now);
+independentEvidenceCheck($withoutIn['pairedEventsWithin24h']===1
+    &&$withoutIn['repeatedPhoneOutIgnored']['johannes']===1
+    &&$withoutIn['repeatedPhoneOutIgnored']['carina']===1,
+    'repeated OUT without IN is one phone cycle rather than multiple departures');
+// Re-enable the genuinely distinct older and newer OUT cycles by adding
+// an intervening IN event for each of the two devices.
+$twoRounds['people']['johannes']['eventHistory'][]=[
+    'code'=>'PHONE_GEOFENCE_IN_OBSERVED','at'=>$now-1050];
+$twoRounds['people']['carina']['eventHistory'][]=[
+    'code'=>'PHONE_GEOFENCE_IN_OBSERVED','at'=>$now-1040];
 $roundR=JVSharedDepartureTimeline::evaluate(
     $twoRounds,$p03,$timing,$now);
 independentEvidenceCheck($roundR['pairedEventsWithin24h']>=2
