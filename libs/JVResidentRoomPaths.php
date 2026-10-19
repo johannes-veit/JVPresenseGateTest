@@ -28,7 +28,7 @@ final class JVResidentRoomPaths
     private const WINDOW=5400;  // 90m recent, no multi-status log
     private const MAX_EVENTS=80;
 
-    public static function evaluate(array $state,array $activity,int $now):array
+    public static function evaluate(array $state,array $activity,int $now,bool $includeInternalFull=false):array
     {
         $out=['schema'=>1,'authority'=>'LCN_ROOM_MOTION_PATHS_ANONYMOUS_ONLY',
             'recentRoomEdges'=>[],'roomEdgeCount90m'=>0,
@@ -75,6 +75,10 @@ final class JVResidentRoomPaths
         $out['roomEdgeCount90m']=count($valid);
         $out['recentRoomEdges']=array_reverse(array_slice($valid,-self::MAX_EVENTS));
         $out['coverageStatus']='AVAILABLE_ANONYMOUS_EDGES';
+        // Transient ONLY. Callers must remove before publishing JSON;
+        // a large 90-minute event list should not become a Symcon variable.
+        if($includeInternalFull)
+            $out['internalFullRoomEdges90m']=$valid;
         foreach($valid as $e){
             if($e['id']==='eg_wohnen_kueche')
                 $out['kitchenLastMotionAt']=$e['at'];
