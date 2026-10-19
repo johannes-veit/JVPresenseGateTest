@@ -4,6 +4,7 @@ declare(strict_types=1);
 /**
  * Pure, bounded review of independently observed phone-area OUT/IN cycles.
  *
+ * Phone-area intervals must overlap; close timestamps alone are insufficient.
  * One app's repeated OUT without an intervening IN is ONE observed episode,
  * NOT another departure. Pair two phones by monotone one-to-one assignment,
  * maximizing distinct pairs before minimizing total timestamp skew.
@@ -19,6 +20,18 @@ final class JVPhoneAreaCycleMatcher
     private const MAX_PAIR_SECONDS=180;
     private const MAX_PUBLISHED_PAIRS=8;
 
+    /** Reported phone-area intervals must overlap, not merely start nearby. */
+    private static function overlap(array $a,array $b,int $now):?array
+    {
+        $start=max($a['outAt'],$b['outAt']);
+        $aEnd=$a['inAt']??($now+5);
+        $bEnd=$b['inAt']??($now+5);
+        $end=min($aEnd,$bEnd);
+        if($start>=$end)return null;
+        return ['start'=>$start,'end'=>$end,
+            'seconds'=>$end-$start];
+    }
+
     public static function evaluate(array $fusion,int $now):array
     {
         $out=[
@@ -32,6 +45,8 @@ final class JVPhoneAreaCycleMatcher
             'orphanInIgnored'=>['johannes'=>0,'carina'=>0],
             'sameSecondConflicts'=>false,
             'pairedCycleCount'=>0,'latestPair'=>null,'recentPairs'=>[],
+            'nearButNonOverlappingCandidates'=>0,
+            'matchedIntervalsArePhoneAreaReportsNotHumans'=>true,
             'multiplePairingsPossible'=>false,
             'unmatchedCycles'=>['johannes'=>0,'carina'=>0],
             'sourceGaps'=>[],
@@ -144,6 +159,16 @@ final class JVPhoneAreaCycleMatcher
             return $out;
         }
 
+        // A pair with two close OUTs but non-overlapping phone-area intervals
+        // is NOT a shared phone-area exit. Count rejected alternatives.
+        foreach($j as $ja){
+            foreach($c as $ca){
+                if(abs($ja['outAt']-$ca['outAt'])<=self::MAX_PAIR_SECONDS
+                    &&self::overlap($ja,$ca,$now)===null)
+                    $out['nearButNonOverlappingCandidates']++;
+            }
+        }
+
         // Ordered bipartite DP. Select disjoint OUT episodes with maximum
         // cardinality, then the smallest sum of absolute time differences.
         // Scores and decision paths use at most 25x25 array entries.
@@ -161,7 +186,8 @@ final class JVPhoneAreaCycleMatcher
                         'cost'=>$dp[$i][$k+1]['cost'],'step'=>'SKIP_C']
                 ];
                 $gap=abs($j[$i]['outAt']-$c[$k]['outAt']);
-                if($gap<=self::MAX_PAIR_SECONDS)
+                if($gap<=self::MAX_PAIR_SECONDS
+                    &&self::overlap($j[$i],$c[$k],$now)!==null)
                     $choices[]=['n'=>1+$dp[$i+1][$k+1]['n'],
                         'cost'=>$gap+$dp[$i+1][$k+1]['cost'],
                         'step'=>'MATCH'];
@@ -180,8 +206,16 @@ final class JVPhoneAreaCycleMatcher
             $step=$dp[$i][$k]['step'];
             if($step==='MATCH'){
                 $jOut=$j[$i]['outAt'];$cOut=$c[$k]['outAt'];
+                $intersection=self::overlap($j[$i],$c[$k],$now);
+                if($intersection===null)throw new LogicException(
+                    'MATCHED_NON_OVERLAPPING_PHONE_CYCLES');
                 $matched[]=[
                     'johannesAt'=>$jOut,'carinaAt'=>$cOut,
+                    'phoneAreaOverlapStartAt'=>$intersection['start'],
+                    'phoneAreaOverlapEndAt'=>$intersection['end'],
+                    'phoneAreaOverlapSeconds'=>$intersection['seconds'],
+                    'johannesInAt'=>$j[$i]['inAt'],
+                    'carinaInAt'=>$c[$k]['inAt'],
                     'start'=>min($jOut,$cOut),'end'=>max($jOut,$cOut),
                     'gap'=>abs($jOut-$cOut),
                     'returnedAfterOut'=>[
@@ -201,7 +235,9 @@ final class JVPhoneAreaCycleMatcher
             0,self::MAX_PUBLISHED_PAIRS);
         $out['status']=$matched!==[]
             ?'QUALIFIED_ONE_TO_ONE_PHONE_AREA_PAIRS_NOT_PEOPLE'
-            :'NO_TWO_QUALIFIED_PHONE_AREA_EXITS_24H';
+            :($out['nearButNonOverlappingCandidates']>0
+                ?'NEAR_PHONE_OUTS_BUT_NO_SHARED_AREA_INTERVAL'
+                :'NO_TWO_QUALIFIED_PHONE_AREA_EXITS_24H');
 
         // A near-window alternative does not prove any individual departed.
         // Distinct possible matchings may exist even if the chosen optimal
@@ -210,7 +246,8 @@ final class JVPhoneAreaCycleMatcher
             $options=0;
             foreach($c as $other)
                 if(abs($row['outAt']-$other['outAt'])
-                    <=self::MAX_PAIR_SECONDS)$options++;
+                    <=self::MAX_PAIR_SECONDS
+                    &&self::overlap($row,$other,$now)!==null)$options++;
             if($options>1){$out['multiplePairingsPossible']=true;break;}
         }
         if(!$out['multiplePairingsPossible']){
