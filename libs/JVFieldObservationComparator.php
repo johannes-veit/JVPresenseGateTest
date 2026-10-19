@@ -124,9 +124,11 @@ final class JVFieldObservationComparator
                 ?$counter['HOME_TO_LAGER']+$counter['LAGER_TO_HOME']:null;
             $out['p03Total24h']=$total;
             $limited=$total!==null&&$total>$out['p03VisibleHistoryCount'];
+            $uncertainCap=$total===null&&$out['p03VisibleHistoryCount']>=15;
             $out['p03HistoryCoverage']=$limited
                 ?'TRUNCATED_TO_LATEST_15'
-                :'NO_TRUNCATION_REPORTED';
+                :($uncertainCap?'COUNT_MISSING_LIST_AT_DISPLAY_CAP'
+                    :'NO_TRUNCATION_REPORTED');
             $oldest=null;
             foreach(array_slice($visible,0,15) as $proof){
                 if(is_array($proof)&&($proof['source']??null)
@@ -136,7 +138,7 @@ final class JVFieldObservationComparator
                     $oldest=$oldest===null
                         ?$proof['at']:min($oldest,$proof['at']);
             }
-            if($limited&&$oldest!==null
+            if(($limited||$uncertainCap)&&$oldest!==null
                 &&$at+self::MAX_WINDOW_SECONDS<$oldest){
                 $out['p03HistoryCoverage']='REFERENCE_OLDER_THAN_VISIBLE_15';
                 $out['notes'][]='CAMERA_HISTORY_TRUNCATED_REFERENCE_MAY_BE_MISSING';
