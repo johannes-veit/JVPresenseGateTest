@@ -51,6 +51,11 @@ final class JVLocalActivityLedger
             || !is_array($old) || !array_is_list($old)
             || count($old)>self::MAX_ENTRIES) {
             $warnings[]='CORRUPT_LEDGER_BUFFER';
+            // No intact continuous observation can be asserted after
+            // corrupt local history. Restart only this anonymous baseline,
+            // never erase other resident/P03 state or take external actions.
+            $startedAt=$now;
+            $capacityTruncatedAt=$now;
             $old=[];
         }
         $registered=[];
