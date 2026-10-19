@@ -25,6 +25,8 @@ final class JVFieldObservationComparator
             'p03Total24h'=>null,
             'p03HistoryCoverage'=>'UNVERIFIED',
             'p03LogContinuity'=>'UNVERIFIED',
+            'sourceSnapshotAt'=>null,
+            'sourceSnapshotFreshness'=>'UNVERIFIED',
             'phoneHistoryCoverage'=>[],
             'phoneEventNearReference'=>[],
             'vehicleIdentity'=>'USER_REPORTED_NOT_CAMERA_IDENTIFIED',
@@ -85,6 +87,20 @@ final class JVFieldObservationComparator
             $out['notes'][]='SHADOW_EVIDENCE_SOURCE_UNVERIFIED';
             return $out;
         }
+        $capturedAt=$evidence['snapshotAt']??null;
+        if(is_int($capturedAt)&&$capturedAt>0
+            &&$capturedAt<=$now+300){
+            $out['sourceSnapshotAt']=$capturedAt;
+            if($capturedAt<$at){
+                $out['sourceSnapshotFreshness']='PREDATES_REPORTED_EVENT';
+                $out['status']='SNAPSHOT_TOO_OLD_FOR_REFERENCE';
+                $out['notes'][]='REQUEST_NEWER_EVIDENCE_NOT_RETROACTIVE_CERTIFICATION';
+                return $out;
+            }
+            $out['sourceSnapshotFreshness']='RECORDED_AFTER_REFERENCE';
+        }else{
+            $out['sourceSnapshotFreshness']='LEGACY_SNAPSHOT_TIME_NOT_AVAILABLE';
+        }
         $p03=$evidence['p03LiveTimeline']??null;
         $p03OK=is_array($p03)&&($p03['schema']??null)===1
             &&($p03['authority']??null)==='P03_LIVE_PROOFS_DIRECTION_ONLY';
@@ -125,11 +141,16 @@ final class JVFieldObservationComparator
                 $out['p03HistoryCoverage']='REFERENCE_OLDER_THAN_VISIBLE_15';
                 $out['notes'][]='CAMERA_HISTORY_TRUNCATED_REFERENCE_MAY_BE_MISSING';
             }
+            $historyOnly=($p03['baselineOnly']??false)===true;
+            if($historyOnly){
+                $out['p03HistoryCoverage']='BASELINE_ARCHIVE_NOT_LIVE_EVIDENCE';
+                $out['notes'][]='P03_INITIAL_LOG_BASELINE_NOT_LIVE_PROOF';
+            }
             if(!in_array($out['p03LogContinuity'],
                 ['OK','TAIL_OVERLAP_AFTER_ROTATION'],true))
                 $out['notes'][]='P03_PROOF_LOG_CONTINUITY_NOT_CERTIFIED';
             foreach(array_slice($visible,0,15) as $proof){
-                if(!is_array($proof)
+                if($historyOnly||!is_array($proof)
                     ||($proof['source']??null)!=='P03_TWO_MAST_VERIFIED'
                     ||!is_int($proof['at']??null)
                     ||abs($proof['at']-$at)>self::MAX_WINDOW_SECONDS)continue;
