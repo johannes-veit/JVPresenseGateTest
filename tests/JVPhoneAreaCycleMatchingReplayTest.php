@@ -141,8 +141,10 @@ $brute=function(array $ja,array $ca,int $i,int $k)
     $x=$brute($ja,$ca,$i+1,$k);
     $y=$brute($ja,$ca,$i,$k+1);
     if($y[0]>$x[0]||($y[0]===$x[0]&&$y[1]<$x[1]))$x=$y;
-    $gap=abs($ja[$i]-$ca[$k]);
-    if($gap<=180){
+    $gap=abs($ja[$i]['out']-$ca[$k]['out']);
+    $begin=max($ja[$i]['out'],$ca[$k]['out']);
+    $end=min($ja[$i]['in'],$ca[$k]['in']);
+    if($gap<=180&&$begin<$end){
         $z=$brute($ja,$ca,$i+1,$k+1);
         $z=[$z[0]+1,$z[1]+$gap];
         if($z[0]>$x[0]||($z[0]===$x[0]&&$z[1]<$x[1]))$x=$z;
@@ -159,8 +161,9 @@ for($round=0;$round<$rounds;$round++){
         for($k=0,$n=mt_rand(1,5);$k<$n;$k++){
             $cursor+=mt_rand(130,360);
             $events[]=$ev('OUT',$cursor);
-            $times[]=$cursor;
-            $events[]=$ev('IN',$cursor+mt_rand(20,95));
+            $inAt=$cursor+mt_rand(20,95);
+            $times[]=['out'=>$cursor,'in'=>$inAt];
+            $events[]=$ev('IN',$inAt);
             if(mt_rand(0,2)===0)$events[]=$ev('OUT',$cursor);
         }
         shuffle($events);
