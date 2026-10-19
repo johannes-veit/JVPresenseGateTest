@@ -10,12 +10,19 @@ final class JVRoomDayDigest
 {
     public const AUTHORITY='LCN_24H_ANONYMOUS_ACTIVITY_DIGEST_ONLY';
     private const ROOM_IDS=[
-        'eg_buero'=>1,'eg_flur'=>1,'eg_gaeste_wc'=>1,
-        'eg_wohnen_kueche'=>1,'eg_wohnen_kamin'=>1,
-        'eg_bad'=>1,'eg_schlafen'=>1,
-        'og_flur'=>1,'og_ankleide'=>1,'og_ankleide_decke'=>1,
-        'og_bad'=>1,'og_bad_dusche'=>1,'og_bad_waschtisch'=>1,
-        'og_schlafen_1'=>1,'og_schlafen_2'=>1
+        'eg_buero'=>'EG Büro','eg_flur'=>'EG Flur',
+        'eg_gaeste_wc'=>'EG Gäste-WC',
+        'eg_wohnen_kueche'=>'EG Wohnen/Küche',
+        'eg_wohnen_kamin'=>'EG Wohnen Kamin',
+        'eg_bad'=>'EG Bad','eg_schlafen'=>'EG Schlafen',
+        'og_flur'=>'OG Flur',
+        'og_ankleide'=>'OG Ankleide',
+        'og_ankleide_decke'=>'OG Ankleide Decke',
+        'og_bad'=>'OG Bad',
+        'og_bad_dusche'=>'OG Bad Dusche',
+        'og_bad_waschtisch'=>'OG Bad Waschtisch',
+        'og_schlafen_1'=>'OG Schlafen 1',
+        'og_schlafen_2'=>'OG Schlafen 2'
     ];
     public static function evaluate(array $state,array $activity,int $now):array
     {
@@ -57,7 +64,15 @@ final class JVRoomDayDigest
             $id=$e['id'];$at=$e['at'];
             if($at>$now+5||$at<=$now-86400)continue;
             if(!is_array($perSource[$id]??null)
-                ||($perSource[$id]['zone']??null)!=='HOME')continue;
+                ||($perSource[$id]['zone']??null)!=='HOME'
+                ||!is_string($perSource[$id]['name']??null))continue;
+            // Protect against a recycled source identifier whose physical
+            // Symcon name no longer corresponds to its verified room.
+            $normalize=static fn(string $v):string=>(string)preg_replace(
+                '/[^\\p{L}\\p{N}]/u','',mb_strtolower($v,'UTF-8'));
+            $room=$normalize(self::ROOM_IDS[$id]);
+            if(!str_contains($normalize($perSource[$id]['name']),$room))
+                continue;
             $out['motionEvents24h']++;
             if($id==='eg_wohnen_kamin'
                 &&$e['status']==='KAMIN_UNCORROBORATED'){
