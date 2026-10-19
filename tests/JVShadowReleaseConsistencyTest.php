@@ -6,21 +6,21 @@ declare(strict_types=1);
  */
 $root=dirname(__DIR__);
 $meta=json_decode((string)file_get_contents($root.'/library.json'),true);
-if(!is_array($meta)||($meta['version']??null)!=='0.8.77'
-    ||($meta['build']??null)!==158)
+if(!is_array($meta)||($meta['version']??null)!=='0.8.78'
+    ||($meta['build']??null)!==159)
     throw new RuntimeException('WRONG_RELEASE_META');
 $handoff=(string)file_get_contents($root.'/libs/JVResidentEveningHandoff.php');
 $form=json_decode((string)file_get_contents(
     $root.'/JVPresenceIdentityShadow/form.json'),true);
 $changelog=(string)file_get_contents($root.'/CHANGELOG.md');
 $main=(string)file_get_contents($root.'/JVPresenceIdentityShadow/module.php');
-if(!str_contains($handoff,"SHADOW v0.8.77 Build 158")
-    ||!str_starts_with($changelog,"# v0.8.77 (Build 158)"))
+if(!str_contains($handoff,"SHADOW v0.8.78 Build 159")
+    ||!str_starts_with($changelog,"# v0.8.78 (Build 159)"))
     throw new RuntimeException('MISMATCHED_REPORT_OR_CHANGELOG_VERSION');
 $found=false;
 foreach(($form['elements']??[]) as $item)
     if(($item['type']??null)==='Label'
-        &&str_starts_with($item['caption']??'','SHADOW v0.8.77:'))$found=true;
+        &&str_starts_with($item['caption']??'','SHADOW v0.8.78:'))$found=true;
 if(!$found)throw new RuntimeException('STALE_USER_VISIBLE_HELP');
 foreach([
     'JVShadowStateCheckpoint',
@@ -140,6 +140,18 @@ if(!str_contains($main,"'snapshotAt'=>time()")
     ||!str_contains($comparator,'sourceSnapshotAt')
     ||!str_contains($comparator,'sourceSnapshotFreshness'))
     throw new RuntimeException('FIELD_COMPARISON_PROVENANCE_GUARDS_MISSING');
+$historyDigest=(string)file_get_contents(
+    $root.'/libs/JVP03HistoricalWindowDigest.php');
+if(!str_contains($timeline,"'verifiedDirectionTimeline24h'")
+    ||!str_contains($timeline,"'verifiedTimelineTruncated'")
+    ||!str_contains($fieldComparator,'p03FullPersistedHistoryUsed')
+    ||!str_contains($fieldComparator,'FULL_PERSISTED_TIMELINE_24H')
+    ||!str_contains($fieldComparator,'REFERENCE_OLDER_THAN_PERSISTED_256')
+    ||!str_contains($historyDigest,'P03_HISTORY_BUCKETS_ANONYMOUS_ONLY')
+    ||!str_contains($handoff,'JVP03HistoricalWindowDigest::summarize(')
+    ||!str_contains($handoff,'P03-5MIN/24h:')
+    ||!str_contains($budget,'P03-5MIN/24h:'))
+    throw new RuntimeException('FIELD_P03_24H_HISTORY_COMPARISON_OR_REPORT_MISSING');
 $identifiers=[];
 if(preg_match_all("/RegisterVariable(?:String|Boolean|Integer|Float)\\('([^']+)'/",
     $main,$m))$identifiers=$m[1];
@@ -150,4 +162,4 @@ sort($expected);
 if($identifiers!==$expected)
     throw new RuntimeException('SYSCON_VARIABLE_BUDGET_REGRESSION: '.
         implode(',',$identifiers));
-echo "SHADOW v0.8.77 release contracts PASS (7 variables, serialized Refresh, durable events)\n";
+echo "SHADOW v0.8.78 release contracts PASS (7 variables, serialized Refresh, durable events)\n";
