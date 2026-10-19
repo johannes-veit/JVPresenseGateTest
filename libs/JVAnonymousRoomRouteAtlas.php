@@ -9,8 +9,9 @@ declare(strict_types=1);
  * produce identical traces. No person identification, door control or
  * alarm operations; full input stays transient and is not published.
  *
- * Complexity O(events * templates * template length), with bounded
- * per-pattern automaton state, not O(events^2) nested replay.
+ * Complexity O(events * templates * template length), using monotonic
+ * candidate frontiers instead of O(events^2) brute-force replay.
+ * Same-second PIR events cannot be consumed as successive hops.
  */
 final class JVAnonymousRoomRouteAtlas
 {
@@ -79,6 +80,8 @@ final class JVAnonymousRoomRouteAtlas
             'patternsWithInterleavedRooms'=>0,
             'sourceIntegrityTailValidated'=>false,
             'boundedMatcher'=>'LINEAR_TIME_PER_TEMPLATE',
+            'sameSecondStagesIsolated'=>true,
+            'nonDominatedPathFrontier'=>true,
             'eventsFromDifferentPeopleMayOverlap'=>true,
             'sameIndividualNotVerified'=>true,
             'actualRoomTransitionNotVerified'=>true,
@@ -122,41 +125,63 @@ final class JVAnonymousRoomRouteAtlas
         $out['status']='ANONYMOUS_TEMPORAL_HISTORY_AVAILABLE';
         $out['sourceIntegrityTailValidated']=true;
         $out['validatedRoomEvents90m']=count($all);
+        // Process all same-second PIR events atomically. Stage inputs from
+        // timestamp T cannot see any candidates created at that same T.
+        // For each stage maintain an amortized O(1) monotonic frontier:
+        // best start timestamp at the front, newer/less dominant alternatives
+        // behind it. Later events may require those alternatives when the
+        // front expires under the 180-second hop constraint.
+        $groups=[];
+        foreach($valid as $edge)$groups[$edge['at']][$edge['id']]=true;
         $found=[];
         foreach(self::PATTERNS as $kind=>$wanted){
             $count=count($wanted);
-            $states=array_fill(0,$count,null);
+            $states=[];
+            for($k=0;$k<$count;$k++)$states[]=new SplDoublyLinkedList();
             $latest=null;
-            foreach($valid as $event){
-                $id=$event['id'];$at=$event['at'];
-                // Descending stage order also protects against counting an
-                // event twice if a template happens to repeat the same PIR.
-                for($stage=$count-1;$stage>=0;$stage--){
-                    if($id!==$wanted[$stage])continue;
+            foreach($groups as $timestamp=>$observed){
+                $at=(int)$timestamp;
+                $pending=[];
+                for($stage=0;$stage<$count;$stage++){
+                    if(!isset($observed[$wanted[$stage]]))continue;
                     if($stage===0){
-                        $states[0]=[$at];
+                        $pending[0]=['start'=>$at,'end'=>$at,'times'=>[$at]];
                         continue;
                     }
-                    $previousPath=$states[$stage-1];
-                    if(!is_array($previousPath))continue;
-                    $last=$previousPath[count($previousPath)-1];
-                    if($at<=$last||$at-$last>self::MAX_HOP
-                        ||$at-$previousPath[0]>self::MAX_TOTAL)continue;
-                    $newPath=$previousPath;
-                    $newPath[]=$at;
-                    $states[$stage]=$newPath;
+                    $queue=$states[$stage-1];
+                    while(!$queue->isEmpty()
+                        &&$queue->bottom()['end']<$at-self::MAX_HOP)
+                        $queue->shift();
+                    if($queue->isEmpty())continue;
+                    $previous=$queue->bottom();
+                    if($at<=$previous['end']
+                        ||$at-$previous['start']>self::MAX_TOTAL)continue;
+                    $times=$previous['times'];
+                    $times[]=$at;
+                    $candidate=['start'=>$previous['start'],
+                        'end'=>$at,'times'=>$times];
+                    $pending[$stage]=$candidate;
                     if($stage!==$count-1)continue;
-                    if($latest===null||$at>$latest['endAt']){
-                        $latest=[
-                            'pattern'=>$kind,
-                            'startAt'=>$newPath[0],
+                    if($latest===null||$at>$latest['endAt']
+                        ||($at===$latest['endAt']
+                            &&$at-$candidate['start']<$latest['durationSeconds'])){
+                        $latest=['pattern'=>$kind,
+                            'startAt'=>$candidate['start'],
                             'endAt'=>$at,
-                            'durationSeconds'=>$at-$newPath[0],
+                            'durationSeconds'=>$at-$candidate['start'],
                             'observedKeys'=>$wanted,
-                            'matchedEdgeTimes'=>$newPath,
-                            'status'=>'TIME_ORDER_POSSIBLE_NOT_PERSON_ROUTE'
-                        ];
+                            'status'=>'TIME_ORDER_POSSIBLE_NOT_PERSON_ROUTE'];
                     }
+                }
+                // Only after every same-second event was evaluated, commit.
+                // A more recent path with an equally/newer start dominates
+                // older paths; each candidate is appended/popped at most once.
+                foreach($pending as $stage=>$candidate){
+                    $queue=$states[$stage];
+                    while(!$queue->isEmpty()
+                        &&$queue->top()['start']<=$candidate['start'])
+                        $queue->pop();
+                    $queue->push($candidate);
                 }
             }
             if($latest===null)continue;
@@ -178,7 +203,6 @@ final class JVAnonymousRoomRouteAtlas
             $latest['humanAmbiguity']=$interleaved>0
                 ?'INTERLEAVED_ROOM_ACTIVITY_MULTIPLE_EXPLANATIONS'
                 :'TEMPORAL_SEQUENCE_STILL_ANONYMOUS';
-            unset($latest['matchedEdgeTimes']);
             if($interleaved>0){
                 $out['patternsWithInterleavedRooms']++;
                 if($out['lastCrossTrafficAt']===null
