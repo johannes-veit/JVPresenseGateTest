@@ -44,7 +44,10 @@ final class JVShadowIntegrityAudit
             }elseif(!in_array($crossSource['status']??null,[
                 'CROSS_SOURCE_CONSISTENT_ANONYMOUS_ONLY',
                 'SOURCE_INCOMPLETE_NO_ACTION'
-            ],true)){
+            ],true)
+                ||($crossSource['inputDataRejected']??false)===true
+                ||!is_array($crossSource['violations']??null)
+                ||($crossSource['violations']??[])!==[]){
                 $issues[]='CROSS_SOURCE_AUDIT_STATUS_UNTRUSTED';
             }
             $checks++;
