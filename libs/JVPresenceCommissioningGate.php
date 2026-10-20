@@ -134,7 +134,7 @@ final class JVPresenceCommissioningGate
             &&in_array($fusion['p03']['logContinuity']??null,
                 ['LOG_GAP_OR_RESET','UNKNOWN','UNVERIFIED'],true))
             $actions[]='P03_LOG_CONTINUITY_INTERRUPTED';
-        if($integrityOk &&($integrity['status']??null)==='REVIEW_REQUIRED')
+        if($integrityOk&&($integrity['status']??null)!=='CONSISTENT')
             $actions[]='REVIEW_SHADOW_INTEGRITY_CODES';
         if($boundaryOk&&is_int($boundary['vehicleSignals']??null)
             &&$boundary['vehicleSignals']>0){
@@ -188,10 +188,12 @@ final class JVPresenceCommissioningGate
         $out['actionsTruncated']=count($actions)>self::MAX_ACTIONS;
         $out['canObserveInShadowReadOnly']=$all
             &&($integrity['status']??null)==='CONSISTENT';
+        // Only an explicitly CONSISTENT audit qualifies the core.
+        // Unknown or stale audits remain read-only review states.
         $out['state']=!$all?'INPUTS_UNVERIFIED':
-            ((($integrity['status']??null)==='REVIEW_REQUIRED')
-                ?'SOURCE_CONSISTENCY_REVIEW'
-                :'CORE_READ_ONLY_VALIDATED_MISSING_IDENTITY_AND_VEHICLE_PROOFS');
+            ((($integrity['status']??null)==='CONSISTENT')
+                ?'CORE_READ_ONLY_VALIDATED_MISSING_IDENTITY_AND_VEHICLE_PROOFS'
+                :'SOURCE_CONSISTENCY_REVIEW');
         return $out;
     }
 }
