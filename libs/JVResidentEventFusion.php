@@ -96,6 +96,13 @@ final class JVResidentEventFusion
             $geoKeyStable=($oldGeoKey===$geoKey);
             $geoRebaseline=$geoKeyChanged||($geoKey!==null
                 &&$oldGeoKey===null&&($prev['initialized']??false)===true);
+            // A timer interruption, unqualified source, or changed
+            // source binding invalidates the *continuity* of every old
+            // phone OUT/IN chain. Keep the normal phone hints, but never
+            // join pre-gap events with post-gap observations.
+            // No additional persisted state or Symcon variables required.
+            $resetPhoneChain=$boot||$macRebaseline||$geoRebaseline
+                ||!$verifiedPair||!$geoValid;
             $geoSourceContinuous=$geoValid
                 &&($prev['lastGeoSourceVerified']??false)===true
                 &&!$boot&&$geoKeyStable;
@@ -111,10 +118,10 @@ final class JVResidentEventFusion
             }
             $lastGeo=$geoRebaseline?null:
                 self::ts($prev['lastGeoAt']??null,$now,self::GEO_MAX_AGE);
-            $outAt=$geoSourceContinuous&&!$macRebaseline
+            $outAt=$geoSourceContinuous&&!$resetPhoneChain
                 ?self::ts($prev['pendingOutAt']??null,$now,self::GEO_MAX_AGE)
                 :null;
-            $inAt=$geoSourceContinuous&&!$macRebaseline
+            $inAt=$geoSourceContinuous&&!$resetPhoneChain
                 ?self::ts($prev['pendingInAt']??null,$now,self::GEO_MAX_AGE)
                 :null;
             // A source change cannot inherit the other source's pending
@@ -124,12 +131,12 @@ final class JVResidentEventFusion
             }
             $lastRebind=self::ts($prev['lastSourceRebindAt']??null,$now,self::MAX_AGE);
             if($macKeyChanged||$geoKeyChanged)$lastRebind=$now;
-            $returnAt=($macRebaseline||$geoRebaseline)?null:
+            $returnAt=$resetPhoneChain?null:
                 self::ts($prev['lastPhoneReturnAt']??null,$now,self::MAX_AGE);
-            $event=($macKeyChanged||$geoKeyChanged)?null:
+            $event=$resetPhoneChain?null:
                 self::safeEvent($prev['lastEvent']??null,$now);
             $history=[];
-            foreach(array_slice(($macKeyChanged||$geoKeyChanged)?[]:(is_array($prev['eventHistory']??null)
+            foreach(array_slice($resetPhoneChain?[]:(is_array($prev['eventHistory']??null)
                 ?$prev['eventHistory']:[]),0,self::MAX_PHONE_EVENTS*2) as $row){
                 $valid=self::safeEvent($row,$now);
                 if($valid!==null)$history[$valid['at'].'|'.$valid['code']]=$valid;
@@ -222,7 +229,7 @@ final class JVResidentEventFusion
                 'macSourceContinuous'=>$macSourceContinuous,
                 'macSourceRebound'=>$macKeyChanged,
                 'geoSourceRebound'=>$geoKeyChanged,
-                'sourceRebaselineRequired'=>$macRebaseline||$geoRebaseline,
+                'sourceRebaselineRequired'=>$resetPhoneChain,
                 'lastSourceRebindAt'=>$lastRebind,
                 'sourceRebindRecent'=>$lastRebind!==null
                     &&$now-$lastRebind<=86400,
