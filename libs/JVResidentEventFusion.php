@@ -320,14 +320,17 @@ final class JVResidentEventFusion
                     $checked=self::safeProof($proof,$now);
                     if($checked===null)continue;
                     $key=$checked['at'].'|'.$checked['direction'].'|'.$checked['route'];
-                    if(!isset($clean[$key]) &&$validPrior
+                    $genuinelyNew=!isset($clean[$key])&&$validPrior
                         &&$p03Continuous
-                        &&($oldHighWater===null||$checked['at']>$oldHighWater))
-                        $newProofs[]=$checked;
+                        &&($oldHighWater===null||$checked['at']>$oldHighWater);
+                    if($genuinelyNew)$newProofs[]=$checked;
                     if($highWater===null||$checked['at']>$highWater)
                         $highWater=$checked['at'];
                     $clean[$key]=$checked['at'];
-                    if($p03Continuous
+                    // A baseline-only proof remains a duplicate guard,
+                    // never promoted to a current lastAnonymous on the
+                    // first healthy poll after an observer interruption.
+                    if($genuinelyNew
                         &&($latest===null||$checked['at']>$latest['at']))
                         $latest=$checked;
                 }
