@@ -78,8 +78,13 @@ $conflicted=JVP03IncrementalTimeline::evaluate(
 checkTimeline($conflicted['report']['warnings'],
     ['P03_DIRECTION_ROUTE_MISMATCH'],'wrong route cannot pass');
 checkTimeline($conflicted['report']['directionProofs24h'],
-    ['HOME_TO_LAGER'=>1,'LAGER_TO_HOME'=>1],
-    'mismatched P03 route never creates valid proof');
+    ['HOME_TO_LAGER'=>0,'LAGER_TO_HOME'=>0],
+    'direction-route mismatch quarantines all previously retained proofs');
+checkTimeline($conflicted['report']['logContinuity'],
+    'INVALID_PROOF_EPOCH',
+    'contradictory proof cannot claim P03 continuity');
+checkTimeline($conflicted['next']['events'],[],
+    'contradictory proof cannot persist previous valid epoch');
 
 $duplicate=JVP03IncrementalTimeline::evaluate(
     $historic."\n".$newOut."\n".$newIn."\n".$newOut,
