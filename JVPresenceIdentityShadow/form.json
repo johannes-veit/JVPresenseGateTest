@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.92: Bestehende P03-Kamerabeweise werden bei nicht lesbarer Protokollvariable, uebergrossem Log oder uneindeutig wiederkehrender Protokollmarkierung sicher aus der aktuellen Beweiskette entfernt. Beim Wiederanlauf dient der erste verifizierte Quellstand als Baseline; nur nachweislich neu angehaengte P03-Durchgaenge sind anschliessend als anonyme Durchgaenge nutzbar. Der vorhandene sieben-Variablen-SHADOW-Aufbau und alle 15 persistenten Zustandsattribute bleiben erhalten; keine neuen Variablen, Timer, Instanzen, Fremdmodulschreibzugriffe oder P03-Modusaenderungen. Smartphones, GUS, Alarmsystem, Tor und Licht bleiben unabhaengig; kein Nachweis individueller Person, Fahrzeugfahrt oder Hausleerstand."
+      "caption": "SHADOW v0.8.93: Drei kompakte, zusammenhaengende Sicherheitskorrekturen ohne neue Symcon-Variablen, Instanzen oder Attribute. (1) Nach einem P03-Protokoll-Reset, ungueltigem Log oder Unterbrechung werden auch in der nachgelagerten Bewohner-Ereignisfusion die alte anonyme Kamerazeitmarke und der bisherige P03-Epochenzustand bereinigt. (2) Nach langem SHADOW-Beobachtungsausfall dienen erstmals empfangene P03-Belege nur der Duplikat-Baseline und werden nicht als neue Durchgaenge oder letzter aktueller Kamerabeleg angezeigt. Wirklich neue P03-Belege nach wiederhergestellter Kontinuitaet werden verarbeitet. (3) Unbekannte oder unvollstaendige Integritaetspruefungs-Stati werden nicht mehr als geprueftes SHADOW-System gekennzeichnet. Alle sieben bestehenden Ausgaben, 15 Zustandsattribute und der kopierbare Bericht bleiben erhalten. Kein automatischer Personen-/Hausleer-Beweis, keine Alarm-, Licht-, Tor- oder Kameraaktivierung."
     },
     {
       "type": "Label",
