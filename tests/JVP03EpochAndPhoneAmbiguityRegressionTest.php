@@ -35,7 +35,7 @@ $postResetRaw='P03 RESTART MARKER'."\n".$proof('2026-10-20 12:30:05');
 $newEpoch=JVP03IncrementalTimeline::evaluate(
     $postResetRaw,$restarted['next'],$at+6);
 epoch91($newEpoch['report']['directionProofs24h']['HOME_TO_LAGER']===1
-    &&$newEpoch['report']['verifiedDirectionTimeline24hCount']===1
+    &&$newEpoch['report']['verifiedTimeline24hCount']===1
     &&$newEpoch['report']['newDirectionProofsThisRead']===1,
     'truly new P03 proof after reset starts isolated current epoch');
 $noReplay=JVP03IncrementalTimeline::evaluate(
