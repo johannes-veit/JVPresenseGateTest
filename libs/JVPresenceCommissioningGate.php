@@ -100,7 +100,9 @@ final class JVPresenceCommissioningGate
             // A verified object ID is not enough: the preceding
             // observation must also be continuous. Without both
             // sources the first post-outage sample is only baseline.
-            if($f!==[] &&($f['macSourceContinuous']??false)!==true)
+            if($f!==[]&&($f['macSourceContinuous']??false)!==true
+                &&$home!=='NOT_VERIFIED'
+                &&$home!=='DUPLICATE_OBJECT_SOURCE')
                 $actions[]=$prefix.'_VERIFY_EXISTING_WLAN_SOURCE_CONTINUITY';
             if($geo!=='SOURCE_CONTINUOUS')
                 $actions[]=$prefix.'_WAIT_FOR_VERIFIED_GEOFENCE_CONTINUITY';
