@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.95: Ein P03-Zeitstempel wird dem neuesten gemeinsamen Smartphone-OUT-Intervall nur noch dann direkt zugeordnet, wenn er ohne zeitlich passende konkurrierende anonyme P03-Beweise und ohne konkurrierende andere Handy-Episoden auskommt. Existieren mehrere passende Kameradurchgaenge, bleiben deren Zaehler sichtbar, die eindeutige P03-Zuordnung wird aber bewusst gesperrt. Die unabhängige Quellintegritaetskontrolle prueft diese Mehrdeutigkeit ebenfalls. Bericht in vorhandener Variable, keine neuen Symcon-Variablen, Instanzen oder Attribute, P03 AUS bleibt AUS, Alarm-/Tor-/Lichtmodule unveraendert, SHADOW read-only ohne Haus-leer- oder Personenbeweis."
+      "caption": "SHADOW v0.8.96: Widersprechende P03-Durchgaenge mit HOME->LAGER und LAGER->HOME in derselben Sekunde koennen ohne zeitliche Reihenfolge nicht als eindeutig gerichtete Zweimast-Beweise fuer die gemeinsame Smartphone-Zonen-OUT-Phase gelten. Solche Zeitpunkte werden ausschliesslich im vorhandenen P03-Zeitabgleich ausgeklammert; unbetroffene echte Durchgaenge bleiben sichtbar. Die vorhandene unabhängige Quellenpruefung kontrolliert den ausgesonderten Konflikt erneut. Im bisherigen Bericht erscheint die Anzahl verworfener gleicher Sekunden ohne weitere Symcon-Variablen. 120 neue deterministische Referenzszenarien testen konkurrierende Zeitstempel. P03/Alarm/Tor/Licht weiterhin nicht veraendert; alle 7 Ausgaben, 15 Attribute und bisherige Sicherheitsregeln bleiben erhalten."
     },
     {
       "type": "Label",
