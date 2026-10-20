@@ -15,7 +15,7 @@
 - `JVShadowFlashWriteSimulationTest.php` simuliert einen ganzen Tag mit 1.440 aktiven 60-Sekunden-Polls, die unmittelbare Persistierung neuer GUS-Impulse, die Unterbrechung nach Neustart und das Verhalten bei Persistenzfehlern. Im Leerlauf ergeben sich rund 145 statt 1.440 dauerhafte Minute-Heartbeat-Schreibvorgaenge pro Tag, abhaengig von echten Ereignissen.
 
 ## End-to-End-Regression und Negativszenarien
-- `JVShadowCrossSourceIntegrityReplayTest.php` umfasst 15 bewusst widerspruechliche Quellvarianten und 100 wiederholte idempotente Auswertungen: falsch zugeordnete P03-Timestamps, vorgetaeschte Personenerkennung, P03 bei bewusst ausgeschaltetem Modus, Geofence-Zeitachsenfehler, falsche GUS-Raumanzahlen, unzulaessige Alarmerlaubnis, unrichtige Kamera-/Telefon-Paarzaehler und fehlende Quelle.
+- `JVShadowCrossSourceIntegrityReplayTest.php` umfasst 16 bewusst widerspruechliche Quellvarianten und 100 wiederholte idempotente Auswertungen: falsch zugeordnete P03-Timestamps, vorgetaeschte Personenerkennung, P03 bei bewusst ausgeschaltetem Modus, Geofence-Zeitachsenfehler, falsche GUS-Raumanzahlen, unzulaessige Alarmerlaubnis, unrichtige Kamera-/Telefon-Paarzaehler und fehlende Quelle.
 - `JVShadowCrossAuditCommissioningTest.php` kontrolliert, dass ein erkannter Widerspruch die schon bestehende Sicherheits- und Freigabekette korrekt blockiert, waehrend eine absichtlich fehlende Quelle nur als nicht qualifiziert erscheint.
 - Bestehende IP-Symcon, P03-, LCN-, Smartphone- und TAPI-Fremdmodule werden nicht geaendert. P03 TEST/PRODUKTION und die produktive SymBox #32969 bleiben unveraendert. Keine Mensch/Auto/Grundstuecks-/Haus-leer-Zertifizierung oder Alarm-/Licht-/Torsteuerung.
 
