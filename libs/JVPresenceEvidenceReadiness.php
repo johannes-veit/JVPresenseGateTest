@@ -91,6 +91,23 @@ final class JVPresenceEvidenceReadiness
                     ?($fp['lastSourceRebindAt']??null):null,
                 'phoneNotHuman'=>true
             ];
+            // Surface actual personal phone source gaps, not just
+            // optional company-SSID data. This is already computed
+            // by ResidentEventFusion; no additional polling required.
+            if(!is_array($fp)
+                ||($fp['macSourceContinuous']??false)!==true){
+                $report['sourceBlocks'][]=strtoupper($person)
+                    .'_WLAN_SOURCE_NOT_CONTINUOUS';
+                $report['nextEvidencePriority'][]=strtoupper($person)
+                    .'_VERIFY_EXISTING_WLAN_SOURCE_CONTINUITY';
+            }
+            if(!is_array($fp)
+                ||($fp['geoSourceContinuous']??false)!==true){
+                $report['sourceBlocks'][]=strtoupper($person)
+                    .'_GEOFENCE_SOURCE_NOT_CONTINUOUS';
+                $report['nextEvidencePriority'][]=strtoupper($person)
+                    .'_WAIT_FOR_VERIFIED_GEOFENCE_CONTINUITY';
+            }
             if($bindingRecent){
                 $report['sourceBlocks'][]=strtoupper($person)
                     .'_VERIFIED_SOURCE_BINDING_CHANGED';
