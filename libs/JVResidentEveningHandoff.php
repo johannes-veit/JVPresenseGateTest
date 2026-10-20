@@ -521,6 +521,8 @@ final class JVResidentEveningHandoff
                     .self::yes(($pair['p03LatestPairAmbiguous']??false)===true)
                     .' | moegliche Kamerabelege '
                     .self::number($pair['p03LatestPairCandidateCount']??null)
+                    .' | P03 Hin/Rueck gleiche Sekunde verworfen '
+                    .self::number($pair['p03OppositeDirectionSecondsIgnored']??null)
                     .' | Kameraperson UNBEKANNT');
                 $add('HANDY-OUT-DOPPELMELDUNGEN VERWORFEN: Johannes '
                     .self::number($pair['repeatedPhoneOutIgnored']['johannes']??null)
