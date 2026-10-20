@@ -307,9 +307,11 @@ final class JVResidentEventFusion
             }
         }
         $newProofs=[];
-        if($p03Valid&&!$logInterrupted&&$p03Continuous){
-            // After a >1-hour SHADOW timer gap the first available P03
-            // report is a baseline, not a new anonymous camera crossing.
+        if($p03Valid&&!$logInterrupted){
+            // Even without a continuous observer, remember the *keys*
+            // and high-water of baseline camera rows to suppress a
+            // replay on the next poll. Never expose them as a new
+            // crossing or as a current lastAnonymous proof.
             $proofs=is_array($p03['newlyVerifiedDirectionProofs']??null)
                 ?$p03['newlyVerifiedDirectionProofs']
                 :($p03['recentDirectionProofs']??[]);
@@ -325,7 +327,9 @@ final class JVResidentEventFusion
                     if($highWater===null||$checked['at']>$highWater)
                         $highWater=$checked['at'];
                     $clean[$key]=$checked['at'];
-                    if($latest===null||$checked['at']>$latest['at'])$latest=$checked;
+                    if($p03Continuous
+                        &&($latest===null||$checked['at']>$latest['at']))
+                        $latest=$checked;
                 }
             }
         }
