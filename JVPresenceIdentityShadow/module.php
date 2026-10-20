@@ -1886,7 +1886,8 @@ class JVPresenceIdentityShadow extends IPSModule
             );
         $integrityAudit=JVShadowIntegrityAudit::evaluate(
             $residentFusion['report'],$routeEpisodes['report'],
-            $residentJourney,$evidenceReadiness,time()
+            $residentJourney,$evidenceReadiness,time(),
+            $roomPaths['crossSourceIntegrityGate']
         );
         $commissioningGate=JVPresenceCommissioningGate::evaluate(
             $tileWlan,$residentFusion['report'],$tileWork,
