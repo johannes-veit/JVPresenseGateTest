@@ -132,4 +132,69 @@ gap88($regained['report']['people']['johannes']['eventHistoryCount']===0
     &&!$regained['report']['allAwayCertified']
     &&!$regained['report']['mayArmAlarm'],
     'WLAN returns, but old phone OUT must never requalify');
-echo "SHADOW 0.8.88 long restart and single-source recovery replay PASS (no new IPS variables)\n";
+
+// Critical short-outage replay: an already verified Geofence changes
+// during the exact 60-second poll in which its WLAN binding is INVALID.
+// The old fusion accepted the fresh Geofence event despite clearing
+// the old chain, then made it appear historical after WLAN recovered.
+$w['people']['johannes']['validatedExistingVariablePair']=false;
+$j['insideRecent']=true;$j['outsideRecent']=false;
+$j['geofenceReportedInside']=true;$j['lastEventAt']=$t+6590;
+$lostDuringEvent=$run($t+6600,$validOut['next']);
+gap88($lostDuringEvent['report']['people']['johannes']['newPersonalPhoneEvent']===null
+    &&$lostDuringEvent['report']['people']['johannes']['eventHistoryCount']===0
+    &&$lostDuringEvent['report']['people']['johannes']['sourceRebaselineRequired'],
+    'unqualified WLAN cannot record a new personal Geofence IN');
+$w['people']['johannes']['validatedExistingVariablePair']=true;
+$j['insideRecent']=false;$j['outsideRecent']=true;
+$j['geofenceReportedInside']=false;$j['lastEventAt']=$t+6650;
+$restoreDuringEvent=$run($t+6660,$lostDuringEvent['next']);
+gap88($restoreDuringEvent['report']['people']['johannes']['newPersonalPhoneEvent']===null
+    &&$restoreDuringEvent['report']['people']['johannes']['eventHistoryCount']===0
+    &&$restoreDuringEvent['report']['people']['johannes']['sourceRebaselineRequired'],
+    'first restored WLAN poll is baseline, not a replayed Geofence OUT');
+$j['insideRecent']=true;$j['outsideRecent']=false;
+$j['geofenceReportedInside']=true;$j['lastEventAt']=$t+6710;
+$realAfterRestore=$run($t+6720,$restoreDuringEvent['next']);
+gap88(($realAfterRestore['report']['people']['johannes']['newPersonalPhoneEvent']['code']??null)
+    ==='PHONE_GEOFENCE_IN_OBSERVED'
+    &&$realAfterRestore['report']['people']['johannes']['eventHistoryCount']===1,
+    'new event after BOTH sources restored is retained, without the earlier forged OUT');
+
+// Same issue in reverse: a qualified WLAN source may retain its last MAC
+// timestamp while the Geofency object is briefly unverified. A restored
+// valid Geofence must establish its own baseline before new journeys.
+$c['validatedSource']=false;
+$c['insideRecent']=true;$c['outsideRecent']=false;
+$c['geofenceReportedInside']=true;$c['lastEventAt']=$t+6600;
+$lostGeofency=$run($t+6630,$validOut['next']);
+gap88($lostGeofency['report']['people']['carina']['eventHistoryCount']===0,
+    'Carina stale geofence source clears only her personal chain');
+$c['validatedSource']=true;
+$c['insideRecent']=false;$c['outsideRecent']=true;
+$c['geofenceReportedInside']=false;$c['lastEventAt']=$t+6650;
+$restoreGeofency=$run($t+6690,$lostGeofency['next']);
+gap88($restoreGeofency['report']['people']['carina']['eventHistoryCount']===0
+    &&$restoreGeofency['report']['people']['carina']['newPersonalPhoneEvent']===null
+    &&$restoreGeofency['report']['people']['johannes']['eventHistoryCount']===1,
+    'Carina new geofence timestamp on recovery does not revive old area OUT');
+
+// Independent MAC contact after a standby gap remains a WLAN hint,
+// but MUST NOT become a new entry in the personal geofence/route
+// history while the other source is explicitly invalid.
+$j['validatedSource']=false;
+$w['people']['johannes']['validatedExistingVariablePair']=true;
+$w['people']['johannes']['lastMacContactAt']=$t+6780;
+$macWithoutGeo=$run($t+6810,$validOut['next']);
+gap88($macWithoutGeo['report']['people']['johannes']['newPersonalPhoneEvent']===null
+    &&$macWithoutGeo['report']['people']['johannes']['eventHistoryCount']===0
+    &&$macWithoutGeo['report']['people']['johannes']['sourceRebaselineRequired'],
+    'MAC recovery during unverified Geofence is network-only, never a personal journey');
+$j['validatedSource']=true;
+$j['insideRecent']=false;$j['outsideRecent']=true;
+$j['geofenceReportedInside']=false;$j['lastEventAt']=$t+6790;
+$macGeoRestored=$run($t+6870,$macWithoutGeo['next']);
+gap88($macGeoRestored['report']['people']['johannes']['eventHistoryCount']===0
+    &&$macGeoRestored['report']['people']['johannes']['newPersonalPhoneEvent']===null,
+    'restored Geofence must not inherit MAC-only recovery as old OUT');
+echo "SHADOW 0.8.89 long restart and single-source recovery replay PASS (no new IPS variables)\n";
