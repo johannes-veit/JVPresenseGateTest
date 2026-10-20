@@ -45,11 +45,16 @@ final class JVResidentEventFusion
             $prev=$validPrior&&is_array($prior['people'][$person]??null)
                 ?$prior['people'][$person]:[];
             $observedAt=self::ts($prev['lastObservedAt']??null,$now,self::MAX_AGE);
-            $initialAt=self::ts($prev['initializedAt']??null,$now,self::MAX_AGE);
+            // initializedAt is the start of the CURRENT source lineage,
+            // not a 24h observation itself. Expiring it after one day
+            // silently lost fresh geofence events just before a poll.
+            $init=$prev['initializedAt']??null;
+            $initialAt=is_int($init)&&$init>0
+                &&$init<=$now+self::CLOCK_SKEW?$init:null;
             $boot=($prev['initialized']??false)!==true
                 ||$observedAt===null
                 ||$now-$observedAt>self::MAX_PHONE_OBSERVATION_GAP;
-            if($initialAt===null)$initialAt=$now;
+            if($initialAt===null||$boot)$initialAt=$now;
             $wp=$okWlan&&is_array($wlan['people'][$person]??null)
                 ?$wlan['people'][$person]:[];
             $verifiedPair=($wp['validatedExistingVariablePair']??false)===true;
