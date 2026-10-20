@@ -95,6 +95,7 @@ final class JVP03IncrementalTimeline
                 $fragment=substr($lastRaw,$nl===false?0:$nl+1);
                 if($fragment!==''&&strlen($fragment)<=256
                     &&$fragment[0]==='['
+                    &&self::couldStillBecomeProof($fragment)
                     &&!preg_match(
                         '/^\\[20\\d\\d-\\d\\d-\\d\\d '
                         .'\\d\\d:\\d\\d:\\d\\d\\]\\s*P03 PROOF '
@@ -314,6 +315,35 @@ final class JVP03IncrementalTimeline
                 ?substr($raw,-self::KEEP_LOG_BYTES):$raw,
             'events'=>$entries
         ]];
+    }
+
+    /**
+     * Only carry an unfinished, *plausibly valid* P03 proof across reads.
+     * A previous complete invalid/unsupported PROOF already caused an
+     * epoch reset and must not poison every later healthy append again.
+     */
+    private static function couldStillBecomeProof(string $fragment):bool
+    {
+        $line=trim($fragment);
+        if($line===''||$line[0]!=='[')return false;
+        $end=strpos($line,']');
+        if($end===false)
+            return strlen($line)<=20 &&str_starts_with(
+                '[20',substr($line,0,min(3,strlen($line)))
+            );
+        if($end!==20)return false;
+        $stamp=substr($line,1,19);
+        foreach(['VERIFIED','STRONG_VERIFIED'] as $level){
+            foreach([
+                'HOME_TO_LAGER'=>'P03_2CAM_JV_THEN_WORK',
+                'LAGER_TO_HOME'=>'P03_2CAM_WORK_THEN_JV'
+            ] as $direction=>$route){
+                $possible='['.$stamp.'] P03 PROOF '.$level.' '
+                    .$direction.' via '.$route;
+                if(str_starts_with($possible,$line))return true;
+            }
+        }
+        return false;
     }
 
     private static function timestamp(string $localTime):?int
