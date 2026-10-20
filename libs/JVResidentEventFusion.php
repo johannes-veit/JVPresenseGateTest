@@ -19,7 +19,7 @@ final class JVResidentEventFusion
     private const MAX_ROUTE_DELIVERY=32;
     private const MAX_PHONE_EVENTS=24;
     private const MAX_OBSERVATION_GAP=3600;
-    private const MAX_PHONE_OBSERVATION_GAP=600; // 60s SHADOW polling, fail closed after 10m
+    private const MAX_PHONE_OBSERVATION_GAP=900; // 15m pause quarantines personal event chain
 
     public static function evaluate(
         array $wlan, array $jGeo, array $cGeo, array $work,
