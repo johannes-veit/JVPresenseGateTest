@@ -1449,9 +1449,16 @@ class JVPresenceIdentityShadow extends IPSModule
             $p03Raw??'',is_array($p03Previous)?$p03Previous:[],time()
         );
         if($p03Raw===null) {
-            // Invalid source is NEVER interpreted as an empty reset log.
+            // Do not treat a failed local-variable read as a normal
+            // empty P03 log, and do not leave the old P03 cursor alive
+            // for the first seemingly healthy subsequent read.
+            // The first restored read becomes an ordinary baseline;
+            // only later APPENDED proofs qualify as fresh passages.
+            $p03Timeline=JVP03IncrementalTimeline::evaluate('',[],time());
             $p03Timeline['report']['warnings'][]='P03_SOURCE_NOT_READABLE';
-            $p03Timeline['next']=$p03Previous??[];
+            $p03Timeline['next']=[
+                'initialized'=>false,'lastRaw'=>null,'events'=>[]
+            ];
         }
         // Important commit order: do not advance the P03 log cursor until
         // the fused delivery journal has been persisted below. A crash at
@@ -1796,12 +1803,12 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->writeShadowState('ResidentEventFusion',$fusionNext);
         // Durable fused proof journal first; P03 raw cursor second.
         // On restart between those writes, source proofs replay safely.
-        if($p03Raw!==null){
-            $newState=json_encode($p03Timeline['next'],JSON_UNESCAPED_SLASHES);
-            if(is_string($newState)
-                &&$this->readShadowState('P03IncrementalTimeline')!==$newState)
-                $this->writeShadowState('P03IncrementalTimeline',$newState);
-        }
+        // A failed source read also persists the empty quarantine state.
+        // Otherwise the next healthy poll could inherit the old cursor.
+        $newState=json_encode($p03Timeline['next'],JSON_UNESCAPED_SLASHES);
+        if(is_string($newState)
+            &&$this->readShadowState('P03IncrementalTimeline')!==$newState)
+            $this->writeShadowState('P03IncrementalTimeline',$newState);
         $temporalCrossCheck=JVTemporalPresenceCrossCheck::evaluate(
             $p03Raw??'',
             $this->readLocalVariable(
