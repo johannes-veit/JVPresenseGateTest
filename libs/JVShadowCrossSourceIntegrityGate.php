@@ -62,6 +62,20 @@ final class JVShadowCrossSourceIntegrityGate
             return $out;
         }
 
+        if(($cycle['qualifiedSources']??null)!==2
+            ||($room['status']??null)==='SOURCES_UNVERIFIED'){
+            // Missing or deliberately disabled source data is not a
+            // logical contradiction. Preserve an actionable source gap
+            // without raising a fabricated integrity violation.
+            $out['status']='SOURCE_INCOMPLETE_NO_ACTION';
+            $out['priorityChecks']=[
+                ($cycle['qualifiedSources']??null)!==2
+                    ?'ONE_OR_BOTH_PHONE_AREA_SOURCES_UNQUALIFIED'
+                    :'ANONYMOUS_GUS_LEDGER_UNVERIFIED'
+            ];
+            return $out;
+        }
+
         // The same phone pair is reconstructed on a separate pure path.
         // A source label alone is not evidence that its returned values
         // agree with those of all other modules.
