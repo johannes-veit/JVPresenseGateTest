@@ -52,6 +52,30 @@ final class JVFieldObservationComparator
             $local,new DateTimeZone('Europe/Berlin'));
         if(!$dt||$dt->format('Y-m-d H:i')!==$local)return $out;
         $at=$dt->getTimestamp();
+        // During the October clock rollback, e.g. 02:30 occurs TWICE
+        // in Europe/Berlin. An unqualified wall-clock observation has
+        // no unique UTC instant; do not silently pick a different P03
+        // or phone episode. No change to persisted timestamps or inputs.
+        $zone=new DateTimeZone('Europe/Berlin');
+        $transitions=$zone->getTransitions($at-86400,$at+86400);
+        if(is_array($transitions)){
+            $before=null;
+            foreach($transitions as $tr){
+                $offset=$tr['offset']??null;
+                $ts=$tr['ts']??null;
+                if(is_int($before)&&is_int($offset)&&is_int($ts)
+                    &&$offset<$before){
+                    $foldStart=gmdate('Y-m-d H:i',$ts+$offset);
+                    $foldEnd=gmdate('Y-m-d H:i',$ts+$before);
+                    if($local>=$foldStart&&$local<$foldEnd){
+                        $out['status']='AMBIGUOUS_LOCAL_TIME_DST_ROLLBACK';
+                        $out['notes'][]='LOCAL_TIME_NEEDS_EXPLICIT_OFFSET';
+                        return $out;
+                    }
+                }
+                if(is_int($offset))$before=$offset;
+            }
+        }
         if($at>$now+300)return $out;
         $people=$field['reportedHouseLeavers']??null;
         if(!is_array($people)||!array_is_list($people)
