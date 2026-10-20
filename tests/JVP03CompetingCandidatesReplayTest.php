@@ -141,6 +141,23 @@ candidate95($timeline['p03LatestPairAmbiguous']
     &&!$timeline['homeEmptyCertified'],
     'latest departure must not inherit competing anonymous camera proof');
 
+// The optimal DP chooses the OLD pair when its distance is smaller,
+// but the same proof is also within 300s of the latest episode.
+// A historical attribution is therefore not uniquely proven either.
+$oldPreferred=$camera([$cross(-995)]);
+$oldChoice=JVP03PhonePairMatrix::evaluate($cycles,$oldPreferred,$t);
+candidate95($oldChoice['matchedPhonePairs']===1
+    &&$oldChoice['latestPairP03CandidateCount']===1
+    &&$oldChoice['latestPairP03Ambiguous']
+    &&$oldChoice['latestPhonePairP03']===null,
+    'ambiguous candidate is quarantined even if DP prefers old phone pair');
+$oldTimeline=JVSharedDepartureTimeline::evaluate(
+    $twoTrips,$oldPreferred,$mode,$t);
+candidate95($oldTimeline['p03LatestPairAmbiguous']
+    &&!$oldTimeline['p03MatchPreviousNotLatest']
+    &&!$oldTimeline['verifiedP03NearPair'],
+    'older preferred P03 selection still does not prove latest pair had no matching corridor');
+
 // P03 intentionally OFF and unreadable data cannot be promoted even
 // if two candidate source timestamps happen to exist historically.
 $off=$mode;$off['p03OperatingMode']='TEST_AND_PRODUCTION_OFF';
