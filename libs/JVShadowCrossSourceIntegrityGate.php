@@ -69,31 +69,33 @@ final class JVShadowCrossSourceIntegrityGate
             return $out;
         }
 
-        // Denied capabilities are forbidden EVEN WHEN a source is absent.
-        // A missing geofence must never mask a forged alarm authorization.
-        foreach([$cycle,$timeline,$room] as $src){
-            foreach([
-                'mayClaimHumanDeparture','mayCertifyEmpty','mayControlAlarm',
-                'mayControlDevices','mayChangePresence',
-                'personDepartureCertified','personCountCertified',
-                'presenceCertified','homeEmptyCertified'
-            ] as $key){
-                if(($src[$key]??false)===true){
-                    $issues[]='UNAUTHORIZED_PHYSICAL_OR_CONTROL_CLAIM';
-                    $out['sourceContractViolationDuringMissingData']=true;
-                    break 2;
-                }
-            }
-        }
-        if($issues!==[]){
-            $out['status']='CROSS_SOURCE_CONTRADICTION_NO_ACTION';
-            $out['violations']=array_values(array_unique($issues));
-            $out['priorityChecks']=$out['violations'];
-            $out['inputDataRejected']=true;
-            return $out;
-        }
         if(($cycle['qualifiedSources']??null)!==2
             ||($room['status']??null)==='SOURCES_UNVERIFIED'){
+            // When a source is missing, no other source can smuggle in an
+            // alarm, human-presence or property-empty authorization.
+            // For fully qualified inputs the legacy detailed invariant
+            // checks below still diagnose the exact offending counters.
+            foreach([$cycle,$timeline,$room] as $src){
+                foreach([
+                    'mayClaimHumanDeparture','mayCertifyEmpty',
+                    'mayControlAlarm','mayControlDevices','mayChangePresence',
+                    'personDepartureCertified','personCountCertified',
+                    'presenceCertified','homeEmptyCertified'
+                ] as $key){
+                    if(($src[$key]??false)===true){
+                        $issues[]='UNAUTHORIZED_PHYSICAL_OR_CONTROL_CLAIM';
+                        $out['sourceContractViolationDuringMissingData']=true;
+                        break 2;
+                    }
+                }
+            }
+            if($issues!==[]){
+                $out['status']='CROSS_SOURCE_CONTRADICTION_NO_ACTION';
+                $out['violations']=array_values(array_unique($issues));
+                $out['priorityChecks']=$out['violations'];
+                $out['inputDataRejected']=true;
+                return $out;
+            }
             // Missing or deliberately disabled source data is not a
             // logical contradiction. Preserve an actionable source gap
             // without raising a fabricated integrity violation.
