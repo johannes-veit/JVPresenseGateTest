@@ -73,7 +73,7 @@ finalCheck90($better['state']
     &&$better['canObserveInShadowReadOnly']
     &&!in_array('P03_MODE_OFF_INTENTIONAL_NO_NEW_VERIFIED_ROUTE',
         $better['actions'],true)
-    &&$better['actions'][0]==='VERIFY_EXISTING_P03_MAST_HEALTH_READ_ONLY'
+    &&$better['actions'][0]==='QUALIFY_EXISTING_VEHICLE_CLASS_AND_DIRECTION_SOURCE'
     &&!$better['canCertifyPropertyEmpty'],
     'better telemetry removes obsolete P03 OFF warning but not safety limits');
 
