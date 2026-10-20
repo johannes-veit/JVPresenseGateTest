@@ -90,9 +90,9 @@ $amb=JVPhoneAreaCycleMatcher::evaluate($fusion(
     [$ev('OUT',$now-830)]
 ),$now);
 cycleCheck($amb['pairedCycleCount']===1
-    &&$amb['multiplePairingsPossible']
+    &&!$amb['multiplePairingsPossible']
     &&$amb['latestPair']['johannesAt']===$now-810,
-    'closest of competing overlapping phone cycles wins while ambiguity remains');
+    'an already closed older OUT is not a competing overlapping option');
 $conflict=JVPhoneAreaCycleMatcher::evaluate($fusion(
     [$ev('OUT',$now-900),$ev('IN',$now-900)],
     [$ev('OUT',$now-890)]

@@ -255,7 +255,8 @@ final class JVPhoneAreaCycleMatcher
                 $options=0;
                 foreach($j as $other)
                     if(abs($row['outAt']-$other['outAt'])
-                        <=self::MAX_PAIR_SECONDS)$options++;
+                        <=self::MAX_PAIR_SECONDS
+                    &&self::overlap($other,$row,$now)!==null)$options++;
                 if($options>1){$out['multiplePairingsPossible']=true;break;}
             }
         }

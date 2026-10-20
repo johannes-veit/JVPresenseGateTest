@@ -102,6 +102,15 @@ final class JVP03IncrementalTimeline
                 }
             }
         }
+        // A reset, unreadable oversized batch or truncated proof
+        // stream makes PREVIOUS camera events from another source epoch
+        // unsuitable for present-day phone correlation. Never combine
+        // old retained proofs with a fresh unanchored P03 chronology.
+        if($continuity==='LOG_GAP_OR_RESET'
+            ||in_array('P03_LOG_BATCH_INVALID',$warnings,true)){
+            $history=[];
+            $fresh=[];
+        }
         $entries=[];
         foreach($history as $event) {
             if(!is_array($event)
@@ -136,7 +145,14 @@ final class JVP03IncrementalTimeline
             $newProofs++;
         }
         $newBatchOverflow=count($acceptedNew)>self::MAX_NEW_BATCH;
-        if($newBatchOverflow)$warnings[]='P03_NEW_PROOF_BATCH_OVERFLOW';
+        if($newBatchOverflow){
+            $warnings[]='P03_NEW_PROOF_BATCH_OVERFLOW';
+            // More proofs than the bounded replay can safely publish:
+            // do not keep a *partial* camera sequence across the gap.
+            $entries=[];
+            $acceptedNew=[];
+            $newProofs=0;
+        }
         usort($acceptedNew,static fn($a,$b)=>
             ($a['at']<=>$b['at'])?:strcmp($a['direction'],$b['direction']));
         usort($entries,static fn($a,$b)=>($b['at']<=>$a['at'])
@@ -202,7 +218,27 @@ final class JVP03IncrementalTimeline
             );
             if(!$date || $date->format('Y-m-d H:i:s')!==$localTime)
                 return null;
-            return $date->getTimestamp();
+            $at=$date->getTimestamp();
+            // At autumn CET fallback, a local 02:xx occurs twice.
+            // P03 writes no UTC offset; never guess which camera
+            // crossing occurred. Ignore ambiguous wall clock proofs.
+            $tz=new DateTimeZone('Europe/Berlin');
+            $transitions=$tz->getTransitions($at-86400,$at+86400);
+            if(is_array($transitions)){
+                $prev=null;
+                foreach($transitions as $tr){
+                    $cur=$tr['offset']??null;$ts=$tr['ts']??null;
+                    if(is_int($prev)&&is_int($cur)&&is_int($ts)
+                        &&$cur<$prev){
+                        $from=gmdate('Y-m-d H:i:s',$ts+$cur);
+                        $to=gmdate('Y-m-d H:i:s',$ts+$prev);
+                        if($localTime>=$from&&$localTime<$to)
+                            return null;
+                    }
+                    if(is_int($cur))$prev=$cur;
+                }
+            }
+            return $at;
         }catch(Throwable $e) {return null;}
     }
 
