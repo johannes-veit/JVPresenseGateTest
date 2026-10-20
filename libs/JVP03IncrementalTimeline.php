@@ -154,7 +154,19 @@ final class JVP03IncrementalTimeline
         // stream makes PREVIOUS camera events from another source epoch
         // unsuitable for present-day phone correlation. Never combine
         // old retained proofs with a fresh unanchored P03 chronology.
+        // A proof with an impossible local clock (including the DST
+        // fold) or a direction/route contradiction breaks the source
+        // chronology for THIS batch. Keeping earlier proofs here and
+        // silently treating the next healthy poll as continuation made
+        // a corrupted P03 epoch appear trustworthy again.
+        // Empty the old and new proof set, retain only the raw log
+        // cursor, then accept independently observed later appends.
+        $invalidProof=in_array('P03_EVENT_TIME_UNTRUSTED',$warnings,true)
+            ||in_array('P03_DIRECTION_ROUTE_MISMATCH',$warnings,true);
+        if($invalidProof &&$continuity!=='LOG_GAP_OR_RESET')
+            $continuity='INVALID_PROOF_EPOCH';
         if($continuity==='LOG_GAP_OR_RESET'
+            ||$continuity==='INVALID_PROOF_EPOCH'
             ||in_array('P03_LOG_BATCH_INVALID',$warnings,true)){
             $history=[];
             $fresh=[];

@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.96: Widersprechende P03-Durchgaenge mit HOME->LAGER und LAGER->HOME in derselben Sekunde koennen ohne zeitliche Reihenfolge nicht als eindeutig gerichtete Zweimast-Beweise fuer die gemeinsame Smartphone-Zonen-OUT-Phase gelten. Solche Zeitpunkte werden ausschliesslich im vorhandenen P03-Zeitabgleich ausgeklammert; unbetroffene echte Durchgaenge bleiben sichtbar. Die vorhandene unabhängige Quellenpruefung kontrolliert den ausgesonderten Konflikt erneut. Im bisherigen Bericht erscheint die Anzahl verworfener gleicher Sekunden ohne weitere Symcon-Variablen. 120 neue deterministische Referenzszenarien testen konkurrierende Zeitstempel. P03/Alarm/Tor/Licht weiterhin nicht veraendert; alle 7 Ausgaben, 15 Attribute und bisherige Sicherheitsregeln bleiben erhalten."
+      "caption": "SHADOW v0.8.97: P03-Livebeweise werden bei ungueltiger Kamera-Protokollzeit oder widerspruechlicher Richtung/Route nicht als vermeintlich durchgehend verifizierter 24h-Verlauf weitergefuehrt. Die bereits vorhandene Protokoll-Historie wird in dieser konkreten Fehlerlage verworfen. Danach wird ausschliesslich ein neu angehaengter, gueltiger P03-Zweimast-Durchgang wieder passiv angenommen. Untergeordnete Smartphone-/Bewohnerzeitachsen duerfen aus dem unterbrochenen Protokoll keine gemeinsame Abreise ableiten. Tests decken Richtungskonflikte, Zukunftsuhr, die doppelte Winterzeitstunde, Wiederanlauf und echte spaetere Belege ab. Kein neues Symcon-Objekt, keine Variable, kein Attribut oder Timer; sieben alte Ausgaben, 15 alte Zustandsattribute und die vorhandene Berichtvariable bleiben bestehen. Keine P03-, Kamera-, Alarm-, Licht- oder Torsteuerung."
     },
     {
       "type": "Label",
