@@ -84,6 +84,30 @@ final class JVP03IncrementalTimeline
                     }
                 }
             }
+            // A SymBox read may catch a P03 log while a proof line
+            // is still being appended. lastRaw then ends with an
+            // incomplete timestamp or route. Reattach just the bounded
+            // unfinished final line to the next delta (not the old log),
+            // otherwise the fresh proof would be lost permanently.
+            // A completed last proof must never be replayed.
+            if($delta!==null&&$delta!==''&&$lastRaw!==''
+                &&$delta[0]!=="\\n"&&$delta[0]!=="\\r"
+                &&!preg_match('/^\\s*\\[20\\d\\d-\\d\\d-\\d\\d /',$delta)){
+                $nl=strrpos($lastRaw,"\\n");
+                $fragment=substr($lastRaw,$nl===false?0:$nl+1);
+                if($fragment!==''&&strlen($fragment)<=256
+                    &&$fragment[0]==='['
+                    &&!preg_match(
+                        '/^\\[20\\d\\d-\\d\\d-\\d\\d '
+                        .'\\d\\d:\\d\\d:\\d\\d\\]\\s*P03 PROOF '
+                        .'(VERIFIED|STRONG_VERIFIED) '
+                        .'(HOME_TO_LAGER|LAGER_TO_HOME) via '
+                        .'(P03_2CAM_JV_THEN_WORK|P03_2CAM_WORK_THEN_JV)$/D',
+                        trim($fragment)
+                    )){
+                    $delta=$fragment.$delta;
+                }
+            }
             if($delta===null) {
                 $continuity='LOG_GAP_OR_RESET';
                 $warnings[]='P03_LOG_GAP_OR_RESET';
