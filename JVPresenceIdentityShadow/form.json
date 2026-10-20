@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.92: Bestehende P03-Kamerabeweise werden bei nicht lesbarer Protokollvariable, uebergrossem Log oder uneindeutig wiederkehrender Protokollmarkierung sicher aus der aktuellen Beweiskette entfernt. Beim Wiederanlauf dient der erste verifizierte Quellstand als Baseline; nur nachweislich neu angehaengte P03-Durchgaenge sind anschliessend als anonyme Durchgaenge nutzbar. Der vorhandene sieben-Variablen-SHADOW-Aufbau und alle 15 persistenten Zustandsattribute bleiben erhalten; keine neuen Variablen, Timer, Instanzen, Fremdmodulschreibzugriffe oder P03-Modusaenderungen. Smartphones, GUS, Alarmsystem, Tor und Licht bleiben unabhaengig; kein Nachweis individueller Person, Fahrzeugfahrt oder Hausleerstand."
+      "caption": "SHADOW v0.8.93: Zwei wichtige Langzeitfehler ohne neue Symcon-Variablen behoben. (1) Der Startzeitpunkt einer durchgehend verifizierten Smartphone-Quellenkette wird nach 24 Stunden nicht mehr als veraltet geloescht; sonst wurde ein neues Geofence-OUT kurz vor der naechsten 60-Sekunden-Abfrage still ignoriert. Nur echte Quellenluecken oder ungueltige Zeitstempel loesen weiterhin eine sichere Neuinitialisierung aus. (2) Ein verifizierter P03-Durchgang, dessen Protokollzeile ueber zwei Polls geschrieben wird, kann aus dem maximal 256 Zeichen langen unvollstaendigen Schlussstueck zusammengesetzt werden. Bereits vollstaendige Durchgaenge werden nicht noch einmal gezaehlt; bei Logreset werden alte Bruchstuecke niemals mit neuen Quell-Epochen verbunden. Bestehende sieben Ausgaben und 15 Zustandsattribute unveraendert. Kein Haus-leer-/Personen-/Alarm-/Tor-/Licht-Befehl."
     },
     {
       "type": "Label",
