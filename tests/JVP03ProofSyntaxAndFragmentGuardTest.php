@@ -72,7 +72,10 @@ proof98($terminated['report']['logContinuity']==='INVALID_PROOF_EPOCH'
 // Real split proof, including a suffix completed in a separate poll,
 // should still join once and must not be falsely invalid.
 $latest=$proof(-12);
-foreach([25,40,strlen($latest)-5] as $cut){
+// Replay every possible single-byte split, not just a few hand-picked
+// split positions. This includes the opening bracket, timestamp,
+// P03 PROOF marker, verification level, route and the last route byte.
+for($cut=1;$cut<strlen($latest);$cut++){
     $prefix=substr($latest,0,$cut);
     $snap1=JVP03IncrementalTimeline::evaluate(
         $goodRaw.$prefix,$good['next'],$now+1);
@@ -89,6 +92,36 @@ foreach([25,40,strlen($latest)-5] as $cut){
     proof98($repeat['report']['newDirectionProofsThisRead']===0,
         'fully processed fragment never replays '.$cut);
 }
+
+// A completed malformed PROOF ending at EOF was ALREADY quarantined.
+// On the next poll its tail must not be reparsed as an unfinished proof
+// and suppress a genuinely new valid camera event.
+$badAtEof=$goodRaw.'['.$stamp(-19).'] P03 PROOF VERIFIED '
+    .'HOME_TO_LAGER via P03_UNKNOWN_ROUTE';
+$quarantined=JVP03IncrementalTimeline::evaluate(
+    $badAtEof,$good['next'],$now+1);
+proof98($quarantined['report']['logContinuity']==='INVALID_PROOF_EPOCH'
+    &&$quarantined['next']['events']===[],
+    'malformed complete EOF proof is quarantined immediately');
+$afterMalformed=JVP03IncrementalTimeline::evaluate(
+    $badAtEof."\n".$proof(-7)."\n",
+    $quarantined['next'],$now+2);
+proof98($afterMalformed['report']['logContinuity']==='OK'
+    &&$afterMalformed['report']['newDirectionProofsThisRead']===1
+    &&$afterMalformed['report']['lastDirectionAt']===$now-7,
+    'after rejected EOF proof, separately appended valid line can start clean epoch');
+
+// The line may be unfinished but next append begins a NEW timestamp
+// without ever finishing the previous proof. That must break the epoch,
+// not silently skip the dangling fragment and keep prior proofs.
+$orphaned=JVP03IncrementalTimeline::evaluate(
+    $goodRaw.$fragment,$good['next'],$now+1);
+$skipToNew=JVP03IncrementalTimeline::evaluate(
+    $goodRaw.$fragment.$proof(-6)."\n",
+    $orphaned['next'],$now+2);
+proof98($skipToNew['report']['logContinuity']==='INVALID_PROOF_EPOCH'
+    &&$skipToNew['report']['verifiedTimeline24hCount']===0,
+    'new timestamp cannot conceal a broken earlier partial proof');
 
 // Ordinary status and diagnostics that do not assert P03 PROOF must
 // remain harmless, even when they mention a route.
@@ -132,4 +165,4 @@ proof98(!$blocked['verifiedP03NearPair']
     &&!$blocked['homeEmptyCertified'],
     'malformed P03 evidence cannot be converted into a personal absence claim');
 
-echo "SHADOW v0.8.98: six malformed P03 PROOF variants, interrupted and completed fragments, correct recovery and downstream quarantine PASS\n";
+echo "SHADOW v0.8.98: six malformed P03 PROOF variants, all byte splits, newline and timestamp interruptions, exact recovery and downstream quarantine PASS\n";
