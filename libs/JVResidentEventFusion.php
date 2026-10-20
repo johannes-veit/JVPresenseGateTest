@@ -307,7 +307,9 @@ final class JVResidentEventFusion
             }
         }
         $newProofs=[];
-        if($p03Valid&&!$logInterrupted){
+        if($p03Valid&&!$logInterrupted&&$p03Continuous){
+            // After a >1-hour SHADOW timer gap the first available P03
+            // report is a baseline, not a new anonymous camera crossing.
             $proofs=is_array($p03['newlyVerifiedDirectionProofs']??null)
                 ?$p03['newlyVerifiedDirectionProofs']
                 :($p03['recentDirectionProofs']??[]);
