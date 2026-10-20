@@ -27,7 +27,7 @@ $restarted=JVP03IncrementalTimeline::evaluate('P03 RESTART MARKER',
     $first['next'],$at+4);
 epoch91($restarted['report']['logContinuity']==='LOG_GAP_OR_RESET'
     &&$restarted['report']['directionProofs24h']['HOME_TO_LAGER']===0
-    &&$restarted['report']['verifiedDirectionTimeline24h']=[]
+    &&$restarted['report']['verifiedDirectionTimeline24h']===[]
     &&$restarted['next']['events']===[]
     &&!$restarted['report']['propertyEmptyMayBeCertified'],
     'reset clears retained cross-epoch camera proofs without acting on hardware');
@@ -75,7 +75,7 @@ $overflow=JVP03IncrementalTimeline::evaluate(
 epoch91($overflow['report']['newProofBatchOverflow']
     &&$overflow['report']['newlyVerifiedDirectionProofs']===[]
     &&$overflow['report']['directionProofs24h']['HOME_TO_LAGER']===0
-    &&$overflow['next']['events']==[],
+    &&$overflow['next']['events']===[],
     '129 newly verified camera events fail closed without storing partial story');
 $afterOverflow=JVP03IncrementalTimeline::evaluate(
     $many."\n".$proof('2026-10-20 13:00:01'),
