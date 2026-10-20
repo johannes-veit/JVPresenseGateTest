@@ -589,7 +589,7 @@ final class JVResidentEveningHandoff
                 $add('QUELLSPERRE BEI FEHLENDER QUELLE: verbotene Freigabe entdeckt '
                     .self::yes(($cross['sourceContractViolationDuringMissingData']??false)===true)
                     .' | auch bei Smartphone-/P03-Ausfall kein Alarm-/Personenbeweis');
-                $add('QUELLEN-INTEGRITAET DETAIL: Handy-Zeitintervalle 
+                $add('QUELLEN-INTEGRITAET DETAIL: Handy-Zeitintervalle '
                     .self::yes(($cross['phoneIntervalsStrictlyPositive']??false)===true)
                     .' | P03 letzter Zeitbeleg '
                     .self::yes(($cross['latestP03LinkConsistent']??false)===true)
