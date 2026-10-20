@@ -13,8 +13,10 @@ $mast=['schema'=>1,'authority'=>'P03_EXISTING_MAST_OBSERVER_HEALTH_ONLY',
 $home=['schema'=>1,'authority'=>'ANONYMOUS_HOME_OBSERVATION_ONLY',
     'sourcesHealthy'=>true,'observedHomeGUS'=>15];
 $fusion=['schema'=>1,'authority'=>'PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY',
-    'people'=>['johannes'=>['state'=>'PHONE_HOME_MAC_RECENT'],
-        'carina'=>['state'=>'PHONE_HOME_MAC_RECENT']]];
+    'people'=>['johannes'=>['state'=>'PHONE_HOME_MAC_RECENT',
+        'macSourceContinuous'=>true,'geoSourceContinuous'=>true],
+        'carina'=>['state'=>'PHONE_HOME_MAC_RECENT',
+        'macSourceContinuous'=>true,'geoSourceContinuous'=>true]]];
 $work=['schema'=>1,'authority'=>'PHONE_CURRENT_SSID_READ_ONLY_WORK_CONTEXT',
     'enabled'=>true,'people'=>[]];
 $boundary=['schema'=>1,'authority'=>'READ_ONLY_BOUNDARY_CONTEXT',
@@ -56,6 +58,15 @@ readyAssert($r['p03Mode']==='P03_TRANSFER_MODE_ACTIVE'
 readyAssert(!$r['canClaimVehicleTravel']
     &&$r['carJourneyAssessment']==='PHONE_TIMELINE_NEAR_ROUTE_BUT_AUTO_NOT_PROVEN',
     'single phone plus vehicle variable STILL no person car claim');
+$fusion['people']['carina']['geoSourceContinuous']=false;
+$r=$run();
+readyAssert(in_array('CARINA_GEOFENCE_SOURCE_NOT_CONTINUOUS',
+    $r['sourceBlocks'],true)
+    &&in_array('CARINA_WAIT_FOR_VERIFIED_GEOFENCE_CONTINUITY',
+        $r['nextEvidencePriority'],true)
+    &&!$r['canCertifyHouseEmpty'],
+    'actual Carina source gap shown without adding any new Symcon object');
+$fusion['people']['carina']['geoSourceContinuous']=true;
 $mode['p03ModeTrustedFromFreshDiagnosis']=false;
 readyAssert($run()['p03Mode']==='UNKNOWN_NOT_VERIFIED',
     'stale mode diagnosis never asserts P03 mode active');

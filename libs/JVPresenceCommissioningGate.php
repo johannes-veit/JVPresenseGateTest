@@ -97,6 +97,15 @@ final class JVPresenceCommissioningGate
                 $actions[]=$prefix.'_REPAIR_DUPLICATED_EXISTING_WLAN_IDS';
             elseif($home==='NOT_VERIFIED')
                 $actions[]=$prefix.'_VERIFY_EXISTING_WLAN_VARIABLE_PAIR';
+            // A verified object ID is not enough: the preceding
+            // observation must also be continuous. Without both
+            // sources the first post-outage sample is only baseline.
+            if($f!==[]&&($f['macSourceContinuous']??false)!==true
+                &&$home!=='NOT_VERIFIED'
+                &&$home!=='DUPLICATE_OBJECT_SOURCE')
+                $actions[]=$prefix.'_VERIFY_EXISTING_WLAN_SOURCE_CONTINUITY';
+            if($geo!=='SOURCE_CONTINUOUS')
+                $actions[]=$prefix.'_WAIT_FOR_VERIFIED_GEOFENCE_CONTINUITY';
             if(($f['sourceRebindRecent']??false)===true)
                 $actions[]=$prefix.'_OBSERVE_NEW_PHONE_EVENTS_AFTER_REBIND';
             if($ss==='PERSONAL_SSID_SOURCE_MISSING')
@@ -148,6 +157,32 @@ final class JVPresenceCommissioningGate
         if(!$all)array_unshift($actions,
             'RECHECK_UNVERIFIED_READ_ONLY_INPUT_REPORTS');
         $actions=array_values(array_unique($actions));
+        // Front-load blockers that matter for a *safe* meaningful
+        // field test; otherwise eight lower-priority SSID hints could
+        // hide P03 OFF, broken integrity, or a missing geofence.
+        // Work strictly inside existing actions[], no new outputs.
+        $priority=static function(string $action):int{
+            if($action==='REVIEW_SHADOW_INTEGRITY_CODES')return 0;
+            if($action==='RECHECK_UNVERIFIED_READ_ONLY_INPUT_REPORTS')return 1;
+            if(str_contains($action,'REPAIR_DUPLICATED_EXISTING_WLAN_IDS'))
+                return 2;
+            if($action==='P03_MODE_OFF_INTENTIONAL_NO_NEW_VERIFIED_ROUTE'
+                ||$action==='VERIFY_P03_MODE_DIAGNOSIS_READ_ONLY'
+                ||$action==='P03_LOG_CONTINUITY_INTERRUPTED')return 3;
+            if(str_contains($action,'VERIFY_EXISTING_WLAN_VARIABLE_PAIR')
+                ||str_contains($action,'VERIFY_EXISTING_WLAN_SOURCE_CONTINUITY')
+                ||str_contains($action,'WAIT_FOR_VERIFIED_GEOFENCE_CONTINUITY'))
+                return 4;
+            if($action==='QUALIFY_EXISTING_VEHICLE_CLASS_AND_DIRECTION_SOURCE')
+                return 5;
+            if($action==='VERIFY_EXISTING_P03_MAST_HEALTH_READ_ONLY')
+                return 6;
+            if($action==='VERIFY_EXISTING_FIFTEEN_GUS_SOURCE_MAPPING')
+                return 7;
+            return 8;
+        };
+        usort($actions,static fn(string $a,string $b):int=>
+            $priority($a)<=>$priority($b));
         $out['actionCount']=count($actions);
         $out['actions']=array_slice($actions,0,self::MAX_ACTIONS);
         $out['actionsTruncated']=count($actions)>self::MAX_ACTIONS;
