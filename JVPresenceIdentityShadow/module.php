@@ -1882,7 +1882,7 @@ class JVPresenceIdentityShadow extends IPSModule
             JVShadowCrossSourceIntegrityGate::evaluate(
                 $areaCycles,$roomPaths['sharedDepartureTimeline'],
                 $p03Timeline['report'],$roomPaths['phoneRoomOverlapAudit'],
-                time()
+                time(),$activity,$ledger['next']
             );
         $integrityAudit=JVShadowIntegrityAudit::evaluate(
             $residentFusion['report'],$routeEpisodes['report'],
