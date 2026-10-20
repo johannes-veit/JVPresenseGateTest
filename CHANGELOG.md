@@ -1,3 +1,23 @@
+# v0.8.93 (Build 174) – P03-Beweiskette auch nachgelagert sicher rebaselinen und unbestätigte Integrität sperren
+
+## 1. P03-Logepoch vollständig bis zur Bewohner-Ereignisfusion verfolgen
+- Das P03-Protokollmodul verwarf nach einem Reset bereits korrekt die alte Kamera-Historie. Die nachgelagerte `JVResidentEventFusion` behielt jedoch eigene `seen`-Schlüssel, den höchsten alten P03-Zeitstempel (`highWaterAt`) und `lastAnonymous`. Dadurch konnte ein alter Kamerabeleg nach einer neuen Protokolleepoche als letzter Kamerabeleg sichtbar bleiben oder spätere echte P03-Zeitstempel verdrängen.
+- Nach nicht vertrauenswürdiger P03-Kontinuität oder mehr als einer Stunde Beobachtungslücke werden diese **bereits vorhandenen** Fusionsfelder nun konsistent zurückgesetzt. Das betrifft nur den anonymen P03-Zustand; persönliche Smartphone-Ereignisse, GUS- und sonstige Fremdmodule bleiben unverändert.
+- Eine bereits bekannte P03-Zeile wird beim ersten Poll nach einer langen Unterbrechung ausschließlich als Duplikat-Baseline gespeichert, nicht als neuer Durchgang oder letzter aktueller Kamerabeleg. Nur wirklich nach dem Wiederanlauf neu verifizierte P03-Durchgänge werden in `lastAnonymous` und die Route-Delivery-Warteschlange übernommen. Kein künstliches Zusammenführen alter und neuer Protokolleepochen.
+
+## 2. Integritätsprüfung darf nicht stillschweigend unbekannt sein
+- `JVPresenceCommissioningGate` durfte bei korrekten Berichtsschemata und einem unbekannten Audit-Status zuvor noch `CORE_READ_ONLY_VALIDATED_MISSING_IDENTITY_AND_VEHICLE_PROOFS` ausgeben. Nun wird ausschließlich der **explizit belegte** Wert `CONSISTENT` als validiert angezeigt. `UNKNOWN`, fehlender Auditstatus, `STALE_INTEGRITY_REPORT` und `SOURCE_INCOMPLETE_NO_ACTION` werden vorsorglich als `SOURCE_CONSISTENCY_REVIEW` mit einer priorisierten Quellprüfungsaktion angezeigt.
+- Auch ein bestätigter Integritätsstatus bedeutet weiterhin nur passiven SHADOW-Betrieb, niemals die Freigabe von Personenidentität, Hausleerstand, Alarm, Tor, Licht oder Fahrzeugfahrt.
+
+## 3. Tatsächlicher End-to-End-Test statt nur isolierter Hilfsfunktionen
+- `JVP03FusionEpochEndToEndTest.php` durchläuft `JVP03IncrementalTimeline` -> `JVResidentEventFusion`: Baseline, echte neue P03-Zeile, Wiederholung ohne erneutes Zählen, echten Logreset, das sichere Entfernen sämtlicher alter anonymer Fusionseinträge, erste neue P03-Zeile der nächsten Epoche, unzuverlässige Quelle, eine Unterbrechung über eine Stunde und korrektes Baseline-/Duplikatverhalten beim Wiederanlauf.
+- Der bestehende `JVPresenceCommissioningGateTest.php` enthält vier zusätzliche Negativzustände für unbekannte Integritätsbewertungen und den positiven Gegentest bei nachweislich `CONSISTENT`.
+- Alle bestehenden eigenständigen Anwesenheits-/P03-/LCN-/WLAN-/Geofence-/Kamera-Regressionsprüfungen und die allgemeine PHP-CI müssen vor der Übernahme bestanden sein.
+
+## Bestehende Ressourcen bleiben unverändert
+- Keine neuen IP-Symcon-Variablen, Instanzen, Zustandsattribute oder Timer. Die sieben bisherigen Ausgaben, die 15 vorhandenen persistenten Attribute und der kopierbare Bericht `Testergebnis an ChatGPT` bleiben.
+- SHADOW ausschließlich read-only; produktive SymBox #32969, P03 TEST/PRODUKTION, Kameras, WLAN, Alarmanlage, Tor und Beleuchtung werden nicht umgestellt. Ohne zusätzliche echte Live-Quellen-Nachweise keine identifizierten Menschen oder ein nachweisbar leeres Haus.
+
 # v0.8.92 (Build 173) – P03-Protokollausfall wirklich isolieren, keine alten Kamerabeweise wiederverwenden
 
 - **Uebergrosses bestehendes P03-Protokoll:** `JVP03IncrementalTimeline` lieferte bei mehr als 256 KiB bislang ein leeres Diagnoseergebnis, behielt aber dauerhaft den bisherigen gueltigen Cursor und seine alten P03-Beweise. Sobald die Quelle wieder lesbar war, konnten historische Kameradurchgaenge faelschlich zu einem aktuellen, scheinbar lueckenlosen Verlauf gehoeren. Jetzt werden diese alten Beweise bei einem nachweislich uebergrossen Quellwert verworfen; nur der begrenzte letzte Rohlog-Anker (maximal 65.536 Bytes) bleibt als Neustartmarke. Nach einem eindeutig nachgewiesenen Log-Anschluss darf wieder ein wirklich neu angehaengter, anonymer Durchgang erscheinen.
