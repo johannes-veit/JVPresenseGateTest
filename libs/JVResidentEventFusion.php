@@ -103,7 +103,9 @@ final class JVResidentEventFusion
             // join pre-gap events with post-gap observations.
             // No additional persisted state or Symcon variables required.
             $resetPhoneChain=$boot||$macRebaseline||$geoRebaseline
-                ||!$verifiedPair||!$geoValid;
+                ||!$verifiedPair||!$geoValid
+                ||($prev['lastMacSourceVerified']??false)!==true
+                ||($prev['lastGeoSourceVerified']??false)!==true;
             $geoSourceContinuous=$geoValid
                 &&($prev['lastGeoSourceVerified']??false)===true
                 &&!$boot&&$geoKeyStable;
@@ -155,7 +157,7 @@ final class JVResidentEventFusion
                 &&($ssid['status']??null)==='WORK_FIRMEN_WLAN_PHONE';
             // First sample is a baseline only. Old P03 and geofence events
             // must never be turned into new personal journeys on an update.
-            if($geoSourceContinuous&&!$macRebaseline
+            if(!$resetPhoneChain&&$geoSourceContinuous
                 &&$geoAt!==null &&$geoAt>=$initialAt
                 && $geoKind!==null
                 &&($lastGeo===null||$geoAt>$lastGeo)){
@@ -186,7 +188,7 @@ final class JVResidentEventFusion
             }
             // A long gap can reflect iPhone standby or an inaccessible WLAN;
             // it may NEVER on its own create a departure or arrival.
-            if(!$boot &&$newMac &&$gap>660 &&$newEvent===null)
+            if(!$resetPhoneChain &&$newMac &&$gap>660 &&$newEvent===null)
                 $newEvent=['code'=>'HOME_PHONE_REAPPEARED_AFTER_CONTACT_GAP',
                     'at'=>$mac,'certainty'=>'NETWORK_CONTACT_ONLY'];
             if($newEvent!==null){
