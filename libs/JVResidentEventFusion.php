@@ -279,6 +279,18 @@ final class JVResidentEventFusion
         $p03Continuous=($oldP03['initialized']??false)===true
             &&$lastP03Read!==null
             &&$now-$lastP03Read<=self::MAX_OBSERVATION_GAP;
+        // The upstream P03IncrementalTimeline has already started a new
+        // evidence epoch after a log reset, invalid batch or lost timer.
+        // Reset the *downstream* high-water, seen and lastAnonymous too;
+        // otherwise an old crossing is displayed across the epoch or
+        // suppresses a later genuinely new crossing with an older time.
+        // No new attribute, state field or Symcon variable is necessary.
+        if($logInterrupted||!$p03Continuous){
+            $clean=[];
+            $latest=null;
+            $highWater=null;
+            $oldHighWater=null;
+        }
         // Persisted delivery journal protects the gap between P03 cursor
         // advance and successful route processing. The journal is replayed
         // after a crash and removed only after the route ledger is durable.
