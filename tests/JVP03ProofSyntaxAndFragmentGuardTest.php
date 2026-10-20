@@ -4,6 +4,8 @@ require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
 require_once dirname(__DIR__).'/libs/JVSharedDepartureTimeline.php';
 require_once dirname(__DIR__).'/libs/JVPhoneAreaCycleMatcher.php';
 require_once dirname(__DIR__).'/libs/JVP03PhonePairMatrix.php';
+require_once dirname(__DIR__).'/libs/JVResidentEventFusion.php';
+require_once dirname(__DIR__).'/libs/JVPresenceCommissioningGate.php';
 function proof98(bool $truth,string $context):void{
     if(!$truth)throw new RuntimeException('P03_PROOF_BOUNDARY_0_8_98 '.$context);
 }
@@ -165,4 +167,40 @@ proof98(!$blocked['verifiedP03NearPair']
     &&!$blocked['homeEmptyCertified'],
     'malformed P03 evidence cannot be converted into a personal absence claim');
 
-echo "SHADOW v0.8.98: six malformed P03 PROOF variants, all byte splits, newline and timestamp interruptions, exact recovery and downstream quarantine PASS\n";
+// An internally contradictory provider could report OK while its
+// warnings still disclose malformed P03 proof syntax. All four existing
+// consumers must reject it without creating any new Symcon object.
+$spoofed=$good['report'];
+$spoofed['warnings'][]='P03_PROOF_SYNTAX_UNTRUSTED';
+$spoofed['logContinuity']='OK';
+$matrixMasked=JVP03PhonePairMatrix::evaluate($cycles,$spoofed,$now);
+$timelineMasked=JVSharedDepartureTimeline::evaluate(
+    $fusion,$spoofed,$mode,$now);
+proof98($matrixMasked['inputUntrusted']
+    &&!$timelineMasked['verifiedP03NearPair'],
+    'P03 warning independently vetoes forged OK status');
+$wlan=['schema'=>1,'authority'=>'EXISTING_WLAN_MAC_HINTS_READ_ONLY',
+    'enabled'=>true,'people'=>[]];
+$geoJ=['schema'=>1,'authority'=>'EXISTING_JOHANNES_EGIGEOZONE_READ_ONLY'];
+$geoC=['schema'=>1,'authority'=>'EXISTING_CARINA_GEOFENCY_READ_ONLY'];
+$work=['schema'=>1,'authority'=>'PHONE_CURRENT_SSID_READ_ONLY_WORK_CONTEXT',
+    'enabled'=>true,'people'=>[]];
+$fused=JVResidentEventFusion::evaluate(
+    $wlan,$geoJ,$geoC,$work,$spoofed,[],$now);
+proof98($fused['report']['p03']['logInterrupted']===true
+    &&$fused['report']['p03']['newAnonymousProofs']===[],
+    'resident fusion must reject malformed PROOF warning even if P03 status claims OK');
+$ready=['schema'=>1,'authority'=>'READ_ONLY_PRESENCE_EVIDENCE_READINESS',
+    'p03Mode'=>'P03_TRANSFER_MODE_ACTIVE'];
+$boundary=['schema'=>1,'authority'=>'READ_ONLY_BOUNDARY_CONTEXT',
+    'vehicleSignals'=>0];
+$integrity=['schema'=>1,'authority'=>'SHADOW_INTEGRITY_AUDIT_READ_ONLY',
+    'status'=>'CONSISTENT'];
+$gate=JVPresenceCommissioningGate::evaluate(
+    $wlan,$fused['report'],$work,$ready,$boundary,[],[],
+    $integrity,$now);
+proof98(in_array('P03_LOG_CONTINUITY_INTERRUPTED',$gate['actions'],true)
+    &&!$gate['mayArmAlarm']&&!$gate['canCertifyPropertyEmpty'],
+    'existing commissioning worklist exposes every P03 invalid proof epoch');
+
+echo "SHADOW v0.8.98: six malformed P03 PROOF variants, all byte splits, newline and timestamp interruptions, exact recovery and downstream quarantine and commissioning notification PASS\n";
