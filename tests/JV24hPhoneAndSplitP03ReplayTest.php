@@ -99,4 +99,35 @@ $normal=JVP03IncrementalTimeline::evaluate(
 day92($normal['report']['newDirectionProofsThisRead']===1
     &&$normal['report']['verifiedTimeline24hCount']===3,
     'regular unsplit P03 proof remains processed normally');
+
+// An unanchored P03 source restart must never join an old partial proof
+// with a new epoch. Source continuity is more important than completion.
+$partialBeforeReset=JVP03IncrementalTimeline::evaluate(
+    "P03 LOG\n".$full."\n".substr($third,0,32),
+    $normal['next'],$now+12);
+$reset=JVP03IncrementalTimeline::evaluate(
+    "NEW P03 PROCESS\n".substr($third,32),
+    $partialBeforeReset['next'],$now+13);
+day92($reset['report']['newDirectionProofsThisRead']===0
+    &&$reset['report']['verifiedTimeline24hCount']===0
+    &&$reset['report']['logContinuity']==='LOG_GAP_OR_RESET',
+    'P03 reset between two fragments can never complete a pre-reset proof');
+
+$futureInit=$prior;
+$futureInit['people']['johannes']['initializedAt']=$now+3600;
+$future=JVResidentEventFusion::evaluate(
+    $w,$geoJ,$geoC,$work,$p03,$futureInit,$now);
+day92($future['report']['people']['johannes']['newPersonalPhoneEvent']===null
+    &&$future['next']['people']['johannes']['initializedAt']===$now,
+    'future-corrupted phone initialization timestamp safely rebaselined');
+
+// A standalone complete P03 proof must never be counted a second time
+// when ordinary status text arrives without any new PROOF line.
+$withNote=JVP03IncrementalTimeline::evaluate(
+    "P03 LOG\n".$full."\n".$second."\n".$third." status ok",
+    $normal['next'],$now+12);
+day92($withNote['report']['newDirectionProofsThisRead']===0
+    &&$withNote['report']['verifiedTimeline24hCount']===3
+    &&!$withNote['report']['propertyEmptyMayBeCertified'],
+    'non-proof status suffix after complete P03 must not create fourth proof');
 echo "SHADOW v0.8.92: 24h phone initializedAt boundary and two split P03 proofs PASS\n";
