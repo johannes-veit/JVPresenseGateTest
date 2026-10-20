@@ -63,7 +63,7 @@ $inputs=$make($fusion(
 $clean=JVShadowCrossSourceIntegrityGate::evaluate(...[...$inputs,$now]);
 integrity86($clean['status']==='CROSS_SOURCE_CONSISTENT_ANONYMOUS_ONLY'
     &&$clean['verifiedPhonePairCount']===1
-    &&$clean['uniqueP03Matches']===0 // internal fixed later, safe default
+    &&$clean['uniqueP03Matches']===1
     &&$clean['latestP03LinkConsistent']
     &&$clean['anonymousRoomOverlayConsistent']
     &&$clean['phoneIntervalsStrictlyPositive']
@@ -98,6 +98,10 @@ $cases=[
     ['P03 negative gap',1,function(&$t){
         $t['p03ProofGapSeconds']=-1;
     },'P03_LATEST_PROOF_NOT_QUALIFIED'],
+    ['fabricated P03 timestamp not found in independent proof history',1,function(&$t){
+        $t['verifiedP03NearPairAt']=1900000000-860;
+        $t['p03ProofGapSeconds']=10;
+    },'P03_LINK_TIMESTAMP_NOT_IN_VERIFIED_HISTORY'],
     ['P03 proof without active link',1,function(&$t){
         $t['verifiedP03NearPair']=false;
     },'P03_GHOST_PROOF_WITHOUT_LINK'],
@@ -180,4 +184,4 @@ for($i=0;$i<100;$i++){
     integrity86($again===$clean,
         '100 identical passive refreshes never replay or alter evidence '.$i);
 }
-echo "SHADOW v0.8.86: cross-source full audit, 14 adversarial mutations, read-only gaps, 100 deterministic refreshes PASS\n";
+echo "SHADOW v0.8.86: cross-source full audit, 15 adversarial mutations, read-only gaps, 100 deterministic refreshes PASS\n";
