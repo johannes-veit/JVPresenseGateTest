@@ -122,13 +122,13 @@ hugeCheck($twice['matchedPhonePairs']===2
     &&$twice['latestPairP03CandidateCount']===2,
     'both camera events are observed but either could fit latest phone interval');
 $onlyOld=JVP03PhonePairMatrix::evaluate(
-    $multi,$p03([$proof(-890)]),$now);
+    $multi,$p03([$proof(-1020)]),$now);
 hugeCheck($onlyOld['matchedPhonePairs']===1
     &&$onlyOld['latestPhonePairP03']===null
-    &&$onlyOld['nearestPreviousPairP03']['p03At']===$now-890,
+    &&$onlyOld['nearestPreviousPairP03']['p03At']===$now-1020,
     'historical P03 match cannot certify latest phone interval');
 $noLatest=JVSharedDepartureTimeline::evaluate(
-    $double,$p03([$proof(-890)]),$timing,$now);
+    $double,$p03([$proof(-1020)]),$timing,$now);
 hugeCheck(!$noLatest['verifiedP03NearPair']
     &&$noLatest['p03MatchPreviousNotLatest']
     &&$noLatest['p03UniquePairMatchesRecent']===1,
