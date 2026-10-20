@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.94: Das aktualisierte P03-Protokoll und die bestehende Bewohner-Ereignisfusion nutzen nach Reset oder Beobachtungsluecke jetzt dieselbe Sicherheitsgrenze. Alte P03-Zeitmarken, letzter anonymer Kamerabeleg und interne Seen-Keys werden nach ungueltiger Quelle geloescht. Ein alter Kamerabeleg nach dem ersten Wiederanlauf zaehlt nur als Duplikat-Baseline, niemals als neue Bewegung oder als aktueller letzter Beleg; erst wirklich neu verifizierte Durchgaenge werden wieder verarbeitet. Zudem gilt die bestehende Freigabediagnose nur bei ausdruecklich CONSISTENT als validiert; unbekannte/fehlende Audit-Werte gehen auf SOURCE_CONSISTENCY_REVIEW. Bestehende 7 Ausgaben, 15 Attribute und 0 neue Variablen/Instanzen. Keine fremden P03-, Kamera-, LCN-, Alarm-, Tor- oder Lichtaktionen."
+      "caption": "SHADOW v0.8.95: Ein P03-Zeitstempel wird dem neuesten gemeinsamen Smartphone-OUT-Intervall nur noch dann direkt zugeordnet, wenn er ohne zeitlich passende konkurrierende anonyme P03-Beweise und ohne konkurrierende andere Handy-Episoden auskommt. Existieren mehrere passende Kameradurchgaenge, bleiben deren Zaehler sichtbar, die eindeutige P03-Zuordnung wird aber bewusst gesperrt. Die unabhängige Quellintegritaetskontrolle prueft diese Mehrdeutigkeit ebenfalls. Bericht in vorhandener Variable, keine neuen Symcon-Variablen, Instanzen oder Attribute, P03 AUS bleibt AUS, Alarm-/Tor-/Lichtmodule unveraendert, SHADOW read-only ohne Haus-leer- oder Personenbeweis."
     },
     {
       "type": "Label",
