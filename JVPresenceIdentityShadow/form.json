@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.88: Weniger Komplexitaet, keine neuen Variablen. Die vorhandene Smartphone-Ereignisfusion verwirft alte persoenliche Geofence-OUT/IN/MAC-Ereignisketten nach mehr als 15 Minuten ohne SHADOW-Beobachtung oder bei unqualifizierter WLAN-/Geofence-Quelle. Dadurch werden alte OUT-Meldungen nicht nach Neustart, Funkunterbrechung oder Uhrzeitruecksprung mit neuen Kameraereignissen verbunden. Bis zu 15 Minuten wird das bisher bewaehrte Wiedererkennungsverhalten erhalten. Kein neues Attribut, keine weitere Instanz, alle sieben SHADOW-Ausgaben und bisherige Kameras-, Alarm-, Tor- und Lichtlogik unveraendert; Hausleer- und Personenzahl bleiben nicht zertifiziert."
+      "caption": "SHADOW v0.8.89: Fehlerkorrektur in der vorhandenen Smartphone-Ereignisfusion. Eine Geofence-OUT/IN-Meldung darf nicht als neuer persoenlicher Beleg gespeichert werden, solange WLAN oder Geofence nicht gueltig ist – auch dann nicht, wenn die andere Quelle noch frische Ereignisse liefert. Die erste Beobachtung nach einer Quellenwiederkehr dient nur als neue Baseline; erst ein wirklich spaeteres Ereignis darf wieder in die persoenliche Historie. Gleiches gilt fuer MAC-Wiedererkennung nach WLAN-Standby waehrend unqualifiziertem Geofence. Die bestehende 15-Minuten-Unterbrechungsregel bleibt unveraendert. Keine zusaetzlichen Symcon-Variablen, Attribute, Instanzen oder Module; 7 Ausgaben bleiben, P03 und alle Fremdsysteme bleiben unveraendert, keine Alarm- oder Haus-Leer-Freigabe."
     },
     {
       "type": "Label",
