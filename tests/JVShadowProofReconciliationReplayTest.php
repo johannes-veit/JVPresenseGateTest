@@ -52,7 +52,9 @@ $base=$fusion([
     $event('OUT',-875),$event('IN',-695),
     $event('OUT',-610),$event('IN',-430)
 ]);
-$source=$camera([$camEvent(-845),$camEvent(-590)]);
+// First corridor precedes the second phone episode by >300s:
+ // the two reference pair assignments are genuinely unambiguous.
+$source=$camera([$camEvent(-950),$camEvent(-590)]);
 $create=static function(array $fusion,array $camera)
     use($now,$mode,$activity,$ledger):array {
     $cycles=JVPhoneAreaCycleMatcher::evaluate($fusion,$now);
