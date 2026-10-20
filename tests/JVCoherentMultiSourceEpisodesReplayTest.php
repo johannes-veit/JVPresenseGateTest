@@ -117,8 +117,10 @@ $twice=JVP03PhonePairMatrix::evaluate(
     $multi,$p03([$proof(-715),$proof(-680)]),$now);
 hugeCheck($twice['matchedPhonePairs']===2
     &&$twice['unmatchedPhonePairs']===0
-    &&$twice['latestPhonePairP03']['p03At']===$now-680,
-    'two different P03 corridor proofs pair to two different phone cycles');
+    &&$twice['latestPhonePairP03']===null
+    &&$twice['latestPairP03Ambiguous']
+    &&$twice['latestPairP03CandidateCount']===2,
+    'both camera events are observed but either could fit latest phone interval');
 $onlyOld=JVP03PhonePairMatrix::evaluate(
     $multi,$p03([$proof(-890)]),$now);
 hugeCheck($onlyOld['matchedPhonePairs']===1
