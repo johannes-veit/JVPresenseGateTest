@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.87: Die End-to-End-Quellenpruefung rechnet jetzt (1) alle maximal acht Zuordnungen qualifizierter Smartphone-Zonen-Zyklen zu verifizierten P03-Zweimast-Durchgaengen ein zweites Mal direkt aus dem P03-Ereignisverlauf und (2) alle anonymen GUS-Zaehlwerte aus dem bereits vorhandenen internen 24h-LCN-Ereignisprotokoll nach. Plausibel aussehende, aber verfaelschte Summen oder kuenstlich geaenderte alte P03-Zuordnungen werden dadurch erkannt, nicht nur der letzte Zeitstempel. (3) Unzulaessige Haus-leer-, Alarm-, Fremdsteuerungs- und Personenfreigaben werden auch bei ausfallenden Handy-/GUS-Quellen erkannt und gesperrt, waehrend normale Quellenluecken nicht als Korruption ausgegeben werden. Weiterhin nur eine Testberichtvariable, sieben bestehende Ausgaben und die bestehenden 15 Zustandsattribute, keine P03-, LCN-, WLAN-, Alarm-, Tor- oder Licht-Schreibzugriffe; keine Identitaets- oder Kopfzahlbehauptungen."
+      "caption": "SHADOW v0.8.88: Weniger Komplexitaet, keine neuen Variablen. Die vorhandene Smartphone-Ereignisfusion verwirft alte persoenliche Geofence-OUT/IN/MAC-Ereignisketten nach mehr als 15 Minuten ohne SHADOW-Beobachtung oder bei unqualifizierter WLAN-/Geofence-Quelle. Dadurch werden alte OUT-Meldungen nicht nach Neustart, Funkunterbrechung oder Uhrzeitruecksprung mit neuen Kameraereignissen verbunden. Bis zu 15 Minuten wird das bisher bewaehrte Wiedererkennungsverhalten erhalten. Kein neues Attribut, keine weitere Instanz, alle sieben SHADOW-Ausgaben und bisherige Kameras-, Alarm-, Tor- und Lichtlogik unveraendert; Hausleer- und Personenzahl bleiben nicht zertifiziert."
     },
     {
       "type": "Label",
