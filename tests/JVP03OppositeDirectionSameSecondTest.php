@@ -175,7 +175,9 @@ for($scenario=0;$scenario<120;$scenario++){
             $result['latestPairP03CandidateCount'],
             $result['oppositeDirectionSameSecondIgnored'],
             $result['latestPairP03DirectionConflict'],
-            $result['matchedPhonePairs'],$result['latestPhonePairP03']!==null
+            $result['matchedPhonePairs'],$result['latestPhonePairP03']!==null,
+            $result['inputUntrusted'],$result['status'],
+            array_keys($outTimes),array_keys($inTimes)
         ]));
 }
 echo "SHADOW v0.8.96: same-second opposite P03 directions fail closed; 120 independent collision replays PASS\n";
