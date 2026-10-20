@@ -19,6 +19,7 @@ final class JVResidentEventFusion
     private const MAX_ROUTE_DELIVERY=32;
     private const MAX_PHONE_EVENTS=24;
     private const MAX_OBSERVATION_GAP=3600;
+    private const MAX_PHONE_OBSERVATION_GAP=600; // 60s SHADOW polling, fail closed after 10m
 
     public static function evaluate(
         array $wlan, array $jGeo, array $cGeo, array $work,
@@ -47,7 +48,7 @@ final class JVResidentEventFusion
             $initialAt=self::ts($prev['initializedAt']??null,$now,self::MAX_AGE);
             $boot=($prev['initialized']??false)!==true
                 ||$observedAt===null
-                ||$now-$observedAt>self::MAX_OBSERVATION_GAP;
+                ||$now-$observedAt>self::MAX_PHONE_OBSERVATION_GAP;
             if($initialAt===null)$initialAt=$now;
             $wp=$okWlan&&is_array($wlan['people'][$person]??null)
                 ?$wlan['people'][$person]:[];
