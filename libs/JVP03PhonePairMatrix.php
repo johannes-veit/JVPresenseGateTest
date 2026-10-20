@@ -109,9 +109,23 @@ final class JVP03PhonePairMatrix
         // Never pretend that the chosen DP representative is unique.
         if($pairs!==[]){
             $lastPair=$pairs[count($pairs)-1];
-            foreach($proofs as $at)
-                if(self::distance($lastPair,$at,$now)!==null)
-                    $out['latestPairP03CandidateCount']++;
+            $cameraCouldBelongToOlderPair=false;
+            foreach($proofs as $at){
+                if(self::distance($lastPair,$at,$now)===null)continue;
+                $out['latestPairP03CandidateCount']++;
+                foreach(array_slice($pairs,0,-1) as $olderPair){
+                    if(self::distance($olderPair,$at,$now)!==null){
+                        $cameraCouldBelongToOlderPair=true;
+                        break;
+                    }
+                }
+            }
+            // Even when the chosen DP attributes an ambiguous camera
+            // crossing to the OLD pair, this does not establish that
+            // the latest phone pair definitively lacked that crossing.
+            $out['latestPairP03Ambiguous']=
+                $out['latestPairP03CandidateCount']>1
+                ||$cameraCouldBelongToOlderPair;
         }
         $out['scopedPhonePairs']=count($pairs);
         $out['scopedP03Proofs']=count($proofs);
@@ -177,19 +191,10 @@ final class JVP03PhonePairMatrix
             $out['nearestPreviousPairP03']=$latest;
             if($latest['phoneOutStartAt']===$pairs[$n-1]['start']
                 &&$latest['phoneOutEndAt']===$pairs[$n-1]['end']){
-                $sameCrossingFitsAnotherPair=false;
-                for($k=0;$k<$n-1;$k++){
-                    if(self::distance($pairs[$k],$latest['p03At'],$now)!==null){
-                        $sameCrossingFitsAnotherPair=true;
-                        break;
-                    }
-                }
                 // This is an anonymous time alignment, not a person.
-                // With competing camera crossings or competing phone
-                // pairs, a deterministic DP choice is *not evidence*
-                // that this particular latest crossing is the one.
-                $ambiguous=$out['latestPairP03CandidateCount']>1
-                    ||$sameCrossingFitsAnotherPair;
+                // Competition was checked independent of the chosen DP
+                // representative, including when it preferred an old pair.
+                $ambiguous=$out['latestPairP03Ambiguous'];
                 $out['latestPairP03Ambiguous']=$ambiguous;
                 $out['latestPairMatchedButAmbiguous']=$ambiguous;
                 if(!$ambiguous)$out['latestPhonePairP03']=$latest;
