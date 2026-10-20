@@ -178,4 +178,23 @@ gap88($restoreGeofency['report']['people']['carina']['eventHistoryCount']===0
     &&$restoreGeofency['report']['people']['carina']['newPersonalPhoneEvent']===null
     &&$restoreGeofency['report']['people']['johannes']['eventHistoryCount']===1,
     'Carina new geofence timestamp on recovery does not revive old area OUT');
+
+// Independent MAC contact after a standby gap remains a WLAN hint,
+// but MUST NOT become a new entry in the personal geofence/route
+// history while the other source is explicitly invalid.
+$j['validatedSource']=false;
+$w['people']['johannes']['validatedExistingVariablePair']=true;
+$w['people']['johannes']['lastMacContactAt']=$t+6780;
+$macWithoutGeo=$run($t+6810,$validOut['next']);
+gap88($macWithoutGeo['report']['people']['johannes']['newPersonalPhoneEvent']===null
+    &&$macWithoutGeo['report']['people']['johannes']['eventHistoryCount']===0
+    &&$macWithoutGeo['report']['people']['johannes']['sourceRebaselineRequired'],
+    'MAC recovery during unverified Geofence is network-only, never a personal journey');
+$j['validatedSource']=true;
+$j['insideRecent']=false;$j['outsideRecent']=true;
+$j['geofenceReportedInside']=false;$j['lastEventAt']=$t+6790;
+$macGeoRestored=$run($t+6870,$macWithoutGeo['next']);
+gap88($macGeoRestored['report']['people']['johannes']['eventHistoryCount']===0
+    &&$macGeoRestored['report']['people']['johannes']['newPersonalPhoneEvent']===null,
+    'restored Geofence must not inherit MAC-only recovery as old OUT');
 echo "SHADOW 0.8.89 long restart and single-source recovery replay PASS (no new IPS variables)\n";
