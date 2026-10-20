@@ -20,10 +20,30 @@ final class JVP03IncrementalTimeline
 
     public static function evaluate(string $raw,array $prior,int $now):array
     {
-        if ($now<=0 || strlen($raw)>self::MAX_LOG_BYTES) {
+        if ($now<=0) {
+            // An invalid clock is not permission to mutate durable state.
             return [
                 'report'=>self::emptyReport(['INVALID_CLOCK_OR_LOG_SIZE']),
                 'next'=>$prior
+            ];
+        }
+        if (strlen($raw)>self::MAX_LOG_BYTES) {
+            // A rejected oversized P03 read is a continuity break. The
+            // previous implementation returned the OLD durable cursor,
+            // allowing historical P03 proof rows to reappear on a later
+            // healthy read. Keep only the bounded last-raw anchor, never
+            // the former epoch's camera proof history. Subsequent append
+            // is eligible only if explicitly anchored to this exact tail.
+            return [
+                'report'=>self::emptyReport([
+                    'INVALID_CLOCK_OR_LOG_SIZE',
+                    'P03_SOURCE_LOG_TOO_LARGE'
+                ]),
+                'next'=>[
+                    'initialized'=>true,
+                    'lastRaw'=>substr($raw,-self::KEEP_LOG_BYTES),
+                    'events'=>[]
+                ]
             ];
         }
         $initialized=($prior['initialized']??false)===true;
@@ -54,7 +74,11 @@ final class JVP03IncrementalTimeline
                 $tail=substr($lastRaw,-$n);
                 if($n>=64) {
                     $pos=strpos($raw,$tail);
-                    if($pos!==false) {
+                    // An anchor appearing twice does not identify a
+                    // unique log cut position. Do not choose the first
+                    // arbitrary occurrence and fabricate an event replay.
+                    if($pos!==false
+                        &&strpos($raw,$tail,$pos+1)===false) {
                         $delta=substr($raw,$pos+$n);
                         $continuity='TAIL_OVERLAP_AFTER_ROTATION';
                     }
