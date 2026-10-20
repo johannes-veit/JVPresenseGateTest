@@ -46,6 +46,8 @@ final class JVP03PhonePairMatrix
             'latestPairP03Ambiguous'=>false,
             'latestPairP03CandidateCount'=>0,
             'latestPairMatchedButAmbiguous'=>false,
+            'latestPairP03DirectionConflict'=>false,
+            'oppositeDirectionSameSecondIgnored'=>0,
             'inputUntrusted'=>true,
             'scopeLimitedToLastEightPhonePairs'=>true,
             'noHumanIdentity'=>true,'noPeopleCount'=>true,
@@ -90,7 +92,7 @@ final class JVP03PhonePairMatrix
                 return $out;
             $lastEnd=$p['end'];
         }
-        $unique=[];
+        $unique=[];$directionsAt=[];$conflictTimes=[];
         foreach($events as $e){
             if(!is_array($e)||($e['source']??null)
                 !=='P03_TWO_MAST_VERIFIED'
@@ -99,9 +101,20 @@ final class JVP03PhonePairMatrix
                     'HOME_TO_LAGER','LAGER_TO_HOME'],true))
                 return $out;
             if($e['at']<$now-self::AGE||$e['at']>$now+5)continue;
+            // Same-second HOME_TO_LAGER and LAGER_TO_HOME cannot be
+            // ordered, even though each direction came from two masts.
+            // The old unique[$at] logic silently promoted OUT alone.
+            $directionsAt[$e['at']][$e['direction']]=true;
             if($e['direction']==='HOME_TO_LAGER')
                 $unique[$e['at']]=$e['at']; // identical-second proof one event
         }
+        foreach($directionsAt as $at=>$directions){
+            if(count($directions)===2){
+                unset($unique[$at]); // no ordered directional P03 proof
+                $conflictTimes[]=(int)$at;
+            }
+        }
+        $out['oppositeDirectionSameSecondIgnored']=count($conflictTimes);
         $proofs=array_values($unique);
         sort($proofs,SORT_NUMERIC);
         // An apparently one-to-one match may still be ambiguous: more
@@ -110,6 +123,12 @@ final class JVP03PhonePairMatrix
         if($pairs!==[]){
             $lastPair=$pairs[count($pairs)-1];
             $cameraCouldBelongToOlderPair=false;
+            foreach($conflictTimes as $at){
+                if(self::distance($lastPair,$at,$now)!==null){
+                    $out['latestPairP03DirectionConflict']=true;
+                    break;
+                }
+            }
             foreach($proofs as $at){
                 if(self::distance($lastPair,$at,$now)===null)continue;
                 $out['latestPairP03CandidateCount']++;
@@ -125,14 +144,17 @@ final class JVP03PhonePairMatrix
             // the latest phone pair definitively lacked that crossing.
             $out['latestPairP03Ambiguous']=
                 $out['latestPairP03CandidateCount']>1
-                ||$cameraCouldBelongToOlderPair;
+                ||$cameraCouldBelongToOlderPair
+                ||$out['latestPairP03DirectionConflict'];
         }
         $out['scopedPhonePairs']=count($pairs);
         $out['scopedP03Proofs']=count($proofs);
         $out['inputUntrusted']=false;
         if($pairs===[]||$proofs===[]){
             $out['unmatchedPhonePairs']=count($pairs);
-            $out['status']='NO_MATCHABLE_ANONYMOUS_OUT_CORRIDOR';
+            $out['status']=$out['latestPairP03DirectionConflict']
+                ?'P03_OPPOSITE_DIRECTIONS_SAME_SECOND_NEAR_PHONE_PAIR'
+                :'NO_MATCHABLE_ANONYMOUS_OUT_CORRIDOR';
             return $out;
         }
 
