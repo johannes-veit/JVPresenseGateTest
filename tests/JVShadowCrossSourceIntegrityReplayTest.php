@@ -86,6 +86,10 @@ $cases=[
     ['non-positive phone overlap',0,function(&$c){
         $c['recentPairs'][0]['phoneAreaOverlapSeconds']=0;
     },'PHONE_PAIR_INTERVAL_INVALID_OR_REUSED'],
+    ['phone interval forged beyond actual earliest phone IN',0,function(&$c){
+        $c['recentPairs'][0]['phoneAreaOverlapEndAt']=1900000000+5;
+        $c['recentPairs'][0]['phoneAreaOverlapSeconds']=875;
+    },'PHONE_PAIR_INTERVAL_INVALID_OR_REUSED'],
     ['recycled P03 proof after OFF',1,function(&$t){
         $t['p03Mode']='TEST_AND_PRODUCTION_OFF';
     },'P03_LATEST_PROOF_NOT_QUALIFIED'],
@@ -184,4 +188,4 @@ for($i=0;$i<100;$i++){
     integrity86($again===$clean,
         '100 identical passive refreshes never replay or alter evidence '.$i);
 }
-echo "SHADOW v0.8.86: cross-source full audit, 15 adversarial mutations, read-only gaps, 100 deterministic refreshes PASS\n";
+echo "SHADOW v0.8.86: cross-source full audit, 16 adversarial mutations, read-only gaps, 100 deterministic refreshes PASS\n";
