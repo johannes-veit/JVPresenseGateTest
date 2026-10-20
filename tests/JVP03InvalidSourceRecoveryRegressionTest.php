@@ -23,7 +23,8 @@ epoch92($one['report']['verifiedTimeline24hCount']===1,
 // evidence in durable state and then silently resurrect it after the
 // logged text is trimmed. Simulate >256 KiB by one large source read.
 $tooLarge="P03 BOOT\n".$line(2)."\n"
-    .str_repeat('X',263000);
+    .str_repeat('X',263000).'UNIQUE_LOG_CUT'
+    .str_repeat('A',1024).str_repeat('B',1024);
 $invalid=JVP03IncrementalTimeline::evaluate(
     $tooLarge,$one['next'],$at+5);
 epoch92($invalid['report']['verifiedTimeline24hCount']===0
