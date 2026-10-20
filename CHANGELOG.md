@@ -1,3 +1,10 @@
+# v0.8.88 (Build 169) – schlanke Smartphone-Quellkontinuitaet nach Unterbrechung
+
+- Die bereits bestehende `JVResidentEventFusion` setzt persoenliche Geofence-OUT/IN/MAC-Ereignisketten jetzt bei einer SHADOW-Ausfuehrungsluecke von mehr als 15 Minuten, unqualifizierten Smartphone-/WLAN-Quellen oder einer geaenderten Quellen-ID konsequent auf eine neue Baseline zurueck. Alte OUT-Meldungen koennen dadurch nicht nach SymBox-Neustart, Zeitruecksprung oder Sensorausfall scheinbar lueckenlos mit neuen Ereignissen verknuepft werden.
+- Bewusst konservativ: Eine bisher im letzten 24h-Zeitfenster angezeigte persoenliche Historie wird in diesem Sonderfall verworfen, statt als lueckenlose Anwesenheits-/Abwesenheitsbeweiskette weitergefuehrt. P03 bleibt davon unabhaengig und weiterhin anonym. Bei einer normalen Unterbrechung bis 15 Minuten bleibt die bereits getestete WLAN-Standby-Wiedererkennung bestehen; fehlende Kontaktmeldungen werden nie zu menschlichen Abreisen.
+- **Keine neue IP-Symcon-Variable, kein neues Attribut, keine neue Instanz, keine neue Kamera-/WLAN-Abfrage.** Es bleiben dieselben sieben Ausgaben, 15 gespeicherten Zustandsattribute, der bestehende Bericht `Testergebnis an ChatGPT` und die bereits vorhandenen Sicherheitsgates. Keine Automatik fuer Alarm, Licht, Tor oder sonstige Fremdmodule.
+- Neuer `JVPhoneGapRestartReplayTest.php`: zwei zuvor aufgezeichnete echte Smartphone-OUTs, langer SHADOW-Timer-Ausfall, Wiederanlauf, unqualifiziertes einzelnes Carina-Geofence, ausgefallene WLAN-Quellenbindung, simuliertes IN waehrend Offline, 899-/901-Sekunden-Grenze und rueckwaerts springende Uhr; danach keine alten faelschlich fortlaufenden Ereignisketten. Vollstaendige PHP-Regressionssuite und PHP-CI als Merge-Bedingung.
+
 # v0.8.87 (Build 168) – Vollstaendige P03-/GUS-Beweiskettenreconciliation und Sicherheitsvertrag trotz Quellausfall
 
 ## Paket A: Keine nur scheinbar plausiblen P03-Summen mehr
