@@ -127,9 +127,12 @@ checkTimeline($staleLog['report']['warnings'],
 $oversized=JVP03IncrementalTimeline::evaluate(str_repeat('X',262145),
     $two['next'],$now+10);
 checkTimeline($oversized['report']['warnings'],
-    ['INVALID_CLOCK_OR_LOG_SIZE'],'oversize prohibited');
-checkTimeline($oversized['next'],$two['next'],
-    'invalid oversized raw log cannot overwrite last good cursor');
+    ['INVALID_CLOCK_OR_LOG_SIZE','P03_SOURCE_LOG_TOO_LARGE'],
+    'oversized log rejected with explicit source continuity break');
+checkTimeline($oversized['next']['events'],[],
+    'invalid oversized log quarantines historical P03 proof cursor');
+checkTimeline(strlen($oversized['next']['lastRaw']),65536,
+    'only bounded raw tail retained as a new P03 restart anchor');
 
 $future="[2026-10-13 22:00:00] P03 PROOF VERIFIED HOME_TO_LAGER via P03_2CAM_JV_THEN_WORK";
 $futureLog=JVP03IncrementalTimeline::evaluate(
