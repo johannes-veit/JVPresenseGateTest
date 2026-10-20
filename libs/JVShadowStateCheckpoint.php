@@ -4,12 +4,16 @@ declare(strict_types=1);
 /**
  * Flash-write reduction for frequently polled SHADOW state, without dropping
  * new events. Buffers are runtime-only; persistent attributes are checkpoints.
- * All event/watermark changes are persisted immediately.
+ * All event/watermark changes are persisted immediately. Local 24h GUS
+ * heartbeat checkpoints are spaced apart to reduce SymBox flash writes;
+ * an unexpected restart may conservatively rebaseline observation coverage.
  */
 final class JVShadowStateCheckpoint
 {
     private const CHECKPOINT_SECONDS=600;
-    private const OPTIMIZED=['ResidentEventFusion','RouteEpisodeLedger'];
+    private const OPTIMIZED=[
+        'ResidentEventFusion','RouteEpisodeLedger','LocalActivityLedger'
+    ];
 
     public static function useRuntimeCache(string $name):bool
     {
@@ -41,6 +45,10 @@ final class JVShadowStateCheckpoint
 
     private static function checkpointAt(string $name,array $state):?int
     {
+        if($name==='LocalActivityLedger') {
+            $t=$state['lastScanAt']??null;
+            return is_int($t)&&$t>0?$t:null;
+        }
         if($name==='RouteEpisodeLedger') {
             $t=$state['lastScanAt']??null;
             return is_int($t)&&$t>0?$t:null;
@@ -64,6 +72,11 @@ final class JVShadowStateCheckpoint
             foreach(['johannes','carina'] as $person)
                 unset($data['people'][$person]['lastObservedAt']);
             unset($data['p03']['lastReadAt']);
+        }elseif($name==='LocalActivityLedger'){
+            // Only the passive once-per-minute poll timestamp is volatile.
+            // Every new GUS impulse, source change, overflow and continuity
+            // rebaseline still differs semantically and persists immediately.
+            unset($data['lastScanAt']);
         }elseif($name==='RouteEpisodeLedger'){
             unset($data['lastScanAt']);
         }
