@@ -76,9 +76,13 @@ epoch92(($fFailed['next']['p03']['lastAnonymous']??null)===null
     'unverified P03 source never retains last displayed camera proof');
 $longGap=$step($restored['report'],$fNew['next'],$t+4000);
 epoch92(($longGap['next']['p03']['lastAnonymous']??null)===null
-    &&($longGap['next']['p03']['seen']??[])===[]
+    &&count($longGap['next']['p03']['seen']??[])===1
     &&($longGap['report']['p03']['newAnonymousProofs']??[])==[],
-    'a reboot-length observation gap resets downstream proof history');
+    'a reboot-length observation gap keeps only duplicate guard keys, no active proof');
+$longGapAgain=$step($restored['report'],$longGap['next'],$t+4060);
+epoch92(($longGapAgain['report']['p03']['newAnonymousProofs']??[])===[]
+    &&($longGapAgain['report']['p03']['lastAnonymousProof']??null)===null,
+    'first resumed poll cannot replay a baseline camera proof');
 
 // Valid phone and LCN source states must not be erased by P03-only repair.
 $phoneOnly=JVResidentEventFusion::evaluate(
