@@ -284,6 +284,13 @@ final class JVResidentEventFusion
         $p03Continuous=($oldP03['initialized']??false)===true
             &&$lastP03Read!==null
             &&$now-$lastP03Read<=self::MAX_OBSERVATION_GAP;
+        // P03 log resets and long observer gaps start a NEW anonymous
+        // evidence epoch. The parser already cleared its old history;
+        // its downstream fusion must not retain old high-water or proof.
+        if($logInterrupted||!$p03Continuous){
+            $clean=[];$latest=null;
+            $highWater=null;$oldHighWater=null;
+        }
         // Persisted delivery journal protects the gap between P03 cursor
         // advance and successful route processing. The journal is replayed
         // after a crash and removed only after the route ledger is durable.
@@ -309,14 +316,18 @@ final class JVResidentEventFusion
                     $checked=self::safeProof($proof,$now);
                     if($checked===null)continue;
                     $key=$checked['at'].'|'.$checked['direction'].'|'.$checked['route'];
-                    if(!isset($clean[$key]) &&$validPrior
+                    $genuinelyNew=!isset($clean[$key])&&$validPrior
                         &&$p03Continuous
-                        &&($oldHighWater===null||$checked['at']>$oldHighWater))
-                        $newProofs[]=$checked;
+                        &&($oldHighWater===null||$checked['at']>$oldHighWater);
+                    if($genuinelyNew)$newProofs[]=$checked;
                     if($highWater===null||$checked['at']>$highWater)
                         $highWater=$checked['at'];
                     $clean[$key]=$checked['at'];
-                    if($latest===null||$checked['at']>$latest['at'])$latest=$checked;
+                    // A first-poll baseline suppresses later duplicate
+                    // replay but may never be shown as current passage.
+                    if($genuinelyNew
+                        &&($latest===null||$checked['at']>$latest['at']))
+                        $latest=$checked;
                 }
             }
         }
