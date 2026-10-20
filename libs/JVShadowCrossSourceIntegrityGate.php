@@ -289,6 +289,10 @@ final class JVShadowCrossSourceIntegrityGate
                 $issues[]='P03_REPLAY_SOURCE_INVALID';
             }elseif(($replayed['matchedPhonePairs']??null)!==$matchedP03
                 ||($replayed['scopedPhonePairs']??null)!==$checkedP03
+                ||($replayed['latestPairP03Ambiguous']??false)
+                    !==($timeline['p03LatestPairAmbiguous']??false)
+                ||($replayed['latestPairP03CandidateCount']??0)
+                    !==($timeline['p03LatestPairCandidateCount']??0)
                 ||($replayed['latestPhonePairP03']['p03At']??null)
                     !==($timeline['verifiedP03NearPairAt']??null)
                 ||($replayed['latestPhonePairP03']['gapSeconds']??null)
@@ -296,6 +300,7 @@ final class JVShadowCrossSourceIntegrityGate
                 ||(($replayed['latestPhonePairP03']??null)!==null)
                     !==$p03Linked
                 ||(($replayed['latestPhonePairP03']??null)===null
+                    &&!($replayed['latestPairP03Ambiguous']??false)
                     &&($replayed['matchedPhonePairs']??0)>0)
                     !==(($timeline['p03MatchPreviousNotLatest']??false)===true)){
                 $issues[]='P03_FULL_ASSIGNMENT_DIFFERS_FROM_SOURCE';

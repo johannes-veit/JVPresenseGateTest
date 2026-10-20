@@ -48,6 +48,8 @@ final class JVSharedDepartureTimeline
             'p03RecentPhonePairsChecked'=>0,
             'p03CorrelatedProofsNotReused'=>true,
             'p03MatchPreviousNotLatest'=>false,
+            'p03LatestPairAmbiguous'=>false,
+            'p03LatestPairCandidateCount'=>0,
             'oneToOneCycleMatching'=>true,
             'phoneAreaCycles24h'=>['johannes'=>0,'carina'=>0],
             'repeatedPhoneOutIgnored'=>['johannes'=>0,'carina'=>0],
@@ -178,11 +180,16 @@ final class JVSharedDepartureTimeline
         }
         $out['p03UniquePairMatchesRecent']=$matrix['matchedPhonePairs'];
         $out['p03RecentPhonePairsChecked']=$matrix['scopedPhonePairs'];
+        $out['p03LatestPairAmbiguous']=$matrix['latestPairP03Ambiguous'];
+        $out['p03LatestPairCandidateCount']=$matrix['latestPairP03CandidateCount'];
         $latestMatch=$matrix['latestPhonePairP03']??null;
         $out['p03MatchPreviousNotLatest']=$latestMatch===null
+            &&!$matrix['latestPairP03Ambiguous']
             &&($matrix['matchedPhonePairs']??0)>0;
         if(!is_array($latestMatch)){
-            $out['sourceGaps'][]='NO_DISTINCT_P03_PROOF_FOR_LATEST_PHONE_PAIR';
+            $out['sourceGaps'][]=$matrix['latestPairP03Ambiguous']
+                ?'MULTIPLE_P03_CANDIDATES_FOR_LATEST_PHONE_PAIR'
+                :'NO_DISTINCT_P03_PROOF_FOR_LATEST_PHONE_PAIR';
             return $out;
         }
         $out['verifiedP03NearPair']=true;

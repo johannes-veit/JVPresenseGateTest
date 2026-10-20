@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.94 Build 175 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.95 Build 176 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -517,6 +517,10 @@ final class JVResidentEveningHandoff
                     .self::number($pair['p03UniquePairMatchesRecent']??null)
                     .' | nur frueheres Paar passend '
                     .self::yes(($pair['p03MatchPreviousNotLatest']??false)===true)
+                    .' | P03-Mehrdeutigkeit letztes Paar '
+                    .self::yes(($pair['p03LatestPairAmbiguous']??false)===true)
+                    .' | moegliche Kamerabelege '
+                    .self::number($pair['p03LatestPairCandidateCount']??null)
                     .' | Kameraperson UNBEKANNT');
                 $add('HANDY-OUT-DOPPELMELDUNGEN VERWORFEN: Johannes '
                     .self::number($pair['repeatedPhoneOutIgnored']['johannes']??null)
