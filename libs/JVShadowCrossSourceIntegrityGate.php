@@ -101,6 +101,13 @@ final class JVShadowCrossSourceIntegrityGate
                 $areaStart=$pair['phoneAreaOverlapStartAt']??null;
                 $areaEnd=$pair['phoneAreaOverlapEndAt']??null;
                 $areaSeconds=$pair['phoneAreaOverlapSeconds']??null;
+                $jIn=$pair['johannesInAt']??null;
+                $cIn=$pair['carinaInAt']??null;
+                $expectedEnd=min(
+                    is_int($jIn)?$jIn:$now+5,
+                    is_int($cIn)?$cIn:$now+5
+                );
+                $ends=$pair['returnedAfterOut']??null;
                 if(!is_int($j)||!is_int($c)
                     ||!is_int($start)||!is_int($end)
                     ||!is_int($areaStart)||!is_int($areaEnd)
@@ -113,6 +120,14 @@ final class JVShadowCrossSourceIntegrityGate
                     ||$areaStart!==max($j,$c)
                     ||$areaEnd<=$areaStart||$areaEnd>$now+5
                     ||$areaEnd-$areaStart!==$areaSeconds
+                    ||($jIn!==null&&(!is_int($jIn)
+                        ||$jIn<=$j||$jIn>$now+5))
+                    ||($cIn!==null&&(!is_int($cIn)
+                        ||$cIn<=$c||$cIn>$now+5))
+                    ||$areaEnd!==$expectedEnd
+                    ||!is_array($ends)
+                    ||($ends['johannes']??null)!==($jIn!==null)
+                    ||($ends['carina']??null)!==($cIn!==null)
                     ||$start>$previousStart
                     ||isset($seen[$j.'|'.$c])){
                     $issues[]='PHONE_PAIR_INTERVAL_INVALID_OR_REUSED';
