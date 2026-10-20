@@ -93,6 +93,21 @@ $validOut=$run($t+6570,$valid0['next']);
 gap88($validOut['report']['people']['johannes']['eventHistoryCount']===1
     &&$validOut['report']['people']['carina']['eventHistoryCount']===1,
     'new post-gap events may qualify when truly observed');
+// Precise pause boundary: ordinary 899-second timer delay preserves
+// the established chain; a 901-second absence must quarantine it.
+$edgeOk=$run($t+7469,$validOut['next']);
+gap88($edgeOk['report']['people']['johannes']['eventHistoryCount']===1
+    &&$edgeOk['report']['people']['carina']['eventHistoryCount']===1,
+    '899-second pause retains verified source history');
+$edgeStale=$run($t+7471,$validOut['next']);
+gap88($edgeStale['report']['people']['johannes']['eventHistoryCount']===0
+    &&$edgeStale['report']['people']['carina']['eventHistoryCount']===0,
+    '901-second pause clears unverifiable time gap');
+$clockBack=$run($t+6500,$validOut['next']);
+gap88($clockBack['report']['people']['johannes']['eventHistoryCount']===0
+    &&$clockBack['report']['people']['carina']['eventHistoryCount']===0,
+    'clock rollback cannot carry future-stamped personal OUT history');
+
 $c['validatedSource']=false;
 $lostC=$run($t+6630,$validOut['next']);
 gap88($lostC['report']['people']['carina']['eventHistoryCount']===0
