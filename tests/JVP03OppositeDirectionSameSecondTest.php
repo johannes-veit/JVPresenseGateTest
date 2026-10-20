@@ -157,8 +157,8 @@ for($scenario=0;$scenario<120;$scenario++){
         $collided=isset($inTimes[$sec]);
         if($collided){
             $refColliding++;
-            if($sec>=-1200&&$sec<=-500)$nearConflict=true;
-        }elseif($sec>=-1200&&$sec<=-500)$refClean++;
+            if($sec>=-1200&&$sec<=-560)$nearConflict=true;
+        }elseif($sec>=-1200&&$sec<=-560)$refClean++;
     }
     $result=JVP03PhonePairMatrix::evaluate(
         $cycles,$camera($proofs),$t);
