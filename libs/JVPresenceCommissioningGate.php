@@ -171,11 +171,11 @@ final class JVPresenceCommissioningGate
                 ||str_contains($action,'VERIFY_EXISTING_WLAN_SOURCE_CONTINUITY')
                 ||str_contains($action,'WAIT_FOR_VERIFIED_GEOFENCE_CONTINUITY'))
                 return 4;
-            if($action==='VERIFY_EXISTING_P03_MAST_HEALTH_READ_ONLY')
-                return 5;
-            if($action==='VERIFY_EXISTING_FIFTEEN_GUS_SOURCE_MAPPING')
-                return 6;
             if($action==='QUALIFY_EXISTING_VEHICLE_CLASS_AND_DIRECTION_SOURCE')
+                return 5;
+            if($action==='VERIFY_EXISTING_P03_MAST_HEALTH_READ_ONLY')
+                return 6;
+            if($action==='VERIFY_EXISTING_FIFTEEN_GUS_SOURCE_MAPPING')
                 return 7;
             return 8;
         };
