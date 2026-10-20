@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.91: Die vorhandenen Beweisverlaeufe werden jetzt nach P03-Logreset, nicht verifizierbarem 513-Ereignis-Batch und Ueberlauf von 128 neuen Kamera-Belegen konsequent neu begonnen. Alte Kamerabelege duerfen dann nicht mehr scheinbar lueckenlos mit neuen Handyereignissen verknuepft werden. P03-Zeitstempel in der doppelten 02-Uhr-Stunde bei der Winterzeitumstellung werden nicht geraten. Auch die Smartphone-Zuordnung prueft Mehrdeutigkeiten nur noch zwischen tatsaechlich ueberlappenden OUT/IN-Intervallen. Alle Reparaturen erfolgen in vorhandenen Klassen: keine neuen Symcon-Variablen, Attribute, Instanzen oder Kamera-Befehle, alle sieben Ausgaben und die bestehende Berichtvariable bleiben unveraendert. Keine Aussagen ueber Personen, Personenzahl, Grundstuecksabreise oder ein leeres Haus."
+      "caption": "SHADOW v0.8.92: Bestehende P03-Kamerabeweise werden bei nicht lesbarer Protokollvariable, uebergrossem Log oder uneindeutig wiederkehrender Protokollmarkierung sicher aus der aktuellen Beweiskette entfernt. Beim Wiederanlauf dient der erste verifizierte Quellstand als Baseline; nur nachweislich neu angehaengte P03-Durchgaenge sind anschliessend als anonyme Durchgaenge nutzbar. Der vorhandene sieben-Variablen-SHADOW-Aufbau und alle 15 persistenten Zustandsattribute bleiben erhalten; keine neuen Variablen, Timer, Instanzen, Fremdmodulschreibzugriffe oder P03-Modusaenderungen. Smartphones, GUS, Alarmsystem, Tor und Licht bleiben unabhaengig; kein Nachweis individueller Person, Fahrzeugfahrt oder Hausleerstand."
     },
     {
       "type": "Label",
