@@ -300,6 +300,7 @@ final class JVShadowCrossSourceIntegrityGate
                 ||(($replayed['latestPhonePairP03']??null)!==null)
                     !==$p03Linked
                 ||(($replayed['latestPhonePairP03']??null)===null
+                    &&!($replayed['latestPairP03Ambiguous']??false)
                     &&($replayed['matchedPhonePairs']??0)>0)
                     !==(($timeline['p03MatchPreviousNotLatest']??false)===true)){
                 $issues[]='P03_FULL_ASSIGNMENT_DIFFERS_FROM_SOURCE';
