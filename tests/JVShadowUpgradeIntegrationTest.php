@@ -77,4 +77,35 @@ upgradeIntegration($m->registered===[
     'Status','EvidenceJSON','JohannesPresence','CarinaPresence',
     'PresenceDetected','ResidentTile','TestReport'
 ], 'upgrade must not create duplicate output variables');
+// Integration: simulate a real P03 variable-read failure while the old
+// SHADOW instance still retains a completed camera corridor. A later
+// restored source must be baselined, NEVER join these old live proofs.
+$oldProof=[
+    'at'=>time()-30,
+    'localTime'=>(new DateTimeImmutable('@'.(time()-30)))
+        ->setTimezone(new DateTimeZone('Europe/Berlin'))->format('Y-m-d H:i:s'),
+    'direction'=>'HOME_TO_LAGER',
+    'route'=>'P03_2CAM_JV_THEN_WORK',
+    'source'=>'P03_TWO_MAST_VERIFIED'
+];
+$m->WriteAttributeString('PersistP03IncrementalTimeline',json_encode([
+    'initialized'=>true,'lastRaw'=>"P03 VERIFIED PREVIOUS EPOCH",
+    'events'=>[$oldProof]
+],JSON_THROW_ON_ERROR));
+$m->Refresh(); // P03 instance 0: local P03 Protocol is unreadable
+$p03AfterRead=json_decode(
+    $m->ReadAttributeString('PersistP03IncrementalTimeline'),true);
+upgradeIntegration(is_array($p03AfterRead)
+    &&($p03AfterRead['initialized']??null)===false
+    &&($p03AfterRead['events']??null)===[]
+    &&($p03AfterRead['lastRaw']??'non-null')===null,
+    'actual Symcon Refresh quarantines durable stale P03 cursor after unreadable source');
+$m->dropBuffers();
+$m->Refresh();
+$p03AfterRestart=json_decode(
+    $m->ReadAttributeString('PersistP03IncrementalTimeline'),true);
+upgradeIntegration(($p03AfterRestart['events']??null)===[]
+    &&($p03AfterRestart['initialized']??null)===false,
+    'after actual lost source and SymBox process restart no old camera proof resurrects');
+
 echo "SHADOW pre-upgrade instance preservation and recovery PASS\n";
