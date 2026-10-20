@@ -12,7 +12,8 @@ final class JVShadowIntegrityAudit
     private const MAX_HANDSET_EVENTS=24;
 
     public static function evaluate(
-        array $fusion,array $routes,array $journey,array $readiness,int $now
+        array $fusion,array $routes,array $journey,array $readiness,int $now,
+        array $crossSource=[]
     ):array {
         $issues=[];$checks=0;
         $okFusion=($fusion['schema']??null)===1
@@ -26,6 +27,31 @@ final class JVShadowIntegrityAudit
         $okReadiness=($readiness['schema']??null)===1
             &&($readiness['authority']??null)
                 ==='READ_ONLY_PRESENCE_EVIDENCE_READINESS';
+        // Only on builds that explicitly provide the new cross-source
+        // audit. Legacy offline tests with the previous four-source contract
+        // keep their existing behavior. This propagates true contradictions
+        // to commissioning and safety-case review, without turning a
+        // deliberately absent source into a fabricated corruption.
+        if($crossSource!==[]){
+            if(($crossSource['schema']??null)!==1
+                ||($crossSource['authority']??null)
+                    !=='SHADOW_CROSS_SOURCE_INVARIANT_AUDIT_NO_ACTION'){
+                $issues[]='CROSS_SOURCE_AUDIT_REPORT_UNVERIFIED';
+            }elseif(($crossSource['status']??null)
+                    ==='CROSS_SOURCE_CONTRADICTION_NO_ACTION'
+                &&($crossSource['inputDataRejected']??false)===true){
+                $issues[]='CROSS_SOURCE_INTEGRITY_CONTRADICTION';
+            }elseif(!in_array($crossSource['status']??null,[
+                'CROSS_SOURCE_CONSISTENT_ANONYMOUS_ONLY',
+                'SOURCE_INCOMPLETE_NO_ACTION'
+            ],true)
+                ||($crossSource['inputDataRejected']??false)===true
+                ||!is_array($crossSource['violations']??null)
+                ||($crossSource['violations']??[])!==[]){
+                $issues[]='CROSS_SOURCE_AUDIT_STATUS_UNTRUSTED';
+            }
+            $checks++;
+        }
         if(!$okFusion)$issues[]='FUSION_SOURCE_UNVERIFIED';
         if(!$okRoutes)$issues[]='ROUTE_SOURCE_UNVERIFIED';
         if(!$okJourney)$issues[]='JOURNEY_SOURCE_UNVERIFIED';

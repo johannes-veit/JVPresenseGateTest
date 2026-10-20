@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.85 Build 166 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.86 Build 167 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -566,6 +566,34 @@ final class JVResidentEveningHandoff
                     .self::number($overlap['scopedPhoneAreaPairs']??null)
                     .' | GUS-Beobachtung 24h lueckenlos '
                     .self::yes(($overlap['continuous24hGusMonitoring']??false)===true));
+            }
+            $cross=$rooms['crossSourceIntegrityGate']??[];
+            if(is_array($cross)
+                &&($cross['authority']??null)
+                    ==='SHADOW_CROSS_SOURCE_INVARIANT_AUDIT_NO_ACTION'){
+                $add('QUELLEN-INTEGRITAET HANDY/P03/GUS: '
+                    .self::code($cross['status']??'SOURCES_UNVERIFIED')
+                    .' | gepruefte Bedingungen '
+                    .self::number($cross['testedInvariants']??null)
+                    .' | Widersprueche '
+                    .self::number(count(is_array($cross['violations']??null)
+                        ?$cross['violations']:[]))
+                    .' | ALARM/FREMDSTEUERUNG GESPERRT');
+                $add('QUELLEN-INTEGRITAET DETAIL: Handy-Zeitintervalle '
+                    .self::yes(($cross['phoneIntervalsStrictlyPositive']??false)===true)
+                    .' | P03 letzter Zeitbeleg '
+                    .self::yes(($cross['latestP03LinkConsistent']??false)===true)
+                    .' | LCN-GUS anonym konsistent '
+                    .self::yes(($cross['anonymousRoomOverlayConsistent']??false)===true)
+                    .' | keine Personenidentitaet');
+                $next=$cross['priorityChecks']??[];
+                if(is_array($next)){
+                    foreach(array_slice($next,0,2) as $i=>$item){
+                        if(is_string($item))
+                            $add('QUELLEN-INTEGRITAET NAECHSTER SCHRITT '
+                                .($i+1).': '.self::code($item));
+                    }
+                }
             }
             $day=$rooms['dayDigest']??[];
             if(is_array($day)

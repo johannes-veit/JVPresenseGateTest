@@ -12,6 +12,7 @@ require_once dirname(__DIR__).'/libs/JVPhoneAreaCycleMatcher.php';
 require_once dirname(__DIR__).'/libs/JVSharedDepartureTimeline.php';
 require_once dirname(__DIR__).'/libs/JVP03PhonePairMatrix.php';
 require_once dirname(__DIR__).'/libs/JVPhoneRoomOverlapAudit.php';
+require_once dirname(__DIR__).'/libs/JVShadowCrossSourceIntegrityGate.php';
 require_once dirname(__DIR__).'/libs/JVRoomDayDigest.php';
 require_once dirname(__DIR__).'/libs/JVHousePowerContext.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
@@ -1877,9 +1878,16 @@ class JVPresenceIdentityShadow extends IPSModule
         $roomPaths['phoneRoomOverlapAudit']=JVPhoneRoomOverlapAudit::evaluate(
             $areaCycles,$activity,$ledger['next'],time()
         );
+        $roomPaths['crossSourceIntegrityGate']=
+            JVShadowCrossSourceIntegrityGate::evaluate(
+                $areaCycles,$roomPaths['sharedDepartureTimeline'],
+                $p03Timeline['report'],$roomPaths['phoneRoomOverlapAudit'],
+                time()
+            );
         $integrityAudit=JVShadowIntegrityAudit::evaluate(
             $residentFusion['report'],$routeEpisodes['report'],
-            $residentJourney,$evidenceReadiness,time()
+            $residentJourney,$evidenceReadiness,time(),
+            $roomPaths['crossSourceIntegrityGate']
         );
         $commissioningGate=JVPresenceCommissioningGate::evaluate(
             $tileWlan,$residentFusion['report'],$tileWork,
