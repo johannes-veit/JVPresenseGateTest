@@ -95,6 +95,22 @@ $bad=$run();
 gateCheck($bad['state']==='SOURCE_CONSISTENCY_REVIEW'
     &&in_array('REVIEW_SHADOW_INTEGRITY_CODES',$bad['actions'],true),
     'failed integrity is a prioritized blocker');
+foreach(['UNKNOWN','STALE_INTEGRITY_REPORT','SOURCE_INCOMPLETE_NO_ACTION',null] as $suspicious){
+    $audit['status']=$suspicious;
+    $blocked=$run();
+    gateCheck($blocked['state']==='SOURCE_CONSISTENCY_REVIEW'
+        &&!$blocked['canObserveInShadowReadOnly']
+        &&in_array('REVIEW_SHADOW_INTEGRITY_CODES',
+            $blocked['actions'],true)
+        &&!$blocked['mayArmAlarm'],
+        'unknown/incomplete integrity report can never mean validated: '
+            .var_export($suspicious,true));
+}
+$audit['status']='CONSISTENT';
+$repaired=$run();
+gateCheck($repaired['state']
+    ==='CORE_READ_ONLY_VALIDATED_MISSING_IDENTITY_AND_VEHICLE_PROOFS',
+    'only explicit CONSISTENT restores core-readonly diagnostic state');
 $wlan['authority']='UNTRUSTED';
 $invalid=$run();
 gateCheck($invalid['state']==='INPUTS_UNVERIFIED'
