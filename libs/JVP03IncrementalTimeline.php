@@ -91,9 +91,9 @@ final class JVP03IncrementalTimeline
             // otherwise the fresh proof would be lost permanently.
             // A completed last proof must never be replayed.
             if($delta!==null&&$delta!==''&&$lastRaw!==''
-                &&$delta[0]!=="\\n"&&$delta[0]!=="\\r"
+                &&$delta[0]!=="\n"&&$delta[0]!=="\r"
                 &&!preg_match('/^\\s*\\[20\\d\\d-\\d\\d-\\d\\d /',$delta)){
-                $nl=strrpos($lastRaw,"\\n");
+                $nl=strrpos($lastRaw,"\n");
                 $fragment=substr($lastRaw,$nl===false?0:$nl+1);
                 if($fragment!==''&&strlen($fragment)<=256
                     &&$fragment[0]==='['
