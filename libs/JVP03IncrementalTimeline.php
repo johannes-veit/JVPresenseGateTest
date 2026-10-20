@@ -90,9 +90,7 @@ final class JVP03IncrementalTimeline
             // unfinished final line to the next delta (not the old log),
             // otherwise the fresh proof would be lost permanently.
             // A completed last proof must never be replayed.
-            if($delta!==null&&$delta!==''&&$lastRaw!==''
-                &&$delta[0]!=="\n"&&$delta[0]!=="\r"
-                &&!preg_match('/^\\s*\\[20\\d\\d-\\d\\d-\\d\\d /',$delta)){
+            if($delta!==null&&$delta!==''&&$lastRaw!==''){
                 $nl=strrpos($lastRaw,"\n");
                 $fragment=substr($lastRaw,$nl===false?0:$nl+1);
                 if($fragment!==''&&strlen($fragment)<=256
@@ -105,7 +103,16 @@ final class JVP03IncrementalTimeline
                         .'(P03_2CAM_JV_THEN_WORK|P03_2CAM_WORK_THEN_JV)$/D',
                         trim($fragment)
                     )){
-                    $delta=$fragment.$delta;
+                    // A newline that FINISHES an incomplete proof must
+                    // not make the partial previous read disappear.
+                    // An entirely new timestamp instead of completion
+                    // also ends the dangling old proof: keep the two
+                    // records separate so the malformed first is caught.
+                    $newRecord=preg_match(
+                        '/^\\[20\\d\\d-\\d\\d-\\d\\d '
+                        .'\\d\\d:\\d\\d:\\d\\d\\]/',
+                        $delta)===1;
+                    $delta=$fragment.($newRecord?"\n":'').$delta;
                 }
             }
             if($delta===null) {
@@ -119,14 +126,52 @@ final class JVP03IncrementalTimeline
                 if (!is_array($tokens)||count($tokens)>512) {
                     $warnings[]='P03_LOG_BATCH_INVALID';
                 } else {
-                    foreach($tokens as $token) {
+                    foreach($tokens as $index=>$token) {
+                        $line=trim($token);
+                        // An already delimited, malformed P03 PROOF
+                        // cannot simply vanish from a verified camera
+                        // epoch. Non-PROOF diagnostic text remains free.
+                        $looksLikeProof=preg_match(
+                            '/^\\[20\\d\\d-\\d\\d-\\d\\d '
+                            .'\\d\\d:\\d\\d:\\d\\d\\]\\s*P03 PROOF(?:\\s|$)/D',
+                            $line
+                        )===1;
                         if(!preg_match(
                             '/^\s*\[(20\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\]\s*'
                             .'P03 PROOF (VERIFIED|STRONG_VERIFIED) '
                             .'(HOME_TO_LAGER|LAGER_TO_HOME) via '
                             .'(P03_2CAM_JV_THEN_WORK|P03_2CAM_WORK_THEN_JV)(?:\s|$)/D',
-                            trim($token),$m
-                        )) continue;
+                            $line,$m
+                        )){
+                            if($looksLikeProof){
+                                // A proof prefix ending *mid-write* is
+                                // deferred until the next refresh, not
+                                // treated as a completed invalid record.
+                                // An unknown completed route or a line
+                                // terminated by newline is untrustworthy.
+                                $unfinished=($index===count($tokens)-1)
+                                    &&!str_ends_with($token,"\n")
+                                    &&!str_ends_with($token,"\r");
+                                $prefixOk=false;
+                                if($unfinished){
+                                    $stamp=substr($line,1,19);
+                                    foreach(['VERIFIED','STRONG_VERIFIED'] as $level)
+                                        foreach([
+                                            'HOME_TO_LAGER'=>'P03_2CAM_JV_THEN_WORK',
+                                            'LAGER_TO_HOME'=>'P03_2CAM_WORK_THEN_JV'
+                                        ] as $direction=>$route){
+                                            $template='['.$stamp.'] P03 PROOF '
+                                                .$level.' '.$direction.' via '.$route;
+                                            if(str_starts_with($template,$line)){
+                                                $prefixOk=true;break 2;
+                                            }
+                                        }
+                                }
+                                if(!$prefixOk)
+                                    $warnings[]='P03_PROOF_SYNTAX_UNTRUSTED';
+                            }
+                            continue;
+                        }
                         $direction=$m[3];$route=$m[4];
                         if (($direction==='HOME_TO_LAGER'
                             && $route!=='P03_2CAM_JV_THEN_WORK')
@@ -162,7 +207,8 @@ final class JVP03IncrementalTimeline
         // Empty the old and new proof set, retain only the raw log
         // cursor, then accept independently observed later appends.
         $invalidProof=in_array('P03_EVENT_TIME_UNTRUSTED',$warnings,true)
-            ||in_array('P03_DIRECTION_ROUTE_MISMATCH',$warnings,true);
+            ||in_array('P03_DIRECTION_ROUTE_MISMATCH',$warnings,true)
+            ||in_array('P03_PROOF_SYNTAX_UNTRUSTED',$warnings,true);
         if($invalidProof &&$continuity!=='LOG_GAP_OR_RESET')
             $continuity='INVALID_PROOF_EPOCH';
         if($continuity==='LOG_GAP_OR_RESET'
