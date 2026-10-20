@@ -176,6 +176,32 @@ final class JVShadowCrossSourceIntegrityGate
                 'P03_NEW_PROOF_BATCH_OVERFLOW']))===0;
         $out['p03SourceReady']=$ready;
         $p03Linked=($timeline['verifiedP03NearPair']??null)===true;
+        // Verify that the claimed matched timestamp really appears in
+        // the separately certified anonymous P03 directional history.
+        $verifiedTimeline=$p03['verifiedDirectionTimeline24h']??null;
+        $sourceTimelineValid=is_array($verifiedTimeline)
+            &&array_is_list($verifiedTimeline)
+            &&count($verifiedTimeline)<=256;
+        $p03OutTimes=[];
+        if($sourceTimelineValid){
+            foreach($verifiedTimeline as $e){
+                if(!is_array($e)||!is_int($e['at']??null)
+                    ||($e['source']??null)!=='P03_TWO_MAST_VERIFIED'
+                    ||!in_array($e['direction']??null,[
+                        'HOME_TO_LAGER','LAGER_TO_HOME'],true)){
+                    $sourceTimelineValid=false;break;
+                }
+                if($e['direction']==='HOME_TO_LAGER'
+                    &&$e['at']>=$now-self::MAX_AGE
+                    &&$e['at']<=$now+5)
+                    $p03OutTimes[$e['at']]=true;
+            }
+        }
+        $checks++;
+        if(!$sourceTimelineValid)
+            $issues[]='P03_VERIFIED_HISTORY_MALFORMED';
+        if(is_int($matchedP03)&&$matchedP03>count($p03OutTimes))
+            $issues[]='P03_MATCH_COUNT_EXCEEDS_UNIQUE_PROOFS';
         $checks++;
         if($p03Linked){
             $at=$timeline['verifiedP03NearPairAt']??null;
@@ -185,7 +211,11 @@ final class JVShadowCrossSourceIntegrityGate
             $close=$timeline['latestPhoneAreaOverlapEndAt']??null;
             $expected=is_int($at)&&is_int($first)&&is_int($last)
                 ?($at<$first?$first-$at:($at>$last?$at-$last:0)):null;
-            if(!$ready||!$valid||$count===0||!is_int($at)
+            if($sourceTimelineValid&&is_int($at)
+                &&!isset($p03OutTimes[$at]))
+                $issues[]='P03_LINK_TIMESTAMP_NOT_IN_VERIFIED_HISTORY';
+            if(!$ready||!$sourceTimelineValid||!$valid
+                ||$count===0||!is_int($at)
                 ||$at<$now-self::MAX_AGE||$at>$now+5
                 ||!is_int($close)||$at>$close
                 ||!is_int($gap)||$gap<0||$gap>300
@@ -198,6 +228,8 @@ final class JVShadowCrossSourceIntegrityGate
             ||($timeline['p03ProofGapSeconds']??null)!==null){
             $issues[]='P03_GHOST_PROOF_WITHOUT_LINK';
         }
+        $out['uniqueP03Matches']=is_int($matchedP03)
+            ?max(0,min($matchedP03,256)):0;
         if(!$ready&&($matchedP03??0)>0)
             $issues[]='P03_HISTORICAL_COUNTER_PRESENT_WITH_UNREADY_MODE';
         if($p03Linked&&$mode==='TEST_AND_PRODUCTION_OFF')
