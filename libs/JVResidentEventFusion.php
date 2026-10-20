@@ -268,7 +268,7 @@ final class JVResidentEventFusion
             ||count(array_intersect($logWarnings,[
                 'P03_LOG_BATCH_INVALID','INVALID_CLOCK_OR_LOG_SIZE',
                 'P03_SOURCE_NOT_READABLE','P03_LOG_GAP_OR_RESET',
-                'P03_NEW_PROOF_BATCH_OVERFLOW'
+                'P03_NEW_PROOF_BATCH_OVERFLOW','P03_PROOF_SYNTAX_UNTRUSTED'
             ]))>0
             ||($p03['newProofBatchOverflow']??false)===true;
         $oldP03=$validPrior&&is_array($prior['p03']??null)?$prior['p03']:[];

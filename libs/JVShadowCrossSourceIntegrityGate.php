@@ -220,7 +220,7 @@ final class JVShadowCrossSourceIntegrityGate
             &&count(array_intersect((array)($p03['warnings']??[]),[
                 'P03_LOG_BATCH_INVALID','P03_LOG_GAP_OR_RESET',
                 'INVALID_CLOCK_OR_LOG_SIZE','P03_SOURCE_NOT_READABLE',
-                'P03_NEW_PROOF_BATCH_OVERFLOW']))===0;
+                'P03_NEW_PROOF_BATCH_OVERFLOW','P03_PROOF_SYNTAX_UNTRUSTED']))===0;
         $out['p03SourceReady']=$ready;
         $p03Linked=($timeline['verifiedP03NearPair']??null)===true;
         // Verify that the claimed matched timestamp really appears in

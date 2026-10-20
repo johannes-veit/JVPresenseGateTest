@@ -130,9 +130,11 @@ final class JVPresenceCommissioningGate
         }elseif($out['p03']!=='P03_TRANSFER_MODE_ACTIVE'){
             $actions[]='VERIFY_P03_MODE_DIAGNOSIS_READ_ONLY';
         }
-        if($fOk &&($fusion['p03']['logInterrupted']??false)===true
-            &&in_array($fusion['p03']['logContinuity']??null,
-                ['LOG_GAP_OR_RESET','UNKNOWN','UNVERIFIED'],true))
+        // The fusion already verifies log interruption for every P03
+        // source epoch, including malformed PROOF syntax, invalid clock
+        // and journal overflow. Do not hide these cases behind a
+        // three-value legacy whitelist in the existing worklist.
+        if($fOk&&($fusion['p03']['logInterrupted']??false)===true)
             $actions[]='P03_LOG_CONTINUITY_INTERRUPTED';
         if($integrityOk&&($integrity['status']??null)!=='CONSISTENT')
             $actions[]='REVIEW_SHADOW_INTEGRITY_CODES';

@@ -161,7 +161,7 @@ final class JVSharedDepartureTimeline
             ||count(array_intersect((array)($p03['warnings']??[]),[
                 'P03_LOG_BATCH_INVALID','INVALID_CLOCK_OR_LOG_SIZE',
                 'P03_SOURCE_NOT_READABLE','P03_LOG_GAP_OR_RESET',
-                'P03_NEW_PROOF_BATCH_OVERFLOW']))>0){
+                'P03_NEW_PROOF_BATCH_OVERFLOW','P03_PROOF_SYNTAX_UNTRUSTED']))>0){
             $out['sourceGaps'][]='P03_LIVE_EVENT_CONTINUITY_UNVERIFIED';
             return $out;
         }

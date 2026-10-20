@@ -68,8 +68,13 @@ $otherResult=JVP03IncrementalTimeline::evaluate(
 checkTimeline($otherResult['report']['newDirectionProofsThisRead'],0,
     'unsupported alternate backup route is not guessed');
 checkTimeline($otherResult['report']['directionProofs24h'],
-    ['HOME_TO_LAGER'=>1,'LAGER_TO_HOME'=>1],
-    'unknown route does not manipulate counts');
+    ['HOME_TO_LAGER'=>0,'LAGER_TO_HOME'=>0],
+    'unknown PROOF route invalidates the former 24h evidence epoch');
+checkTimeline($otherResult['report']['logContinuity'],
+    'INVALID_PROOF_EPOCH','unsupported PROOF route is not silently trusted');
+checkTimeline($otherResult['report']['warnings'],
+    ['P03_PROOF_SYNTAX_UNTRUSTED'],
+    'known P03 proof prefix with unsupported route is a source gap');
 
 $conflicting="[2026-10-13 19:35:10] P03 PROOF VERIFIED HOME_TO_LAGER via P03_2CAM_WORK_THEN_JV";
 $conflicted=JVP03IncrementalTimeline::evaluate(
