@@ -98,7 +98,8 @@ $p03AfterRead=json_decode(
 upgradeIntegration(is_array($p03AfterRead)
     &&($p03AfterRead['initialized']??null)===false
     &&($p03AfterRead['events']??null)===[]
-    &&($p03AfterRead['lastRaw']??'non-null')===null,
+    &&array_key_exists('lastRaw',$p03AfterRead)
+    &&$p03AfterRead['lastRaw']===null,
     'actual Symcon Refresh quarantines durable stale P03 cursor after unreadable source');
 $m->dropBuffers();
 $m->Refresh();
