@@ -1,5 +1,7 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/JVP03PhonePairMatrix.php';
+require_once __DIR__.'/JVPhoneRoomOverlapAudit.php';
 
 /**
  * End-to-end read-only consistency gate across independently computed
@@ -18,7 +20,8 @@ final class JVShadowCrossSourceIntegrityGate
     private const MAX_AGE=86400;
 
     public static function evaluate(
-        array $cycle,array $timeline,array $p03,array $room,int $now
+        array $cycle,array $timeline,array $p03,array $room,int $now,
+        array $activity=[],array $ledger=[]
     ):array {
         $out=[
             'schema'=>1,'authority'=>self::AUTHORITY,
@@ -27,6 +30,10 @@ final class JVShadowCrossSourceIntegrityGate
             'priorityChecks'=>[],
             'verifiedPhonePairCount'=>0,
             'uniqueP03Matches'=>0,
+            'p03ProofAssignmentReconciled'=>false,
+            'rawGusSummaryReconciled'=>false,
+            'sourceReconciliationActive'=>false,
+            'sourceContractViolationDuringMissingData'=>false,
             'latestP03LinkConsistent'=>false,
             'anonymousRoomOverlayConsistent'=>false,
             'phoneIntervalsStrictlyPositive'=>false,
@@ -64,6 +71,31 @@ final class JVShadowCrossSourceIntegrityGate
 
         if(($cycle['qualifiedSources']??null)!==2
             ||($room['status']??null)==='SOURCES_UNVERIFIED'){
+            // When a source is missing, no other source can smuggle in an
+            // alarm, human-presence or property-empty authorization.
+            // For fully qualified inputs the legacy detailed invariant
+            // checks below still diagnose the exact offending counters.
+            foreach([$cycle,$timeline,$room] as $src){
+                foreach([
+                    'mayClaimHumanDeparture','mayCertifyEmpty',
+                    'mayControlAlarm','mayControlDevices','mayChangePresence',
+                    'personDepartureCertified','personCountCertified',
+                    'presenceCertified','homeEmptyCertified'
+                ] as $key){
+                    if(($src[$key]??false)===true){
+                        $issues[]='UNAUTHORIZED_PHYSICAL_OR_CONTROL_CLAIM';
+                        $out['sourceContractViolationDuringMissingData']=true;
+                        break 2;
+                    }
+                }
+            }
+            if($issues!==[]){
+                $out['status']='CROSS_SOURCE_CONTRADICTION_NO_ACTION';
+                $out['violations']=array_values(array_unique($issues));
+                $out['priorityChecks']=$out['violations'];
+                $out['inputDataRejected']=true;
+                return $out;
+            }
             // Missing or deliberately disabled source data is not a
             // logical contradiction. Preserve an actionable source gap
             // without raising a fabricated integrity violation.
@@ -245,6 +277,32 @@ final class JVShadowCrossSourceIntegrityGate
         }
         $out['uniqueP03Matches']=is_int($matchedP03)
             ?max(0,min($matchedP03,256)):0;
+        // Recompute the WHOLE bounded phone/P03 assignment directly
+        // from the retained raw proof timeline, not only its claimed
+        // aggregate count or the latest timestamp. A forged older match
+        // or an inflated counter must never pass as a consistent report.
+        if($ready && $valid){
+            $replayed=JVP03PhonePairMatrix::evaluate($cycle,$p03,$now);
+            $checks++;
+            $out['sourceReconciliationActive']=true;
+            if(($replayed['inputUntrusted']??true)===true){
+                $issues[]='P03_REPLAY_SOURCE_INVALID';
+            }elseif(($replayed['matchedPhonePairs']??null)!==$matchedP03
+                ||($replayed['scopedPhonePairs']??null)!==$checkedP03
+                ||($replayed['latestPhonePairP03']['p03At']??null)
+                    !==($timeline['verifiedP03NearPairAt']??null)
+                ||($replayed['latestPhonePairP03']['gapSeconds']??null)
+                    !==($timeline['p03ProofGapSeconds']??null)
+                ||(($replayed['latestPhonePairP03']??null)!==null)
+                    !==$p03Linked
+                ||(($replayed['latestPhonePairP03']??null)===null
+                    &&($replayed['matchedPhonePairs']??0)>0)
+                    !==(($timeline['p03MatchPreviousNotLatest']??false)===true)){
+                $issues[]='P03_FULL_ASSIGNMENT_DIFFERS_FROM_SOURCE';
+            }else{
+                $out['p03ProofAssignmentReconciled']=true;
+            }
+        }
         if(!$ready&&($matchedP03??0)>0)
             $issues[]='P03_HISTORICAL_COUNTER_PRESENT_WITH_UNREADY_MODE';
         if($p03Linked&&$mode==='TEST_AND_PRODUCTION_OFF')
@@ -267,6 +325,36 @@ final class JVShadowCrossSourceIntegrityGate
             $issues[]='ANONYMOUS_ROOM_PAIR_COUNTER_MISMATCH';
         else $out['anonymousRoomOverlayConsistent']=true;
 
+        // Independently compare the delivered GUS summary with a
+        // bounded reread of the already-available internal LCN ledger.
+        // The ledger is passed by the caller and never serialized into
+        // the published report. This is not another IPS subscription.
+        if($activity!==[]||$ledger!==[]){
+            $checks++;
+            $out['sourceReconciliationActive']=true;
+            $again=JVPhoneRoomOverlapAudit::evaluate(
+                $cycle,$activity,$ledger,$now);
+            if(($again['status']??null)==='SOURCES_UNVERIFIED'){
+                $issues[]='GUS_REPLAY_SOURCE_INVALID';
+            }else{
+                $keys=[
+                    'status','scopedPhoneAreaPairs',
+                    'totalAnonymousGusEdgesDuringPairs',
+                    'pairsWithAnonymousHomeMotion',
+                    'latestPairHomeMotionCount','latestPairHomeMotionRooms',
+                    'lastMotionInsideLatestPairAt',
+                    'historicRoomAndPhoneOverlap',
+                    'continuous24hGusMonitoring'
+                ];
+                $different=false;
+                foreach($keys as $key)
+                    if(($again[$key]??null)!==($room[$key]??null)){
+                        $different=true;break;
+                    }
+                if($different)$issues[]='GUS_SUMMARY_DIFFERS_FROM_EVENT_LEDGER';
+                else $out['rawGusSummaryReconciled']=true;
+            }
+        }
         foreach([$cycle,$timeline,$room] as $source){
             $checks++;
             foreach([

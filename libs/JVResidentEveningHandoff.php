@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.86 Build 167 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.87 Build 168 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -579,6 +579,16 @@ final class JVResidentEveningHandoff
                     .self::number(count(is_array($cross['violations']??null)
                         ?$cross['violations']:[]))
                     .' | ALARM/FREMDSTEUERUNG GESPERRT');
+                $add('BEWEISKETTE DIREKTVERGLEICH: P03-Quellprotokoll gegen alle Paare '
+                    .self::yes(($cross['p03ProofAssignmentReconciled']??false)===true)
+                    .' | echte GUS-Impulse gegen Summen '
+                    .self::yes(($cross['rawGusSummaryReconciled']??false)===true)
+                    .' | aktive Nachpruefung '
+                    .self::yes(($cross['sourceReconciliationActive']??false)===true)
+                    .' | Mensch NICHT IDENTIFIZIERT');
+                $add('QUELLSPERRE BEI FEHLENDER QUELLE: verbotene Freigabe entdeckt '
+                    .self::yes(($cross['sourceContractViolationDuringMissingData']??false)===true)
+                    .' | auch bei Smartphone-/P03-Ausfall kein Alarm-/Personenbeweis');
                 $add('QUELLEN-INTEGRITAET DETAIL: Handy-Zeitintervalle '
                     .self::yes(($cross['phoneIntervalsStrictlyPositive']??false)===true)
                     .' | P03 letzter Zeitbeleg '

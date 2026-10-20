@@ -1,3 +1,21 @@
+# v0.8.87 (Build 168) – Vollstaendige P03-/GUS-Beweiskettenreconciliation und Sicherheitsvertrag trotz Quellausfall
+
+## Paket A: Keine nur scheinbar plausiblen P03-Summen mehr
+- Der bereits vorhandene End-to-End-Pruefer `JVShadowCrossSourceIntegrityGate` rechnet jetzt die gesamte beschraenkte, maximal acht Smartphone-Paare grosse `JVP03PhonePairMatrix` aus dem echten verifizierten, bereits vorhandenen 24h-P03-Ereignisverlauf nochmals aus. Die Ergebnisse werden mit `JVSharedDepartureTimeline` verglichen: Anzahl individueller P03-Zuordnungen, gepruefte Handy-Paare, der letzte P03-Zeitstempel, Abstand in Sekunden, Status der neueste-vs-aelterer-Paar-Zuordnung. Es reicht nicht mehr, dass ein einzelner letzter P03-Beleg im Protokoll vorkommt. Falsche, aber innerhalb der Maximalgrenzen liegende Zaehler, historische Zuordnungsverwechslungen und verdoppelte Beweise werden abgewiesen (`P03_FULL_ASSIGNMENT_DIFFERS_FROM_SOURCE`).
+- Sobald P03 absichtlich AUS, unvollstaendig, Baseline-only, eine Parser-/Protokollluecke oder ein ungueltiger Zeitstempel vorhanden ist, kann die Auswertung keine zusaetzliche menschliche Aussage freigeben. Die Source wird nur gelesen; der Kamera-Modus wird nicht veraendert.
+
+## Paket B: GUS-Hausimpulse aus dem wirklichen Ereignisprotokoll nachrechnen
+- Die bestehende `JVPhoneRoomOverlapAudit`-Auswertung wird als rein rechnerischer Zweitlauf ueber die ohnehin im Refresh vorhandene `LocalActivityLedger`-Struktur und die bereits berechnete `localActivity`-Quelle durchgefuehrt. Der Quellvergleich kontrolliert nicht nur grobe Grenzen, sondern auch die gesamten bis zu acht historischen Handy-OUT-Intervalle, die Impulse je Intervall, verschiedene GUS-Quellen, die letzte Hausbewegungssekunde und tatsaechliche 24h-Abtastkontinuitaet.
+- Kuenstlich veraenderte GUS-Summen, fehlende Einzelbewegungen oder manipulierter Zeitbezug werden als `GUS_SUMMARY_DIFFERS_FROM_EVENT_LEDGER` bzw. `GUS_REPLAY_SOURCE_INVALID` gekennzeichnet. Es entstehen keine neuen IPS-Abonnements, Sockets, Scanner, Attribute oder Variablen; die gesamte Rohhistorie wird weiterhin nicht in den Bericht kopiert.
+
+## Paket C: Sicherheitsgrenze gilt auch wenn Quellwerte fehlen
+- Im bisherigen v0.8.86-Fall `SOURCE_INCOMPLETE_NO_ACTION` war ein fruehzeitiger Return moeglich, bevor verbotene Schaltberechtigungen im anderen Bericht betrachtet wurden. Die neue Validierung verbietet jetzt bei jedem belegten Inputzustand `mayControlAlarm`, `mayControlDevices`, `mayChangePresence`, `mayClaimHumanDeparture`, `homeEmptyCertified`, `personDepartureCertified` und weitere koerperliche Zuschreibungen, selbst wenn das andere Smartphone gar keine gueltige Quelle liefert. Normale absichtlich deaktivierte P03-/Handy-/GUS-Quellen bleiben weiterhin unbestimmt und werden nicht ohne Grund als Datenkorruption angezeigt.
+- Der bereits vorhandene `JVShadowIntegrityAudit` und die `JVPresenceCommissioningGate` uebernehmen identifizierte Widersprueche automatisch als `REVIEW_REQUIRED` / `SOURCE_CONSISTENCY_REVIEW`; das SHADOW-Modul bleibt in jedem Fall read-only. Der einzige `Testergebnis an ChatGPT`-Bericht zeigt jetzt `BEWEISKETTE DIREKTVERGLEICH` und `QUELLSPERRE BEI FEHLENDER QUELLE`.
+
+## Regressionen
+- Neues `JVShadowProofReconciliationReplayTest.php`: 2 unabhaengige vollstaendige Handy/P03-Paare, kuenstlich scheinbar plausible P03-Zaehlfehler, veraenderte aktuelle und historische GUS-Zaehler, P03 OFF, Quellvalidierung, eine statt zwei P03-Durchgaenge, 5 verschiedene verbotene Freigabe-Angriffe waehrend fehlender Smartphone-Quellen sowie 200 identische, nicht schreibende Erneuerungen. Bestehende Regressionen fuer 24h, Geofence-Standby, Kamera-Logreset, GUS-Ereignisse, Laufzeit-Checkpoints und alle 7 Symcon-Ausgabevariablen bleiben Pflicht.
+- Keine menschliche Identitaet, Kopfzahl, Garage/Tor-Ansteuerung, Auto-/Fussweg-Zertifizierung, Objekt-leer- oder Alarmfreigabe. Verifizierte technische Quellen sind nur anonyme und persoenliche Geraete-Ereignisse. Produktive SymBox #32969 wird vor einer bewussten Nutzeraktualisierung nicht veraendert.
+
 # v0.8.86 (Build 167) – Drei Entwicklungspakete: End-to-End-Beweiskonsistenz, Freigabesperre bei Widerspruch, weniger SymBox-Schreibvorgaenge
 
 ## 1. Neue unabhängige Quellenkonsistenz für die vorhandene Dreifach-Auswertung
