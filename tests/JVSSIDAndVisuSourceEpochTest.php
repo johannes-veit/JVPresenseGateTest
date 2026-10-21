@@ -152,4 +152,24 @@ boundPhoneCheck(!$change['report']['mayArmAlarm']
     &&!$change['report']['allResidentsAwayCertified']
     &&!$change['report']['mayWriteOtherModules'],
     'no actual human absence, alarm or controls');
+// Integration contract: HTML tile, two named resident display variables,
+// status line and public report must use the FINAL source-reconciled view.
+// A separate earlier explicit-only diagnostic cannot be shown as final.
+$main=(string)file_get_contents(dirname(__DIR__)
+    .'/JVPresenceIdentityShadow/module.php');
+boundPhoneCheck(str_contains($main,
+    '$tileWork=JVCompanyWiFiEvidence::rejectSharedSource($tileWork);'),
+    'manual and auto sources are reconciled before resident tile');
+boundPhoneCheck(str_contains($main,
+    "'residentVisuState'=>"+'
++"tileResident['report']"),
+    'published resident visu uses final tile source pair');
+boundPhoneCheck(str_contains($main,
+    '$this->setResidentDisplayValues('."\n            ".
+    '$tileResident['."'report'".']['."'people'".']['."'johannes'".']['."'display'".']'),
+    'named resident variables use final tile view');
+boundPhoneCheck(str_contains($main,
+    ".' | Firmen-WLAN Handys: '."+'
++"tileWork['workPhoneCount']"),
+    'human-facing summary counts only final reconciled work-phone sources');
 echo "SSID merged collisions and source-bound two-resident VISU epochs PASS\n";
