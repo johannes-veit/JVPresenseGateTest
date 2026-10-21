@@ -106,6 +106,32 @@ cursor107($read->invoke($m,'P03IncrementalTimeline')
         ===$m->ReadAttributeString('PersistP03IncrementalTimeline'),
     'broken JSON also falls back to last durable P03 cursor');
 
+// Explicit restore/repair of an attribute must override prior RAM;
+// silently returning the old buffer would cancel a restoration.
+$restored=JVP03IncrementalTimeline::evaluate(
+    "P03 RESTORED SOURCE BASELINE\n",[],$time-5);
+$restoredJson=json_encode($restored['next'],JSON_THROW_ON_ERROR);
+$m->SetBuffer('P03IncrementalTimeline',
+    json_encode($recovered['next'],JSON_THROW_ON_ERROR));
+$m->WriteAttributeString('PersistP03IncrementalTimeline',$restoredJson);
+cursor107($read->invoke($m,'P03IncrementalTimeline')===$restoredJson,
+    'manually restored persistent cursor overrides earlier RAM snapshot');
+// Resetting an existing checkpoint to an intentionally blank state is
+// authoritative too; neither read nor ApplyChanges migration may resurrect
+// the stale P03 proof from the buffer.
+$m->WriteAttributeString('PersistP03IncrementalTimeline','{}');
+cursor107($read->invoke($m,'P03IncrementalTimeline')==='{}',
+    'deliberate durable reset cannot be undone by stale RAM cursor');
+$migrate=new ReflectionMethod(
+    JVPresenceIdentityShadow::class,'migrateLegacyShadowBuffers');
+$migrate->invoke($m);
+cursor107($m->ReadAttributeString('PersistP03IncrementalTimeline')==='{}',
+    'legacy buffer migration skips existing new-version RAM checkpoint');
+
+// Neither a recovered nor a forged dynamic P03 state is a person identity.
+cursor107(!$event['report']['identityCertified']
+    &&!$recovered['report']['identityCertified'],
+    'read-only replay never certifies the identity of a human');
 cursor107(count($m->registered)===7,
     'no extra presence status variable created in real Symcon mock');
 echo "SHADOW native P03 in-memory continuity, proof replay, quarantine and restart PASS\n";
