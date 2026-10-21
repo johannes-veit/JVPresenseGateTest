@@ -1,5 +1,10 @@
 # Anwesenheit / SHADOW – verbindliche Quellen und Entscheidungsregeln
 
+## v0.8.107 Build 188 – Abschluss der P03-Persistenzkontinuitaet
+
+Der reine SHADOW-Observer verwendet den strukturell validierten, historisch schema-losen P03-Runtime-Cursor tatsaechlich ueber wiederholte Polls hinweg. Seine bestehende volatile Herkunfts-Pruefsumme erkennt manuelle Reparaturen/restaurierte persistente Attribute und verhindert, dass alter RAM sie aushebelt. Bei bewusstem persistenten Reset auf `{}` darf ein frueherer Puffereintrag weder beim Lesen noch in einer weiteren ApplyChanges-Migration alte Kameraereignisse wiederbeleben. Neue Gueltig-Proofs bleiben sofort durable; Idle-Beobachtungskontinuitaet bleibt durch ca. 10-Minuten-Checkpoints ressourcenschonend. Neue Integrationstests decken echten Modulleseweg, reale Parserauswertung, Crash/Neustart, Quellenausfall und Wiederherstellung ab. **Voraussetzung fuer jede operative Entscheidung bleibt menschlich verifizierte Quellenabnahme; Personen- und Hausleer-Nachweis werden nicht behauptet.**
+
+
 ## Weiterentwicklung v0.8.106 Build 187 (21.10.2026) – Read-only Fehler- und Upgrade-Sicherheit
 
 P03-PROOF-Zeilen muessen exakt dem bekannten Format entsprechen; ein angehaengter Fremdtext auf derselben Zeile darf nicht als gueltige kamerabasierte Richtung gelten. Eigenstaendige ungestempelte Diagnosetexte nach einem Zeilenumbruch koennen im P03-Protokoll ohne Proof-Verfaelschung stehen. Unerwartet defekte alte P03-Proof-Ereignisse (Quelle, Zeit, route), offene Routen oder fehlendes Schema kritischer Ledgers muessen im `JVShadowUpgradePreflight` sichtbar gesperrt bleiben – kein automatisches Stillloeschen. Eine unerwartete PHP-Ausnahme waehrend `Refresh` macht positive Personenindikatoren und kombinierte Praesenz bis zu einer folgenden vollstaendig gelungenen Abfrage ungueltig. Auch das ist kein Nachweis einer menschlichen Abwesenheit. Keine Fremdmodule, Hardware, Licht-, Alarm- oder Torsteuerung.

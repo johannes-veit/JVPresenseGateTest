@@ -267,21 +267,32 @@ class JVPresenceIdentityShadow extends IPSModule
 
     private function readShadowState(string $name): string
     {
-        // Only the two write-optimized event ledgers use their current
-        // runtime buffer. After a SymBox restart it is empty; the durable
-        // attribute is then the authoritative checkpoint.
+        // Read the latest validated in-memory state between 10-minute
+        // durable checkpoints. P03 is historically schema-less: rejecting
+        // its buffer would repeatedly replay old raw-log deltas. An
+        // initialized=false P03 quarantine must also survive every poll.
+        // After SymBox restart the missing buffer falls back to the
+        // last durable, conservatively rebaselined checkpoint.
+        $stored=$this->ReadAttributeString('Persist'.$name);
         if(JVShadowStateCheckpoint::useRuntimeCache($name)){
             $runtime=$this->GetBuffer($name);
-            if($runtime!=='' &&$runtime!=='{}'){
+            // A repaired/restored persistent attribute takes priority over
+            // a stale in-memory sample. The checksum is an existing
+            // volatile buffer only; no new durable attribute or variable.
+            $origin=$this->GetBuffer('CheckpointOrigin_'.$name);
+            if($runtime!=='' &&$runtime!=='{}'
+                &&$origin!==''&&hash_equals($origin,hash('sha256',$stored))){
                 $decoded=json_decode($runtime,true);
-                if(is_array($decoded)&&($decoded['schema']??null)===1)
+                if(is_array($decoded)
+                    &&JVShadowStateCheckpoint::validRuntimeCache($name,$decoded))
                     return $runtime;
             }
         }
-        $stored=$this->ReadAttributeString('Persist'.$name);
-        if($stored!=='' && $stored!=='{}')return $stored;
-        $legacy=$this->GetBuffer($name);
-        if($legacy!=='' && $legacy!=='{}')return $legacy;
+        // The declared persistent attribute is canonical even when it is
+        // intentionally reset to '{}'. Reading a leftover runtime buffer
+        // here would resurrect old critical proofs after a safe repair.
+        // Historical pre-attribute migration is performed explicitly in
+        // migrateLegacyShadowBuffers() during ApplyChanges(), not here.
         return $stored!==''?$stored:'{}';
     }
 
@@ -291,11 +302,19 @@ class JVPresenceIdentityShadow extends IPSModule
         $durable=$this->ReadAttributeString('Persist'.$name);
         if(JVShadowStateCheckpoint::shouldPersist(
             $name,$durable,$value,time()
-        ))$this->WriteAttributeString('Persist'.$name,$value);
+        )){
+            $this->WriteAttributeString('Persist'.$name,$value);
+            $durable=$value;
+        }
         // Runtime cache keeps the complete latest state between 60-second
         // polls; all semantic changes are already durable immediately.
         if($this->GetBuffer($name)!==$value)
             $this->SetBuffer($name,$value);
+        if(JVShadowStateCheckpoint::useRuntimeCache($name)){
+            $anchor=hash('sha256',$durable);
+            if($this->GetBuffer('CheckpointOrigin_'.$name)!==$anchor)
+                $this->SetBuffer('CheckpointOrigin_'.$name,$anchor);
+        }
     }
 
     private function migrateLegacyShadowBuffers(): void
@@ -303,6 +322,10 @@ class JVPresenceIdentityShadow extends IPSModule
         foreach(self::STORED_STATE_NAMES as $name) {
             $persistent=$this->ReadAttributeString('Persist'.$name);
             if($persistent!==''&&$persistent!=='{}')continue;
+            // An already-running new-version cache may survive a manual
+            // repair within the same Symcon process. It is NOT a legacy
+            // migration candidate and must never undo the repaired value.
+            if($this->GetBuffer('CheckpointOrigin_'.$name)!=='')continue;
             $legacy=$this->GetBuffer($name);
             if($legacy===''||$legacy==='{}')continue;
             $decoded=json_decode($legacy,true);
