@@ -288,9 +288,11 @@ class JVPresenceIdentityShadow extends IPSModule
                     return $runtime;
             }
         }
-        if($stored!=='' && $stored!=='{}')return $stored;
-        $legacy=$this->GetBuffer($name);
-        if($legacy!=='' && $legacy!=='{}')return $legacy;
+        // The declared persistent attribute is canonical even when it is
+        // intentionally reset to '{}'. Reading a leftover runtime buffer
+        // here would resurrect old critical proofs after a safe repair.
+        // Historical pre-attribute migration is performed explicitly in
+        // migrateLegacyShadowBuffers() during ApplyChanges(), not here.
         return $stored!==''?$stored:'{}';
     }
 
@@ -320,6 +322,10 @@ class JVPresenceIdentityShadow extends IPSModule
         foreach(self::STORED_STATE_NAMES as $name) {
             $persistent=$this->ReadAttributeString('Persist'.$name);
             if($persistent!==''&&$persistent!=='{}')continue;
+            // An already-running new-version cache may survive a manual
+            // repair within the same Symcon process. It is NOT a legacy
+            // migration candidate and must never undo the repaired value.
+            if($this->GetBuffer('CheckpointOrigin_'.$name)!=='')continue;
             $legacy=$this->GetBuffer($name);
             if($legacy===''||$legacy==='{}')continue;
             $decoded=json_decode($legacy,true);
