@@ -7,7 +7,8 @@ function strictReturnCheck(bool $ok,string $case):void {
 }
 $t=1900000000; // synthetic clock, not a household observation
 $basePerson=static fn(int $macAt):array=>[
-    'startedAt'=>$t-400,'lastMacAt'=>$macAt,
+    'startedAt'=>$t-400,'lastObservedAt'=>$t-60,
+    'lastMacAt'=>$macAt,
     'lastGeoAt'=>$t-20,'pendingOutAt'=>$t-100,
     'pendingInAt'=>$t-20,'lastPhoneReturnAt'=>null,
     'lastMacSourceKey'=>'WLAN:101:102',

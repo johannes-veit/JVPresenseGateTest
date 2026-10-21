@@ -14,6 +14,7 @@ final class JVPhoneContactContinuity
     private const GEO_WINDOW_SECONDS=21600;
     private const HOME_FRESH_SECONDS=300;
     private const GAP_SECONDS=660;
+    private const MAX_OBSERVATION_GAP_SECONDS=900;
 
     public static function evaluate(
         array $wlan,array $jGeo,array $cGeo,array $prior,int $now
@@ -32,6 +33,14 @@ final class JVPhoneContactContinuity
             $start=self::time($previous['startedAt']??null,$now,self::HISTORY_SECONDS);
             $hadBaseline=$start!==null;
             if($start===null)$start=$now;
+            $lastObserved=self::time($previous['lastObservedAt']??null,
+                $now,self::HISTORY_SECONDS);
+            // A 15-minute SHADOW interruption is not continuous
+            // observation, even if source object IDs have not changed.
+            // Keep measured MAC contact gaps for diagnosis, but discard
+            // pre-interruption OUT/IN pending matches.
+            $observationInterrupted=$lastObserved===null
+                ||$now-$lastObserved>self::MAX_OBSERVATION_GAP_SECONDS;
             $w=$wlanValid&&is_array($wlan['people'][$person]??null)
                 ?$wlan['people'][$person]:[];
             $g=$person==='johannes'?$jGeo:$cGeo;
@@ -70,7 +79,8 @@ final class JVPhoneContactContinuity
                 $previous['lastRecoveryGapSeconds']=null;
             }
             if(!$geoContinuous)$previous['lastGeoAt']=null;
-            if($sourceRebaselineRequired){
+            if($sourceRebaselineRequired||$observationInterrupted){
+                $previous['lastGeoAt']=null;
                 $previous['pendingOutAt']=null;
                 $previous['pendingInAt']=null;
                 $previous['lastPhoneReturnAt']=null;
@@ -147,6 +157,7 @@ final class JVPhoneContactContinuity
             // followed by a fresh verified MAC contact, is a phone-return
             // HINT. This never identifies a person or the travel mode.
             if($inAt!==null && $outAt!==null
+                &&!$observationInterrupted
                 &&$macContinuous&&$geoContinuous
                 &&$fresh&&$advanced
                 // Equality is not a proven order: a MAC from the SAME
@@ -159,7 +170,7 @@ final class JVPhoneContactContinuity
             $lastMac=$mac!==null&&($oldMac===null||$mac>$oldMac)
                 ?$mac:$oldMac;
             $next['people'][$person]=[
-                'startedAt'=>$start,
+                'startedAt'=>$start,'lastObservedAt'=>$now,
                 'lastMacAt'=>$lastMac,'lastGeoAt'=>$priorGeo,
                 'pendingOutAt'=>$outAt,'pendingInAt'=>$inAt,
                 'lastPhoneReturnAt'=>$lastReturn,
@@ -178,6 +189,9 @@ final class JVPhoneContactContinuity
                 'macSourceContinuous'=>$macContinuous,
                 'geoSourceContinuous'=>$geoContinuous,
                 'sourceRebaselineRequired'=>$sourceRebaselineRequired,
+                'observationInterrupted'=>$observationInterrupted,
+                'observationContinuityVerified'=>!$observationInterrupted
+                    &&$macContinuous&&$geoContinuous,
                 'lastActualMacAt'=>$lastMac,
                 'lastActualMacAgeSeconds'=>$lastMac!==null?$now-$lastMac:null,
                 'contactResumedAfterGap'=>$advanced&&$gap>self::GAP_SECONDS,

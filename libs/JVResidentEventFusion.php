@@ -181,8 +181,10 @@ final class JVResidentEventFusion
             if($geoAt!==null&&($lastGeo===null||$geoAt>$lastGeo))
                 $lastGeo=$geoAt;
             $returnNew=false;
+            // Second-resolution IN and MAC timestamps cannot establish
+            // ordering if equal; exactly the same guard as contact history.
             if(!$boot &&$fresh&&$newMac&&$outAt!==null&&$inAt!==null
-                &&$outAt<$inAt&&$mac>=$inAt
+                &&$outAt<$inAt&&$mac>$inAt
                 &&$mac-$inAt<=self::GEO_TO_WIFI
                 &&($returnAt===null||$returnAt<$inAt)){
                 $returnAt=$mac;

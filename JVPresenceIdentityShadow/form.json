@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.102: Ergaenzend zur v0.8.101-Quellenabsicherung erzeugt die bestehende Smartphone-Kontakthistorie einen neuen Rueckkehr-Hinweis nach beobachtetem Geofence OUT/IN nur noch, wenn der echte Heim-WLAN-MAC-Zeitstempel seit der letzten Auswertung nachweisbar gestiegen ist und zeitlich strikt NACH dem IN liegt. Ein bereits alter frischer MAC-Wert, gleichzeitig sekundengleiches IN/MAC oder eine verspaetet eintreffende IN-Meldung duerfen keine neue Handy-Rueckkehr ausloesen. Quellenwechsel/Standby und beide Handys bleiben unabhaengig. Keine Person-/Fahrzeugidentifikation, kein Haus-leer-Signal, keine Fremdaktionen, keine neuen Symcon-Variablen, Attribute, Instanzen oder Timer."
+      "caption": "SHADOW v0.8.103: Beide bisherigen Smartphone-Ereignisketten folgen der gleichen strengen zeitlichen Reihenfolge. Ein gleichsekundiger Geofence-IN und Heim-MAC kann nicht als neue Handy-Rueckkehr zaehlen. Nach mehr als 15 Minuten ohne SHADOW-Auswertung, auch bei identischen Symcon-Quellen-IDs, wird die vorherige offene OUT/IN-Handy-Kette sicher neu begonnen. Alte Netzwerkkontaktluecken bleiben als Diagnostik erkennbar, sind aber niemals ein menschlicher Ankunfts- oder Abwesenheitsnachweis. Der bestehende Testbericht zeigt Beobachtungskontinuitaet je Handy. Keine neuen Symcon-Variablen, Attribute, Instanzen, Timer oder Fremdaktionen; sieben Ausgaben und bestehende Speicher bleiben."
     },
     {
       "type": "Label",
