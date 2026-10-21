@@ -34,13 +34,13 @@ $oldWlan=[
             'validatedExistingVariablePair'=>true,
             'wlanBoolean'=>true,'recentMacEvidence'=>true,
             'state'=>'MAC_CONFIRMED_RECENT_DEVICE_HINT',
-            'lastMacContactAt'=>$lastBefore
+            'lastMacContactAt'=>$lastBefore,'sourceKey'=>'WLAN:1001:1002'
         ],
         'carina'=>[
             'validatedExistingVariablePair'=>true,
             'wlanBoolean'=>true,'recentMacEvidence'=>true,
             'state'=>'MAC_CONFIRMED_RECENT_DEVICE_HINT',
-            'lastMacContactAt'=>$lastBefore
+            'lastMacContactAt'=>$lastBefore,'sourceKey'=>'WLAN:2001:2002'
         ]
     ]
 ];
@@ -48,13 +48,15 @@ $jGeo=[
     'schema'=>1,'authority'=>'EXISTING_JOHANNES_EGIGEOZONE_READ_ONLY',
     'enabled'=>true,'validatedSource'=>true,
     'insideRecent'=>false,'outsideRecent'=>false,
-    'geofenceReportedInside'=>null,'lastEventAt'=>null
+    'geofenceReportedInside'=>null,'lastEventAt'=>null,
+    'sourceKey'=>'EGI:101:102:103:104'
 ];
 $cGeo=[
     'schema'=>1,'authority'=>'EXISTING_CARINA_GEOFENCY_READ_ONLY',
     'enabled'=>true,'validatedSource'=>true,
     'insideRecent'=>false,'outsideRecent'=>false,
-    'geofenceReportedInside'=>null,'lastEventAt'=>null
+    'geofenceReportedInside'=>null,'lastEventAt'=>null,
+    'sourceKey'=>'GEOFENCY:201:202:203:204'
 ];
 $baseline=JVPhoneContactContinuity::evaluate(
     $oldWlan,$jGeo,$cGeo,[],$t-22500
