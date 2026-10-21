@@ -1279,7 +1279,8 @@ class JVPresenceIdentityShadow extends IPSModule
                 $value=GetValue($id);
                 if(!is_string($value))continue;
                 $out[$person]=[
-                    'verified'=>true,'ssid'=>$value,'updatedAt'=>$updated
+                    'verified'=>true,'ssid'=>$value,'updatedAt'=>$updated,
+                    'sourceVariableID'=>$id
                 ];
             }catch(Throwable $ignored){}
         }
@@ -1370,7 +1371,7 @@ class JVPresenceIdentityShadow extends IPSModule
                 $value=GetValue($id);
                 if(!is_string($value)||strlen($value)>64)continue;
                 $out[$person]=['verified'=>true,'ssid'=>$value,
-                    'updatedAt'=>$when];
+                    'updatedAt'=>$when,'sourceVariableID'=>$id];
             }catch(Throwable $ignored){}
         }
         return $out;
@@ -1772,6 +1773,10 @@ class JVPresenceIdentityShadow extends IPSModule
                 ],true))
                 $tileWork['people'][$person]=$workWiFi['people'][$person];
         }
+        // A manual SSID binding can overlap another resident's automatic
+        // source after both separately verified paths were merged. Recheck
+        // the two final phone sources together before any tile/fusion use.
+        $tileWork=JVCompanyWiFiEvidence::rejectSharedSource($tileWork);
         // Durable phone-contact history. A resumed WLAN confirmation is
         // not evidence of a human arriving, and silence is never departure.
         $contactPrior=json_decode(
@@ -1970,7 +1975,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'johannesEgiGeoZone'=>$egi,
             'carinaGeofency'=>$carinaGeo,
             'residentDisplay'=>$residentDisplay,
-            'residentVisuState'=>$residentVisu['report'],
+            'residentVisuState'=>$tileResident['report'],
             'residentTileEvidence'=>$tileData,
             'residentDepartureInference'=>$departureHint,
             'residentArrivalInference'=>$arrivalHint,
@@ -2077,9 +2082,9 @@ class JVPresenceIdentityShadow extends IPSModule
                 ?$carinaGeo['state'].' ('.$carinaGeo['selectionStatus'].')'
                 :'AUS')
             .' | Bewohner-Kacheln: Johannes='
-            .$residentVisu['report']['people']['johannes']['decision']
-            .', Carina='.$residentVisu['report']['people']['carina']['decision']
-            .' | Firmen-WLAN Handys: '.$workWiFi['workPhoneCount']
+            .$tileResident['report']['people']['johannes']['decision']
+            .', Carina='.$tileResident['report']['people']['carina']['decision']
+            .' | Firmen-WLAN Handys: '.$tileWork['workPhoneCount']
             .' | Anwesenheit erkannt: '.($presenceDetected['detected']?'JA':'NEIN')
             .' (NEIN = kein aktueller positiver Nachweis, NICHT leer)'
             .' | Abwesenheit: NICHT BESTAETIGT'
@@ -2091,9 +2096,13 @@ class JVPresenceIdentityShadow extends IPSModule
             )
             .' | Identitaet UNBEKANNT';
         if ($warnings) $state.=' | QUELLHINWEIS '.implode(',',array_slice($warnings,0,2));
+        // Use ONE verified tile-source decision across the HTML tile,
+        // the two existing named status variables and the JSON report.
+        // Explicit-only legacy diagnostics must not disagree visually with
+        // the final auto+manual qualified resident phone source.
         $this->setResidentDisplayValues(
-            $residentVisu['report']['people']['johannes']['display'],
-            $residentVisu['report']['people']['carina']['display']
+            $tileResident['report']['people']['johannes']['display'],
+            $tileResident['report']['people']['carina']['display']
         );
         $this->setPresenceDetected($presenceDetected['detected']);
         $this->setResidentTile($tileHTML);
