@@ -22,6 +22,29 @@ final class JVShadowStateCheckpoint
         return in_array($name,self::OPTIMIZED,true);
     }
 
+    /**
+     * Runtime snapshots may be newer than ten-minute durable heartbeats.
+     * P03's native cursor never had a schema=1 field, unlike the other
+     * four checkpointed ledgers. Validate that existing shape explicitly.
+     * In particular retain the initialized=false quarantine on source loss.
+     */
+    public static function validRuntimeCache(string $name,array $state):bool
+    {
+        if(!self::useRuntimeCache($name))return false;
+        if($name!=='P03IncrementalTimeline')
+            return ($state['schema']??null)===1;
+        $initialized=$state['initialized']??null;
+        $events=$state['events']??null;
+        if(!is_bool($initialized)||!is_array($events)
+            ||!array_is_list($events)||count($events)>256
+            ||!array_key_exists('lastRaw',$state))return false;
+        if($initialized)
+            return is_string($state['lastRaw'])
+                &&strlen($state['lastRaw'])<=65536;
+        return $events===[]
+            &&($state['lastRaw']===null||$state['lastRaw']==='');
+    }
+
     public static function shouldPersist(
         string $name,string $saved,string $candidate,int $now
     ):bool {
