@@ -1,5 +1,10 @@
 # Anwesenheit / SHADOW – verbindliche Quellen und Entscheidungsregeln
 
+## v0.8.109 Build 190 – Startbeobachtung und Einzelfehler ohne false-positive Bewegung
+
+Bei Dienststart darf ein weniger als 15 Minuten alter gespeicherter `lastObservedAt`-Zeitstempel nicht als Beweis gelten, dass der SHADOW-Observer waehrend des Herunterfahrens im Hintergrund gelaufen sei. Ein konkret simulierter P03-Durchgang, der 45 Sekunden vor der Wiederaufnahme, aber waehrend eines vierminuetigen Observer-Stopps protokolliert war, wurde vor diesem Fix noch als neuer Live-Durchgang interpretiert. Die reine Start-Rebaseline kennzeichnet ihn jetzt als Bestandslog und nicht als live beobachtete Passage. Diese bewusst konservative Trennung gilt ebenfalls fuer persoenliche WLAN-/Geofence-Folgen, Kamerakorridore, GUS-Aktivimpulse und lueckenlose 24h-Sensorfenster. Historische beobachtete GUS-Impulse werden nicht als physische Abwesenheit gewertet und bleiben soweit valide als anonyme Diagnose. Ein erneuter echter Proof **nach** erfolgreicher Baseline ist weiterhin moeglich; keine neue IPS-Variable, kein Fremdmodulschreiben. Die vorhandene `#40890` Diagnose meldet den Start-Epochenwechsel; das ist erwartetes Verhalten nach einem Update, nicht automatisch ein Kamerafehler.
+
+
 ## v0.8.108 Build 189 – variablearme Ausgabe und Checkpoint-Schonung
 
 Das SHADOW-Modul besitzt unveraendert genau sieben Ausgabevariablen und 15 bereits vorhandene Zustandsattribute. Eine identische `SensorSubscriptions`-Liste wird bei erneuten `ApplyChanges`-Aufrufen nicht mehr auf SymBox-Flash geschrieben, die bestehenden Sensor-VM_UPDATE-Abonnements werden dennoch nach jedem Neustart erneut registriert. Der Ueberlaufpfad des einzelnen kopierbaren Testberichts ist auch gegen zahlreiche doppelte, sehr lange und nicht vertrauenswuerdige Schlusszeilen abgesichert: maximal 13.000 Bytes, UTF-8 bleibt gueltig, am Schluss steht eine einzige eindeutig verweigerte Alarmfreigabe. Relevante Inhalte bekommen Vorrang vor Raumimpuls-Fuelltext. PHP-Simulationsregressionen sichern beide Ressourcengrenzen. Niemals werden positive Haus-leer-, physische Personen- oder Fahrerentscheidungen daraus abgeleitet.
