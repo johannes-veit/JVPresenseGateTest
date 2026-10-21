@@ -146,8 +146,12 @@ final class JVPhoneContactContinuity
             // Only a previously observed, ordered OUT->IN sequence,
             // followed by a fresh verified MAC contact, is a phone-return
             // HINT. This never identifies a person or the travel mode.
-            if($inAt!==null && $outAt!==null &&$fresh
-                &&$mac>=$inAt &&$mac-$inAt<=1800
+            if($inAt!==null && $outAt!==null
+                &&$macContinuous&&$geoContinuous
+                &&$fresh&&$advanced
+                // Equality is not a proven order: a MAC from the SAME
+                // Unix second as IN might have preceded the zone update.
+                &&$mac>$inAt &&$mac-$inAt<=1800
                 &&($lastReturn===null||$lastReturn<$inAt)){
                 $lastReturn=$mac;$returnNew=true;
                 $outAt=null;$inAt=null;
