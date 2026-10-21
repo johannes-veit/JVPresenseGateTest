@@ -44,6 +44,7 @@ require_once dirname(__DIR__).'/libs/JVResidentEventFusion.php';
 require_once dirname(__DIR__).'/libs/JVRouteEpisodeLedger.php';
 require_once dirname(__DIR__).'/libs/JVResidentJourneyEvidence.php';
 require_once dirname(__DIR__).'/libs/JVShadowStateCheckpoint.php';
+require_once dirname(__DIR__).'/libs/JVShadowStartupEpoch.php';
 require_once dirname(__DIR__).'/libs/JVShadowIntegrityAudit.php';
 require_once dirname(__DIR__).'/libs/JVShadowUpgradePreflight.php';
 require_once dirname(__DIR__).'/libs/JVPresenceSafetyCase.php';
@@ -222,6 +223,10 @@ class JVPresenceIdentityShadow extends IPSModule
             if($this->SetStatus(102)===false)
                 throw new RuntimeException('SYSCON_STATUS_TRANSITION_REJECTED');
         } catch(Throwable $e) {
+            // A failed bootstrap is a missing observation epoch even if it
+            // occurred only seconds after the last successful timer poll.
+            try {$this->SetBuffer('ShadowObservationStarted','0');}
+            catch(Throwable $ignored){}
             // A real bootstrap error must NOT be disguised as "active".
             // 201 is local to this module and does not touch other instances.
             try {$this->SetTimerInterval('ReadLocal',0);}
@@ -1418,6 +1423,10 @@ class JVPresenceIdentityShadow extends IPSModule
         }
         try {
         if (!$this->ReadPropertyBoolean('Enabled')) {
+            // Disabling and later re-enabling within a few minutes must
+            // never join unobserved source events across the disabled time.
+            if($this->GetBuffer('ShadowObservationStarted')!=='0')
+                $this->SetBuffer('ShadowObservationStarted','0');
             $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
             $this->setPresenceDetected(false);
             $this->setResidentTile('<section>SHADOW deaktiviert – '
@@ -1440,6 +1449,9 @@ class JVPresenceIdentityShadow extends IPSModule
         // automatically by a seemingly clean first-run baseline.
         $upgradePreflight=$this->auditStoredUpgradeState();
         if(($upgradePreflight['safeToRefresh']??false)!==true){
+            // Corrupt durable proof records stop observation until review.
+            if($this->GetBuffer('ShadowObservationStarted')!=='0')
+                $this->SetBuffer('ShadowObservationStarted','0');
             $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
             $this->setPresenceDetected(false);
             $this->setResidentTile('<section>SHADOW: gespeicherte Beweiskette '
@@ -1458,7 +1470,13 @@ class JVPresenceIdentityShadow extends IPSModule
             ],'SHADOW Zustand pruefen – kein automatisches Ueberschreiben');
             return;
         }
+        // RAM buffers vanish on a module/OS restart even if the prior
+        // durable poll timestamp is seconds old. Until one complete and
+        // successful read finishes, every source is in a fresh observation
+        // epoch. Only one volatile buffer flag is needed, no IPS objects.
+        $coldStart=$this->GetBuffer('ShadowObservationStarted')!=='1';
         $warnings=[];
+        if($coldStart)$warnings[]='SHADOW_SHORT_RESTART_SOURCE_EPOCH_BASELINE';
         $p03Raw=$this->readLocalVariable(
             $this->ReadPropertyInteger('P03InstanceID'),
             self::P03_GUID,'Protocol');
@@ -1474,7 +1492,10 @@ class JVPresenceIdentityShadow extends IPSModule
         // the existing P03 Protocol after this observer begins monitoring.
         $p03Previous=json_decode($this->readShadowState('P03IncrementalTimeline'),true);
         $p03Timeline=JVP03IncrementalTimeline::evaluate(
-            $p03Raw??'',is_array($p03Previous)?$p03Previous:[],time()
+            $p03Raw??'',JVShadowStartupEpoch::fence(
+                'P03IncrementalTimeline',
+                is_array($p03Previous)?$p03Previous:[],$coldStart
+            ),time()
         );
         if($p03Raw===null) {
             // Do not treat a failed local-variable read as a normal
@@ -1548,7 +1569,8 @@ class JVPresenceIdentityShadow extends IPSModule
             }
         }
         $state=json_decode($this->readShadowState('LocalSensorState'),true);
-        $state=is_array($state)?$state:[];
+        $state=JVShadowStartupEpoch::fence('LocalSensorState',
+            is_array($state)?$state:[],$coldStart);
         $sensorData=JVLocalSensorEvidence::evaluate(
             $sourceRows,$snapshots,$state,time());
         $local=$sensorData['report'];
@@ -1565,7 +1587,8 @@ class JVPresenceIdentityShadow extends IPSModule
         $ledgerState=json_decode($this->readShadowState('LocalActivityLedger'),true);
         $ledger=JVLocalActivityLedger::evaluate(
             $local['motionSignals'],$local['readings'],
-            is_array($ledgerState)?$ledgerState:[],time());
+            JVShadowStartupEpoch::fence('LocalActivityLedger',
+                is_array($ledgerState)?$ledgerState:[],$coldStart),time());
         $ledgerNext=json_encode($ledger['next'],JSON_UNESCAPED_SLASHES);
         if(is_string($ledgerNext)
             && $this->readShadowState('LocalActivityLedger')!==$ledgerNext) {
@@ -1811,7 +1834,8 @@ class JVPresenceIdentityShadow extends IPSModule
         );
         $contactHistory=JVPhoneContactContinuity::evaluate(
             $tileWlan,$tileGeoJ,$tileGeoC,
-            is_array($contactPrior)?$contactPrior:[],time()
+            JVShadowStartupEpoch::fence('ResidentPhoneContinuity',
+                is_array($contactPrior)?$contactPrior:[],$coldStart),time()
         );
         $contactNext=json_encode($contactHistory['next'],
             JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
@@ -1826,7 +1850,8 @@ class JVPresenceIdentityShadow extends IPSModule
         $residentFusion=JVResidentEventFusion::evaluate(
             $tileWlan,$tileGeoJ,$tileGeoC,$tileWork,
             $p03Timeline['report'],
-            is_array($fusionPrior)?$fusionPrior:[],time()
+            JVShadowStartupEpoch::fence('ResidentEventFusion',
+                is_array($fusionPrior)?$fusionPrior:[],$coldStart),time()
         );
         $fusionNext=json_encode($residentFusion['next'],
             JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
@@ -1860,7 +1885,8 @@ class JVPresenceIdentityShadow extends IPSModule
         $routeEpisodes=JVRouteEpisodeLedger::evaluate(
             $residentFusion['report'],$boundary['report'],
             $roomPaths,$temporalCrossCheck,
-            is_array($routePrior)?$routePrior:[],time()
+            JVShadowStartupEpoch::fence('RouteEpisodeLedger',
+                is_array($routePrior)?$routePrior:[],$coldStart),time()
         );
         $routeNext=json_encode($routeEpisodes['next'],
             JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
@@ -2151,7 +2177,15 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->SetStatus(102);
             $this->SetBuffer('RefreshFailed','0');
         }
+        // Mark continuity ONLY after the entire refresh and publication
+        // succeed. A thrown exception must cause the next poll to baseline
+        // again, never to assume the failed sample was continuously read.
+        if($coldStart)$this->SetBuffer('ShadowObservationStarted','1');
         } catch(Throwable $e) {
+            // Even a ONE-POLL runtime exception interrupts observation;
+            // it cannot bridge an otherwise fresh old OUT/IN/P03 chain.
+            try {$this->SetBuffer('ShadowObservationStarted','0');}
+            catch(Throwable $ignored){}
             // An uncaught failure during a timer/VM_UPDATE refresh would
             // otherwise leave the PREVIOUS "ANWESEND" display and
             // PresenceDetected=true visible indefinitely. Fail CLOSED,
