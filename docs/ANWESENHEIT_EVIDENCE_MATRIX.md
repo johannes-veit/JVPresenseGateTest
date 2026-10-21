@@ -1,5 +1,10 @@
 # Anwesenheit / SHADOW – verbindliche Quellen und Entscheidungsregeln
 
+## Weiterentwicklung v0.8.106 Build 187 (21.10.2026) – Read-only Fehler- und Upgrade-Sicherheit
+
+P03-PROOF-Zeilen muessen exakt dem bekannten Format entsprechen; ein angehaengter Fremdtext auf derselben Zeile darf nicht als gueltige kamerabasierte Richtung gelten. Eigenstaendige ungestempelte Diagnosetexte nach einem Zeilenumbruch koennen im P03-Protokoll ohne Proof-Verfaelschung stehen. Unerwartet defekte alte P03-Proof-Ereignisse (Quelle, Zeit, route), offene Routen oder fehlendes Schema kritischer Ledgers muessen im `JVShadowUpgradePreflight` sichtbar gesperrt bleiben – kein automatisches Stillloeschen. Eine unerwartete PHP-Ausnahme waehrend `Refresh` macht positive Personenindikatoren und kombinierte Praesenz bis zu einer folgenden vollstaendig gelungenen Abfrage ungueltig. Auch das ist kein Nachweis einer menschlichen Abwesenheit. Keine Fremdmodule, Hardware, Licht-, Alarm- oder Torsteuerung.
+
+
 ## Weiterentwicklung v0.8.105 Build 186 – technische Fertigstellung (21.10.2026)
 
 Die beiden lokalen, dauerhaften Zustandsattribute `P03IncrementalTimeline` und `ResidentPhoneContinuity` sind jetzt im vorhandenen `JVShadowStateCheckpoint`-Schreibbudget optimiert: ausschliesslich `lastObservedAt`-Heartbeat ohne echte Ereignisaenderung wird im RAM laufend aktualisiert und etwa alle 600 Sekunden flashgespeichert. Eine neue Proofzeile, ein Kontakt-/Geofence-Ereignis, eine Quell-Aenderung oder ein Zeitfehler schreibt sofort. Bei ungeplantem Neustart mit verlorenem RAM koennen nicht nachhaltig beobachtete Quellenabschnitte konservativ neu initialisiert werden, niemals als menschliche Anwesenheit/Abwesenheit interpretieren. Persistenter Quellen-Stillstand ohne verifizierte Handys darf auch keinen staendigen neuen Startzeitpunkt erzeugen. Vollabnahme der 24h-Schreiblast und Quell-Ereignis-Cases ist in `tests/JVShadowFinalizationCheckpointTest.php` implementiert. Der SHADOW-Code ist fuer das bestehende passive System fertiggestellt; echte Personenerkennung und sicheres Haus-Leer bleiben separat mess- und nachweispflichtig.
