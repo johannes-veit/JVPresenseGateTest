@@ -1,5 +1,10 @@
 # Anwesenheit / SHADOW – verbindliche Quellen und Entscheidungsregeln
 
+## Weiterentwicklung v0.8.99 Build 180 (21.10.2026)
+
+Die eigenstaendige *Kontaktchronik* fuer Johannes und Carina bindet ihr persistiertes WLAN-/Geofence-Ereignisgedaechtnis an die geprueften vorhandenen Variablen-IDs. Ein Wechsel der verwendeten Variablen, eine unqualifizierte/ausgefallene Quelle oder der erste Start mit altem Zustand erzwingt pro Person eine quellensichere Neubaseline. Ein schon vorher gespeichertes Geofence-OUT/IN darf nicht durch spaetere Meldungen aus einem neuen Smartphone- oder App-Kontext als Ankunft ausgegeben werden. Ein vollstaendiger nachfolgender OUT→IN→MAC-Zyklus bleibt als Smartphone-Indiz moeglich. Geofence Haus/Firma umfasst beide Bereiche, eine Person oder Autofahrt kann dadurch nicht belegt werden. Alle Resultate stehen im bestehenden Einzelbericht; es werden keine neuen Symcon-Variablen oder Attribute benoetigt.
+
+
 Stand: 17.10.2026, ab v0.8.67 Build 148. Dieses Dokument verhindert erneutes Raten bereits geprüfter Kamerarichtungen und unnötige Wiederholung von Tests.
 
 ## Bestand und Objekt-IDs

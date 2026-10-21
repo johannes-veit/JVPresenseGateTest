@@ -34,7 +34,49 @@ final class JVPhoneContactContinuity
             if($start===null)$start=$now;
             $w=$wlanValid&&is_array($wlan['people'][$person]??null)
                 ?$wlan['people'][$person]:[];
+            $g=$person==='johannes'?$jGeo:$cGeo;
+            $authority=$person==='johannes'
+                ?'EXISTING_JOHANNES_EGIGEOZONE_READ_ONLY'
+                :'EXISTING_CARINA_GEOFENCY_READ_ONLY';
+            // Compare independently identified Symcon source objects on
+            // EVERY refresh. A changed, temporarily missing or legacy
+            // unbound source starts a new observational epoch. Otherwise
+            // old OUT/IN events could be joined to a different phone.
             $paired=($w['validatedExistingVariablePair']??false)===true;
+            $macKey=$w['sourceKey']??null;
+            $geoKey=$g['sourceKey']??null;
+            $macBound=$wlanValid&&$paired
+                &&is_string($macKey)
+                &&preg_match('/^WLAN:[1-9][0-9]*:[1-9][0-9]*$/D',$macKey)===1;
+            $geoBound=($g['schema']??null)===1
+                &&($g['authority']??null)===$authority
+                &&($g['enabled']??false)===true
+                &&($g['validatedSource']??false)===true
+                &&is_string($geoKey)
+                &&preg_match('/^(?:EGI|GEOFENCY):(?:[1-9][0-9]*:){3}[1-9][0-9]*$/D',$geoKey)===1;
+            $macContinuous=$macBound
+                &&($previous['lastMacSourceVerified']??false)===true
+                &&($previous['lastMacSourceKey']??null)===$macKey;
+            $geoContinuous=$geoBound
+                &&($previous['lastGeoSourceVerified']??false)===true
+                &&($previous['lastGeoSourceKey']??null)===$geoKey;
+            $sourceRebaselineRequired=!$macContinuous||!$geoContinuous;
+            // Carrying an old timestamp over a source boundary invents a
+            // recovery or return. Existing state without source metadata
+            // (upgrades) is deliberately baselined once, not replayed.
+            if(!$macContinuous){
+                $previous['lastMacAt']=null;
+                $previous['lastRecoveryAt']=null;
+                $previous['lastRecoveryGapSeconds']=null;
+            }
+            if(!$geoContinuous)$previous['lastGeoAt']=null;
+            if($sourceRebaselineRequired){
+                $previous['pendingOutAt']=null;
+                $previous['pendingInAt']=null;
+                $previous['lastPhoneReturnAt']=null;
+                $start=$now;
+                $hadBaseline=false;
+            }
             $mac=self::time($w['lastMacContactAt']??null,$now,self::HISTORY_SECONDS);
             $oldMac=self::time($previous['lastMacAt']??null,$now,self::HISTORY_SECONDS);
             $true=($w['wlanBoolean']??null)===true;
@@ -51,10 +93,6 @@ final class JVPhoneContactContinuity
             if($advanced&&$gap>self::GAP_SECONDS)
                 $status='HOME_MAC_RECOVERED_AFTER_GAP_NOT_ARRIVAL';
 
-            $g=$person==='johannes'?$jGeo:$cGeo;
-            $authority=$person==='johannes'
-                ?'EXISTING_JOHANNES_EGIGEOZONE_READ_ONLY'
-                :'EXISTING_CARINA_GEOFENCY_READ_ONLY';
             $geoOK=($g['schema']??null)===1
                 &&($g['authority']??null)===$authority
                 &&($g['enabled']??false)===true
@@ -122,10 +160,20 @@ final class JVPhoneContactContinuity
                 'pendingOutAt'=>$outAt,'pendingInAt'=>$inAt,
                 'lastPhoneReturnAt'=>$lastReturn,
                 'lastRecoveryAt'=>$recoveredAt,
-                'lastRecoveryGapSeconds'=>$recoveredGap
+                'lastRecoveryGapSeconds'=>$recoveredGap,
+                'lastMacSourceKey'=>$macBound?$macKey:
+                    ($previous['lastMacSourceKey']??null),
+                'lastGeoSourceKey'=>$geoBound?$geoKey:
+                    ($previous['lastGeoSourceKey']??null),
+                'lastMacSourceVerified'=>$macBound,
+                'lastGeoSourceVerified'=>$geoBound
             ];
             $report['people'][$person]=[
                 'status'=>$status,'freshHomeMac'=>$fresh,
+                'sourceContinuityVerified'=>$macContinuous&&$geoContinuous,
+                'macSourceContinuous'=>$macContinuous,
+                'geoSourceContinuous'=>$geoContinuous,
+                'sourceRebaselineRequired'=>$sourceRebaselineRequired,
                 'lastActualMacAt'=>$lastMac,
                 'lastActualMacAgeSeconds'=>$lastMac!==null?$now-$lastMac:null,
                 'contactResumedAfterGap'=>$advanced&&$gap>self::GAP_SECONDS,
