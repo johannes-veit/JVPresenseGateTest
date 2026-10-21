@@ -90,17 +90,24 @@ final class JVCompanyWiFiEvidence
             }
             $out['people'][$person]=$entry;
         }
+        return self::rejectSharedSource($out);
+    }
+
+    /**
+     * After manual and automatic SSID discovery are merged, repeat source
+     * identity checking on the FINAL pair. This routine is pure, and also
+     * protects raw evaluate() from a duplicated source object.
+     */
+    public static function rejectSharedSource(array $out):array
+    {
         $j=$out['people']['johannes']??[];
         $c=$out['people']['carina']??[];
         if(($j['sourceVerified']??false)===true
             &&($c['sourceVerified']??false)===true
             &&is_string($j['sourceKey']??null)
             &&$j['sourceKey']===$c['sourceKey']){
-            // This guards manual + automatically discovered sources even
-            // when they were read and merged on separate paths.
             foreach(['johannes','carina'] as $person){
                 $row=&$out['people'][$person];
-                if($row['workRecent'])$out['workPhoneCount']--;
                 $row['sourceVerified']=false;
                 $row['status']='SHARED_SSID_VARIABLE_SOURCE_COLLISION';
                 $row['ssid']=null;
@@ -110,6 +117,9 @@ final class JVCompanyWiFiEvidence
                 $row['sourceKey']=null;
                 unset($row);
             }
+            // Recalculate the count rather than subtracting an obsolete
+            // pre-merge value from a manually overridden source.
+            $out['workPhoneCount']=0;
             $out['warnings'][]='BOTH_PHONES_SHARE_ONE_SSID_VARIABLE_ID';
         }
         return $out;
