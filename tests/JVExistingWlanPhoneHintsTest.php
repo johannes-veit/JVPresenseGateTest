@@ -8,8 +8,10 @@ function wlanAssert(bool $v,string $why):void {
 }
 $now=1792097000;
 $online=[
- 'johannes'=>['verified'=>true,'wlanValue'=>true,'lastContact'=>$now-80],
- 'carina'=>['verified'=>true,'wlanValue'=>true,'lastContact'=>$now-40]
+ 'johannes'=>['verified'=>true,'wlanValue'=>true,'lastContact'=>$now-80,
+    'boolId'=>19980,'lastContactId'=>26497],
+ 'carina'=>['verified'=>true,'wlanValue'=>true,'lastContact'=>$now-40,
+    'boolId'=>38430,'lastContactId'=>10760]
 ];
 $both=JVExistingWlanPhoneHints::evaluate($online,$now,true,true);
 wlanAssert($both['freshMacConfirmedDeviceCount']===2,
@@ -44,6 +46,37 @@ wlanAssert($dup['people']['johannes']['state']==='SOURCE_IDENTITY_COLLISION'
     'both duplicated WLAN bindings isolated without inventing absence');
 wlanAssert(in_array('BOTH_RESIDENTS_SHARE_ONE_WLAN_SOURCE',
     $dup['warnings'],true),'duplicate source is explicitly diagnosable');
+// Sharing only ONE of the two IDs must also quarantine both residents.
+foreach(['boolId','lastContactId'] as $idField){
+    $partial=$online;
+    $partial['carina'][$idField]=$online['johannes'][$idField];
+    $r=JVExistingWlanPhoneHints::evaluate($partial,$now,true);
+    wlanAssert($r['freshMacConfirmedDeviceCount']===0
+        &&$r['phonesUnavailableOrUnconfirmed']===2
+        &&$r['people']['johannes']['state']==='SOURCE_IDENTITY_COLLISION'
+        &&$r['people']['carina']['state']==='SOURCE_IDENTITY_COLLISION',
+        'a single shared '. $idField.' ID is a two-resident identity collision');
+    wlanAssert(in_array('BOTH_RESIDENTS_PARTIALLY_SHARE_WLAN_VARIABLE_ID',
+        $r['warnings'],true),'partial duplicate WLAN ID is diagnosable');
+}
+$cross=$online;
+$cross['carina']['lastContactId']=$online['johannes']['boolId'];
+$r=JVExistingWlanPhoneHints::evaluate($cross,$now,true);
+wlanAssert($r['freshMacConfirmedDeviceCount']===0,
+    'cross-type reuse of a source object is not two independent phones');
+foreach(['missing_bool','missing_time','same_id','zero_id'] as $case){
+    $badBinding=$online;
+    if($case==='missing_bool')unset($badBinding['johannes']['boolId']);
+    if($case==='missing_time')unset($badBinding['johannes']['lastContactId']);
+    if($case==='same_id')$badBinding['johannes']['lastContactId']=19980;
+    if($case==='zero_id')$badBinding['johannes']['boolId']=0;
+    $r=JVExistingWlanPhoneHints::evaluate($badBinding,$now,true);
+    wlanAssert(!$r['people']['johannes']['validatedExistingVariablePair']
+        &&!$r['people']['johannes']['recentMacEvidence']
+        &&$r['freshMacConfirmedDeviceCount']===1
+        &&$r['people']['johannes']['state']==='SOURCE_NOT_VERIFIED',
+        $case.' rejects an unbound or ill-typed WLAN source without absence');
+}
 $off=$online;
 $off['carina']['wlanValue']=false;
 $one=JVExistingWlanPhoneHints::evaluate($off,$now,true,false);
