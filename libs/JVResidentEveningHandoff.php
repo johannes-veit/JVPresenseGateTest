@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.98 Build 179 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.99 Build 180 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -104,6 +104,13 @@ final class JVResidentEveningHandoff
                 .' | KEIN Ankunftsnachweis');
             $add('Geofence OUT/IN + neuer MAC in diesem Zyklus: '.self::yes(
                 ($contactHistory['people'][$person]['phoneReturnAfterObservedOutIn']??false)===true));
+            $add('KONTAKTHISTORIE QUELLENKETTE: WLAN '
+                .self::yes(($contactHistory['people'][$person]['macSourceContinuous']??false)===true)
+                .' | Geofence '
+                .self::yes(($contactHistory['people'][$person]['geoSourceContinuous']??false)===true)
+                .' | sichere Neubaseline '
+                .self::yes(($contactHistory['people'][$person]['sourceRebaselineRequired']??true)===true)
+                .' | kein menschlicher Ankunftsnachweis');
             $fp=($fusion['authority']??null)==='PERSISTENT_RESIDENT_EVENT_FUSION_READ_ONLY'
                 &&is_array($fusion['people'][$person]??null)
                 ?$fusion['people'][$person]:[];
