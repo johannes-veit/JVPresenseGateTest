@@ -127,12 +127,24 @@ checkTimeline($rot['report']['newDirectionProofsThisRead'],1,
 checkTimeline($rot['report']['directionProofs24h']['HOME_TO_LAGER'],1,
     'old 12th commissioning line not replayed at rotation');
 
+// A real 25h observer pause takes precedence over the stale event
+// content: it MUST be a fresh baseline with no retroactive proofs.
 $staleLog=JVP03IncrementalTimeline::evaluate(
     $historic."\n".$newOut,$repeat['next'],$now+90000);
 checkTimeline($staleLog['report']['directionProofs24h']['HOME_TO_LAGER'],0,
     'proof events older than 24h are not fresh');
 checkTimeline($staleLog['report']['warnings'],
-    ['P03_EVENT_TIME_UNTRUSTED'],'aged proof is explicitly ignored');
+    ['P03_SHADOW_OBSERVATION_GAP'],
+    'long observer outage is quarantined before old bytes replay');
+// Independent clock-filter test: if an otherwise valid recent cursor
+// appends a camera proof from yesterday, its timestamp is untrusted.
+$recentCursor=$repeat['next'];
+$recentCursor['lastObservedAt']=$now+89995;
+$oldProof=JVP03IncrementalTimeline::evaluate(
+    $historic."\n".$newOut,$recentCursor,$now+90000);
+checkTimeline($oldProof['report']['warnings'],
+    ['P03_EVENT_TIME_UNTRUSTED'],
+    'aged proof is explicitly rejected even with a continuous cursor');
 
 $oversized=JVP03IncrementalTimeline::evaluate(str_repeat('X',262145),
     $two['next'],$now+10);
