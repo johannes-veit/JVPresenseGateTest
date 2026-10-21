@@ -1,5 +1,10 @@
 # Anwesenheit / SHADOW – verbindliche Quellen und Entscheidungsregeln
 
+## Weiterentwicklung v0.8.102 Build 183 (21.10.2026)
+
+In `JVPhoneContactContinuity` zaehlt ein persoehnlicher Smartphone-Rueckkehr-Hinweis nur noch bei einer **neu beobachteten** Heim-WLAN-MAC-Aktualisierung mit strikt groesserem Unix-Timestamp als der letzte verifizierte Geofence-IN. Ein alter frischer MAC-Wert, ein gepufferter Standby-Zustand oder derselbe Sekundenstempel zaehlen nicht, auch wenn OUT und IN korrekt vorliegen. Source-IDs und Beobachtungskontinuitaet muessen intakt sein. Die bereits separate `JVResidentEventFusion` hat den gleichen strengen neuen-MAC-Vertrag. Der reine Telefon-Hinweis ist niemals ein Nachweis einer menschlichen Ankunft oder ein Freigabesignal fuer Alarmanlage/Geraete.
+
+
 ## Weiterentwicklung v0.8.101 Build 182 (21.10.2026)
 
 Manuelle und automatische Phone-SSID-Leser exportieren nun die schon bekannte Quelle-ID. Nach Priorisierung muss `JVCompanyWiFiEvidence::rejectSharedSource` zwei voneinander verschiedene finale SSID-IDs nachweisen; sonst werden BEIDE als unqualifiziert ausgegeben, ohne Abwesenheit zu behaupten. Gleichzeitig speichert die bereits vorhandene Kachel-Ortshistorie pro Person die Quelle-ID des zuletzt ermittelten HOME-/WORK-Hinweises. Ein neu verifiziertes anderes WLAN-/SSID-Quellobjekt oder die Migration einer alten ungebundenen Verlaufsaussage loescht nur diese Aussage und nimmt neue Live-Beobachtungen normal entgegen. Bei unveraendertem, aber zeitweise ausgefallenem Quellobjekt kann 'zuletzt unbestaetigt' erhalten bleiben (maximal 24 h), niemals als physisch abwesend. Testbericht diagnostiziert Quellbindung und Neubaseline je Smartphone; alle anderen bereits installierten Module werden nicht veraendert.
