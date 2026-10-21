@@ -267,14 +267,18 @@ class JVPresenceIdentityShadow extends IPSModule
 
     private function readShadowState(string $name): string
     {
-        // Only the two write-optimized event ledgers use their current
-        // runtime buffer. After a SymBox restart it is empty; the durable
-        // attribute is then the authoritative checkpoint.
+        // Read the latest validated in-memory state between 10-minute
+        // durable checkpoints. P03 is historically schema-less: rejecting
+        // its buffer would repeatedly replay old raw-log deltas. An
+        // initialized=false P03 quarantine must also survive every poll.
+        // After SymBox restart the missing buffer falls back to the
+        // last durable, conservatively rebaselined checkpoint.
         if(JVShadowStateCheckpoint::useRuntimeCache($name)){
             $runtime=$this->GetBuffer($name);
             if($runtime!=='' &&$runtime!=='{}'){
                 $decoded=json_decode($runtime,true);
-                if(is_array($decoded)&&($decoded['schema']??null)===1)
+                if(is_array($decoded)
+                    &&JVShadowStateCheckpoint::validRuntimeCache($name,$decoded))
                     return $runtime;
             }
         }
