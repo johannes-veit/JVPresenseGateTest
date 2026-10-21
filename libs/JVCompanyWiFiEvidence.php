@@ -39,7 +39,8 @@ final class JVCompanyWiFiEvidence
                 'status'=>$enabled?'NOT_CONFIGURED_OR_UNVERIFIED':'DISABLED',
                 'ssid'=>null,'ageSeconds'=>null,
                 'workRecent'=>false,'homeSsidRecent'=>false,
-                'boundarySSIDOnly'=>false,'sourceVerified'=>false
+                'boundarySSIDOnly'=>false,'sourceVerified'=>false,
+                'sourceKey'=>null
             ];
             if(!$enabled){$out['people'][$person]=$entry;continue;}
             if(!is_array($row)
@@ -49,6 +50,12 @@ final class JVCompanyWiFiEvidence
                 $out['people'][$person]=$entry;continue;
             }
             $entry['sourceVerified']=true;
+            // The same Symcon String ID cannot identify two separate
+            // resident smartphones. Keep the exact existing object ID
+            // out of public reports except for a non-sensitive source key.
+            $id=$row['sourceVariableID']??null;
+            if(is_int($id)&&$id>0)
+                $entry['sourceKey']='SSID:'.$id;
             $at=$row['updatedAt'];
             if($now<=0||$at<=0||$at>$now+5) {
                 $entry['status']='INVALID_UPDATE_TIME';
@@ -82,6 +89,28 @@ final class JVCompanyWiFiEvidence
                 $entry['status']='OTHER_OR_UNKNOWN_SSID';
             }
             $out['people'][$person]=$entry;
+        }
+        $j=$out['people']['johannes']??[];
+        $c=$out['people']['carina']??[];
+        if(($j['sourceVerified']??false)===true
+            &&($c['sourceVerified']??false)===true
+            &&is_string($j['sourceKey']??null)
+            &&$j['sourceKey']===$c['sourceKey']){
+            // This guards manual + automatically discovered sources even
+            // when they were read and merged on separate paths.
+            foreach(['johannes','carina'] as $person){
+                $row=&$out['people'][$person];
+                if($row['workRecent'])$out['workPhoneCount']--;
+                $row['sourceVerified']=false;
+                $row['status']='SHARED_SSID_VARIABLE_SOURCE_COLLISION';
+                $row['ssid']=null;
+                $row['workRecent']=false;
+                $row['homeSsidRecent']=false;
+                $row['boundarySSIDOnly']=false;
+                $row['sourceKey']=null;
+                unset($row);
+            }
+            $out['warnings'][]='BOTH_PHONES_SHARE_ONE_SSID_VARIABLE_ID';
         }
         return $out;
     }
