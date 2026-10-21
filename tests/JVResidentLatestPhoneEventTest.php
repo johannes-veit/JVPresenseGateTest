@@ -22,8 +22,10 @@ $geoCarina=(new DateTimeImmutable('2026-10-17 16:29:32',
 $oldGeo=(new DateTimeImmutable('2026-10-15 21:27:00',
     new DateTimeZone('Europe/Berlin')))->getTimestamp();
 $wlan=JVExistingWlanPhoneHints::evaluate([
-    'johannes'=>['verified'=>true,'wlanValue'=>true,'lastContact'=>$lastJoh],
-    'carina'=>['verified'=>true,'wlanValue'=>false,'lastContact'=>$lastCarina]
+    'johannes'=>['verified'=>true,'wlanValue'=>true,'lastContact'=>$lastJoh,
+        'boolId'=>19980,'lastContactId'=>26497],
+    'carina'=>['verified'=>true,'wlanValue'=>false,'lastContact'=>$lastCarina,
+        'boolId'=>38430,'lastContactId'=>10760]
 ],$now,true);
 $company=JVCompanyWiFiEvidence::evaluate([],$now,true);
 $jGeo=JVJohannesEgiGeoZoneHints::evaluate([
