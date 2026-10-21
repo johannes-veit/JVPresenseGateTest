@@ -9,10 +9,11 @@ $w=['schema'=>1,'authority'=>'EXISTING_WLAN_MAC_HINTS_READ_ONLY',
     'enabled'=>true,'people'=>['johannes'=>[
         'validatedExistingVariablePair'=>true,'wlanBoolean'=>true,
         'recentMacEvidence'=>true,'state'=>'MAC_CONFIRMED_RECENT_DEVICE_HINT',
-        'lastMacContactAt'=>$t-60]]];
+        'lastMacContactAt'=>$t-60,'sourceKey'=>'WLAN:1001:1002']]];
 $j=['schema'=>1,'authority'=>'EXISTING_JOHANNES_EGIGEOZONE_READ_ONLY',
     'enabled'=>true,'validatedSource'=>true,'insideRecent'=>false,
-    'outsideRecent'=>false,'geofenceReportedInside'=>null,'lastEventAt'=>null];
+    'outsideRecent'=>false,'geofenceReportedInside'=>null,'lastEventAt'=>null,
+    'sourceKey'=>'EGI:101:102:103:104'];
 $c=[];
 $run=static function(int $now,array $prior)use(&$w,&$j,&$c):array {
     return JVPhoneContactContinuity::evaluate($w,$j,$c,$prior,$now);
