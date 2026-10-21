@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.98: Die bereits vorhandene P03-Protokollauswertung erkennt jetzt auch formal fehlerhafte P03 PROOF-Zeilen, ungueltige/unerwartete Routen und vorzeitig abgeschlossene Teilzeilen als Bruch des zweifach verifizierten Kamera-Beweisverlaufs. Echte, beim SymBox-Polling getrennte Protokollfragmente werden genau einmal korrekt zusammengesetzt; ein schon als ungueltig gesperrter letzter Beleg kann nachfolgende neue, wieder gueltige Beweise nicht endlos blockieren. P03-Fehler sperren durchgaengig die Quellenfusion, die Smartphone/P03-Verknuepfung und die bestehende Freigabediagnose. Keine neue Symcon-Variable, Instanz, Attribut, Timer oder Kamera-/P03-/Alarm-/Licht-/Tor-Ansteuerung; alle sieben bisherigen Ausgaben und der eine kopierbare Testbericht bleiben erhalten. Menschliche Identitaet, Hausleerstand und Fahrzeugfahrt werden nicht zertifiziert."
+      "caption": "SHADOW v0.8.99: Smartphone-Kontakthistorie jetzt nach WLAN-/Geofence-Quellenwechsel, Datenluecke oder alter gespeicherter Bindung sicher neu baseliniert. Ein bereits vorhandenes OUT/IN aus einer frueheren Objektzuordnung wird nicht mehr mit neuem MAC-Kontakt zur vermeintlichen Handy-Ankunft verknuepft. Neue, nach dem Quellenwechsel vollstaendig beobachtete Handy-Zyklen bleiben auswertbar; zwei Personen werden unabhaengig behandelt. Die bestehende Textdiagnose zeigt die fortlaufende Quellenkette und den Neubaseline-Status. Alle bisher funktionierenden P03-Beweispruefungen aus v0.8.98 bleiben bestehen. Nur lesen, 7 Ausgaben, 15 persistierte Attribute, keine neuen Variablen, Instanzen, Timer, Geraete-Aktionen oder Datenuebertragungen."
     },
     {
       "type": "Label",
