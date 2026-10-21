@@ -91,11 +91,13 @@ cursor107($recovered['report']['newDirectionProofsThisRead']===0,
 // The source-loss quarantine must also win over an older healthy
 // durable state. It is schema-less and can have lastRaw=null.
 $quarantine=['initialized'=>false,'lastRaw'=>null,'events'=>[]];
-$m->SetBuffer('P03IncrementalTimeline',
+$write->invoke($m,'P03IncrementalTimeline',
     json_encode($quarantine,JSON_THROW_ON_ERROR));
 cursor107($read->invoke($m,'P03IncrementalTimeline')
+        ===json_encode($quarantine,JSON_THROW_ON_ERROR)
+    &&$m->ReadAttributeString('PersistP03IncrementalTimeline')
         ===json_encode($quarantine,JSON_THROW_ON_ERROR),
-    'schema-less quarantine is honored immediately between polls');
+    'source-loss P03 quarantine is honored and immediately durable');
 $invalid=$quarantine;$invalid['events']=[['forged'=>true]];
 $m->SetBuffer('P03IncrementalTimeline',json_encode($invalid));
 cursor107($read->invoke($m,'P03IncrementalTimeline')
