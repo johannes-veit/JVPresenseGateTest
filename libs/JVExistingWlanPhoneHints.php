@@ -60,12 +60,20 @@ final class JVExistingWlanPhoneHints
             }elseif(!is_bool($snapshot['wlanValue']??null)
                 ||!is_int($snapshot['lastContact']??null)){
                 $entry['warnings'][]='INVALID_WLAN_VALUE_TYPES';
+            }elseif(!is_int($snapshot['boolId']??null)
+                ||($snapshot['boolId']??0)<=0
+                ||!is_int($snapshot['lastContactId']??null)
+                ||($snapshot['lastContactId']??0)<=0
+                ||$snapshot['boolId']===$snapshot['lastContactId']){
+                // A snapshot claiming "verified" without TWO different
+                // actual Symcon variable IDs is not an independently
+                // identifiable source and cannot be counted as a device.
+                $entry['warnings'][]='INVALID_PAIR_ID_BINDING';
             }else{
                 $entry['validatedExistingVariablePair']=true;
-                $bid=$snapshot['boolId']??null;
-                $tid=$snapshot['lastContactId']??null;
-                if(is_int($bid)&&$bid>0&&is_int($tid)&&$tid>0&&$bid!==$tid)
-                    $entry['sourceKey']='WLAN:'.$bid.':'.$tid;
+                $bid=$snapshot['boolId'];
+                $tid=$snapshot['lastContactId'];
+                $entry['sourceKey']='WLAN:'.$bid.':'.$tid;
                 $entry['wlanBoolean']=$snapshot['wlanValue'];
                 $last=$snapshot['lastContact'];
                 if($last<=0||$last>$now+5){
@@ -96,10 +104,19 @@ final class JVExistingWlanPhoneHints
         // residents, e.g. after an incorrect duplicated Symcon mapping.
         $j=$report['people']['johannes']??[];
         $c=$report['people']['carina']??[];
-        if(($j['validatedExistingVariablePair']??false)===true
+        // Even a single shared Boolean or timestamp ID cross-wires both
+        // residents. A full-pair equality check alone missed these cases.
+        $jIds=is_string($j['sourceKey']??null)
+            ?explode(':',$j['sourceKey']):[];
+        $cIds=is_string($c['sourceKey']??null)
+            ?explode(':',$c['sourceKey']):[];
+        $shared=($j['validatedExistingVariablePair']??false)===true
             &&($c['validatedExistingVariablePair']??false)===true
-            &&is_string($j['sourceKey']??null)
-            &&$j['sourceKey']===$c['sourceKey']){
+            &&count($jIds)===3&&count($cIds)===3
+            &&($jIds[1]===$cIds[1]||$jIds[2]===$cIds[2]
+                ||$jIds[1]===$cIds[2]||$jIds[2]===$cIds[1]);
+        if($shared){
+            $partiallyShared=($j['sourceKey']??null)!==($c['sourceKey']??null);
             foreach(['johannes','carina'] as $person){
                 $row=&$report['people'][$person];
                 if($row['recentMacEvidence']){
@@ -117,6 +134,8 @@ final class JVExistingWlanPhoneHints
                 unset($row);
             }
             $report['warnings'][]='BOTH_RESIDENTS_SHARE_ONE_WLAN_SOURCE';
+            if($partiallyShared)$report['warnings'][]=
+                'BOTH_RESIDENTS_PARTIALLY_SHARE_WLAN_VARIABLE_ID';
         }
         if($enabled){
             $confirmed=$report['freshMacConfirmedDeviceCount'];

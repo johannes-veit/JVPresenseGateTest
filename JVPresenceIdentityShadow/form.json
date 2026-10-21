@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.99: Smartphone-Kontakthistorie jetzt nach WLAN-/Geofence-Quellenwechsel, Datenluecke oder alter gespeicherter Bindung sicher neu baseliniert. Ein bereits vorhandenes OUT/IN aus einer frueheren Objektzuordnung wird nicht mehr mit neuem MAC-Kontakt zur vermeintlichen Handy-Ankunft verknuepft. Neue, nach dem Quellenwechsel vollstaendig beobachtete Handy-Zyklen bleiben auswertbar; zwei Personen werden unabhaengig behandelt. Die bestehende Textdiagnose zeigt die fortlaufende Quellenkette und den Neubaseline-Status. Alle bisher funktionierenden P03-Beweispruefungen aus v0.8.98 bleiben bestehen. Nur lesen, 7 Ausgaben, 15 persistierte Attribute, keine neuen Variablen, Instanzen, Timer, Geraete-Aktionen oder Datenuebertragungen."
+      "caption": "SHADOW v0.8.100: Heim-WLAN-Nachweise von Johannes und Carina werden nur noch aus zwei eindeutig verschiedenen, gueltigen Symcon-Variablen pro Handy uebernommen. Vollstaendig oder nur teilweise doppelt zugeordnete Boolean-/MAC-Zeit-IDs sperren beide betroffenen Quellen, statt ein Smartphone doppelt zu zaehlen. Fehlende, nullwertige oder innerhalb eines Paares identische IDs koennen keinen frischen Heim-WLAN-Nachweis mehr erzeugen. Die bewaehrte 300-s-MAC-Frische, 660-s-Standby-Toleranz, Geofence-/P03-Regeln und v0.8.99-Quellenneubaseline bleiben erhalten. Quellenfehler bleiben erkennbar und bedeuten niemals Abwesenheit. Rein lesend, 7 SHADOW-Ausgaben, 15 bestehende Attribute; keine neuen Objekte oder Fremdaktionen."
     },
     {
       "type": "Label",

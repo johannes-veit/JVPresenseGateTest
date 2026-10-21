@@ -1,5 +1,10 @@
 # Anwesenheit / SHADOW – verbindliche Quellen und Entscheidungsregeln
 
+## Weiterentwicklung v0.8.100 Build 181 (21.10.2026)
+
+Die bestehende WLAN-Paarvalidierung verlangt neben geprüfter Benennung/Typ nun zwingend zwei verschiedene positive Objekt-IDs je Bewohner. Quellvariable #19980/#26497 gehoert Johannes und #38430/#10760 Carina. Bereits eine einzelne mehrfach verwendete Variable zwischen beiden Bewohnern erzwingt fuer beide Geraete `SOURCE_IDENTITY_COLLISION`. Ein unvollstaendiges Paar ergibt `SOURCE_NOT_VERIFIED`. Bei keinem der beiden Fehler darf aus dem fehlenden Handynachweis eine menschliche Abwesenheit entstehen. Die in v0.8.99 verbesserte Epochengrenze fuer Smartphone-Kontakthistorie bleibt bestehen.
+
+
 ## Weiterentwicklung v0.8.99 Build 180 (21.10.2026)
 
 Die eigenstaendige *Kontaktchronik* fuer Johannes und Carina bindet ihr persistiertes WLAN-/Geofence-Ereignisgedaechtnis an die geprueften vorhandenen Variablen-IDs. Ein Wechsel der verwendeten Variablen, eine unqualifizierte/ausgefallene Quelle oder der erste Start mit altem Zustand erzwingt pro Person eine quellensichere Neubaseline. Ein schon vorher gespeichertes Geofence-OUT/IN darf nicht durch spaetere Meldungen aus einem neuen Smartphone- oder App-Kontext als Ankunft ausgegeben werden. Ein vollstaendiger nachfolgender OUT→IN→MAC-Zyklus bleibt als Smartphone-Indiz moeglich. Geofence Haus/Firma umfasst beide Bereiche, eine Person oder Autofahrt kann dadurch nicht belegt werden. Alle Resultate stehen im bestehenden Einzelbericht; es werden keine neuen Symcon-Variablen oder Attribute benoetigt.
