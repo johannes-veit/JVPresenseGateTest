@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.100: Heim-WLAN-Nachweise von Johannes und Carina werden nur noch aus zwei eindeutig verschiedenen, gueltigen Symcon-Variablen pro Handy uebernommen. Vollstaendig oder nur teilweise doppelt zugeordnete Boolean-/MAC-Zeit-IDs sperren beide betroffenen Quellen, statt ein Smartphone doppelt zu zaehlen. Fehlende, nullwertige oder innerhalb eines Paares identische IDs koennen keinen frischen Heim-WLAN-Nachweis mehr erzeugen. Die bewaehrte 300-s-MAC-Frische, 660-s-Standby-Toleranz, Geofence-/P03-Regeln und v0.8.99-Quellenneubaseline bleiben erhalten. Quellenfehler bleiben erkennbar und bedeuten niemals Abwesenheit. Rein lesend, 7 SHADOW-Ausgaben, 15 bestehende Attribute; keine neuen Objekte oder Fremdaktionen."
+      "caption": "SHADOW v0.8.101: Zwei vorhandene SSID-Quellen werden auch nach Zusammenfuehren der expliziten und automatisch gefundenen Variablen auf dieselbe Symcon-ID geprueft. Ein einziges SSID-Objekt kann nicht gleichzeitig beiden Handys zugeordnet werden. Der letzte bekannte HOME-/WORK-WLAN-Ort in der Kachel wird nun an seine konkrete Heim-WLAN-/SSID-Quell-ID gebunden. Quellenwechsel oder altes gespeichertes Kachelgedaechtnis ohne Herkunft setzen nur den betroffenen Ortsverlauf sicher neu auf. Echte aktuelle Telefonhinweise bleiben sichtbar; Standby ohne neue Meldung bleibt unbestaetigt, nicht abwesend. Der bisherige einzige kopierbare Bericht zeigt Quellenherkunft/Neubaseline je Bewohner. Keine neuen Symcon-Variablen, Attribute, Instanzen, Timer oder Schaltaktionen; bestehende 7 Ausgaben und 15 Attribute bleiben."
     },
     {
       "type": "Label",
