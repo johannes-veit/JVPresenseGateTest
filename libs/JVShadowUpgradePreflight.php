@@ -59,8 +59,16 @@ final class JVShadowUpgradePreflight
             }
             $report['existingAttributes']++;
             $states[$name]=$decoded;
-            if(in_array($name,self::CRITICAL,true)
-                &&isset($decoded['schema'])&&$decoded['schema']!==1){
+            // Event fusion and route ledger ALWAYS persist schema=1.
+            // A missing marker would otherwise be treated as fresh
+            // baseline by their evaluators, silently discarding critical
+            // previously stored evidence. P03 is historically schema-less.
+            if(in_array($name,['ResidentEventFusion','RouteEpisodeLedger'],true)
+                &&($decoded['schema']??null)!==1){
+                self::issue($report,$name,'UNSUPPORTED_CRITICAL_SCHEMA');
+            }elseif($name==='P03IncrementalTimeline'
+                &&array_key_exists('schema',$decoded)
+                &&$decoded['schema']!==1){
                 self::issue($report,$name,'UNSUPPORTED_CRITICAL_SCHEMA');
             }
         }
@@ -113,6 +121,16 @@ final class JVShadowUpgradePreflight
                 self::issue($report,'RouteEpisodeLedger','ROUTE_QUARANTINE_INVALID');
             }else{
                 $report['ambiguousRouteOutstanding']=$outstanding;
+                // Malformed open corridor rows were previously ignored
+                // silently by route evaluation. Never erase them during
+                // the upgrade without preserving a critical review state.
+                foreach($open as $pass){
+                    if(!self::validPassage($pass,$now)){
+                        self::issue($report,'RouteEpisodeLedger',
+                            'OPEN_PASSAGE_INVALID');
+                        break;
+                    }
+                }
             }
         }
         $timeline=$states['P03IncrementalTimeline']??null;
@@ -121,12 +139,44 @@ final class JVShadowUpgradePreflight
             $events=$timeline['events']??[];
             if(!is_array($events)||!array_is_list($events)
                 ||count($events)>256
+                ||!is_bool($timeline['initialized']??null)
                 ||(($timeline['initialized']??false)===true
                     &&!is_string($timeline['lastRaw']??null))){
                 self::issue($report,'P03IncrementalTimeline','P03_CURSOR_INVALID');
+            }else{
+                foreach($events as $event){
+                    if(!self::validPassage($event,$now)
+                        ||!is_string($event['localTime']??null)
+                        ||preg_match('/^20\\d\\d-\\d\\d-\\d\\d '
+                            .'\\d\\d:\\d\\d:\\d\\d$/D',
+                            $event['localTime'])!==1){
+                        self::issue($report,'P03IncrementalTimeline',
+                            'P03_HISTORICAL_PROOF_INVALID');
+                        break;
+                    }
+                }
             }
         }
         return self::finish($report);
+    }
+
+    /**
+     * Validate serialized anonymous camera passages before allowing an
+     * upgrade to rewrite source/proof history. A stale past event can be
+     * pruned normally, but impossible future times and forged routes
+     * cannot be silently accepted or discarded from critical storage.
+     */
+    private static function validPassage(mixed $row,int $now):bool
+    {
+        if(!is_array($row)
+            ||($row['source']??null)!=='P03_TWO_MAST_VERIFIED'
+            ||!is_int($row['at']??null)
+            ||$row['at']<1||$row['at']>$now+self::MAX_FUTURE_SECONDS
+            ||!in_array($row['direction']??null,
+                ['HOME_TO_LAGER','LAGER_TO_HOME'],true))return false;
+        $route=$row['direction']==='HOME_TO_LAGER'
+            ?'P03_2CAM_JV_THEN_WORK':'P03_2CAM_WORK_THEN_JV';
+        return ($row['route']??$route)===$route;
     }
 
     private static function issue(array &$report,string $name,string $code):void
