@@ -273,16 +273,21 @@ class JVPresenceIdentityShadow extends IPSModule
         // initialized=false P03 quarantine must also survive every poll.
         // After SymBox restart the missing buffer falls back to the
         // last durable, conservatively rebaselined checkpoint.
+        $stored=$this->ReadAttributeString('Persist'.$name);
         if(JVShadowStateCheckpoint::useRuntimeCache($name)){
             $runtime=$this->GetBuffer($name);
-            if($runtime!=='' &&$runtime!=='{}'){
+            // A repaired/restored persistent attribute takes priority over
+            // a stale in-memory sample. The checksum is an existing
+            // volatile buffer only; no new durable attribute or variable.
+            $origin=$this->GetBuffer('CheckpointOrigin_'.$name);
+            if($runtime!=='' &&$runtime!=='{}'
+                &&$origin!==''&&hash_equals($origin,hash('sha256',$stored))){
                 $decoded=json_decode($runtime,true);
                 if(is_array($decoded)
                     &&JVShadowStateCheckpoint::validRuntimeCache($name,$decoded))
                     return $runtime;
             }
         }
-        $stored=$this->ReadAttributeString('Persist'.$name);
         if($stored!=='' && $stored!=='{}')return $stored;
         $legacy=$this->GetBuffer($name);
         if($legacy!=='' && $legacy!=='{}')return $legacy;
@@ -295,11 +300,19 @@ class JVPresenceIdentityShadow extends IPSModule
         $durable=$this->ReadAttributeString('Persist'.$name);
         if(JVShadowStateCheckpoint::shouldPersist(
             $name,$durable,$value,time()
-        ))$this->WriteAttributeString('Persist'.$name,$value);
+        )){
+            $this->WriteAttributeString('Persist'.$name,$value);
+            $durable=$value;
+        }
         // Runtime cache keeps the complete latest state between 60-second
         // polls; all semantic changes are already durable immediately.
         if($this->GetBuffer($name)!==$value)
             $this->SetBuffer($name,$value);
+        if(JVShadowStateCheckpoint::useRuntimeCache($name)){
+            $anchor=hash('sha256',$durable);
+            if($this->GetBuffer('CheckpointOrigin_'.$name)!==$anchor)
+                $this->SetBuffer('CheckpointOrigin_'.$name,$anchor);
+        }
     }
 
     private function migrateLegacyShadowBuffers(): void
