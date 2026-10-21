@@ -57,12 +57,20 @@ final class JVResidentVisuState
             $wp=$wlanAuthorized&&is_array($wlan['people'][$person]??null)
                 ?$wlan['people'][$person]:[];
             $homeMacAt=null;
+            $macKey=($wp['validatedExistingVariablePair']??false)===true
+                &&is_string($wp['sourceKey']??null)
+                &&preg_match('/^WLAN:[1-9][0-9]*:[1-9][0-9]*$/D',$wp['sourceKey'])===1
+                ?$wp['sourceKey']:null;
             if(($wp['validatedExistingVariablePair']??false)===true
                 &&($wp['state']??null)==='MAC_CONFIRMED_RECENT_DEVICE_HINT'
                 &&($wp['recentMacEvidence']??false)===true)
                 $homeMacAt=self::validTime($wp['lastMacContactAt']??null,$now,self::CURRENT_PHONE_SECONDS);
             $ssid=$ssidAuthorized&&is_array($work['people'][$person]??null)
                 ?$work['people'][$person]:[];
+            $ssidKey=($ssid['sourceVerified']??false)===true
+                &&is_string($ssid['sourceKey']??null)
+                &&preg_match('/^SSID:[1-9][0-9]*$/D',$ssid['sourceKey'])===1
+                ?$ssid['sourceKey']:null;
             $ssidAt=null;
             if(($ssid['sourceVerified']??false)===true
                 &&is_int($ssid['ageSeconds']??null)
@@ -99,13 +107,34 @@ final class JVResidentVisuState
             }elseif($workAt!==null){
                 $zone='WORK';$at=$workAt;$basis='PHONE_COMPANY_SSID';
             }
+            $currentKey=$zone==='HOME'
+                ?(($basis==='PHONE_HOME_SSID')?$ssidKey:$macKey)
+                :($zone==='WORK'?$ssidKey:null);
             $previous=$prior['people'][$person]??null;
             $previous=is_array($previous)?$previous:[];
             $lastZone=$previous['zone']??null;
             $lastAt=$previous['at']??null;
+            $priorKey=$previous['sourceKey']??null;
+            $priorKeyValid=is_string($priorKey)
+                &&preg_match('/^(?:WLAN:[1-9][0-9]*:[1-9][0-9]*|SSID:[1-9][0-9]*)$/D',
+                    $priorKey)===1;
+            $sourceChanged=$priorKeyValid
+                &&((str_starts_with($priorKey,'WLAN:')
+                        &&$macKey!==null&&$priorKey!==$macKey)
+                    ||(str_starts_with($priorKey,'SSID:')
+                        &&$ssidKey!==null&&$priorKey!==$ssidKey));
+            // v0.8.100's saved zone had no source identity. Keep none of
+            // that legacy hint once a genuinely bound device is known.
+            // Stale/unavailable *unchanged* sources retain an explicitly
+            // unconfirmed last-known location for up to 24 hours.
+            $legacyUnbound=$lastAt!==null&&!$priorKeyValid
+                &&($macKey!==null||$ssidKey!==null);
+            if($sourceChanged||$legacyUnbound){
+                $lastZone=null;$lastAt=null;$priorKey=null;
+            }
             if(!in_array($lastZone,['HOME','WORK'],true)
                 ||self::validTime($lastAt,$now,self::PAST_CONTEXT_SECONDS)===null){
-                $lastZone=null;$lastAt=null;
+                $lastZone=null;$lastAt=null;$priorKey=null;
             }
             // Never roll the resident's display back to an OLDER phone
             // location event after a more recent opposite-zone observation.
@@ -120,9 +149,12 @@ final class JVResidentVisuState
             if(!$conflict&&$at!==null
                 &&($lastAt===null||$at>=$lastAt)){
                 $lastZone=$zone;$lastAt=$at;
+                $priorKey=$currentKey;
             }
             if($lastZone!==null)
-                $next['people'][$person]=['zone'=>$lastZone,'at'=>$lastAt];
+                $next['people'][$person]=[
+                    'zone'=>$lastZone,'at'=>$lastAt,'sourceKey'=>$priorKey
+                ];
             if($conflict){
                 $decision='CONFLICT';
                 $label='WIDERSPRUCH (Heim-/Firmen-WLAN)';
@@ -184,6 +216,8 @@ final class JVResidentVisuState
                 'homeSSIDAt'=>$homeSsidAt,
                 'wifiConflict'=>$conflict,
                 'rejectedOlderOppositeZoneSource'=>$outOfOrderZone,
+                'displaySourceRebaseline'=>$sourceChanged||$legacyUnbound,
+                'lastKnownBoundToSource'=>$priorKey!==null,
                 'lastKnownDeviceZone'=>$lastZone,
                 'lastKnownDeviceAt'=>$lastAt,
                 'lastKnownDeviceAgeSeconds'=>$lastAt!==null?$now-$lastAt:null,
