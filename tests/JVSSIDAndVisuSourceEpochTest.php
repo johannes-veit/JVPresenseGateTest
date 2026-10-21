@@ -165,8 +165,9 @@ boundPhoneCheck(str_contains($main,
     "'residentVisuState'=>" . '$tileResident' . "['report']"),
     'published resident visu uses final tile source pair');
 boundPhoneCheck(str_contains($main,
-    '$this->setResidentDisplayValues('."\\n            "
-    . '$tileResident' . "['report']['people']['johannes']['display']"),
+    '$this->setResidentDisplayValues(')
+    &&str_contains($main,
+        '$tileResident' . "['report']['people']['johannes']['display']"),
     'named resident variables use final tile view');
 boundPhoneCheck(str_contains($main,
     "' | Firmen-WLAN Handys: '." . '$tileWork' . "['workPhoneCount']"),
