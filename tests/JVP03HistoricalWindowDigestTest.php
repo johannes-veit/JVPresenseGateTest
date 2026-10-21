@@ -18,9 +18,32 @@ for($i=0;$i<28;$i++){
         ?'P03_2CAM_JV_THEN_WORK':'P03_2CAM_WORK_THEN_JV';
     $raw[]='['.$atStr.'] P03 PROOF VERIFIED '.$dir.' via '.$route;
 }
+// Generate the 28 synthetic events under continuous hourly testing.
+// Catching up after an unobserved hour is intentionally NOT allowed.
+$rawText='';$last=$t-10;$prev=$base['next'];$accepted=0;
+foreach($raw as $i=>$line){
+    $at=$i===0?$t+60:$t+1800+($i-1)*14;
+    while($at-$last>900){
+        $last+=600;
+        $tick=JVP03IncrementalTimeline::evaluate($rawText,$prev,$last);
+        $prev=$tick['next'];
+    }
+    $rawText.=($rawText===''?'':"\n").$line;
+    $tick=JVP03IncrementalTimeline::evaluate($rawText,$prev,$at);
+    $accepted+=$tick['report']['newDirectionProofsThisRead'];
+    $prev=$tick['next'];$last=$at;
+}
+$end=$t+3900;
+while($end-$last>900){
+    $last+=600;
+    $tick=JVP03IncrementalTimeline::evaluate($rawText,$prev,$last);
+    $prev=$tick['next'];
+}
 $p03=JVP03IncrementalTimeline::evaluate(
-    implode("\n",$raw),$base['next'],$t+3900
-)['report'];
+    $rawText,$prev,$end)['report'];
+digestCheck($accepted===28
+    &&$p03['newDirectionProofsThisRead']===0,
+    'all synthetic P03 proofs arrived under continuous SHADOW observation');
 $r=JVP03HistoricalWindowDigest::summarize($p03,$t+3900);
 $all=implode("\n",$r['hourlyLines']);
 digestCheck($r['status']==='RETAINED_ANONYMOUS_HISTORY_24H'
