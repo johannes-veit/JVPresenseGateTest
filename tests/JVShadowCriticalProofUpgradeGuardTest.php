@@ -9,7 +9,9 @@ $proof=[
     'at'=>$t-60,
     'source'=>'P03_TWO_MAST_VERIFIED',
     'direction'=>'HOME_TO_LAGER','route'=>'P03_2CAM_JV_THEN_WORK',
-    'localTime'=>'2030-03-17 14:00:00'
+    'localTime'=>(new DateTimeImmutable('@'.($t-60)))
+        ->setTimezone(new DateTimeZone('Europe/Berlin'))
+        ->format('Y-m-d H:i:s')
 ];
 $valid=[
  'ResidentEventFusion'=>json_encode([
@@ -63,6 +65,16 @@ $broken['bad P03 time']=function(array $s):array{
 $broken['bad P03 textual time']=function(array $s):array{
     $p=json_decode($s['P03IncrementalTimeline'],true);
     $p['events'][0]['localTime']='BAD_TIMESTAMP';
+    $s['P03IncrementalTimeline']=json_encode($p);return $s;
+};
+$broken['P03 local time disagrees with Unix timestamp']=function(array $s):array{
+    $p=json_decode($s['P03IncrementalTimeline'],true);
+    $p['events'][0]['localTime']='2026-01-01 00:00:00';
+    $s['P03IncrementalTimeline']=json_encode($p);return $s;
+};
+$broken['uninitialized P03 retains old live proof']=function(array $s):array{
+    $p=json_decode($s['P03IncrementalTimeline'],true);
+    $p['initialized']=false;$p['lastRaw']=null;
     $s['P03IncrementalTimeline']=json_encode($p);return $s;
 };
 $broken['bad P03 initialized type']=function(array $s):array{
