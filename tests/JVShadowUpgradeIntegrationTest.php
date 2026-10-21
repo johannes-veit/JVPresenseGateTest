@@ -109,4 +109,58 @@ upgradeIntegration(($p03AfterRestart['events']??null)===[]
     &&($p03AfterRestart['initialized']??null)===false,
     'after actual lost source and SymBox process restart no old camera proof resurrects');
 
-echo "SHADOW pre-upgrade instance preservation and recovery PASS\n";
+
+// Final-runtime guard: unlike ordinary bad P03/WLAN inputs, an
+// unexpected PHP exception halfway through an active Refresh formerly
+// left PREVIOUS positive named statuses and the combined Boolean on
+// the user's SymBox. No person/absence claim may survive that failure.
+class JVInjectedRefreshFault extends JVPresenceIdentityShadow {
+    public bool $simulateBadRead=false;
+    public function ReadPropertyString(string $name):string {
+        if($this->simulateBadRead&&$name==='SensorSources')
+            throw new RuntimeException('PRIVATE_RUNTIME_DIAGNOSTIC_PAYLOAD');
+        return parent::ReadPropertyString($name);
+    }
+}
+$faulty=new JVInjectedRefreshFault();
+$faulty->Create();
+$faulty->setProperty('Enabled',true);
+$faulty->setProperty('P03InstanceID',0);
+$faulty->setProperty('SensorSources','[]');
+$faulty->ApplyChanges();
+upgradeIntegration($faulty->instanceStatus===102,
+    'fresh passive instance initially active for runtime failure test');
+$faulty->SetValue('JohannesPresence','ANWESEND');
+$faulty->SetValue('CarinaPresence','ANWESEND');
+$faulty->SetValue('PresenceDetected',true);
+$faulty->SetValue('Status','ANWESEND VERIFIED STALE');
+$faulty->SetValue('ResidentTile','<section>STALER-STATUS</section>');
+$faulty->simulateBadRead=true;
+$raised=false;
+try{$faulty->Refresh();}
+catch(RuntimeException $error){$raised=true;}
+$blocked=json_decode((string)$faulty->GetValue('EvidenceJSON'),true);
+upgradeIntegration($raised
+    &&$faulty->instanceStatus===201
+    &&$faulty->GetValue('PresenceDetected')===false
+    &&$faulty->GetValue('JohannesPresence')==='NICHT BESTÄTIGT'
+    &&$faulty->GetValue('CarinaPresence')==='NICHT BESTÄTIGT'
+    &&($blocked['authority']??null)==='SHADOW_RUNTIME_READ_ONLY_BLOCK'
+    &&($blocked['mayArmAlarm']??true)===false
+    &&str_contains((string)$faulty->GetValue('Status'),'SHADOW FEHLER'),
+    'unexpected thrown Refresh invalidates every stale positive presence');
+upgradeIntegration(
+    !str_contains((string)$faulty->GetValue('TestReport'),
+        'PRIVATE_RUNTIME_DIAGNOSTIC_PAYLOAD')
+    &&!str_contains((string)$faulty->GetValue('EvidenceJSON'),
+        'PRIVATE_RUNTIME_DIAGNOSTIC_PAYLOAD'),
+    'runtime exception details/credentials are never exported to user variables');
+$faulty->simulateBadRead=false;
+$faulty->Refresh();
+$recovered=json_decode((string)$faulty->GetValue('EvidenceJSON'),true);
+upgradeIntegration($faulty->instanceStatus===102
+    &&($recovered['authority']??null)!=='SHADOW_RUNTIME_READ_ONLY_BLOCK'
+    &&$faulty->GetValue('PresenceDetected')===false,
+    'next successful complete Refresh automatically restores active native status');
+
+echo "SHADOW pre-upgrade, runtime fail-closed and recovery PASS\n";

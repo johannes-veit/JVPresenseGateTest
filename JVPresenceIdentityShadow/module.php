@@ -2118,6 +2118,46 @@ class JVPresenceIdentityShadow extends IPSModule
             $upgradePreflight,$presenceSafetyCase
         ));
         $this->publish($report,$state);
+        // A prior unexpected runtime error must not leave the native
+        // instance RED once a complete fresh read has succeeded again.
+        if($this->GetBuffer('RefreshFailed')==='1'){
+            $this->SetStatus(102);
+            $this->SetBuffer('RefreshFailed','0');
+        }
+        } catch(Throwable $e) {
+            // An uncaught failure during a timer/VM_UPDATE refresh would
+            // otherwise leave the PREVIOUS "ANWESEND" display and
+            // PresenceDetected=true visible indefinitely. Fail CLOSED,
+            // preserve durable ledgers, redact exception messages and
+            // never execute a foreign module or physical action.
+            try {$this->SetBuffer('RefreshFailed','1');}
+            catch(Throwable $ignored){}
+            try {$this->SetStatus(201);}
+            catch(Throwable $ignored){}
+            try {
+                $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
+                $this->setPresenceDetected(false);
+                $this->setResidentTile('<section>SHADOW Auswertungsfehler – '
+                    .'Anwesenheit derzeit nicht bestaetigt.</section>');
+                $this->setTestReport('SHADOW LAUFZEITFEHLER: '
+                    .'Auswertung gestoppt. Zuvor sichtbare Anwesenheits-'
+                    .'hinweise ungueltig. Persistente SHADOW-Zustaende '
+                    .'bleiben unveraendert; keine Abwesenheit, keine '
+                    .'Alarmfreigabe, keine Fremdsteuerung. '
+                    .'Modul-Fehlerstatus und Debug pruefen.');
+                $this->publish([
+                    'schema'=>1,'authority'=>'SHADOW_RUNTIME_READ_ONLY_BLOCK',
+                    'personPresenceMayBeChanged'=>false,
+                    'propertyEmptyMayBeCertified'=>false,
+                    'mayArmAlarm'=>false,'maySwitchDevices'=>false,
+                    'warnings'=>['SHADOW_UNEXPECTED_REFRESH_FAILURE']
+                ],'SHADOW FEHLER – keine Anwesenheit bestaetigt');
+            }catch(Throwable $ignored){}
+            try {
+                $this->SendDebug('ShadowRefresh',
+                    'UNEXPECTED_EXCEPTION_CLASS='.get_class($e),0);
+            }catch(Throwable $ignored){}
+            throw $e;
         } finally {
             IPS_SemaphoreLeave($semaphore);
             // Coalesce multiple sensor notifications into at most one
