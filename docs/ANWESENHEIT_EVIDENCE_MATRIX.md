@@ -1,5 +1,10 @@
 # Anwesenheit / SHADOW – verbindliche Quellen und Entscheidungsregeln
 
+## Weiterentwicklung v0.8.105 Build 186 – technische Fertigstellung (21.10.2026)
+
+Die beiden lokalen, dauerhaften Zustandsattribute `P03IncrementalTimeline` und `ResidentPhoneContinuity` sind jetzt im vorhandenen `JVShadowStateCheckpoint`-Schreibbudget optimiert: ausschliesslich `lastObservedAt`-Heartbeat ohne echte Ereignisaenderung wird im RAM laufend aktualisiert und etwa alle 600 Sekunden flashgespeichert. Eine neue Proofzeile, ein Kontakt-/Geofence-Ereignis, eine Quell-Aenderung oder ein Zeitfehler schreibt sofort. Bei ungeplantem Neustart mit verlorenem RAM koennen nicht nachhaltig beobachtete Quellenabschnitte konservativ neu initialisiert werden, niemals als menschliche Anwesenheit/Abwesenheit interpretieren. Persistenter Quellen-Stillstand ohne verifizierte Handys darf auch keinen staendigen neuen Startzeitpunkt erzeugen. Vollabnahme der 24h-Schreiblast und Quell-Ereignis-Cases ist in `tests/JVShadowFinalizationCheckpointTest.php` implementiert. Der SHADOW-Code ist fuer das bestehende passive System fertiggestellt; echte Personenerkennung und sicheres Haus-Leer bleiben separat mess- und nachweispflichtig.
+
+
 ## Weiterentwicklung v0.8.104 Build 185 (21.10.2026)
 
 Auch die P03-Rohprotokoll-Quellchronik fuehrt `lastObservedAt` in ihrem bestehenden Zustand. Nach >900s zwischen zwei SHADOW-Polls sowie bei alten Speicherstaenden ohne Beobachtungszeit oder unplausibel rueckwaerts springender Uhr muss der gesamte aktuelle P03-Protokolltext als Baseline `P03_SHADOW_OBSERVATION_GAP` gelten. Ein Proof, der waehrend der unbeobachteten Pause geschrieben wurde, ist nicht als neu beobachtete Live-Richtung zu werten. Erst echte spaetere, lueckenlos angehaengte, syntaktisch verifizierte Kamera-Proofs werden wieder nur als *anonyme Haus/Lager-Richtungen* verarbeitet. Retrospektive 25-/28-Passage-Tests dokumentieren nun fortlaufende Zwischenabfragen. Kamera-/WLAN-Ausfaelle sind keine menschliche Abwesenheit.
