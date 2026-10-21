@@ -147,20 +147,24 @@ final class JVP03IncrementalTimeline
                 } else {
                     foreach($tokens as $index=>$token) {
                         $line=trim($token);
+                        // A timestamp may carry following un-timestamped
+                        // diagnostics. Validate the FIRST physical line
+                        // completely; reject arbitrary same-line suffixes.
+                        $firstLine=trim((string)strtok($line,"\r\n"));
                         // An already delimited, malformed P03 PROOF
                         // cannot simply vanish from a verified camera
                         // epoch. Non-PROOF diagnostic text remains free.
                         $looksLikeProof=preg_match(
                             '/^\\[20\\d\\d-\\d\\d-\\d\\d '
                             .'\\d\\d:\\d\\d:\\d\\d\\]\\s*P03 PROOF(?:\\s|$)/D',
-                            $line
+                            $firstLine
                         )===1;
                         if(!preg_match(
                             '/^\s*\[(20\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\]\s*'
                             .'P03 PROOF (VERIFIED|STRONG_VERIFIED) '
                             .'(HOME_TO_LAGER|LAGER_TO_HOME) via '
-                            .'(P03_2CAM_JV_THEN_WORK|P03_2CAM_WORK_THEN_JV)(?:\s|$)/D',
-                            $line,$m
+                            .'(P03_2CAM_JV_THEN_WORK|P03_2CAM_WORK_THEN_JV)$/D',
+                            $firstLine,$m
                         )){
                             if($looksLikeProof){
                                 // A proof prefix ending *mid-write* is
@@ -169,11 +173,13 @@ final class JVP03IncrementalTimeline
                                 // An unknown completed route or a line
                                 // terminated by newline is untrustworthy.
                                 $unfinished=($index===count($tokens)-1)
+                                    &&!str_contains($line,"\n")
+                                    &&!str_contains($line,"\r")
                                     &&!str_ends_with($token,"\n")
                                     &&!str_ends_with($token,"\r");
                                 $prefixOk=false;
                                 if($unfinished){
-                                    $stamp=substr($line,1,19);
+                                    $stamp=substr($firstLine,1,19);
                                     foreach(['VERIFIED','STRONG_VERIFIED'] as $level)
                                         foreach([
                                             'HOME_TO_LAGER'=>'P03_2CAM_JV_THEN_WORK',
@@ -181,7 +187,7 @@ final class JVP03IncrementalTimeline
                                         ] as $direction=>$route){
                                             $template='['.$stamp.'] P03 PROOF '
                                                 .$level.' '.$direction.' via '.$route;
-                                            if(str_starts_with($template,$line)){
+                                            if(str_starts_with($template,$firstLine)){
                                                 $prefixOk=true;break 2;
                                             }
                                         }
