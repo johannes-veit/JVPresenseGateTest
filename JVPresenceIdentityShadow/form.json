@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.103: Beide bisherigen Smartphone-Ereignisketten folgen der gleichen strengen zeitlichen Reihenfolge. Ein gleichsekundiger Geofence-IN und Heim-MAC kann nicht als neue Handy-Rueckkehr zaehlen. Nach mehr als 15 Minuten ohne SHADOW-Auswertung, auch bei identischen Symcon-Quellen-IDs, wird die vorherige offene OUT/IN-Handy-Kette sicher neu begonnen. Alte Netzwerkkontaktluecken bleiben als Diagnostik erkennbar, sind aber niemals ein menschlicher Ankunfts- oder Abwesenheitsnachweis. Der bestehende Testbericht zeigt Beobachtungskontinuitaet je Handy. Keine neuen Symcon-Variablen, Attribute, Instanzen, Timer oder Fremdaktionen; sieben Ausgaben und bestehende Speicher bleiben."
+      "caption": "SHADOW v0.8.104: Die vorhandene P03-Kamera-Protokollchronik ist gegen unbeobachtete Zeitraeume abgesichert. Nach mehr als 15 Minuten ohne SHADOW-Polling, fehlendem alten Beobachtungszeitpunkt oder rueckwaerts springender Uhr wird das gesamte aktuell vorliegende P03-Protokoll ausschliesslich als neue Baseline behandelt. Auch waehrend der Pause neu erzeugte Kamera-Beweise werden nicht nachtraeglich als frisch beobachtete Uebergaenge gewertet. Nur danach wirklich angehaengte gueltige P03-Ereignisse duerfen erneut in die anonyme Route einfliessen. Alle alten P03-Richtungs-/Syntax-/Teillieferungspruefungen bleiben erhalten, Statuswarnung P03_SHADOW_OBSERVATION_GAP. Keine neuen Symcon-Variablen, Attribute, Timer oder Instanzen; die sieben Ausgaben und alle Fremdmodule bleiben unveraendert."
     },
     {
       "type": "Label",

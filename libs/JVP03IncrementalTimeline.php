@@ -17,6 +17,10 @@ final class JVP03IncrementalTimeline
     private const MAX_NEW_BATCH=128;
     private const WINDOW=86400;
     private const KEEP_LOG_BYTES=65536;
+    // The observer reads the existing Protocol every ~60 seconds.
+    // A prolonged SHADOW outage is a source-epoch break, not a batch
+    // of immediately observable fresh camera passages.
+    private const MAX_OBSERVATION_GAP=900;
 
     public static function evaluate(string $raw,array $prior,int $now):array
     {
@@ -42,19 +46,33 @@ final class JVP03IncrementalTimeline
                 'next'=>[
                     'initialized'=>true,
                     'lastRaw'=>substr($raw,-self::KEEP_LOG_BYTES),
-                    'events'=>[]
+                    'events'=>[],
+                    'lastObservedAt'=>$now
                 ]
             ];
         }
         $initialized=($prior['initialized']??false)===true;
         $lastRaw=$prior['lastRaw']??null;
         $history=$prior['events']??[];
+        $lastObserved=$prior['lastObservedAt']??null;
+        $observationInterrupted=$initialized
+            &&(!is_int($lastObserved)||$lastObserved<=0
+                ||$lastObserved>$now+5
+                ||$now-$lastObserved>self::MAX_OBSERVATION_GAP);
+        if($observationInterrupted){
+            // Includes old checkpoints without a source observation clock.
+            // Treat the complete currently available Protocol as baseline.
+            $initialized=false;
+            $lastRaw=null;
+            $history=[];
+        }
         if(!is_array($history)||!array_is_list($history)
             || count($history)>self::MAX_EVENTS
             || ($initialized && !is_string($lastRaw))) {
             $initialized=false;$lastRaw=null;$history=[];
         }
-        $warnings=[];
+        $warnings=$observationInterrupted
+            ?['P03_SHADOW_OBSERVATION_GAP']:[];
         $continuity='OK';
         $fresh=[];
         $historicBaseline=!$initialized;
@@ -313,7 +331,8 @@ final class JVP03IncrementalTimeline
             'initialized'=>true,
             'lastRaw'=>strlen($raw)>self::KEEP_LOG_BYTES
                 ?substr($raw,-self::KEEP_LOG_BYTES):$raw,
-            'events'=>$entries
+            'events'=>$entries,
+            'lastObservedAt'=>$now
         ]];
     }
 
