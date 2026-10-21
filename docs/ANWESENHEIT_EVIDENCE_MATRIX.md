@@ -1,5 +1,10 @@
 # Anwesenheit / SHADOW – verbindliche Quellen und Entscheidungsregeln
 
+## Weiterentwicklung v0.8.101 Build 182 (21.10.2026)
+
+Manuelle und automatische Phone-SSID-Leser exportieren nun die schon bekannte Quelle-ID. Nach Priorisierung muss `JVCompanyWiFiEvidence::rejectSharedSource` zwei voneinander verschiedene finale SSID-IDs nachweisen; sonst werden BEIDE als unqualifiziert ausgegeben, ohne Abwesenheit zu behaupten. Gleichzeitig speichert die bereits vorhandene Kachel-Ortshistorie pro Person die Quelle-ID des zuletzt ermittelten HOME-/WORK-Hinweises. Ein neu verifiziertes anderes WLAN-/SSID-Quellobjekt oder die Migration einer alten ungebundenen Verlaufsaussage loescht nur diese Aussage und nimmt neue Live-Beobachtungen normal entgegen. Bei unveraendertem, aber zeitweise ausgefallenem Quellobjekt kann 'zuletzt unbestaetigt' erhalten bleiben (maximal 24 h), niemals als physisch abwesend. Testbericht diagnostiziert Quellbindung und Neubaseline je Smartphone; alle anderen bereits installierten Module werden nicht veraendert.
+
+
 ## Weiterentwicklung v0.8.100 Build 181 (21.10.2026)
 
 Die bestehende WLAN-Paarvalidierung verlangt neben geprüfter Benennung/Typ nun zwingend zwei verschiedene positive Objekt-IDs je Bewohner. Quellvariable #19980/#26497 gehoert Johannes und #38430/#10760 Carina. Bereits eine einzelne mehrfach verwendete Variable zwischen beiden Bewohnern erzwingt fuer beide Geraete `SOURCE_IDENTITY_COLLISION`. Ein unvollstaendiges Paar ergibt `SOURCE_NOT_VERIFIED`. Bei keinem der beiden Fehler darf aus dem fehlenden Handynachweis eine menschliche Abwesenheit entstehen. Die in v0.8.99 verbesserte Epochengrenze fuer Smartphone-Kontakthistorie bleibt bestehen.
