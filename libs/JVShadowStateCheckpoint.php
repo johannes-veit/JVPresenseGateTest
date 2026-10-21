@@ -30,9 +30,23 @@ final class JVShadowStateCheckpoint
         if($now<=0)return true;
         $old=json_decode($saved,true);
         $new=json_decode($candidate,true);
-        if(!is_array($old)||!is_array($new)
-            ||($old['schema']??null)!==1||($new['schema']??null)!==1)
+        if(!is_array($old)||!is_array($new))return true;
+        // P03's historical cursor schema has never carried a "schema"
+        // field. Validate its ACTUAL legacy shape instead of silently
+        // bypassing every proposed heartbeat optimization.
+        if($name==='P03IncrementalTimeline'){
+            foreach([$old,$new] as $cursor){
+                if(($cursor['initialized']??null)!==true
+                    ||!is_string($cursor['lastRaw']??null)
+                    ||!is_array($cursor['events']??null)
+                    ||!array_is_list($cursor['events'])
+                    ||count($cursor['events'])>256)
+                    return true;
+            }
+        }elseif(($old['schema']??null)!==1
+            ||($new['schema']??null)!==1){
             return true;
+        }
         $oldAt=self::checkpointAt($name,$old);
         $newAt=self::checkpointAt($name,$new);
         if($oldAt===null||$newAt===null||$oldAt>$now+5
