@@ -69,12 +69,7 @@ final class JVShadowStateCheckpoint
             $t=$state['lastScanAt']??null;
             return is_int($t)&&$t>0?$t:null;
         }
-        if($name==='ResidentPhoneContinuity'){
-            foreach(['johannes','carina'] as $person)
-                unset($data['people'][$person]['lastObservedAt']);
-        }elseif($name==='P03IncrementalTimeline'){
-            unset($data['lastObservedAt']);
-        }elseif($name==='ResidentEventFusion'){
+        if($name==='ResidentEventFusion'){
             $at=$state['p03']['lastReadAt']??null;
             if(!is_int($at)||$at<=0)return null;
             foreach(['johannes','carina'] as $person){
@@ -89,7 +84,12 @@ final class JVShadowStateCheckpoint
 
     private static function semanticWithoutHeartbeat(string $name,array $data):array
     {
-        if($name==='ResidentEventFusion'){
+        if($name==='ResidentPhoneContinuity'){
+            foreach(['johannes','carina'] as $person)
+                unset($data['people'][$person]['lastObservedAt']);
+        }elseif($name==='P03IncrementalTimeline'){
+            unset($data['lastObservedAt']);
+        }elseif($name==='ResidentEventFusion'){
             foreach(['johannes','carina'] as $person)
                 unset($data['people'][$person]['lastObservedAt']);
             unset($data['p03']['lastReadAt']);
