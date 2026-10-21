@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.102 Build 183 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.103 Build 184 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -109,6 +109,11 @@ final class JVResidentEveningHandoff
                 .' | KEIN Ankunftsnachweis');
             $add('Geofence OUT/IN + neuer MAC in diesem Zyklus: '.self::yes(
                 ($contactHistory['people'][$person]['phoneReturnAfterObservedOutIn']??false)===true));
+            $add('BEOBACHTUNGSVERLAUF: fortlaufend '
+                .self::yes(($contactHistory['people'][$person]['observationContinuityVerified']??false)===true)
+                .' | seit letzter Auswertung unterbrochen '
+                .self::yes(($contactHistory['people'][$person]['observationInterrupted']??true)===true)
+                .' | nach Pause nur neue Handy-Ereignisse; niemals menschliche Abwesenheit');
             $add('KONTAKTHISTORIE QUELLENKETTE: WLAN '
                 .self::yes(($contactHistory['people'][$person]['macSourceContinuous']??false)===true)
                 .' | Geofence '
