@@ -1279,7 +1279,8 @@ class JVPresenceIdentityShadow extends IPSModule
                 $value=GetValue($id);
                 if(!is_string($value))continue;
                 $out[$person]=[
-                    'verified'=>true,'ssid'=>$value,'updatedAt'=>$updated
+                    'verified'=>true,'ssid'=>$value,'updatedAt'=>$updated,
+                    'sourceVariableID'=>$id
                 ];
             }catch(Throwable $ignored){}
         }
@@ -1370,7 +1371,7 @@ class JVPresenceIdentityShadow extends IPSModule
                 $value=GetValue($id);
                 if(!is_string($value)||strlen($value)>64)continue;
                 $out[$person]=['verified'=>true,'ssid'=>$value,
-                    'updatedAt'=>$when];
+                    'updatedAt'=>$when,'sourceVariableID'=>$id];
             }catch(Throwable $ignored){}
         }
         return $out;
@@ -1772,6 +1773,10 @@ class JVPresenceIdentityShadow extends IPSModule
                 ],true))
                 $tileWork['people'][$person]=$workWiFi['people'][$person];
         }
+        // A manual SSID binding can overlap another resident's automatic
+        // source after both separately verified paths were merged. Recheck
+        // the two final phone sources together before any tile/fusion use.
+        $tileWork=JVCompanyWiFiEvidence::rejectSharedSource($tileWork);
         // Durable phone-contact history. A resumed WLAN confirmation is
         // not evidence of a human arriving, and silence is never departure.
         $contactPrior=json_decode(
