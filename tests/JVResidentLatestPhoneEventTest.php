@@ -35,7 +35,8 @@ $cGeo=JVCarinaGeofencyHints::evaluate([
     'verified'=>true,'inside'=>true,'timestamp'=>$geoCarina,'zoneName'=>'Zuhause'
 ],$now,true,'AUTO_READ_ONLY');
 $prior=['schema'=>1,'people'=>['carina'=>[
-    'zone'=>'HOME','at'=>$lastCarina
+    'zone'=>'HOME','at'=>$lastCarina,
+    'sourceKey'=>'WLAN:38430:10760'
 ]]];
 $visu=JVResidentVisuState::evaluate(
     $wlan,$company,$jGeo,$cGeo,[],[],$prior,$now
