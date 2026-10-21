@@ -128,8 +128,9 @@ $faulty->setProperty('Enabled',true);
 $faulty->setProperty('P03InstanceID',0);
 $faulty->setProperty('SensorSources','[]');
 $faulty->ApplyChanges();
-upgradeIntegration($faulty->instanceStatus===102,
-    'fresh passive instance initially active for runtime failure test');
+upgradeIntegration($faulty->instanceStatus===102
+    &&$faulty->GetBuffer('ShadowObservationStarted')==='1',
+    'healthy complete first read alone establishes process observation epoch');
 $faulty->SetValue('JohannesPresence','ANWESEND');
 $faulty->SetValue('CarinaPresence','ANWESEND');
 $faulty->SetValue('PresenceDetected',true);
@@ -141,6 +142,7 @@ try{$faulty->Refresh();}
 catch(RuntimeException $error){$raised=true;}
 $blocked=json_decode((string)$faulty->GetValue('EvidenceJSON'),true);
 upgradeIntegration($raised
+    &&$faulty->GetBuffer('ShadowObservationStarted')==='0'
     &&$faulty->instanceStatus===201
     &&$faulty->GetValue('PresenceDetected')===false
     &&$faulty->GetValue('JohannesPresence')==='NICHT BESTÄTIGT'
@@ -159,6 +161,7 @@ $faulty->simulateBadRead=false;
 $faulty->Refresh();
 $recovered=json_decode((string)$faulty->GetValue('EvidenceJSON'),true);
 upgradeIntegration($faulty->instanceStatus===102
+    &&$faulty->GetBuffer('ShadowObservationStarted')==='1'
     &&($recovered['authority']??null)!=='SHADOW_RUNTIME_READ_ONLY_BLOCK'
     &&$faulty->GetValue('PresenceDetected')===false,
     'next successful complete Refresh automatically restores active native status');
