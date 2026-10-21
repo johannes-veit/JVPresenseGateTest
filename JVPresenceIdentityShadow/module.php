@@ -223,6 +223,10 @@ class JVPresenceIdentityShadow extends IPSModule
             if($this->SetStatus(102)===false)
                 throw new RuntimeException('SYSCON_STATUS_TRANSITION_REJECTED');
         } catch(Throwable $e) {
+            // A failed bootstrap is a missing observation epoch even if it
+            // occurred only seconds after the last successful timer poll.
+            try {$this->SetBuffer('ShadowObservationStarted','0');}
+            catch(Throwable $ignored){}
             // A real bootstrap error must NOT be disguised as "active".
             // 201 is local to this module and does not touch other instances.
             try {$this->SetTimerInterval('ReadLocal',0);}
@@ -1419,6 +1423,10 @@ class JVPresenceIdentityShadow extends IPSModule
         }
         try {
         if (!$this->ReadPropertyBoolean('Enabled')) {
+            // Disabling and later re-enabling within a few minutes must
+            // never join unobserved source events across the disabled time.
+            if($this->GetBuffer('ShadowObservationStarted')!=='0')
+                $this->SetBuffer('ShadowObservationStarted','0');
             $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
             $this->setPresenceDetected(false);
             $this->setResidentTile('<section>SHADOW deaktiviert – '
@@ -1441,6 +1449,9 @@ class JVPresenceIdentityShadow extends IPSModule
         // automatically by a seemingly clean first-run baseline.
         $upgradePreflight=$this->auditStoredUpgradeState();
         if(($upgradePreflight['safeToRefresh']??false)!==true){
+            // Corrupt durable proof records stop observation until review.
+            if($this->GetBuffer('ShadowObservationStarted')!=='0')
+                $this->SetBuffer('ShadowObservationStarted','0');
             $this->setResidentDisplayValues('NICHT BESTÄTIGT','NICHT BESTÄTIGT');
             $this->setPresenceDetected(false);
             $this->setResidentTile('<section>SHADOW: gespeicherte Beweiskette '
@@ -2171,6 +2182,10 @@ class JVPresenceIdentityShadow extends IPSModule
         // again, never to assume the failed sample was continuously read.
         if($coldStart)$this->SetBuffer('ShadowObservationStarted','1');
         } catch(Throwable $e) {
+            // Even a ONE-POLL runtime exception interrupts observation;
+            // it cannot bridge an otherwise fresh old OUT/IN/P03 chain.
+            try {$this->SetBuffer('ShadowObservationStarted','0');}
+            catch(Throwable $ignored){}
             // An uncaught failure during a timer/VM_UPDATE refresh would
             // otherwise leave the PREVIOUS "ANWESEND" display and
             // PresenceDetected=true visible indefinitely. Fail CLOSED,
