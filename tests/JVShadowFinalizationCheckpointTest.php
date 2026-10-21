@@ -117,4 +117,26 @@ finalCheckpoint($bound['next']['people']['johannes']['startedAt']===$t+150
     &&!$bound['report']['anyHumanArrivalCertified'],
     'rebound verified source updates checkpoint immediately, no human arrival');
 
+// Cross-check the real parser's legacy schema-less cursor representation:
+$actual=JVP03IncrementalTimeline::evaluate("P03 STATUS BASELINE\n",[],$t);
+$next=JVP03IncrementalTimeline::evaluate("P03 STATUS BASELINE\n",
+    $actual['next'],$t+60);
+finalCheckpoint(!array_key_exists('schema',$actual['next'])
+    &&!JVShadowStateCheckpoint::shouldPersist(
+        'P03IncrementalTimeline',json_encode($actual['next']),
+        json_encode($next['next']),$t+60),
+    'actual P03 parser heartbeat has no schema and must be checkpointed');
+$updated=JVP03IncrementalTimeline::evaluate(
+    "P03 STATUS BASELINE\nP03 DIAG UPDATED\n",
+    $next['next'],$t+120);
+finalCheckpoint(JVShadowStateCheckpoint::shouldPersist(
+    'P03IncrementalTimeline',json_encode($actual['next']),
+    json_encode($updated['next']),$t+120),
+    'actual new P03 protocol bytes must be persisted immediately');
+$invalid=$actual['next'];
+$invalid['events']='INVALID';
+finalCheckpoint(JVShadowStateCheckpoint::shouldPersist(
+    'P03IncrementalTimeline',json_encode($actual['next']),
+    json_encode($invalid),$t+60),
+    'malformed P03 cursor must never be swallowed by heartbeat optimizer');
 echo "Final phone/P03 24h flash simulation and durable semantic event checkpoints PASS\n";
