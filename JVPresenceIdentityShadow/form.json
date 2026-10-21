@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.101: Zwei vorhandene SSID-Quellen werden auch nach Zusammenfuehren der expliziten und automatisch gefundenen Variablen auf dieselbe Symcon-ID geprueft. Ein einziges SSID-Objekt kann nicht gleichzeitig beiden Handys zugeordnet werden. Der letzte bekannte HOME-/WORK-WLAN-Ort in der Kachel wird nun an seine konkrete Heim-WLAN-/SSID-Quell-ID gebunden. Quellenwechsel oder altes gespeichertes Kachelgedaechtnis ohne Herkunft setzen nur den betroffenen Ortsverlauf sicher neu auf. Echte aktuelle Telefonhinweise bleiben sichtbar; Standby ohne neue Meldung bleibt unbestaetigt, nicht abwesend. Der bisherige einzige kopierbare Bericht zeigt Quellenherkunft/Neubaseline je Bewohner. Keine neuen Symcon-Variablen, Attribute, Instanzen, Timer oder Schaltaktionen; bestehende 7 Ausgaben und 15 Attribute bleiben."
+      "caption": "SHADOW v0.8.102: Ergaenzend zur v0.8.101-Quellenabsicherung erzeugt die bestehende Smartphone-Kontakthistorie einen neuen Rueckkehr-Hinweis nach beobachtetem Geofence OUT/IN nur noch, wenn der echte Heim-WLAN-MAC-Zeitstempel seit der letzten Auswertung nachweisbar gestiegen ist und zeitlich strikt NACH dem IN liegt. Ein bereits alter frischer MAC-Wert, gleichzeitig sekundengleiches IN/MAC oder eine verspaetet eintreffende IN-Meldung duerfen keine neue Handy-Rueckkehr ausloesen. Quellenwechsel/Standby und beide Handys bleiben unabhaengig. Keine Person-/Fahrzeugidentifikation, kein Haus-leer-Signal, keine Fremdaktionen, keine neuen Symcon-Variablen, Attribute, Instanzen oder Timer."
     },
     {
       "type": "Label",
