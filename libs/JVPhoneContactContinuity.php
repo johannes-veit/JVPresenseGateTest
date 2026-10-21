@@ -70,6 +70,17 @@ final class JVPhoneContactContinuity
                 &&($previous['lastGeoSourceVerified']??false)===true
                 &&($previous['lastGeoSourceKey']??null)===$geoKey;
             $sourceRebaselineRequired=!$macContinuous||!$geoContinuous;
+            // A persistently missing optional/disabled source must not
+            // reset startedAt every 60-second timer poll. New bindings,
+            // lost bindings, migrations and genuine observation gaps DO
+            // start a new epoch immediately.
+            $sourceEpochChanged=!$hadBaseline
+                ||($previous['lastMacSourceVerified']??false)!==$macBound
+                ||($previous['lastGeoSourceVerified']??false)!==$geoBound
+                ||($macBound
+                    &&($previous['lastMacSourceKey']??null)!==$macKey)
+                ||($geoBound
+                    &&($previous['lastGeoSourceKey']??null)!==$geoKey);
             // Carrying an old timestamp over a source boundary invents a
             // recovery or return. Existing state without source metadata
             // (upgrades) is deliberately baselined once, not replayed.
@@ -84,7 +95,7 @@ final class JVPhoneContactContinuity
                 $previous['pendingOutAt']=null;
                 $previous['pendingInAt']=null;
                 $previous['lastPhoneReturnAt']=null;
-                $start=$now;
+                if($sourceEpochChanged||$observationInterrupted)$start=$now;
                 $hadBaseline=false;
             }
             $mac=self::time($w['lastMacContactAt']??null,$now,self::HISTORY_SECONDS);

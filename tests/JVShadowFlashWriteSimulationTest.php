@@ -12,8 +12,9 @@ $runtime=json_encode($first['next'],JSON_THROW_ON_ERROR);
 $durable=$runtime;$writes=1;
 flash86(JVShadowStateCheckpoint::useRuntimeCache('LocalActivityLedger'),
     'existing GUS state now uses safely bounded runtime cache');
-flash86(!JVShadowStateCheckpoint::useRuntimeCache('P03IncrementalTimeline'),
-    'persistent P03 cursor must remain immediately durable');
+flash86(JVShadowStateCheckpoint::useRuntimeCache('P03IncrementalTimeline')
+    &&JVShadowStateCheckpoint::useRuntimeCache('ResidentPhoneContinuity'),
+    'P03 cursor and phone events persist on change, idle heartbeat is checkpointed');
 
 // Simulate a normally polling SymBox at 60-second intervals for 24h.
 // Previously lastScanAt alone caused 1440 durable writes/day, even
