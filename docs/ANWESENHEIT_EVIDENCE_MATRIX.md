@@ -1,5 +1,10 @@
 # Anwesenheit / SHADOW – verbindliche Quellen und Entscheidungsregeln
 
+## Weiterentwicklung v0.8.103 Build 184 (21.10.2026)
+
+SHADOW-Kontakthistorie und Ereignisfusion nutzen strikt dieselbe Reihenfolge fuer einen Smartphone-Rueckkehr-Hinweis: verifiziertes, zuvor beobachtetes OUT→IN der *Telefon*-Geofence-Zone und ein **neu erkannter** Heim-MAC-Zeitstempel mit `mac > inAt`. Sekundengleiche Zeitstempel sind nicht geordnet. Die Kontaktchronik verwirft eine vor der letzten Auswertung offene IN/OUT-Kette bei >900s ohne SHADOW-Auswertung bzw. ungueltiger / fehlender vorheriger Beobachtungszeit, selbst wenn die Symcon-Objekt-IDs weiterhin gleich geblieben sind. Netzwerk-Wiedererkennung nach Standby bleibt als nicht personenbezogene Diagnose verfuegbar. Nach dem ersten sauberen neuen Beobachtungszyklus werden vollstaendige neue Handy-Ereignisse wieder akzeptiert. Dies berechtigt zu keiner Abwesenheits- oder Alarmhandlung.
+
+
 ## Weiterentwicklung v0.8.102 Build 183 (21.10.2026)
 
 In `JVPhoneContactContinuity` zaehlt ein persoehnlicher Smartphone-Rueckkehr-Hinweis nur noch bei einer **neu beobachteten** Heim-WLAN-MAC-Aktualisierung mit strikt groesserem Unix-Timestamp als der letzte verifizierte Geofence-IN. Ein alter frischer MAC-Wert, ein gepufferter Standby-Zustand oder derselbe Sekundenstempel zaehlen nicht, auch wenn OUT und IN korrekt vorliegen. Source-IDs und Beobachtungskontinuitaet muessen intakt sein. Die bereits separate `JVResidentEventFusion` hat den gleichen strengen neuen-MAC-Vertrag. Der reine Telefon-Hinweis ist niemals ein Nachweis einer menschlichen Ankunft oder ein Freigabesignal fuer Alarmanlage/Geraete.
