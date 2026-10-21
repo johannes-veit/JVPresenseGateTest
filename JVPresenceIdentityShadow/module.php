@@ -388,8 +388,12 @@ class JVPresenceIdentityShadow extends IPSModule
             }
         }
         sort($registered);
-        $this->WriteAttributeString('SensorSubscriptions',
-            json_encode(array_values(array_unique($registered)))?:'[]');
+        // ApplyChanges and module restarts must re-register VM_UPDATE,
+        // but an unchanged ID list does not need another flash write.
+        $subscriptionJSON=json_encode(
+            array_values(array_unique($registered)))?:'[]';
+        if($this->ReadAttributeString('SensorSubscriptions')!==$subscriptionJSON)
+            $this->WriteAttributeString('SensorSubscriptions',$subscriptionJSON);
     }
 
     /**
