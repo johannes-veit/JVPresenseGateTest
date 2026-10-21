@@ -1,5 +1,10 @@
 # Anwesenheit / SHADOW – verbindliche Quellen und Entscheidungsregeln
 
+## v0.8.108 Build 189 – variablearme Ausgabe und Checkpoint-Schonung
+
+Das SHADOW-Modul besitzt unveraendert genau sieben Ausgabevariablen und 15 bereits vorhandene Zustandsattribute. Eine identische `SensorSubscriptions`-Liste wird bei erneuten `ApplyChanges`-Aufrufen nicht mehr auf SymBox-Flash geschrieben, die bestehenden Sensor-VM_UPDATE-Abonnements werden dennoch nach jedem Neustart erneut registriert. Der Ueberlaufpfad des einzelnen kopierbaren Testberichts ist auch gegen zahlreiche doppelte, sehr lange und nicht vertrauenswuerdige Schlusszeilen abgesichert: maximal 13.000 Bytes, UTF-8 bleibt gueltig, am Schluss steht eine einzige eindeutig verweigerte Alarmfreigabe. Relevante Inhalte bekommen Vorrang vor Raumimpuls-Fuelltext. PHP-Simulationsregressionen sichern beide Ressourcengrenzen. Niemals werden positive Haus-leer-, physische Personen- oder Fahrerentscheidungen daraus abgeleitet.
+
+
 ## v0.8.107 Build 188 – Abschluss der P03-Persistenzkontinuitaet
 
 Der reine SHADOW-Observer verwendet den strukturell validierten, historisch schema-losen P03-Runtime-Cursor tatsaechlich ueber wiederholte Polls hinweg. Seine bestehende volatile Herkunfts-Pruefsumme erkennt manuelle Reparaturen/restaurierte persistente Attribute und verhindert, dass alter RAM sie aushebelt. Bei bewusstem persistenten Reset auf `{}` darf ein frueherer Puffereintrag weder beim Lesen noch in einer weiteren ApplyChanges-Migration alte Kameraereignisse wiederbeleben. Neue Gueltig-Proofs bleiben sofort durable; Idle-Beobachtungskontinuitaet bleibt durch ca. 10-Minuten-Checkpoints ressourcenschonend. Neue Integrationstests decken echten Modulleseweg, reale Parserauswertung, Crash/Neustart, Quellenausfall und Wiederherstellung ab. **Voraussetzung fuer jede operative Entscheidung bleibt menschlich verifizierte Quellenabnahme; Personen- und Hausleer-Nachweis werden nicht behauptet.**

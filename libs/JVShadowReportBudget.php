@@ -12,19 +12,43 @@ final class JVShadowReportBudget
         $lines=array_values(array_filter($lines,'is_string'));
         $all=implode("\n",$lines);
         if(strlen($all)<=$maxBytes)return $all;
-        if($maxBytes<700)return 'SHADOW BERICHT ZU LANG\n=== ENDE TESTBERICHT ===';
+        // Even deliberately tiny budgets must remain bounded and explicitly
+        // fail closed. The normal module report budget is 13,000 bytes.
+        if($maxBytes<700) {
+            $short="SHADOW BERICHT GEKUERZT | ALARMFREIGABE: NEIN"
+                ."\n=== ENDE TESTBERICHT ===";
+            return substr($short,0,max(0,$maxBytes));
+        }
 
+        // Safety text cannot be dropped or made unbounded by repeated or
+        // anomalously long upstream diagnostic lines. We take the LAST
+        // ordinary copy-help message, bound its length without splitting
+        // UTF-8, and always generate a fixed, fail-closed safety footer.
         $tail=[];
+        $copyHelp=null;$privacyHelp=null;
+        $safeLine=static function(string $line,int $max=200):string {
+            if(strlen($line)<=$max)return $line;
+            $cut=substr($line,0,$max-14);
+            while($cut!=='' && preg_match('//u',$cut)!==1)
+                $cut=substr($cut,0,-1);
+            return $cut.' [GEKUERZT]';
+        };
         foreach($lines as $i=>$line){
-            if(str_starts_with($line,'ABWESENHEIT-AKTIONEN / ALARMFREIGABE:')
-                ||str_starts_with($line,'An ChatGPT senden:')
-                ||str_starts_with($line,'Keine weiteren Passwoerter,')){
-                $tail[$i]=$line;
+            if(str_starts_with($line,'ABWESENHEIT-AKTIONEN / ALARMFREIGABE:')){
+                $tail[$i]=true;
+            }elseif(str_starts_with($line,'An ChatGPT senden:')){
+                $tail[$i]=true;$copyHelp=$safeLine($line);
+            }elseif(str_starts_with($line,'Keine weiteren Passwoerter,')){
+                $tail[$i]=true;$privacyHelp=$safeLine($line);
             }
         }
-        $suffix="\n[DETAILS GEKUERZT – KERNBEFUNDE UND SICHERHEITSHINWEISE ERHALTEN]\n"
-            .implode("\n",$tail)
-            ."\n=== ENDE TESTBERICHT ===";
+        $footer=['[DETAILS GEKUERZT – KERNBEFUNDE UND SICHERHEITSHINWEISE ERHALTEN]'];
+        foreach([$copyHelp,$privacyHelp] as $line) {
+            if($line!==null)$footer[]=$line;
+        }
+        $footer[]='ABWESENHEIT-AKTIONEN / ALARMFREIGABE: NEIN';
+        $footer[]='=== ENDE TESTBERICHT ===';
+        $suffix="\n".implode("\n",$footer);
         $capacity=$maxBytes-strlen($suffix)-1;
         $chosen=[];$used=0;
         // Index-based selection matters: dozens of identical RAUMIMPULS
@@ -90,8 +114,8 @@ final class JVShadowReportBudget
         $kept=[];
         foreach(array_keys($chosen) as $i)$kept[]=$lines[$i];
         $result=implode("\n",$kept).$suffix;
-        // The index-based, byte-exact budget above guarantees this,
-        // including the one newline per chosen line.
+        // The fixed safety footer is bounded independently of the input;
+        // every selected full line consumes its exact byte size.
         return $result;
     }
 }
