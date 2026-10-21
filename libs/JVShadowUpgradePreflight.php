@@ -140,6 +140,8 @@ final class JVShadowUpgradePreflight
             if(!is_array($events)||!array_is_list($events)
                 ||count($events)>256
                 ||!is_bool($timeline['initialized']??null)
+                ||(($timeline['initialized']??false)===false
+                    &&count($events)>0)
                 ||(($timeline['initialized']??false)===true
                     &&!is_string($timeline['lastRaw']??null))){
                 self::issue($report,'P03IncrementalTimeline','P03_CURSOR_INVALID');
@@ -149,7 +151,11 @@ final class JVShadowUpgradePreflight
                         ||!is_string($event['localTime']??null)
                         ||preg_match('/^20\\d\\d-\\d\\d-\\d\\d '
                             .'\\d\\d:\\d\\d:\\d\\d$/D',
-                            $event['localTime'])!==1){
+                            $event['localTime'])!==1
+                        ||$event['localTime']!==(new \DateTimeImmutable(
+                            '@'.$event['at']))->setTimezone(
+                                new \DateTimeZone('Europe/Berlin')
+                            )->format('Y-m-d H:i:s')){
                         self::issue($report,'P03IncrementalTimeline',
                             'P03_HISTORICAL_PROOF_INVALID');
                         break;
