@@ -24,17 +24,40 @@ for($i=0;$i<25;$i++){
         ->format('Y-m-d H:i:s');
     $lines[]='['.$local.'] P03 PROOF VERIFIED HOME_TO_LAGER via P03_2CAM_JV_THEN_WORK';
 }
+// This is an uninterrupted observation test. A single dump 1 hour
+// after baseline would now correctly be quarantined as an outage.
+$state=$start['next'];$raw='';$lastRead=$t-10;$totalNew=0;
+foreach($lines as $i=>$line){
+    $at=$i===0?$t+40:$t+1800+$i*7;
+    while($at-$lastRead>900){
+        $lastRead+=600;
+        $tick=JVP03IncrementalTimeline::evaluate($raw,$state,$lastRead);
+        historicalFieldCheck($tick['report']['logContinuity']==='OK',
+            'periodic synthetic P03 observer tick maintains source epoch');
+        $state=$tick['next'];
+    }
+    $raw.=($raw===''?'':"\n").$line;
+    $tick=JVP03IncrementalTimeline::evaluate($raw,$state,$at);
+    $state=$tick['next'];
+    $lastRead=$at;
+    $totalNew+=$tick['report']['newDirectionProofsThisRead'];
+}
 $end=$t+3600;
-$p03=JVP03IncrementalTimeline::evaluate(
-    implode("\n",$lines),$start['next'],$end
-);
+while($end-$lastRead>900){
+    $lastRead+=600;
+    $tick=JVP03IncrementalTimeline::evaluate($raw,$state,$lastRead);
+    $state=$tick['next'];
+}
+$p03=JVP03IncrementalTimeline::evaluate($raw,$state,$end);
 $p=$p03['report'];
-historicalFieldCheck($p['newDirectionProofsThisRead']===25
+historicalFieldCheck($totalNew===25
+    &&$p['newDirectionProofsThisRead']===0
     &&count($p['recentDirectionProofs'])===15
     &&count($p['verifiedDirectionTimeline24h'])===25
     &&$p['verifiedTimeline24hCount']===25
     &&$p['verifiedTimelineTruncated']===false,
     '15 visible passages do not replace all 25 valid stored proofs');
+
 $evidence=[
     'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
     'snapshotAt'=>$end,
