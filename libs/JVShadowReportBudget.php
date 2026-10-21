@@ -16,7 +16,7 @@ final class JVShadowReportBudget
         // fail closed. The normal module report budget is 13,000 bytes.
         if($maxBytes<700) {
             $short="SHADOW BERICHT GEKUERZT | ALARMFREIGABE: NEIN"
-                ."\\n=== ENDE TESTBERICHT ===";
+                ."\n=== ENDE TESTBERICHT ===";
             return substr($short,0,max(0,$maxBytes));
         }
 
@@ -48,7 +48,7 @@ final class JVShadowReportBudget
         }
         $footer[]='ABWESENHEIT-AKTIONEN / ALARMFREIGABE: NEIN';
         $footer[]='=== ENDE TESTBERICHT ===';
-        $suffix="\\n".implode("\\n",$footer);
+        $suffix="\n".implode("\n",$footer);
         $capacity=$maxBytes-strlen($suffix)-1;
         $chosen=[];$used=0;
         // Index-based selection matters: dozens of identical RAUMIMPULS
