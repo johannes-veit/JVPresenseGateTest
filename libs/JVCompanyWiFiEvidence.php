@@ -117,11 +117,15 @@ final class JVCompanyWiFiEvidence
                 $row['sourceKey']=null;
                 unset($row);
             }
-            // Recalculate the count rather than subtracting an obsolete
-            // pre-merge value from a manually overridden source.
-            $out['workPhoneCount']=0;
             $out['warnings'][]='BOTH_PHONES_SHARE_ONE_SSID_VARIABLE_ID';
         }
+        // The automatic evaluator's count may be stale after replacing a
+        // person-specific entry with a manually verified source.
+        $out['workPhoneCount']=0;
+        foreach(['johannes','carina'] as $person)
+            if(($out['people'][$person]['sourceVerified']??false)===true
+                &&($out['people'][$person]['workRecent']??false)===true)
+                $out['workPhoneCount']++;
         return $out;
     }
 }
