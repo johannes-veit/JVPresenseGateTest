@@ -26,8 +26,9 @@ $heartbeat['p03']['lastReadAt']=$t+60;
 $new=json_encode($heartbeat,JSON_THROW_ON_ERROR);
 checkpointOK(JVShadowStateCheckpoint::useRuntimeCache('ResidentEventFusion')
     &&JVShadowStateCheckpoint::useRuntimeCache('RouteEpisodeLedger')
-    &&!JVShadowStateCheckpoint::useRuntimeCache('P03IncrementalTimeline'),
-    'only safe bounded state ledgers use runtime cache');
+    &&JVShadowStateCheckpoint::useRuntimeCache('P03IncrementalTimeline')
+    &&JVShadowStateCheckpoint::useRuntimeCache('ResidentPhoneContinuity'),
+    'all five proven bounded state ledgers use runtime cache');
 checkpointOK(!JVShadowStateCheckpoint::shouldPersist(
     'ResidentEventFusion',$old,$old,$t+60),'equal state no write');
 checkpointOK(!JVShadowStateCheckpoint::shouldPersist(
