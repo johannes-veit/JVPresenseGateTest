@@ -704,8 +704,8 @@ final class JVResidentEveningHandoff
                 .' | beide Observer LIVE '
                 .self::yes(($q['bothExistingAuxObserversLive']??false)===true)
                 .' | neue Route noch NICHT bestaetigt');
-            if(($q['currentRepositoryEnableProductionIsCalibrationStub']??false)===true)
-                $add('P03 FREIGABE: EnableProductionP03 im Repository noch Teststub; SHADOW aktiviert keine Kamera oder P03.');
+            if(($q['productionEnableFunctionHasVerifiedGuards']??false)===true)
+                $add('P03 FREIGABE: nur nach Audit + Simulation + 2 OUT/2 IN + zwei Maststreams; SHADOW aktiviert P03 nicht.');
         }
         $add('--- HEUTE ABEND: PRUEFERGEBNIS + OFFENE PUNKTE ---');
         $add('Technischer Diagnosebericht aus vorhandenen Daten: '
