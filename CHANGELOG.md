@@ -1,3 +1,11 @@
+# v0.8.116 (Build 197) – Native Zweizeilen-Kachel fuer IP-Symcon-Instanz statt HTMLBox-Oeffnensymbol
+
+- **Analyse des echten Symcon-Screenshots:** Die maximierte SHADOW-Instanz zeigt die Variablen als Liste. In dieser Listenansicht erscheint ein `~HTMLBox` Webinhalt nur als Oeffnen-Symbol; der Benutzer wollte die zwei Bewohner direkt sichtbar. `~HTMLBox` selbst war korrekt, die Einbindungsart aber nicht die gewuenschte Ansicht.
+- **Native HTML-SDK-Kachel nach offiziellem Symcon-Muster:** SHADOW registriert in `Create()` `SetVisualizationType(1)` und bietet `GetVisualizationTile()` mit `module.html` an. Dadurch zeigt die normale, nicht maximierte SHADOW-Instanzkachel direkt `Johannes – Zuhause/In Firma/Abwesend/Unklar` und `Carina – ...`; im maximierten Modus bleibt unter Symcon 9.0 die technische Listenansicht erhalten. Keine neue Instanz und keine neuen Variablen.
+- **Live-Updates:** Nach dem bestehenden `EvidenceJSON`-Publish sendet SHADOW via `UpdateVisualizationValue()` nur einen geprueften, begrenzten Bewohnerstatus. Das Javascript `handleMessage()` nutzt ausschliesslich `textContent` statt HTML-Injektion und ruft keine Modulaktion oder Netzressource auf. Ein 120 s alter, defekter oder nicht verifizierter Gesamtbericht fuehrt bei Neuoeffnung der Kachel zu `Unklar`. Kein alter Smartphone-Ort wird dauerhaft festgehalten.
+- **Risikotrennung:** Fehler des optionalen Darstellungs-SDK stoppen niemals das bestehende SHADOW-Lesemodul. Alle bisherigen sieben Variablen, die optionale eigenstaendige HTMLBox und der volle Testbericht bleiben bestehen. Keine Kamera-, P03-, LCN-, Handy- oder Alarmaktion.
+- **Tests:** Bestehende native Symcon-Mocks simulieren SetVisualizationType, GetVisualizationTile sowie live UpdateVisualizationValue; alle uebrigen Beweisketten-/Absenztests bleiben aktiv. Separate PHP-/P03-CI erhaelt dieselben Pruefsperren.
+
 # v0.8.115 (Build 196) – Zwei-Zeilen-Kachel fuer Johannes und Carina
 
 - **Direkt in der bestehenden Symcon-Kachelvisualisierung:** Die bereits vorhandene String-/HTMLBox-Variable `ResidentTile` (Anwesenheit – Johannes & Carina) zeigt statt eines aufklappbaren technischen Diagnose-Dashboards exakt zwei kompakte Bewohner-Zeilen mit Namen und Status.
