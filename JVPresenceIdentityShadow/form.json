@@ -2,6 +2,10 @@
   "elements": [
     {
       "type": "Label",
+      "caption": "EINMALIGE VISU-EINRICHTUNG: Der Button unten erstellt genau EINEN Symcon-Link direkt in der bereits vorhandenen Kategorie Anwesenheitserkennung. Dieser Link zeigt die native Bewohnerstatus-Kachel mit Johannes und Carina gemeinsam. Keine Duplikate, keine neuen Kategorien, keine Verschiebung der SHADOW- oder WLAN-Objekte. Anschließend WLAN- und Identity-Shadow-Unterordner selbst in der Kachelvisualisierung ausblenden; die Originaldaten bleiben weiter aktiv."
+    },
+    {
+      "type": "Label",
       "caption": "SHADOW: nur vorhandene Daten lesen, niemals Personen-HOME/AWAY schalten. Nach erfolgreicher LCN-Inventur mit einem Klick alle 15 geprüften GUS (inklusive EG Wohnen/Küche) übernehmen; anschließend die separate SHADOW-Beobachtung aktivieren. Keine Änderung an Kameras, LCN, P03/P05, Licht oder Alarmanlage."
     },
     {
@@ -522,6 +526,11 @@
     }
   ],
   "actions": [
+    {
+      "type": "Button",
+      "caption": "Bewohnerstatus direkt unter Anwesenheitserkennung verlinken (1 Klick)",
+      "onClick": "JVIDSH_CreateAnwesenheitTileLink($id);"
+    },
     {
       "type": "Button",
       "caption": "Testbericht an ChatGPT jetzt aktualisieren (nur lesen)",
