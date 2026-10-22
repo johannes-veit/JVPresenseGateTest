@@ -40,7 +40,11 @@ final class JVCompanyWiFiEvidence
                 'ssid'=>null,'ageSeconds'=>null,
                 'workRecent'=>false,'homeSsidRecent'=>false,
                 'boundarySSIDOnly'=>false,'sourceVerified'=>false,
-                'sourceKey'=>null
+                'sourceKey'=>null,
+                // Diagnostic only: distinguishes initialized-empty variables
+                // from stale but formerly nonempty personal SSID readings.
+                // Does NOT prove that a phone ever posted to the webhook.
+                'reportedSSIDKind'=>'NOT_READ'
             ];
             if(!$enabled){$out['people'][$person]=$entry;continue;}
             if(!is_array($row)
@@ -50,6 +54,12 @@ final class JVCompanyWiFiEvidence
                 $out['people'][$person]=$entry;continue;
             }
             $entry['sourceVerified']=true;
+            $rawSSID=trim($row['ssid']);
+            $entry['reportedSSIDKind']=$rawSSID===''
+                ?'EMPTY_OR_DISCONNECTED'
+                :(strlen($rawSSID)>64
+                    ||preg_match('/[\\x00-\\x1F\\x7F]/',$rawSSID)===1
+                    ?'INVALID_PAYLOAD':'NONEMPTY_OBSERVED');
             // The same Symcon String ID cannot identify two separate
             // resident smartphones. Keep the exact existing object ID
             // out of public reports except for a non-sensitive source key.
@@ -67,8 +77,8 @@ final class JVCompanyWiFiEvidence
                 $entry['status']='STALE_CURRENT_SSID_UNCONFIRMED';
                 $out['people'][$person]=$entry;continue;
             }
-            $ssid=trim($row['ssid']);
-            if($ssid===''||strlen($ssid)>64){
+            $ssid=$rawSSID;
+            if($entry['reportedSSIDKind']!=='NONEMPTY_OBSERVED'){
                 $entry['status']='INVALID_CURRENT_SSID';
                 $out['people'][$person]=$entry;continue;
             }
@@ -115,6 +125,7 @@ final class JVCompanyWiFiEvidence
                 $row['homeSsidRecent']=false;
                 $row['boundarySSIDOnly']=false;
                 $row['sourceKey']=null;
+                $row['reportedSSIDKind']='COLLISION_NOT_USABLE';
                 unset($row);
             }
             $out['warnings'][]='BOTH_PHONES_SHARE_ONE_SSID_VARIABLE_ID';
