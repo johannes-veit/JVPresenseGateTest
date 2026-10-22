@@ -1340,7 +1340,13 @@ class JVPresenceIdentityShadow extends IPSModule
     {
         $out=['johannes'=>['verified'=>false],
             'carina'=>['verified'=>false]];
-        $cache=json_decode($this->ReadAttributeString('AutoPhoneSSIDInventory'),true);
+        // The inventory is a non-evidence discovery cache. Keep frequent
+        // scan timestamps only in RAM, and persist only when the ACTUAL
+        // chosen source ID/path changes. This avoids an SD/flash write
+        // every five minutes during an otherwise idle, stable household.
+        $runtime=$this->GetBuffer('AutoPhoneSSIDRuntimeCache');
+        $cache=json_decode($runtime!==''?$runtime:
+            $this->ReadAttributeString('AutoPhoneSSIDInventory'),true);
         $now=time();
         if(!is_array($cache) || !is_int($cache['checkedAt']??null)
             ||($cache['checkedAt']??0)>$now+5
@@ -1396,8 +1402,17 @@ class JVPresenceIdentityShadow extends IPSModule
                     ?$chosen[0]:null;
             }
             $json=json_encode($cache,JSON_UNESCAPED_SLASHES);
-            if(is_string($json)&&strlen($json)<2048)
-                $this->WriteAttributeString('AutoPhoneSSIDInventory',$json);
+            if(is_string($json)&&strlen($json)<2048){
+                $this->SetBuffer('AutoPhoneSSIDRuntimeCache',$json);
+                $saved=json_decode(
+                    $this->ReadAttributeString('AutoPhoneSSIDInventory'),true
+                );
+                // Scan times belong to volatile RAM. Only a material
+                // source identity change deserves a durable checkpoint.
+                $priorSources=is_array($saved)?($saved['people']??[]):[];
+                if($priorSources!==$cache['people'])
+                    $this->WriteAttributeString('AutoPhoneSSIDInventory',$json);
+            }
         }
         $j=$cache['people']['johannes']['id']??null;
         $c=$cache['people']['carina']['id']??null;
