@@ -61,6 +61,42 @@ readinessAssert(!$blocked['p03']['readyToObserveNewAnonymousRouteProofs']
     &&in_array('P03:MAIN_PROOF_BLOCKED_INSPECT_IVS_RULE_BINDING',
         $blocked['actions'],true),'main proof blocking wins');
 $mast['mainP03ProofBlocked']=false;
+// P03 multi-camera diagnostic matches the exact runtime eligibility.
+$p03['p03ModeTrustedFromFreshDiagnosis']=true;
+$p03['p03OperatingMode']='TEST_AND_PRODUCTION_OFF';
+$missing='Zeit: 2026-10-22 21:40:00 | AUTOMATISCH'
+    ."\nTEST: AUS | PRODUKTION: AUS"
+    ."\nP03_VORFREIGABE: AUDIT=JA | SIMULATION=NEIN | OUT=1 | IN=0"
+    .' | GESAMT=1 | AUX_ZAEHLER=JA | MASTS=JA | FREIGABE=NEIN';
+$missingState=JVPresenceOperationalReadiness::evaluate(
+    $ssid,$p03,$mast,$now,$missing
+);
+readinessAssert(
+    $missingState['p03']['productionPreflight']['verifiedFromFreshDiagnostic']
+    &&!$missingState['p03']['productionPreflight']['eligibleForManualProductionEnable']
+    &&in_array('P03_SIMULATION',
+        $missingState['p03']['productionPreflight']['missing'],true),
+    'fresh exact missing preflight guard extracted');
+$complete=str_replace(
+    'SIMULATION=NEIN | OUT=1 | IN=0 | GESAMT=1',
+    'SIMULATION=JA | OUT=2 | IN=2 | GESAMT=4',
+    str_replace('FREIGABE=NEIN','FREIGABE=JA',$missing)
+);
+$readyManually=JVPresenceOperationalReadiness::evaluate(
+    $ssid,$p03,$mast,$now,$complete
+);
+readinessAssert(
+    $readyManually['p03']['reason']
+    ==='P03_PRODUCTION_OFF_ELIGIBLE_FOR_MANUAL_ENABLE'
+    &&!$readyManually['p03']['readyToObserveNewAnonymousRouteProofs'],
+    'eligible only manual production, never active or proof');
+$contradiction=str_replace('FREIGABE=JA','FREIGABE=NEIN',$complete);
+$reject=JVPresenceOperationalReadiness::evaluate(
+    $ssid,$p03,$mast,$now,$contradiction
+);
+readinessAssert(!$reject['p03']['productionPreflight']['verifiedFromFreshDiagnostic'],
+    'contradictory claimed preflight fails closed');
+$mast['mainP03ProofBlocked']=false;
 $mast['bothMastsLive']=false;
 $down=JVPresenceOperationalReadiness::evaluate($ssid,$p03,$mast,$now);
 readinessAssert(!$down['p03']['readyToObserveNewAnonymousRouteProofs'],
