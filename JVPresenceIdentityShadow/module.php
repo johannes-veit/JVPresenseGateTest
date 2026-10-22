@@ -116,11 +116,11 @@ class JVPresenceIdentityShadow extends IPSModule
         // WORK source is NOT inferred from home MAC, VLAN/IP or geofence.
         // Disabled until actual phone-specific CURRENT SSID String sources
         // are available. No AP/controller credentials or new actions.
-        $this->RegisterPropertyBoolean('EnableWorkWiFiHints',false);
-        $this->RegisterPropertyInteger('JohannesSSIDVariableID',0);
-        $this->RegisterPropertyInteger('JohannesSSIDParentID',0);
-        $this->RegisterPropertyInteger('CarinaSSIDVariableID',0);
-        $this->RegisterPropertyInteger('CarinaSSIDParentID',0);
+        $this->RegisterPropertyBoolean('EnableWorkWiFiHints',true);
+        $this->RegisterPropertyInteger('JohannesSSIDVariableID',56338);
+        $this->RegisterPropertyInteger('JohannesSSIDParentID',56881);
+        $this->RegisterPropertyInteger('CarinaSSIDVariableID',24058);
+        $this->RegisterPropertyInteger('CarinaSSIDParentID',32081);
         // Johannes' separately configured Android EgiGeoZone: SHADOW only
         // reads two existing child variables of the verified Symcon device.
         // The 150 m radius is an app setting, NOT verified via these values.
