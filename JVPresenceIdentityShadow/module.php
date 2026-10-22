@@ -1119,14 +1119,20 @@ class JVPresenceIdentityShadow extends IPSModule
             $timeMeta=IPS_GetVariable($timestamp);
             if(($zoneMeta['VariableType']??null)!==0
                 ||($timeMeta['VariableType']??null)!==1)return $snapshot;
-            // EgiGeoZone Timestamp, like Geofency, may represent a later
-            // event at ANOTHER location. Compare Symcon update metadata
-            // before treating it as a fresh Zuhause event.
+            // EgiGeoZone has ONE device-wide Timestamp for ALL zones.
+            // Its webhook writes Timestamp BEFORE the particular zone
+            // Boolean. If the Timestamp is newer than the HOME Boolean,
+            // that last event belongs to Schiebetor/another zone, not HOME.
+            // Reject missing update metadata too: without a matching pair,
+            // there is no safe per-zone event timestamp to correlate.
+            // Keep a small positive allowance for two sequential Symcon
+            // SetValue calls, never the prior 60-second cross-zone window.
             $zoneUpdated=$zoneMeta['VariableUpdated']??null;
             $timestampUpdated=$timeMeta['VariableUpdated']??null;
-            if(is_int($zoneUpdated)&&$zoneUpdated>0
-                &&is_int($timestampUpdated)&&$timestampUpdated>0
-                &&abs($timestampUpdated-$zoneUpdated)>60)
+            if(!is_int($zoneUpdated)||$zoneUpdated<=0
+                ||!is_int($timestampUpdated)||$timestampUpdated<=0
+                ||$zoneUpdated<$timestampUpdated
+                ||$zoneUpdated-$timestampUpdated>5)
                 return $snapshot;
             $value=GetValue($zone);
             $at=GetValue($timestamp);
