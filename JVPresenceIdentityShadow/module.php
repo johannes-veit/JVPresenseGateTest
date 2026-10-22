@@ -31,6 +31,7 @@ require_once dirname(__DIR__).'/libs/JVAdditionalIPCInventory.php';
 require_once dirname(__DIR__).'/libs/JVKnownIpcMetadata.php';
 require_once dirname(__DIR__).'/libs/JVSupplementaryIpcEvidence.php';
 require_once dirname(__DIR__).'/libs/JVP03SourceHealth.php';
+require_once dirname(__DIR__).'/libs/JVPresenceOperationalReadiness.php';
 require_once dirname(__DIR__).'/libs/JVExistingWlanPhoneHints.php';
 require_once dirname(__DIR__).'/libs/JVJohannesEgiGeoZoneHints.php';
 require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
@@ -114,8 +115,8 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterPropertyInteger('CarinaWLANBoolID',38430);
         $this->RegisterPropertyInteger('CarinaWLANLastContactID',10760);
         // WORK source is NOT inferred from home MAC, VLAN/IP or geofence.
-        // Disabled until actual phone-specific CURRENT SSID String sources
-        // are available. No AP/controller credentials or new actions.
+        // Only actual phone-specific CURRENT SSID Strings are accepted.
+        // No AP/controller credentials, no new actions or camera writes.
         $this->RegisterPropertyBoolean('EnableWorkWiFiHints',true);
         $this->RegisterPropertyInteger('JohannesSSIDVariableID',56338);
         $this->RegisterPropertyInteger('JohannesSSIDParentID',56881);
@@ -2044,6 +2045,9 @@ class JVPresenceIdentityShadow extends IPSModule
         $parallelPassage['individualPeopleCount']='UNKNOWN';
         $parallelPassage['cameraCountCapabilityPriority']='IPC_WIZMIND_FIRST_WHEN_PEOPLE_COUNTING_VERIFIED';
         $boundary['report']['individualsOrEntireGroupExitedCertified']=false;
+        $operationalReadiness=JVPresenceOperationalReadiness::evaluate(
+            $tileWork,$temporalCrossCheck,$mastHealth,time()
+        );
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'snapshotAt'=>time(),
@@ -2075,6 +2079,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'anonymousRouteEpisodes'=>$routeEpisodes['report'],
             'residentJourneyCorrelation'=>$residentJourney,
             'presenceEvidenceReadiness'=>$evidenceReadiness,
+            'operationalReadiness'=>$operationalReadiness,
             'shadowIntegrityAudit'=>$integrityAudit,
             'presenceCommissioningGate'=>$commissioningGate,
             'shadowUpgradePreflight'=>$upgradePreflight,
@@ -2207,7 +2212,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $contactHistory['report'],$residentFusion['report'],
             $routeEpisodes['report'],$residentJourney,
             $evidenceReadiness,$integrityAudit,$commissioningGate,
-            $upgradePreflight,$presenceSafetyCase
+            $upgradePreflight,$presenceSafetyCase,$operationalReadiness
         ));
         $this->publish($report,$state);
         // A prior unexpected runtime error must not leave the native
