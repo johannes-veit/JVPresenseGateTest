@@ -69,6 +69,7 @@ final class JVShadowReportBudget
             'BETRIEB SSID Johannes:', 'BETRIEB SSID Carina:',
             'BETRIEB P03:', 'P03 FREIGABE:',
             'BETRIEB SSID-BRIDGE:', 'BETRIEB SSID QUELLWERTE:',
+            'BETRIEB SSID UPDATE-VERLAUF:',
             'BETRIEB SSID NAECHSTER SCHRITT:',
             'BETRIEB P03 OFFEN ',
             '--- HEUTE ABEND:', 'P03-UEBERGANG/24h:',
