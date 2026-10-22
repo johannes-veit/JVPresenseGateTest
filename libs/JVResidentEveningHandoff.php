@@ -734,6 +734,17 @@ final class JVResidentEveningHandoff
                 .' | Gleichzeitigkeit '.self::code(
                     $sourceCommissioning['sharedStaleSourcePattern']??'NO_CONCLUSION')
                 .' (kein POST-Beweis)');
+            $epoch=$sourceCommissioning['ssidSourceUpdateEpoch']??[];
+            if(is_array($epoch)&&$epoch!==[]){
+                $j=$epoch['johannes']??[];
+                $c=$epoch['carina']??[];
+                $add('BETRIEB SSID UPDATE-VERLAUF: Johannes '
+                    .self::code($j['state']??'NOT_CHECKED')
+                    .' ('.self::number($j['observedUpdatesThisEpoch']??0).')'
+                    .' | Carina '.self::code($c['state']??'NOT_CHECKED')
+                    .' ('.self::number($c['observedUpdatesThisEpoch']??0).')'
+                    .' | Quellvariable geaendert != authentifizierter Handy-POST');
+            }
             $add('BETRIEB SSID NAECHSTER SCHRITT: '.self::code(
                 $sourceCommissioning['ssidAction']??'UNKNOWN'));
             $steps=is_array($sourceCommissioning['p03Actions']??null)
