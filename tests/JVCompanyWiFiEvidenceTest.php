@@ -37,6 +37,18 @@ $stale=JVCompanyWiFiEvidence::evaluate($live,$now,true);
 ssidCheck(!$stale['people']['johannes']['workRecent']
  &&$stale['people']['johannes']['status']==='STALE_CURRENT_SSID_UNCONFIRMED',
  'last-known work SSID cannot remain eternally true');
+ssidCheck($stale['people']['johannes']['reportedSSIDKind']
+    ==='NONEMPTY_OBSERVED'
+    &&$stale['people']['johannes']['ssid']===null,
+    'stale nonempty value is classified without leaking old network or establishing location');
+$live['johannes']['ssid']='';
+$empty=JVCompanyWiFiEvidence::evaluate($live,$now,true);
+ssidCheck($empty['people']['johannes']['reportedSSIDKind']
+    ==='EMPTY_OR_DISCONNECTED'
+    &&$empty['people']['johannes']['status']==='STALE_CURRENT_SSID_UNCONFIRMED'
+    &&$empty['people']['johannes']['workRecent']===false,
+    'initialized/disconnected empty phone source remains unknown even if stale');
+$live['johannes']['ssid']='Intern-Veit';
 $live['johannes']['updatedAt']=$now+20;
 $future=JVCompanyWiFiEvidence::evaluate($live,$now,true);
 ssidCheck(!$future['people']['johannes']['workRecent']
