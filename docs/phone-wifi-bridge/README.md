@@ -6,7 +6,7 @@
 
 1. Im Objektbaum außerhalb fremder Module ein neues **PHP-Skript** `JV Smartphone WLAN Webhook` anlegen.
 2. **Den gesamten Inhalt von `JVPhoneWiFiWebhook.php`** in dieses Skript einfügen, speichern und **einmal manuell ausführen**.
-3. Das Skript legt genau zwei neue String-Werte `WifiSSID` unter den Kategorien `Johannes Smartphone SSID Quelle` und `Carina Smartphone SSID Quelle` sowie zwei verborgene persönliche Token an. Wiederholte Ausführung ist idempotent und wechselt keine Token. Die IDs werden in der neuen SHADOW-Version automatisch erkannt, **kein manuelles Verknüpfen erforderlich**. Geheim-Token **niemals** in Chats, Screenshots oder Repositories veröffentlichen.
+3. Das Skript legt genau zwei neue String-Werte `WifiSSID` unter den Kategorien `Johannes Smartphone SSID Quelle` und `Carina Smartphone SSID Quelle` sowie zwei verborgene persönliche Token an. Die IDs werden in SHADOW automatisch erkannt, **kein manuelles Verknüpfen erforderlich**. Bei einem **Update von der alten Skriptversion, die Tokens im Ausführungsprotokoll ausgab**, werden die beiden alten Tokens beim ersten **manuellen** Ausführen der überarbeiteten Version **einmalig neu erzeugt**. Weitere Ausführungen verändern sie nicht. Die aktualisierte Ausgabe zeigt ausschließlich IDs, **keine Tokenwerte**. Neue Token nur lokal aus den beiden ausgeblendeten Variablen ablesen und unmittelbar auf den jeweiligen Smartphones hinterlegen. Geheim-Token **niemals** in Chats, Screenshots, Tickets oder Repositories veröffentlichen.
 4. Der Installer prüft **WebHook Control** und registriert `/hook/jvphonewifi` automatisch für genau dieses Skript, sofern der Pfad frei ist. Kontrolle in der lokalen Skript-Ausgabe: `WEBHOOK: AUTOMATISCH_EINGERICHTET` oder `BEREITS_KORREKT`. Nur bei `WEBHOOK: MANUELL_NOETIG` den neuen Pfad unter **Kerninstanzen → WebHook Control** manuell diesem Skript zuordnen. Vorhandene `/hook/egigeozone`, `/hook/geofency` und Schiebetor-Hooks dürfen nicht verändert werden. Zeigt der gewünschte Pfad schon auf ein anderes Skript, wird die Installation **vor dem Anlegen neuer Objekte verweigert**.
 5. In **JV Presence Identity SHADOW #32969** (v0.8.111) sind die vorhandenen Variablen automatisch nach spätestens fünf Minuten im gleichen Herkunftsfilter sichtbar. Die vier alten manuellen Zuordnungsfelder und der manuelle Schalter `EnableWorkWiFiHints` werden für **diesen Bridge-Weg nicht mehr benötigt**. Sie bleiben optional für abweichende, bewusst manuell verknüpfte Quellen. **Wichtig:** Ein Hook ohne echte, wiederholte Meldungen vom Smartphone beweist kein WORK.
 
@@ -16,7 +16,7 @@ Die URL über **deine eigene, bereits funktionierende Symcon-Connect-IP-Magic-Ad
 
 `https://DEINE-ADRESSE.ipmagic.de/hook/jvphonewifi`
 
-Keine neue Firewallregel und keine neuen Ports. **HTTP POST**, `Content-Type: application/json`. Payloads (Token lokal vom Symcon-Skript ablesen):
+Keine neue Firewallregel und keine neuen Ports. **HTTP POST**, `Content-Type: application/json`. Payloads (Token ausschließlich aus den beiden **ausgeblendeten Symcon-Geheimtoken-Variablen** ablesen; das Setup-Protokoll verrät keine Token mehr):
 
 ```json
 {"person":"johannes","ssid":"Intern-Veit","token":"<GEHEIMER_JOHANNES_TOKEN>"}
@@ -67,3 +67,11 @@ In der App **Kurzbefehle → Automation → WLAN** eine Automation beim Verbinde
 ## Vollautomatisierung – Grenzen des Zugriffs
 
 Die bisherige GitHub-Entwicklung kann **nicht** direkt auf deine private SymBox oder die Benutzeroberflächen von Xiaomi/Carina-iPhone zugreifen. Die Einrichtung des vorstehenden PHP-Skripts bleibt eine **einmalige bestätigte lokale Benutzeraktion**. Ein erfolgreich registrierter Hook ist noch KEINE aktive SSID-Messung: die Android-App braucht ihre WLAN-Leserechte und einen regelmäßigen HTTP-POST-Flow; die iPhone-Kurzbefehle benötigen Apples Automationsfreigabe. Keine Zugangsdaten, Telefontokens oder dein persönlicher IP-Magic-Link werden in GitHub hinterlegt. Bei einem Symcon-Hook-Empfang entscheidet ausdrücklich `$_IPS['SENDER']==='WebHook'` statt eines erratenen HTTP-Headers, sodass ein späterer URL-Aufruf niemals die lokale Installer-Ausgabe mit Geheimtokens abruft.
+
+## Symcon-Warnungen bei alter Installer-Version / Token-Erneuerung
+
+Die ursprüngliche Fassung verwendete `IPS_GetObjectIDByIdent`. IP-Symcon meldet bei nicht gefundenem Ident selbst bei korrektem Erststart eine Warnung; der Installer hatte die fehlenden Kategorien/Variablen danach dennoch korrekt angelegt. Die überarbeitete Fassung sucht über `IPS_GetChildrenIDs` und `IPS_GetObject()['ObjectIdent']` ohne diese Warnungen. Referenz: [offizielle Symcon-Dokumentation](https://www.symcon.de/de/service/dokumentation/befehlsreferenz/objektverwaltung/ips-getobjectidbyident/).
+
+**Für die bereits installierte Instanz #21958 (22.10.2026):** nicht das ursprüngliche Skript nochmals unverändert ausführen. Stattdessen den **vollständigen neuen Inhalt** von `JVPhoneWiFiWebhook.php` in **genau dasselbe PHP-Skript #21958** kopieren, speichern, einmal im Symcon-Editor starten. Das vorhandene Hook `/hook/jvphonewifi` und die bestehenden persönlichen Quellen bleiben erhalten. Es werden **keine** neuen Kategorien, Datenvariablen oder Webhooks angelegt. Die beiden alten Tokens, die versehentlich als Klartext im Chat standen, werden einmalig rotiert. Das Ergebnis meldet `WEBHOOK: BEREITS_KORREKT` und nur die **IDs** der Geheimtoken-Variablen; die Werte niemals veröffentlichen. Solange die jeweiligen Smartphone-Automationen noch nicht installiert sind, erzeugt dieser Wechsel dort keinen Unterbruch.
+
+Falls die alte Skriptausgabe oder ein Screenshot mit Tokenwerten in einem Chat steht, diese Mitteilung entsprechend löschen. Die **erneuerten** Geheimtoken dürfen selbstverständlich nicht nochmals gepostet werden. Ein Smartphone kann WORK erst bestätigen, wenn es seine **wirklich aktuelle** SSID über die HTTPS-POST-Bridge meldet.
