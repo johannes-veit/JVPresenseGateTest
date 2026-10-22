@@ -64,6 +64,10 @@ final class JVShadowReportBudget
         }
         $priority=[
             '--- Johannes ---','--- Carina ---','--- KAMERAS / LCN / ROUTE ---',
+            // Fresh commissioning defects must survive truncation ahead of
+            // historical room patterns. Preserve the lines verbatim.
+            'BETRIEB SSID Johannes:', 'BETRIEB SSID Carina:',
+            'BETRIEB P03:', 'P03 FREIGABE:',
             '--- HEUTE ABEND:', 'P03-UEBERGANG/24h:',
             'P03-5MIN-STATUS:', 'P03-5MIN/24h:',
             'HANDY-EVENT/24h:', 'RAUMKONTEXT:',
