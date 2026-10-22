@@ -1,3 +1,10 @@
+# v0.8.115 (Build 196) – Zwei-Zeilen-Kachel fuer Johannes und Carina
+
+- **Direkt in der bestehenden Symcon-Kachelvisualisierung:** Die bereits vorhandene String-/HTMLBox-Variable `ResidentTile` (Anwesenheit – Johannes & Carina) zeigt statt eines aufklappbaren technischen Diagnose-Dashboards exakt zwei kompakte Bewohner-Zeilen mit Namen und Status.
+- **Vier eindeutige Darstellungen:** `Zuhause` nur bei frischem bestaetigtem Heim-WLAN-Handysignal, `In Firma` nur bei frischer persoenlicher Firmen-SSID, `Abwesend` mit sichtbarem Zusatz `Vermutet` nur bei qualifizierter persoenlicher Handy-Abreisefolge, sonst `Unklar`. Ein verlorener WLAN-Kontakt, alte Statusvariable, alter 150-m-Geofence, mehrdeutiges Kameraereignis oder ein altes Handy-Profil duerfen nie sicher abwesend behaupten.
+- **Kein Ressourcenwachstum:** Die vorhandenen sieben SHADOW-Variablen einschliesslich der beiden alten, bewusst unveraenderten String-Anzeigen und der einen HTMLBox bleiben in ID, Typ und Ident gleich. Keine neuen IPS-Variablen, Timer oder aktiven Netzwerkabfragen. Die volle technische Evidenz bleibt in `EvidenceJSON.residentTileEvidence`, `EvidenceJSON.compactResidentTile` und dem kopierbaren Testbericht.
+- **Bestehender Renderer bleibt zu Testzwecken verfuegbar**, aber SHADOW publiziert den neuen `renderCompact`. Neues `JVResidentCompactTileTest.php` und aktualisierter Gesamttest pruefen aktuelle HOME-/WORK-Handys, 300/301-s-Frische, ungepruefte Abreise, alte Aufenthaltsorte, widerspruechliche Netzsignale, sichere Darstellung und verwehrte Alarm-/Schaltbefugnis. Kein Eingriff in P03-Kameras, LCN, Alarme oder Firmen/Heim-WLAN.
+
 # v0.8.114 (Build 195) – SSID- und P03-Inbetriebnahme nach echtem Livebericht 22.10.2026
 
 - Die bereits in v0.8.113 vorhandene Betriebsdiagnose verschwand im langen Bericht, weil die 13-KB-Kuerzung die neuen BETRIEB-SSID/P03-Zeilen nicht priorisierte. JVShadowReportBudget priorisiert diese jetzt explizit vor optionalen Bewegungsverlaeufen, ohne den Schutztext oder die feste Groessengrenze zu verlieren. Regression mit mehreren hundert Bewegungszeilen und nur 4-KB-Budget.
