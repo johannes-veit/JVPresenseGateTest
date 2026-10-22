@@ -9,7 +9,9 @@ declare(strict_types=1);
 class IPSModule {
     private array $props=[];
     private array $attributes=[];
+    private array $buffers=[];
     public array $registered=[];
+    public int $attributeWrites=0;
     public function Create():void {}
     public function RegisterPropertyBoolean(string $n,bool $v):void{$this->props[$n]=$v;}
     public function RegisterPropertyInteger(string $n,int $v):void{$this->props[$n]=$v;}
@@ -18,7 +20,12 @@ class IPSModule {
     public function ReadPropertyString(string $n):string{return (string)($this->props[$n]??'');}
     public function RegisterAttributeString(string $n,string $v):void{$this->attributes[$n]=$v;}
     public function ReadAttributeString(string $n):string{return (string)($this->attributes[$n]??'');}
-    public function WriteAttributeString(string $n,string $v):void{$this->attributes[$n]=$v;}
+    public function WriteAttributeString(string $n,string $v):void{
+        $this->attributes[$n]=$v;
+        $this->attributeWrites++;
+    }
+    public function SetBuffer(string $n,string $v):void{$this->buffers[$n]=$v;}
+    public function GetBuffer(string $n):string{return $this->buffers[$n]??'';}
     public function RegisterVariableString(string $n,string $label,string $profile,int $sort):void{$this->registered[]=$n;}
     public function RegisterVariableBoolean(string $n,string $label,string $profile,int $sort):void{$this->registered[]=$n;}
     public function RegisterTimer(string $n,int $time,string $code):void{}
@@ -75,6 +82,23 @@ autoSSIDAssert($work['workPhoneCount']===2
     'both per-person current SSIDs map to WORK without AP inspection');
 autoSSIDAssert(count($module->registered)===7,
     'seven existing Symcon display variables remain unchanged');
+autoSSIDAssert($module->attributeWrites===1,
+    'initial source inventory is durably stored only once');
+$stored=json_decode($module->ReadAttributeString('AutoPhoneSSIDInventory'),true);
+autoSSIDAssert(is_array($stored),'persisted inventory parseable');
+// Move the 5-minute scan clock backwards without altering the source IDs.
+// Flash should not be touched when the same candidates are discovered.
+$stored['checkedAt']=$now-600;
+$module->SetBuffer('AutoPhoneSSIDRuntimeCache',
+    json_encode($stored,JSON_UNESCAPED_SLASHES));
+$again=$method->invoke($module);
+autoSSIDAssert($again===$auto &&$module->attributeWrites===1,
+    'stable source inventory rescan does not write persistent attributes');
+$module->SetBuffer('AutoPhoneSSIDRuntimeCache','');
+$restored=$method->invoke($module);
+autoSSIDAssert($restored===$auto &&$module->attributeWrites===1,
+    'cold runtime cache uses durable sources without extra flash writes');
+
 
 // A duplicate dedicated bridge candidate for the SAME person is not
 // silently resolved from order or SSID text; refuse WORK instead.
