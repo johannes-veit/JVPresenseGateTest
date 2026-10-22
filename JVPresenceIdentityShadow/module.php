@@ -1768,42 +1768,6 @@ class JVPresenceIdentityShadow extends IPSModule
         $indoorInventory=is_array($insideScan)
             && ($insideScan['authority']??'')==='INDOOR_LIGHT_TV_CANDIDATES_METADATA_ONLY'
             ?$insideScan:null;
-        // Context-only fusion. Does NOT overwrite houseObservation.houseStatus
-        // or any person presence/absence, and never writes to other modules.
-        $combined=JVCombinedPresenceEvidence::evaluate(
-            $wlan,$houseObservation,$p03Timeline['report'],
-            $boundary['report'],$gateDisplay,$indoorHints,time(),$egi,$carinaGeo,$workWiFi
-        );
-        $houseObservation['combinedContextStatus']=$combined['status'];
-        $houseObservation['combinedContextAuthority']=$combined['authority'];
-        $houseObservation['absenceEvidenceMissing']=$combined['absenceReview']['missingRequirements'];
-        // WLAN evidence supplements physical context without creating an
-        // identity, occupancy count or empty-property certificate.
-        $houseObservation['wlanDeviceContext']=$wlan['combinedContext'];
-        $houseObservation['wlanMacConfirmedDeviceCount']=$wlan['freshMacConfirmedDeviceCount'];
-        $houseObservation['wlanCannotCertifyAbsence']=true;
-        $houseObservation['johannesGeofenceContext']=$combined['johannesGeofenceContext'];
-        $houseObservation['johannesWlanGeofenceCrossCheck']=$combined['johannesWlanGeofenceCrossCheck'];
-        $houseObservation['geofenceOutsideCannotCertifyAway']=true;
-        $houseObservation['carinaGeofencyContext']=$combined['carinaGeofencyContext'];
-        $houseObservation['carinaWlanGeofencyCrossCheck']=$combined['carinaWlanGeofencyCrossCheck'];
-        // Device-derived per-resident display is NEVER a physical
-        // identification or permission for alarm/presence commands.
-        $residentDisplay=JVResidentPresenceDisplay::evaluate(
-            $wlan,$egi,$carinaGeo,$workWiFi
-        );
-        $priorResident=json_decode($this->readShadowState('ResidentVisuState'),true);
-        $residentVisu=JVResidentVisuState::evaluate(
-            $wlan,$workWiFi,$egi,$carinaGeo,
-            $houseObservation,$p03Timeline['report'],
-            is_array($priorResident)?$priorResident:[],time()
-        );
-        $residentNext=json_encode(
-            $residentVisu['next'],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE
-        );
-        if(is_string($residentNext)
-            &&$this->readShadowState('ResidentVisuState')!==$residentNext)
-            $this->writeShadowState('ResidentVisuState',$residentNext);
         // Independent, read-only AUTO-source detection for the requested
         // single tile. It NEVER mutates other modules or overrides the
         // explicit manual opt-in flags of existing SHADOW diagnostics.
@@ -1836,6 +1800,45 @@ class JVPresenceIdentityShadow extends IPSModule
         // source after both separately verified paths were merged. Recheck
         // the two final phone sources together before any tile/fusion use.
         $tileWork=JVCompanyWiFiEvidence::rejectSharedSource($tileWork);
+        // The same final manual+auto, source-identity-checked SSID evidence
+        // now feeds ALL person/context evaluators; never present different
+        // HOME/WORK decisions in the old string status versus the tile.
+        // Context-only fusion. Does NOT overwrite houseObservation.houseStatus
+        // or any person presence/absence, and never writes to other modules.
+        $combined=JVCombinedPresenceEvidence::evaluate(
+            $wlan,$houseObservation,$p03Timeline['report'],
+            $boundary['report'],$gateDisplay,$indoorHints,time(),$egi,$carinaGeo,$tileWork
+        );
+        $houseObservation['combinedContextStatus']=$combined['status'];
+        $houseObservation['combinedContextAuthority']=$combined['authority'];
+        $houseObservation['absenceEvidenceMissing']=$combined['absenceReview']['missingRequirements'];
+        // WLAN evidence supplements physical context without creating an
+        // identity, occupancy count or empty-property certificate.
+        $houseObservation['wlanDeviceContext']=$wlan['combinedContext'];
+        $houseObservation['wlanMacConfirmedDeviceCount']=$wlan['freshMacConfirmedDeviceCount'];
+        $houseObservation['wlanCannotCertifyAbsence']=true;
+        $houseObservation['johannesGeofenceContext']=$combined['johannesGeofenceContext'];
+        $houseObservation['johannesWlanGeofenceCrossCheck']=$combined['johannesWlanGeofenceCrossCheck'];
+        $houseObservation['geofenceOutsideCannotCertifyAway']=true;
+        $houseObservation['carinaGeofencyContext']=$combined['carinaGeofencyContext'];
+        $houseObservation['carinaWlanGeofencyCrossCheck']=$combined['carinaWlanGeofencyCrossCheck'];
+        // Device-derived per-resident display is NEVER a physical
+        // identification or permission for alarm/presence commands.
+        $residentDisplay=JVResidentPresenceDisplay::evaluate(
+            $wlan,$egi,$carinaGeo,$tileWork
+        );
+        $priorResident=json_decode($this->readShadowState('ResidentVisuState'),true);
+        $residentVisu=JVResidentVisuState::evaluate(
+            $wlan,$tileWork,$egi,$carinaGeo,
+            $houseObservation,$p03Timeline['report'],
+            is_array($priorResident)?$priorResident:[],time()
+        );
+        $residentNext=json_encode(
+            $residentVisu['next'],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE
+        );
+        if(is_string($residentNext)
+            &&$this->readShadowState('ResidentVisuState')!==$residentNext)
+            $this->writeShadowState('ResidentVisuState',$residentNext);
         // Durable phone-contact history. A resumed WLAN confirmation is
         // not evidence of a human arriving, and silence is never departure.
         $contactPrior=json_decode(
@@ -1882,7 +1885,7 @@ class JVPresenceIdentityShadow extends IPSModule
                 self::P03_GUID,'P03ConnectionDiagnosis'
             ),
             $p03Timeline['report'],$wlan,$activity,$egi,$carinaGeo,
-            $workWiFi,
+            $tileWork,
             ($p03['street']['directionMappingCertified']??false)===true,
             time()
         );
@@ -2052,6 +2055,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'presenceSafetyCase'=>$presenceSafetyCase,
             'roomMovementPaths'=>$roomPaths,
             'workWiFi'=>$workWiFi,
+            'effectiveWorkWiFi'=>$tileWork,
             'presenceDetected'=>$presenceDetected,
             'carinaGeofencyInventory'=>json_decode($this->readShadowState('CarinaGeofencyInventory'),true),
             'localSensors'=>$local,
