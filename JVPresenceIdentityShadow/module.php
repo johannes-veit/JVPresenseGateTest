@@ -159,6 +159,7 @@ class JVPresenceIdentityShadow extends IPSModule
         ], JSON_UNESCAPED_UNICODE) ?: '[]');
         $this->RegisterAttributeString('SensorSubscriptions','[]');
         $this->RegisterAttributeString('GateSubscriptions','[]');
+        $this->RegisterAttributeString('PersonalSSIDSubscriptions','[]');
         $this->RegisterAttributeString('AutoPhoneSSIDInventory','{}');
         $this->RegisterAttributeString('ResidentRootVisuSetup','{}');
         // Attributes persist across Symcon / module restarts; buffers DO NOT.
@@ -219,6 +220,11 @@ class JVPresenceIdentityShadow extends IPSModule
             $step='RECONNECT_EXISTING_GATE_SUBSCRIPTIONS';
             $this->syncGateSubscriptions();
             $step='INITIAL_READ_ONLY_REFRESH';
+            // Module reload and SymBox restarts must reinstall VM_UPDATE
+            // handlers even when the stored IDs have not changed.
+            $this->SetBuffer('PersonalSSIDRuntimeSubscriptionList','');
+            if(!$this->ReadPropertyBoolean('Enabled'))
+                $this->syncPersonalSSIDSubscriptions([]);
             $this->Refresh();
             // A blocked upgrade must not be advertised as an initialized
             // GREEN/active Symcon instance. Preserve the specific already
@@ -491,6 +497,87 @@ class JVPresenceIdentityShadow extends IPSModule
             $this->WriteAttributeString('GateSubscriptions',$value);
     }
 
+    /**
+     * Subscribe to actual two, separately identified, phone SSID String
+     * sources. A repeating authenticated POST of the SAME SSID must update
+     * the resident tile immediately, not wait for the next 60-second poll.
+     * Runtime handlers are re-registered after a SymBox/module restart.
+     * Only our own module subscription is changed, not the source object.
+     */
+    private function syncPersonalSSIDSubscriptions(array $work):void
+    {
+        $old=json_decode(
+            $this->ReadAttributeString('PersonalSSIDSubscriptions'),true
+        );
+        $old=is_array($old)?array_values(array_unique(array_filter(
+            $old,static fn($v):bool=>is_int($v)&&$v>0))):[];
+        $next=[];
+        if($this->ReadPropertyBoolean('Enabled')
+            &&($work['schema']??null)===1
+            &&($work['authority']??null)
+                ==='PHONE_CURRENT_SSID_READ_ONLY_WORK_CONTEXT'){
+            foreach(['johannes','carina'] as $person){
+                $r=$work['people'][$person]??[];
+                if(!is_array($r)
+                    ||($r['sourceVerified']??false)!==true
+                    ||!is_string($r['sourceKey']??null)
+                    ||preg_match('/^SSID:([1-9][0-9]{0,9})$/D',
+                        $r['sourceKey'],$m)!==1)continue;
+                $id=(int)$m[1];
+                try{
+                    if(!IPS_VariableExists($id))continue;
+                    $var=IPS_GetVariable($id);
+                    if(($var['VariableType']??null)!==3)continue;
+                    if(!in_array((string)IPS_GetName($id),[
+                        'WifiSSID','WLAN SSID','WLAN-SSID',
+                        'Aktuelle SSID'],true))continue;
+                    $parent=(int)(IPS_GetObject($id)['ParentID']??0);
+                    if($parent<=0)continue;
+                    $root=(int)(IPS_GetObject($parent)['ParentID']??0);
+                    $parentName=(string)IPS_GetName($parent);
+                    $known=$person==='johannes'
+                        ?($parent===50000&&$root===35965)
+                        :($parent===45439&&$root===48903);
+                    $named=preg_match('/(?:^|[^a-z])'
+                        .preg_quote($person,'/').'(?:$|[^a-z])/iu',
+                        $parentName)===1;
+                    if(!$known&&!$named)continue;
+                    $next[]=$id;
+                }catch(Throwable $ignored){}
+            }
+        }
+        $next=array_values(array_unique($next));
+        sort($next);sort($old);
+        $encoded=json_encode($next)?:'[]';
+        if($this->GetBuffer('PersonalSSIDRuntimeSubscriptionList')!==$encoded
+            ||$old!==$next){
+            foreach(array_diff($old,$next) as $id){
+                // GUS/Gate have separate subscriptions. A String ID is not
+                // an allowed GUS/Gate Boolean, but double-check anyway.
+                $sensor=json_decode($this->ReadAttributeString(
+                    'SensorSubscriptions'),true);
+                $gate=json_decode($this->ReadAttributeString(
+                    'GateSubscriptions'),true);
+                if(in_array((int)$id,is_array($sensor)?$sensor:[],true)
+                    ||in_array((int)$id,is_array($gate)?$gate:[],true))
+                    continue;
+                try{$this->UnregisterMessage((int)$id,self::VM_UPDATE);}
+                catch(Throwable $ignored){}
+            }
+            $registered=[];
+            foreach($next as $id){
+                try{
+                    $this->RegisterMessage((int)$id,self::VM_UPDATE);
+                    $registered[]=$id;
+                }catch(Throwable $ignored){}
+            }
+            $encoded=json_encode($registered)?:'[]';
+            $this->SetBuffer('PersonalSSIDRuntimeSubscriptionList',$encoded);
+            if($this->ReadAttributeString('PersonalSSIDSubscriptions')!==$encoded)
+                $this->WriteAttributeString('PersonalSSIDSubscriptions',$encoded);
+        }
+    }
+
     public function MessageSink($TimeStamp, $SenderID, $Message, $Data): void
     {
         if(!$this->ReadPropertyBoolean('Enabled')
@@ -501,7 +588,11 @@ class JVPresenceIdentityShadow extends IPSModule
             && in_array((int)$SenderID,$registered,true);
         $isGate=is_array($gateRegistered)
             && in_array((int)$SenderID,$gateRegistered,true);
-        if(!$isGus && !$isGate)return;
+        $ssidRegistered=json_decode(
+            $this->ReadAttributeString('PersonalSSIDSubscriptions'),true);
+        $isSSID=is_array($ssidRegistered)
+            && in_array((int)$SenderID,$ssidRegistered,true);
+        if(!$isGus && !$isGate && !$isSSID)return;
         // React immediately to an update to avoid losing a short human
         // pulse before the next poll. Read only current local Symcon data.
         $this->Refresh();
@@ -2191,6 +2282,9 @@ class JVPresenceIdentityShadow extends IPSModule
         // source after both separately verified paths were merged. Recheck
         // the two final phone sources together before any tile/fusion use.
         $tileWork=JVCompanyWiFiEvidence::rejectSharedSource($tileWork);
+        // React to accepted, phone-specific future webhook SetValue posts
+        // promptly; no new Symcon event objects or phone operations.
+        $this->syncPersonalSSIDSubscriptions($tileWork);
         // The same final manual+auto, source-identity-checked SSID evidence
         // now feeds ALL person/context evaluators; never present different
         // HOME/WORK decisions in the old string status versus the tile.
