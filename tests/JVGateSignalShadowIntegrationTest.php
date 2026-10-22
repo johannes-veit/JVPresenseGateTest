@@ -540,12 +540,17 @@ checkGate(str_contains($singleReport,'=== TESTBERICHT AN CHATGPT')
     &&str_ends_with($singleReport,'=== ENDE TESTBERICHT ==='),
     'one auto-updated TestReport collects both WLAN phones and blocks real-world action permission');
 
-checkGate(str_contains($oneTile,'<details')
+checkGate(str_contains($oneTile,'Bewohnerstatus')
     &&str_contains($oneTile,'Johannes')
     &&str_contains($oneTile,'Carina')
-    &&str_contains($oneTile,'ANWESEND')
-    &&str_contains($oneTile,'Zu Fuß / Auto / Filzener Weg: nicht personenbezogen nachgewiesen'),
-    'single automatically supplied HTMLBox tile renders resident phone status and unverified travel');
+    &&substr_count($oneTile,'Zuhause')===2
+    &&!str_contains($oneTile,'<details')
+    &&!str_contains($oneTile,'P03:')
+    &&str_contains($oneTile,'keine automatische Alarmfreigabe')
+    &&($wlanData['compactResidentTile']['people']['johannes']['status']??null)==='Zuhause'
+    &&($wlanData['compactResidentTile']['people']['carina']['status']??null)==='Zuhause'
+    &&($wlanData['compactResidentTile']['mayArmAlarm']??true)===false,
+    'one compact read-only HTMLBox shows two HOME phone indications without raw diagnostics or alarm actions');
 checkGate(($wlanData['residentTileEvidence']['authority']??null)
     ==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE'
     &&($wlanData['residentTileEvidence']['people']['johannes']['status']??null)
