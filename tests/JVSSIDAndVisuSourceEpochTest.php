@@ -172,4 +172,24 @@ boundPhoneCheck(str_contains($main,
 boundPhoneCheck(str_contains($main,
     "' | Firmen-WLAN Handys: '." . '$tileWork' . "['workPhoneCount']"),
     'human-facing summary counts only final reconciled work-phone sources');
+// Regression: the manual checkbox may be OFF, yet the already
+// authorized AUTO phone tile can have one genuine SSID source. Downstream
+// personal contexts must not silently keep using the manual-only report.
+$autoPosition=strpos($main,'$tileWork=JVCompanyWiFiEvidence::rejectSharedSource($tileWork);');
+$combinedPosition=strpos($main,'$combined=JVCombinedPresenceEvidence::evaluate(');
+boundPhoneCheck($autoPosition!==false &&$combinedPosition!==false
+    &&$autoPosition<$combinedPosition,
+    'final automatically detected phone SSID is ready before combined evaluation');
+foreach([
+    '$boundary[\'report\'],$gateDisplay,$indoorHints,time(),$egi,$carinaGeo,$tileWork',
+    '$wlan,$egi,$carinaGeo,$tileWork',
+    '$wlan,$tileWork,$egi,$carinaGeo,',
+    "\'effectiveWorkWiFi\'=>" . '$tileWork'
+] as $needed){
+    boundPhoneCheck(str_contains($main,$needed),
+        'all human and combined source reports share final phone SSID: '.$needed);
+}
+boundPhoneCheck(str_contains($main,'AutoPhoneSSIDRuntimeCache')
+    &&str_contains($main,'if($priorSources!==$cache[\'people\'])'),
+    'read-only source inventory does not save unchanged 5-minute scan timestamps');
 echo "SSID merged collisions and source-bound two-resident VISU epochs PASS\n";
