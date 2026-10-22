@@ -1238,14 +1238,17 @@ class JVPresenceIdentityShadow extends IPSModule
             $v=IPS_GetVariable($zone);$t=IPS_GetVariable($timestamp);
             if(($v['VariableType']??null)!==0
                 ||($t['VariableType']??null)!==1)return $none;
-            // Geofency Timestamp is for ANY location event. When Symcon
-            // reports both update times, they must belong to the SAME
-            // event, not a later office/geofence update.
+            // Geofency, like EgiGeoZone, stores ONE Timestamp per device,
+            // not per zone. Its webhook first updates that Timestamp, then
+            // only the Boolean of the zone which actually changed. A later
+            // office zone may never lend its timestamp to Zuhause, even
+            // when both HTTP calls arrived seconds apart.
             $zoneUpdated=$v['VariableUpdated']??null;
             $timestampUpdated=$t['VariableUpdated']??null;
-            if(is_int($zoneUpdated)&&$zoneUpdated>0
-                &&is_int($timestampUpdated)&&$timestampUpdated>0
-                &&abs($timestampUpdated-$zoneUpdated)>60){
+            if(!is_int($zoneUpdated)||$zoneUpdated<=0
+                ||!is_int($timestampUpdated)||$timestampUpdated<=0
+                ||$zoneUpdated<$timestampUpdated
+                ||$zoneUpdated-$timestampUpdated>5){
                 $none['selectionStatus']='OTHER_GEOFENCE_TIMESTAMP';
                 return $none;
             }
