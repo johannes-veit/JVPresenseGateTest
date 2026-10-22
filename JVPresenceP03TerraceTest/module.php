@@ -2793,6 +2793,28 @@ class JVPresenceP03MultiCamera extends IPSModule
     {
         $armed = $this->ReadAttributeBoolean('TestActive');
         $production = $this->ReadAttributeBoolean('ProductionEnabled');
+        // Mirror the EXACT production gate as a passive diagnostic. This
+        // does not start testing, reset calibration, change camera rules,
+        // subscribe any events or write a foreign object's properties.
+        $actions = json_decode($this->ReadAttributeString('P03ActionCounts'), true);
+        if (!is_array($actions)) $actions = [];
+        $out = max(0,(int)($actions[P03ProofEngine::ACTION_HOME_TO_LAGER] ?? 0));
+        $in = max(0,(int)($actions[P03ProofEngine::ACTION_LAGER_TO_HOME] ?? 0));
+        $proofCount = max(0,$this->ReadAttributeInteger('P03VerifiedCount'));
+        $auditOk = $this->ReadAttributeBoolean('P03MultiAuditPassed');
+        $simulationOk = $this->ReadAttributeBoolean('P03SimulationPassed');
+        $countersOk = $this->ReadAttributeInteger('AuxJVEventCounterVarID') > 0
+            && $this->ReadAttributeInteger('AuxWorkEventCounterVarID') > 0;
+        $mastsOk = $this->p03AuxStreamsReady();
+        $eligible = $auditOk && $simulationOk && $out >= 2 && $in >= 2
+            && $proofCount >= 4 && $countersOk && $mastsOk;
+        $yn = static fn(bool $value):string => $value ? 'JA' : 'NEIN';
+        $productionGate = 'P03_VORFREIGABE: AUDIT='.$yn($auditOk)
+            .' | SIMULATION='.$yn($simulationOk)
+            .' | OUT='.$out.' | IN='.$in.' | GESAMT='.$proofCount
+            .' | AUX_ZAEHLER='.$yn($countersOk)
+            .' | MASTS='.$yn($mastsOk)
+            .' | FREIGABE='.$yn($eligible);
         $lines = [
             '=== P03 SOCKET-DIAGNOSE (NUR LESEN) ===',
             'Zeit: ' . date('Y-m-d H:i:s')
@@ -2800,6 +2822,7 @@ class JVPresenceP03MultiCamera extends IPSModule
             'Hauptinstanz: #' . $this->InstanceID,
             'TEST: ' . ($armed ? 'AKTIV' : 'AUS')
                 . ' | PRODUKTION: ' . ($production ? 'AKTIV' : 'AUS'),
+            $productionGate,
             'Hinweis: Human-Zähler laufen unabhängig vom Test. '
                 . (!$armed && !$production
                     ? 'Ohne gestarteten Lauftest/Produktion wird KEIN Uebergang gebucht.'
