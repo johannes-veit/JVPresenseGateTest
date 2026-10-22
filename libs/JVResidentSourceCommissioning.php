@@ -16,6 +16,8 @@ final class JVResidentSourceCommissioning
             'schema'=>1,'authority'=>'READ_ONLY_SOURCE_DELIVERY_AND_P03_NEXT_ACTION',
             'ssidHook'=>'UNKNOWN',
             'ssidPeople'=>[],
+            'sourceValuePatterns'=>[],
+            'sharedStaleSourcePattern'=>'NO_CONCLUSION',
             'sharedSourceUpdateSecond'=>false,
             'bothPhoneReportsStale'=>false,
             'sourceFreshnessSeconds'=>300,
@@ -55,11 +57,18 @@ final class JVResidentSourceCommissioning
                     :(!$fresh?($age>300?'PHONE_POST_NO_LONGER_FRESH'
                         :'PHONE_SSID_VALUE_NOT_CONFIRMED')
                         :'PHONE_CURRENT_SSID_RECEIVED'));
+            $kind=is_string($row['reportedSSIDKind']??null)
+                ?$row['reportedSSIDKind']:'UNKNOWN';
+            if(!in_array($kind,['EMPTY_OR_DISCONNECTED',
+                'NONEMPTY_OBSERVED','INVALID_PAYLOAD','NOT_READ',
+                'COLLISION_NOT_USABLE','UNKNOWN'],true))$kind='UNKNOWN';
+            $out['sourceValuePatterns'][$person]=$kind;
             $out['ssidPeople'][$person]=[
                 'sourceAccepted'=>$sourceOk,
                 'latestUpdateAgeSeconds'=>$ageValid?$age:null,
                 'freshPhoneUpdate'=>$fresh,
                 'code'=>$code,
+                'sourceValuePattern'=>$kind,
                 'isLiveHumanProof'=>false
             ];
             if($sourceOk&&$ageValid)$validAges[$person]=$age;
@@ -71,13 +80,24 @@ final class JVResidentSourceCommissioning
         // a common sender, a missing phone, or bridge setup failure.
         $out['sharedSourceUpdateSecond']=$bothStale
             &&$validAges['johannes']===$validAges['carina'];
-        if($out['ssidHook']==='HOOK_NOT_REGISTERED'){
+        if($bothStale&&$out['sharedSourceUpdateSecond']){
+            $a=$out['sourceValuePatterns']['johannes'];
+            $b=$out['sourceValuePatterns']['carina'];
+            $out['sharedStaleSourcePattern']=$a==='EMPTY_OR_DISCONNECTED'
+                &&$b==='EMPTY_OR_DISCONNECTED'
+                ?'TWO_EMPTY_VALUES_FROM_SAME_SECOND_POSSIBLE_INITIALIZATION'
+                :'TWO_STALE_VALUES_SAME_SECOND_NO_TRANSPORT_PROOF';
+        }
+        if($out['ssidHook']==='HOOK_NOT_REGISTERED'){ 
             $out['ssidAction']='VERIFY_WEBHOOK_MAPPING_TO_EXISTING_SCRIPT';
         }elseif($out['ssidHook']==='HOOK_CONFLICT'
             ||$out['ssidHook']==='HOOK_TARGET_INVALID'){
             $out['ssidAction']='RESOLVE_WEBHOOK_TARGET_WITHOUT_OVERWRITING_FOREIGN_HOOK';
         }elseif($bothStale){
-            $out['ssidAction']='CHECK_BOTH_PHONE_AUTOMATIONS_AND_ACCEPTED_POST_RESPONSE';
+            $out['ssidAction']=$out['sharedStaleSourcePattern']
+                ==='TWO_EMPTY_VALUES_FROM_SAME_SECOND_POSSIBLE_INITIALIZATION'
+                ?'CHECK_INITIAL_PHONE_POSTS_POSSIBLE_EMPTY_BOOTSTRAP'
+                :'CHECK_BOTH_PHONE_AUTOMATIONS_AND_ACCEPTED_POST_RESPONSE';
         }elseif(!$out['ssidPeople']['johannes']['freshPhoneUpdate']
             ||!$out['ssidPeople']['carina']['freshPhoneUpdate']){
             $out['ssidAction']='CHECK_INDIVIDUAL_PHONE_POST_AND_FRESH_SSID';
