@@ -11,7 +11,7 @@
     },
     {
       "type": "Label",
-      "caption": "SHADOW v0.8.110: Fehlerbehebung bei zwei vorhandenen Smartphone-Geofence-Modulen. EgiGeoZone (Johannes, Android) und Geofency (Carina, iPhone) speichern je Geraet nur einen gemeinsamen Timestamp fuer alle Zonen, darunter Zuhause und Schiebetor. Der alte 60-Sekunden-Vergleich konnte bei kurz aufeinanderfolgenden Ereignissen einer anderen Zone einen neuen Zuhause-Eintritt/Austritt vortaeuschen. Beide Lesepfade pruefen jetzt die tatsaechliche Reihenfolge des Symcon-Webhooks: erst Timestamp, dann die Zone; maximal fuenf Sekunden Abstand, notwendige Update-Metadaten. Anderswo entstandene Meldungen sind UNBESTAETIGT, keine menschliche An- oder Abwesenheit. Neue Integrationstests pruefen reale IDs, 2-Sekunden-Kollisionen, korrekte Ereignisse sowie alte und falsch gebundene Quellen. Unveraendert: sieben Ausgabevariablen, 15 dauerhafte Zustandsattribute, bestehende Instanz #32969 und Testergebnis #40890, keine neuen Timer, Objekte oder Aenderungen fremder Module."
+      "caption": "SHADOW v0.8.111: Firmen-WLAN Intern-Veit/Privat-Veit einheitlich fuer beide Smartphone-Kacheln, Personenstatus und gemeinsame Auswertung. Bereits vorhandene individuelle WifiSSID-Variablen werden automatisch gelesen (bis 5 Minuten Quelleninventur), eine dedizierte und token-geschuetzte Bridge wird gegenueber einer nur bei Geofence-Ereignis aktualisierten nativen WifiSSID bevorzugt. Nicht-personalisierte AP-, UniFi- und Shelly-SSID-Werte sind KEINE Bewohner-SSID. Der optionale einfache WebHook-Empfaenger liegt als Skript und Anleitung unter docs/phone-wifi-bridge. Er wird NICHT automatisch installiert; zwei Handy-Automatisierungen zum Uebertragen der tatsaechlich aktuellen SSID sind erforderlich. Keine vier manuellen ID-Zuordnungen oder weiteren SHADOW-Schalter fuer den Auto-Weg. Ohne frische persoenliche Quelle bleibt WORK UNBESTAETIGT, kein menschlicher Abwesenheitsbeweis. Personenstatus und EvidenceJSON.effectiveWorkWiFi verwenden nun dieselbe finale Quellenentscheidung; das bisherige workWiFi-Feld zeigt separat den expliziten manuellen Konfigurationskanal. Unveraenderte Auto-SSID-Inventur erfordert keine periodischen dauerhaften Speicherwrites. P03 historische Gehtests gelten weiter; die aktuelle Quelle #53879 bleibt im TEST/PRODUKTION-AUS-Modus, SHADOW darf sie weder aktivieren noch historische Events als neue Wege zaehlen. Keine neuen SHADOW-Variablen, Attribute oder Timer, keine fremden Module aendern."
     },
     {
       "type": "Label",
@@ -50,7 +50,7 @@
     },
     {
       "type": "Label",
-      "caption": "NEU v0.8.52: Unter EvidenceJSON.temporalPresenceCrossCheck stehen aktuelle P03-Betriebsart (TEST/PRODUKTION AUS oder AKTIV, nur bei frischer P03 Socket-Diagnose), rohe Straßen-IVS OUT/IN mit Zeitstempeln, unverifizierte Straßenevent + JV_LEFT Human-Sequenzen (maximal 50 Sekunden), 24-h-Summen, letzter WLAN-MAC-Kontakt von Johannes/Carina und letzte GUS-Hausbewegung. WLAN-Kontakt ist periodische MAC-Prüfung, NICHT der WLAN-Beitritt. Roh-IVS ist KEIN geprüfter Zwei-Mast-Treppenbeweis oder Beleg für eine bestimmte Person. P03-Produktion wird NICHT automatisch gestartet. Bei Bedarf nur in der P03-Hauptinstanz #53879 nach Sicherheitsprüfung die bestehende Aktion 'P03 Produktivbetrieb aktivieren' verwenden. Beide Geofences bleiben bis zur manuellen Aktivierung in SHADOW AUS; keine Fremdmodule verändert. Alle fünf bestehenden Variablen/IDs bleiben identisch."
+      "caption": "NEU v0.8.52: Unter EvidenceJSON.temporalPresenceCrossCheck stehen aktuelle P03-Betriebsart (TEST/PRODUKTION AUS oder AKTIV, nur bei frischer P03 Socket-Diagnose), rohe Straßen-IVS OUT/IN mit Zeitstempeln, unverifizierte Straßenevent + JV_LEFT Human-Sequenzen (maximal 50 Sekunden), 24-h-Summen, letzter WLAN-MAC-Kontakt von Johannes/Carina und letzte GUS-Hausbewegung. WLAN-Kontakt ist periodische MAC-Prüfung, NICHT der WLAN-Beitritt. Roh-IVS ist KEIN geprüfter Zwei-Mast-Treppenbeweis oder Beleg für eine bestimmte Person. P03-Produktion wird NICHT automatisch gestartet. Bei Bedarf nur in der P03-Hauptinstanz #53879 nach Sicherheitsprüfung die bestehende Aktion 'P03 Produktivbetrieb aktivieren' verwenden. Beide Geofences bleiben bis zur manuellen Aktivierung in SHADOW AUS; keine Fremdmodule verändert. Alle fünf bestehenden Variablen/IDs bleiben identisch. WICHTIG: Historische mehrfach gepruefte HOME/LAGER-Richtungen werden nicht entwertet und fuer dieses SHADOW-SSID-Update KEINE neuen Gehtests verlangt. Aktueller TEST/PRODUKTION AUS-Status der bestehenden externen P03-Hauptinstanz #53879 bedeutet nur keine neuen gebuchten Uebergaenge. Kamera-/Produktionsfreigabe niemals durch SHADOW aendern."
     },
     {
       "type": "Label",
@@ -153,12 +153,12 @@
       "items": [
         {
           "type": "Label",
-          "caption": "Firmen-WLANs aus den bisherigen Gesprächen: Intern-Veit und Privat-Veit = WORK (VLAN 2). Privat-Veit-EXT erreicht auch den privaten Außenbereich und gilt NICHT als eindeutiger Arbeitsnachweis. Zuhause: Veit-FilzenerWeg. Ein aktueller exakter Firmen-SSID-Wert ist pro Smartphone erforderlich. MAC/ARP, die 150-m-Geofence-Zone oder die bloße Erreichbarkeit eines Firmen-AP zeigen den aktuell verbundenen SSID eines Smartphones NICHT. Aktuell sind noch keine solchen per Telefon gelieferten, fortlaufend aktualisierten SSID-Variablen bekannt."
+          "caption": "Intern-Veit und Privat-Veit bedeuten WORK fuer das individuell nachweislich verbundene Smartphone. Privat-Veit-EXT ist zwischen Firma und Privatgrundstueck uneindeutig; Zuhause Veit-FilzenerWeg. NEU: Persoenliche String-Variablen werden automatisch gefunden; eine bereits bestehende Geofency-WifiSSID oder die token-geschuetzte optionale Bridge kann ohne manuelle vier IDs genutzt werden. Die Smartphones muessen ihre tatsaechlich aktuell verbundene SSID regelmaessig melden, sonst gibt es keinen gueltigen Arbeitsnachweis. Keine AP-Erreichbarkeit/ARP/150m-Geofence als Firmen-Handy-SSID interpretieren."
         },
         {
           "type": "CheckBox",
           "name": "EnableWorkWiFiHints",
-          "caption": "Vorhandene telefonbezogene WLAN-SSID-Meldungen zur HOME/WORK-Trennung NUR LESEN (Opt-in, standardmäßig AUS)"
+          "caption": "Optional: explizit verknuepfte persoenliche SSID-Variablen lesen (AUTO-Erkennung laeuft unabhaengig davon)"
         },
         {
           "type": "NumberSpinner",
