@@ -1,0 +1,45 @@
+<style>
+  #jvshadow-native { box-sizing:border-box; width:100%; max-width:100%; font-family:inherit; padding:4px 6px; color:inherit }
+  #jvshadow-native .jv-resident {display:flex; align-items:center; justify-content:space-between; gap:9px; padding:12px 2px; border-bottom:1px solid rgba(125,125,125,.20)}
+  #jvshadow-native .jv-resident:last-of-type {border-bottom:0}
+  #jvshadow-native .jv-name {font-weight:600; min-width:95px}
+  #jvshadow-native .jv-value {min-width:0; text-align:right}
+  #jvshadow-native .jv-status {border-radius:8px; padding:5px 10px; display:inline-block; font-weight:650; background:#e8ebee; color:#444}
+  #jvshadow-native .jv-status.home {background:#d9f5e4;color:#174e32}
+  #jvshadow-native .jv-status.work {background:#dcebfc;color:#154b76}
+  #jvshadow-native .jv-status.away {background:#fff0d1;color:#684216}
+  #jvshadow-native .jv-info {display:block; font-size:.76em; opacity:.75; margin-top:3px; line-height:1.25}
+  #jvshadow-native .jv-footer {opacity:.55; font-size:.72em; margin:8px 0 1px}
+</style>
+<div id="jvshadow-native" aria-label="Bewohnerstatus, Handy-Hinweise">
+  <div class="jv-resident">
+    <span class="jv-name">Johannes</span>
+    <span class="jv-value"><span class="jv-status" id="jv-johannes-status">Unklar</span><span class="jv-info" id="jv-johannes-info">Warte auf aktuelle Daten</span></span>
+  </div>
+  <div class="jv-resident">
+    <span class="jv-name">Carina</span>
+    <span class="jv-value"><span class="jv-status" id="jv-carina-status">Unklar</span><span class="jv-info" id="jv-carina-info">Warte auf aktuelle Daten</span></span>
+  </div>
+  <div class="jv-footer">Handy-Hinweise · keine Alarmfreigabe</div>
+</div>
+<script>
+  // Symcon HTML-SDK: updates arrive only from this instance's PHP runtime.
+  // No external resources, no remote requests, no actions and no HTML injection.
+  function handleMessage(message) {
+    let data;
+    try { data = typeof message === 'string' ? JSON.parse(message) : message; }
+    catch (e) { return; }
+    if (!data || data.authority !== 'COMPACT_PHONE_TILE_READ_ONLY' || !data.people) return;
+    for (const person of ['johannes', 'carina']) {
+      const item = data.people[person] || {};
+      const status = document.getElementById('jv-' + person + '-status');
+      const info = document.getElementById('jv-' + person + '-info');
+      if (!status || !info) continue;
+      const allowed = {'Zuhause':'home','In Firma':'work','Abwesend':'away','Unklar':'unknown'};
+      const label = Object.prototype.hasOwnProperty.call(allowed, item.status) ? item.status : 'Unklar';
+      status.textContent = label;
+      status.className = 'jv-status ' + allowed[label];
+      info.textContent = typeof item.reason === 'string' ? item.reason.slice(0,95) : '';
+    }
+  }
+</script>
