@@ -33,6 +33,7 @@ require_once dirname(__DIR__).'/libs/JVSupplementaryIpcEvidence.php';
 require_once dirname(__DIR__).'/libs/JVP03SourceHealth.php';
 require_once dirname(__DIR__).'/libs/JVPresenceOperationalReadiness.php';
 require_once dirname(__DIR__).'/libs/JVResidentSourceCommissioning.php';
+require_once dirname(__DIR__).'/libs/JVPersonalSSIDDeliveryLedger.php';
 require_once dirname(__DIR__).'/libs/JVExistingWlanPhoneHints.php';
 require_once dirname(__DIR__).'/libs/JVJohannesEgiGeoZoneHints.php';
 require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
@@ -223,6 +224,9 @@ class JVPresenceIdentityShadow extends IPSModule
             // Module reload and SymBox restarts must reinstall VM_UPDATE
             // handlers even when the stored IDs have not changed.
             $this->SetBuffer('PersonalSSIDRuntimeSubscriptionList','');
+            // RAM-only event continuity always starts a new observer epoch
+            // after restart/reconfiguration; never extrapolate past reads.
+            $this->SetBuffer('PersonalSSIDDeliveryLedger','');
             if(!$this->ReadPropertyBoolean('Enabled'))
                 $this->syncPersonalSSIDSubscriptions([]);
             $this->Refresh();
@@ -2285,6 +2289,16 @@ class JVPresenceIdentityShadow extends IPSModule
         // React to accepted, phone-specific future webhook SetValue posts
         // promptly; no new Symcon event objects or phone operations.
         $this->syncPersonalSSIDSubscriptions($tileWork);
+        // A VariableUpdated edge does not imply an authenticated phone
+        // POST or a person's location. RAM-only per-person epoch, no flash.
+        $ssidPrev=json_decode($this->GetBuffer('PersonalSSIDDeliveryLedger'),true);
+        $ssidDelivery=JVPersonalSSIDDeliveryLedger::evaluate(
+            is_array($ssidPrev)?$ssidPrev:[],$tileWork,time()
+        );
+        $ssidNext=json_encode($ssidDelivery['next'],
+            JSON_UNESCAPED_SLASHES);
+        if(is_string($ssidNext))
+            $this->SetBuffer('PersonalSSIDDeliveryLedger',$ssidNext);
         // The same final manual+auto, source-identity-checked SSID evidence
         // now feeds ALL person/context evaluators; never present different
         // HOME/WORK decisions in the old string status versus the tile.
@@ -2515,7 +2529,8 @@ class JVPresenceIdentityShadow extends IPSModule
         // Hook mapping and phone timestamps ONLY. Never request an SSID
         // refresh from a smartphone, read tokens or modify the WebHook.
         $sourceCommissioning=JVResidentSourceCommissioning::evaluate(
-            $tileWork,$operationalReadiness,$this->readPhoneBridgeHookMetadata()
+            $tileWork,$operationalReadiness,$this->readPhoneBridgeHookMetadata(),
+            $ssidDelivery
         );
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
@@ -2551,6 +2566,12 @@ class JVPresenceIdentityShadow extends IPSModule
             'presenceEvidenceReadiness'=>$evidenceReadiness,
             'operationalReadiness'=>$operationalReadiness,
             'sourceCommissioning'=>$sourceCommissioning,
+            'ssidSourceUpdateContinuity'=>[
+                'authority'=>$ssidDelivery['authority'],
+                'people'=>$ssidDelivery['people'],
+                'isAuthenticatedPhonePostProof'=>false,
+                'mayAuthorizeAbsence'=>false
+            ],
             'shadowIntegrityAudit'=>$integrityAudit,
             'presenceCommissioningGate'=>$commissioningGate,
             'shadowUpgradePreflight'=>$upgradePreflight,
