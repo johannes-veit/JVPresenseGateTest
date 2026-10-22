@@ -6,8 +6,9 @@ declare(strict_types=1);
  *
  * Never toggles P03, changes cameras or phones, invents a human identity,
  * upgrades a stale SSID, or authorizes absence/alarm controls.
- * The current JVPresenceP03Test::EnableProductionP03() in this repository
- * only prints a calibration notice; it does NOT enable production.
+ * The actual multi-camera P03 instance uses JVPresenceP03TerraceTest.
+ * Its production method is gated by complete audit, simulation, four
+ * verified crossings (two each direction) and two live mast streams.
  */
 final class JVPresenceOperationalReadiness
 {
@@ -77,7 +78,7 @@ final class JVPresenceOperationalReadiness
             $out['actions'][]='P03:CHECK_MAIN_INSTANCE_FRESH_MODE_READ_ONLY';
         }elseif($mode==='TEST_AND_PRODUCTION_OFF'){
             $reason='P03_PRODUCTION_OFF_EXPLICIT';
-            $out['actions'][]='P03:PRODUCTION_ENABLE_NOT_IMPLEMENTED_IN_REPOSITORY';
+            $out['actions'][]='P03:CHECK_AUDIT_SIMULATION_TWO_OUT_TWO_IN_BEFORE_ENABLE';
         }elseif($mode==='TEST_ACTIVE'){
             $reason='P03_TEST_ACTIVE_NOT_PRODUCTION';
             $out['actions'][]='P03:FINISH_VERIFIED_CALIBRATION_FIRST';
@@ -92,7 +93,8 @@ final class JVPresenceOperationalReadiness
             'mainProofBlocked'=>$blocked,
             'readyToObserveNewAnonymousRouteProofs'=>$ready,
             'newVerifiedDirectionProofsRequired'=>true,
-            'currentRepositoryEnableProductionIsCalibrationStub'=>true,
+            'productionEnableFunctionHasVerifiedGuards'=>true,
+            'requiredPriorFieldCrossings'=>['HOME_TO_LAGER'=>2,'LAGER_TO_HOME'=>2],
             'reason'=>$reason,
             'rawStreetIVSIsNotRouteProof'=>true,
             'cameraEventIsNotIdentifiedPerson'=>true
