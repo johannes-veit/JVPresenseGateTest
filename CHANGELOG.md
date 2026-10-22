@@ -1,3 +1,10 @@
+# v0.8.114 (Build 195) – SSID- und P03-Inbetriebnahme nach echtem Livebericht 22.10.2026
+
+- Die bereits in v0.8.113 vorhandene Betriebsdiagnose verschwand im langen Bericht, weil die 13-KB-Kuerzung die neuen BETRIEB-SSID/P03-Zeilen nicht priorisierte. JVShadowReportBudget priorisiert diese jetzt explizit vor optionalen Bewegungsverlaeufen, ohne den Schutztext oder die feste Groessengrenze zu verlieren. Regression mit mehreren hundert Bewegungszeilen und nur 4-KB-Budget.
+- P03 Mehrkamera #53879: Die bestehende, automatisch aktualisierte P03ConnectionDiagnosis enthaelt jetzt eine rein lesende P03_VORFREIGABE-Zeile. Sie zeigt die EXAKTEN Betriebs-Gates aus EnableProductionP03: Audit, Simulation, HOME->LAGER mindestens zweimal, LAGER->HOME mindestens zweimal, Gesamtzahl mindestens 4, beide Zuordnungszaehler und p03AuxStreamsReady. Weder ein Test noch Produktion oder Kameraregeln werden vom Diagnosecode aktiviert oder geaendert.
+- SHADOW liest diese vorhandene Diagnose nur einmal und akzeptiert die Gate-Zeile ausschliesslich bei frischem Zeitstempel, bestaetigtem P03-Modus und in sich stimmiger Gate-Bilanz. Fehlende, alte oder widerspruechliche Werte bleiben unbekannt. Freigabefaehig bedeutet nur bereit zur MANUELLEN P03-Freigabe, niemals automatisch Produktion oder realer Uebergangsbeweis.
+- EvidenceJSON.operationalReadiness.p03.productionPreflight und die vorhandene eine Testbericht-Variable zeigen die fehlenden Freigabevoraussetzungen. Mobiltelefone benoetigen weiterhin wiederkehrende authentifizierte echte SSID-Meldungen; keine Frischegrenze wurde erhoeht. Keine neuen Symcon-Variablen oder Timer; keine anderen Quellen neu beschrieben; keine Alarm-/Abwesenheitsaktionen.
+
 # v0.8.113 (Build 194) – SSID-Heartbeat und P03-Produktionsfreigabe am richtigen Mehrkameramodul
 
 - Neue passive Inbetriebnahme-Diagnose: JVPresenceOperationalReadiness bewertet beide individuellen SSID-Quellen an der 300-Sekunden-Frischegrenze. Alte oder ungültige Messwerte bleiben unbestätigt. Ausgabe in EvidenceJSON.operationalReadiness sowie im bestehenden Testbericht, ohne neue Symcon-Variablen oder Timer.
