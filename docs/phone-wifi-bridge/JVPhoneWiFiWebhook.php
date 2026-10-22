@@ -29,8 +29,63 @@ $getChild = static function (int $parent, string $ident): int {
     }
 };
 $rootID = $getChild($parentID, 'JVPhoneWifiBridgeRoot');
-$isWebhook = isset($_SERVER['HOOK']) && is_string($_SERVER['HOOK']);
-
+// IP-Symcon: SENDER=WebHook, plus $_SERVER['HOOK'] on real HTTP requests.
+// Only explicitly manual "Execute" calls may initialize the bridge.
+$sender = (string) ($_IPS['SENDER'] ?? '');
+$isWebhook = $sender === 'WebHook';
+if (!$isWebhook && $sender !== 'Execute') {
+    echo "Setup verweigert: nur manuell im Editor ausfuehren.\n";
+    return;
+}
+$hookPath = '/hook/jvphonewifi';
+$hookControlID = 0;
+$hookAlreadyAssigned = false;
+$hookCanInstall = false;
+$hookProblem = '';
+if (!$isWebhook) {
+    // Never overwrite an existing foreign hook and never guess the control.
+    try {
+        $list = IPS_GetInstanceListByModuleID(
+            '{015A6EB8-D6E5-4B93-B496-0D3F77AE9FE1}'
+        );
+        if (!is_array($list) || count($list) !== 1) {
+            $hookProblem = 'WebHook-Control nicht eindeutig gefunden';
+        } else {
+            $hookControlID = (int) $list[0];
+            $configured = json_decode(
+                (string) IPS_GetProperty($hookControlID, 'Hooks'), true
+            );
+            if (!is_array($configured) || !array_is_list($configured)) {
+                $hookProblem = 'WebHook-Liste unlesbar oder ungueltig';
+            } else {
+                $hookCanInstall = true;
+                foreach ($configured as $row) {
+                    if (!is_array($row) || !is_string($row['Hook'] ?? null)
+                        || !is_int($row['TargetID'] ?? null)) {
+                        $hookCanInstall = false;
+                        $hookProblem = 'WebHook-Liste enthaelt ungueltigen Eintrag';
+                        break;
+                    }
+                    if ($row['Hook'] !== $hookPath) continue;
+                    if ($row['TargetID'] !== $scriptID) {
+                        throw new RuntimeException(
+                            'WebHook-Konflikt: /hook/jvphonewifi zeigt bereits auf ein anderes Ziel. Unveraendert!'
+                        );
+                    }
+                    $hookAlreadyAssigned = true;
+                }
+            }
+        }
+    } catch (RuntimeException $e) {
+        if (str_starts_with($e->getMessage(), 'WebHook-Konflikt:'))
+            throw $e;
+        $hookCanInstall = false;
+        $hookProblem = 'WebHook-Pruefung nicht moeglich';
+    } catch (Throwable $ignored) {
+        $hookCanInstall = false;
+        $hookProblem = 'WebHook-Pruefung nicht moeglich';
+    }
+}
 if (!$isWebhook) {
     // Installer is idempotent. Re-running neither rotates the credentials
     // nor overwrites the current SSID readings.
@@ -73,8 +128,37 @@ if (!$isWebhook) {
         $ids[$key] = ['parent' => $phoneID, 'ssid' => $ssidID,
             'secret' => $secretID];
     }
-    echo "Einrichtung erfolgreich. Vorhandene Geofency-/Egi-Hooks bleiben unverändert.\n\n";
-    echo "WebHook Control: /hook/jvphonewifi -> dieses Skript #{$scriptID}\n";
+    // Install ONLY the new private hook. Existing list stays unchanged,
+    // and same-target re-runs skip ApplyChanges entirely.
+    $hookState = 'MANUELL_NOETIG';
+    if ($hookCanInstall && $hookAlreadyAssigned) {
+        $hookState = 'BEREITS_KORREKT';
+    } elseif ($hookCanInstall) {
+        $newHooks = $configured;
+        $newHooks[] = ['Hook' => $hookPath, 'TargetID' => $scriptID];
+        $json = json_encode($newHooks, JSON_UNESCAPED_SLASHES);
+        if (is_string($json)) {
+            try {
+                IPS_SetProperty($hookControlID, 'Hooks', $json);
+                IPS_ApplyChanges($hookControlID);
+                $verify = json_decode(
+                    (string) IPS_GetProperty($hookControlID, 'Hooks'), true
+                );
+                foreach (is_array($verify) ? $verify : [] as $row) {
+                    if (is_array($row) && ($row['Hook'] ?? null) === $hookPath
+                        && ($row['TargetID'] ?? null) === $scriptID)
+                        $hookState = 'AUTOMATISCH_EINGERICHTET';
+                }
+            } catch (Throwable $ignored) {
+                $hookProblem = 'Automatische WebHook-Zuordnung fehlgeschlagen';
+            }
+        }
+    }
+    echo "Einrichtung erfolgreich. Vorhandene Geofency-/Egi-Hooks bleiben unveraendert.\n\n";
+    echo "WEBHOOK: " . $hookState . "\n";
+    if ($hookState === 'MANUELL_NOETIG')
+        echo "Bitte /hook/jvphonewifi manuell auf Skript #{$scriptID} zuordnen (" . $hookProblem . ").\n";
+    echo "Hook-Ziel: /hook/jvphonewifi -> Skript #{$scriptID}\n";
     foreach ($ids as $key => $row) {
         echo strtoupper($key) . "\n";
         echo " Eltern-ID: " . $row['parent'] . "\n";
