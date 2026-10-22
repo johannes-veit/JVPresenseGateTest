@@ -1,14 +1,14 @@
 # JV Phone WiFi Bridge – Android / iPhone / Symcon 9.0
 
-**Separater, optionaler und manueller WebHook-Empfänger.** Keine Änderung an P03, LCN, UniFi, Firmen-Firewall, EgiGeoZone, Geofency oder bestehenden WLAN-Skripten. SHADOW v0.8.51 hat bereits die Opt-in-Auswertung für `Intern-Veit` und `Privat-Veit`; diese Bridge versorgt die noch fehlenden beiden personalisierten `WifiSSID`-String-Quellen.
+**Separater, optionaler und manueller WebHook-Empfänger.** Keine Änderung an P03, LCN, UniFi, Firmen-Firewall, EgiGeoZone, Geofency oder bestehenden WLAN-Skripten. SHADOW v0.8.111 wertet persönlich verifizierte SSID-Quellen automatisch und einheitlich aus für `Intern-Veit` und `Privat-Veit`; diese Bridge versorgt die noch fehlenden beiden personalisierten `WifiSSID`-String-Quellen.
 
 ## Symcon einmalig
 
 1. Im Objektbaum außerhalb fremder Module ein neues **PHP-Skript** `JV Smartphone WLAN Webhook` anlegen.
 2. **Den gesamten Inhalt von `JVPhoneWiFiWebhook.php`** in dieses Skript einfügen, speichern und **einmal manuell ausführen**.
-3. Das Skript legt genau zwei neue String-Werte `WifiSSID` unter den Kategorien `Johannes Smartphone SSID Quelle` und `Carina Smartphone SSID Quelle` sowie zwei verborgene persönliche Token an. Wiederholte Ausführung ist idempotent und wechselt keine Token. Vier IDs notieren: jeweils **Eltern-ID und WifiSSID-ID**. Geheim-Token **niemals** in Chats, Screenshots oder Repositories veröffentlichen.
+3. Das Skript legt genau zwei neue String-Werte `WifiSSID` unter den Kategorien `Johannes Smartphone SSID Quelle` und `Carina Smartphone SSID Quelle` sowie zwei verborgene persönliche Token an. Wiederholte Ausführung ist idempotent und wechselt keine Token. Die IDs werden in der neuen SHADOW-Version automatisch erkannt, **kein manuelles Verknüpfen erforderlich**. Geheim-Token **niemals** in Chats, Screenshots oder Repositories veröffentlichen.
 4. In **Kerninstanzen → WebHook Control** **einen** neuen Hook `/hook/jvphonewifi` hinzufügen und auf **das neue PHP-Skript** zeigen lassen. Bereits vorhandene `/hook/egigeozone` und `/hook/geofency` nicht ändern. Bei einem gleichnamigen vorhandenen Hook nicht überschreiben.
-5. In **JV Presence Identity SHADOW #32969** (v0.8.51) im Abschnitt WORK die erzeugten vier IDs bei `JohannesSSIDVariableID`, `JohannesSSIDParentID`, `CarinaSSIDVariableID`, `CarinaSSIDParentID` hinterlegen. `EnableWorkWiFiHints` **erst nach einem erfolgreichen Endgerätetest** aktivieren, dann übernehmen.
+5. In **JV Presence Identity SHADOW #32969** (v0.8.111) sind die vorhandenen Variablen automatisch nach spätestens fünf Minuten im gleichen Herkunftsfilter sichtbar. Die vier alten manuellen Zuordnungsfelder und der manuelle Schalter `EnableWorkWiFiHints` werden für **diesen Bridge-Weg nicht mehr benötigt**. Sie bleiben optional für abweichende, bewusst manuell verknüpfte Quellen. **Wichtig:** Ein Hook ohne echte, wiederholte Meldungen vom Smartphone beweist kein WORK.
 
 ## HTTPS-Nachrichten
 
@@ -36,7 +36,7 @@ Flow-Schema mit `Flow beginning`, `Wi-Fi network connected`, `HTTP request`, `De
 
 1. `Wi-Fi network connected`: **Proceed = Immediately**, Netzwerkname/Netzwerkadresse frei lassen, Ausgabe `Network name` in Variable `ssid`. Bei YES tatsächliches `ssid` senden; bei NO `ssid=""` setzen.
 2. `HTTP request`: URL oben, Methode POST, Content-Type `application/json`, Body-Dictionary mit `person="johannes"`, `ssid=Variable ssid` und **persönlichem Token**. Antwortstatus 200 prüfen.
-3. `Delay 600` Sekunden → zum WLAN-Prüfblock zurück. Der SHADOW-WORK-Status wird nach **900 Sekunden ohne neue Meldung veraltet**; deshalb ist eine einmalige Verbindungsautomation nicht ausreichend.
+3. `Delay 240` Sekunden → zum WLAN-Prüfblock zurück. Die konkrete Bewohner-Kachel bewertet persönliche WORK-SSID-Hinweise nur in den ersten **300 Sekunden** als aktuell; die rohe Quellenprüfung verwirft Werte spätestens nach 900 Sekunden. Einmalige Verbindungsautomationen reichen deshalb nicht für kontinuierliche WORK-Anzeige.
 4. Android-Standortfreigabe kann für das Auslesen der SSID notwendig sein; Hintergrundausführung/Akkuoptimierung auf Xiaomi prüfen. WLAN nur lesen, niemals mit Automate automatisch ein-/ausschalten.
 
 Referenzen: [WLAN lesen](https://llamalab.com/automate/doc/block/wifi_network_connected.html) und [HTTPS-POST](https://llamalab.com/automate/doc/block/http_request.html).
@@ -45,7 +45,7 @@ Referenzen: [WLAN lesen](https://llamalab.com/automate/doc/block/wifi_network_co
 
 In der App **Kurzbefehle → Automation → WLAN** eine Automation beim Verbinden mit den Firmen-WLANs und der HOME-SSID anlegen. Aktion **Netzwerkdetails abrufen** (WLAN-Netzwerkname) → **Inhalt von URL abrufen**, Methode POST, Body-Typ JSON mit `person="carina"`, `ssid` aus *Netzwerkdetails* und Carinas geheimem Token. Automatische Ausführung aktivieren. Die SSID beim Senden **live abfragen**, nicht hart codieren.
 
-**Wesentliche Einschränkung:** Der iPhone-WLAN-Trigger liefert primär Verbindungsereignisse, **keine automatisch fortlaufende 10-Minuten-Heartbeat-Meldung**. Deshalb wird dieser WORK-SSID-Nachweis nach 15 Minuten ohne neue Aktualisierung als **nicht mehr aktuell** bewertet. Dies ist beabsichtigter Schutz vor falscher dauerhaft angezeigter WORK-Anwesenheit. Für eine wirklich ganztägig bestätigte Carina-WORK-Anzeige brauchen wir eine ergänzende, zuverlässig wiederkehrende iPhone-/Controller-Datenquelle.
+**Wesentliche Einschränkung:** Der iPhone-WLAN-Trigger liefert primär Verbindungsereignisse, **keine automatisch fortlaufende 10-Minuten-Heartbeat-Meldung**. Deshalb ist die **aktuelle Bewohner-Kachel** nach 5 Minuten ohne neues Signal wieder unbestätigt, und spätestens nach 15 Minuten ist auch der rohe SSID-Quellenwert veraltet. Dies ist beabsichtigter Schutz vor falscher dauerhaft angezeigter WORK-Anwesenheit. Für eine wirklich ganztägig bestätigte Carina-WORK-Anzeige brauchen wir eine ergänzende, zuverlässig wiederkehrende iPhone-/Controller-Datenquelle.
 
 [Apple WLAN-Automationen](https://support.apple.com/de-de/guide/shortcuts/apde31e9638b/ios).
 
@@ -55,3 +55,11 @@ In der App **Kurzbefehle → Automation → WLAN** eine Automation beim Verbinde
 - Der alte 150-m-Geofence umfasst Firma und Zuhause und kann beide nicht unterscheiden.
 - Das Symcon-Empfangsskript speichert **nur die aktuelle SSID** pro Telefon, keine GPS-Daten, BSSID, Passwörter oder Token im SHADOW-JSON. Zwei persönliche Zufalls-Token schützen die HTTPS-POST-Aufrufe.
 - WORK-Hinweise von Telefonen beweisen **nicht** automatisch, dass niemand im Haus ist. Die positiven unabhängigen 15 LCN-GUS/P03-Hauseintrittsnachweise bleiben bestehen. Keine automatischen HOME/AWAY- oder Alarmaktionen.
+
+## Neu in v0.8.111 Build 192 – ohne zusätzliche SHADOW-Variablen
+
+- Die schon vorhandene `WifiSSID`-Variable im nativen Geofency-iPhone-Gerät darf weitergelesen werden, wenn sie existiert und aktuell ist. EgiGeoZone Android sendet im normalen Geofence-Hook keine persönliche WLAN-SSID; daher dafür die obige getrennte Android-Meldung verwenden.
+- Kommen für dieselbe Person ein nativer und ein dedizierter Bridge-SSID-Wert vor, wird **die dedizierte, token-authentifizierte Bridge** als eigene Quellklasse bevorzugt. Doppelte Brücken-IDs bleiben gesperrt, nicht geraten. Nur persönlich gebundene SSID-Variablen werden akzeptiert, niemals AP-, Router- oder Shelly-Netzwerknamen.
+- Die verifizierte SSID gilt in **allen** SHADOW-Anwesenheits- und Diagnosezweigen einheitlich; die ursprüngliche, nur manuell freigegebene Diagnose ist als `workWiFi` separat verfügbar. Das von der Kachel tatsächlich ausgewertete Ergebnis heißt `effectiveWorkWiFi`.
+- Eine unveränderte automatische Quelleninventur wird nach Prüfung im flüchtigen Arbeitsspeicher gehalten. Sie verursacht nicht mehr alle fünf Minuten einen dauerhaften Speicher-Schreibzugriff. Es entstehen weder neue SHADOW-Variablen noch neue persistente Attribute.
+- Frühere reale P03-Richtungsnachweise werden **nicht** zurückgesetzt und erfordern für dieses WORK-SSID-Update **keinen erneuten Gehtest**. Aus dem letzten Betriebsbericht ergibt sich trotzdem: P03 #53879 meldet weiterhin TEST/PRODUKTION AUS und liefert daher keine *neuen* bestätigten Übergänge. Diese unabhängige Freigabe wird nicht durch das lesende SHADOW-Modul umgangen.
