@@ -1,3 +1,14 @@
+# v0.8.113 (Build 194) – SSID-Heartbeat und P03-Produktionsfreigabe am richtigen Mehrkameramodul
+
+- Neue passive Inbetriebnahme-Diagnose: JVPresenceOperationalReadiness bewertet beide individuellen SSID-Quellen an der 300-Sekunden-Frischegrenze. Alte oder ungültige Messwerte bleiben unbestätigt. Ausgabe in EvidenceJSON.operationalReadiness sowie im bestehenden Testbericht, ohne neue Symcon-Variablen oder Timer.
+- P03 korrekt zugeordnet: Das tatsächliche P03 #53879 ist JVPresenceP03TerraceTest mit GUID {0A7A91CE-3BC1-4B1E-9C11-7B7E973F5C03}, nicht das alte JVPresenceP03Test. Dessen EnableProductionP03 ist vorhanden, aber geschützt durch Gesamtaudit, Simulation, mindestens 2 HOME->LAGER und 2 LAGER->HOME, mindestens 4 verifizierte Ereignisse und zwei laufende Mastkamera-Streams. SHADOW aktiviert P03 nicht.
+- Ruhige Diagnose: P03-Modus, Frische des Modus, beide Mast-Observer und Hauptbeweis-Sperre werden getrennt klassifiziert. Rohe Straßen-IVS sind kein Haus-Lager-Beweis und Telefon-SSID ist kein Identitäts- oder Haus-leer-Nachweis.
+- Regression JVPresenceOperationalReadinessTest.php: Quellenfrische 1104s, Grenze 300/301s, zwei voneinander getrennte Smartphones, AUS/AKTIV, fehlender Mast, gesperrter Hauptbeweis, veralteter Modus und Null-Aktorfreigabe.
+
+# v0.8.112 (Build 193) – SSID-Quellfelder vorbereitet
+
+- Bereits bekannte SSID-IDs als Vorgaben für neue SHADOW-Instanzen. Vorhandene Instanzeinstellungen werden bei einem GitHub-Update nicht automatisch überschrieben. Die vorhandene automatische, getrennt validierte SSID-Erkennung bleibt aktiv.
+
 # v0.8.111 (Build 192) – persoenliche Firmen-SSID in allen Anzeigen vereinheitlicht, optionale Bridge automatisch erkannt
 
 - **Erweiterung und Korrektur:** Die bereits vorhandene AUTO-Quelle `WifiSSID` fuer Johannes/Carina wurde zuvor nur in die HTML-Bewohnerkachel uebernommen, waehrend zusammengefuehrte Haustuer-/WLAN-Kontextmeldungen und die separate Bewohner-Auswertung weiterhin ausschliesslich die manuell freigeschaltete, standardmaessig AUS-gebliebene SSID-Quelle erhielten. Die zuvor schon vorhandene kollisionsgesicherte AUTO+manuelle Quellenansicht wird nun VOR allen Kontext-Evaluatoren erzeugt und ueberall konsistent verwendet. Das bisherige manuelle Diagnosefeld bleibt unveraendert; `effectiveWorkWiFi` zeigt die tatsaechlich gewertete finale Quelle.
