@@ -40,6 +40,25 @@ commissionCheck(!$r['mayChangeDevices']&&!$r['mayArmAlarm']
     &&!$r['p03ProductionMayBeEnabledByShadow']
     &&$r['newSymconVariables']===0,
     'no actuation, human tracking or object overhead');
+$work['people']['johannes']['reportedSSIDKind']='EMPTY_OR_DISCONNECTED';
+$work['people']['carina']['reportedSSIDKind']='EMPTY_OR_DISCONNECTED';
+$empty=JVResidentSourceCommissioning::evaluate($work,$op,$hook);
+commissionCheck(
+    $empty['sharedStaleSourcePattern']
+    ==='TWO_EMPTY_VALUES_FROM_SAME_SECOND_POSSIBLE_INITIALIZATION'
+    &&$empty['ssidAction']
+    ==='CHECK_INITIAL_PHONE_POSTS_POSSIBLE_EMPTY_BOOTSTRAP'
+    &&!$empty['ssidPeople']['johannes']['freshPhoneUpdate'],
+    'two simultaneous empty 95min-old sources suggest but cannot prove installer initialization');
+$work['people']['johannes']['reportedSSIDKind']='NONEMPTY_OBSERVED';
+$one=JVResidentSourceCommissioning::evaluate($work,$op,$hook);
+commissionCheck(
+    $one['sharedStaleSourcePattern']
+    ==='TWO_STALE_VALUES_SAME_SECOND_NO_TRANSPORT_PROOF'
+    &&$one['ssidAction']
+    ==='CHECK_BOTH_PHONE_AUTOMATIONS_AND_ACCEPTED_POST_RESPONSE',
+    'one nonempty stale value proves no current phone location');
+$work['people']['carina']['reportedSSIDKind']='NONEMPTY_OBSERVED';
 $work['people']['carina']['ageSeconds']=5712;
 $r=JVResidentSourceCommissioning::evaluate($work,$op,$hook);
 commissionCheck($r['bothPhoneReportsStale']&&!$r['sharedSourceUpdateSecond'],
