@@ -40,7 +40,7 @@ final class JVCompanyWiFiEvidence
                 'ssid'=>null,'ageSeconds'=>null,
                 'workRecent'=>false,'homeSsidRecent'=>false,
                 'boundarySSIDOnly'=>false,'sourceVerified'=>false,
-                'sourceKey'=>null,
+                'sourceKey'=>null,'sourceUpdatedAt'=>null,
                 // Diagnostic only: distinguishes initialized-empty variables
                 // from stale but formerly nonempty personal SSID readings.
                 // Does NOT prove that a phone ever posted to the webhook.
@@ -73,6 +73,10 @@ final class JVCompanyWiFiEvidence
             }
             $age=max(0,$now-$at);
             $entry['ageSeconds']=$age;
+            // Exact Symcon VariableUpdated timestamp is needed for
+            // edge detection. Reconstructing it as now-age can invent
+            // one-second updates when computations cross a clock tick.
+            $entry['sourceUpdatedAt']=$at;
             if($age>self::MAX_AGE) {
                 $entry['status']='STALE_CURRENT_SSID_UNCONFIRMED';
                 $out['people'][$person]=$entry;continue;
@@ -125,6 +129,7 @@ final class JVCompanyWiFiEvidence
                 $row['homeSsidRecent']=false;
                 $row['boundarySSIDOnly']=false;
                 $row['sourceKey']=null;
+                $row['sourceUpdatedAt']=null;
                 $row['reportedSSIDKind']='COLLISION_NOT_USABLE';
                 unset($row);
             }
