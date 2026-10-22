@@ -117,7 +117,7 @@ class JVPresenceIdentityShadow extends IPSModule
         // WORK source is NOT inferred from home MAC, VLAN/IP or geofence.
         // Only actual phone-specific CURRENT SSID Strings are accepted.
         // No AP/controller credentials, no new actions or camera writes.
-        $this->RegisterPropertyBoolean('EnableWorkWiFiHints',true);
+        $this->RegisterPropertyBoolean('EnableWorkWiFiHints',false);
         $this->RegisterPropertyInteger('JohannesSSIDVariableID',56338);
         $this->RegisterPropertyInteger('JohannesSSIDParentID',56881);
         $this->RegisterPropertyInteger('CarinaSSIDVariableID',24058);
