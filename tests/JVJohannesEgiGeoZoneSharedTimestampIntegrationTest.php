@@ -24,7 +24,13 @@ class IPSModule {
     public function RegisterTimer(string $n,int $time,string $code):void{}
 }
 function IPS_VariableExists(int $id):bool{
-    return in_array($id,[41869,28055],true);
+    return in_array($id,[41869,28055,39169,45666],true);
+}
+function IPS_GetInstance(int $id):array{
+    if($id===48903)return ['ModuleInfo'=>[
+        'ModuleID'=>'{0100CA50-D2DA-11E4-8830-0800200C9A66}'
+    ]];
+    throw new RuntimeException('unexpected foreign instance');
 }
 function IPS_GetObject(int $id):array{
     return ['ParentID'=>$GLOBALS['egiz_objects'][$id]??0];
@@ -104,6 +110,34 @@ $GLOBALS['egiz_variables'][41869]['VariableType']=1;
 egiShareAssert(($read->invoke($m)['verified']??false)===false,
     'wrong boolean type rejected');
 
+// The separately installed official Geofency iPhone module uses the
+// exact same Timestamp-then-zone write order. One recent OTHER-ZONE event
+// cannot be interpreted as Carina's new Zuhause event, either.
+$GLOBALS['egiz_objects'] += [45439=>48903,39169=>45439,45666=>45439];
+$GLOBALS['egiz_names'][39169]='Zuhause';
+$GLOBALS['egiz_names'][45666]='Timestamp';
+$GLOBALS['egiz_values'][39169]=true;
+$GLOBALS['egiz_values'][45666]=1792700002;
+$GLOBALS['egiz_variables'][39169]=['VariableType'=>0,
+    'VariableUpdated'=>1792700000];
+$GLOBALS['egiz_variables'][45666]=['VariableType'=>1,
+    'VariableUpdated'=>1792700002];
+$readCarina=new ReflectionMethod(JVPresenceIdentityShadow::class,
+    'readCarinaGeofencySnapshot');
+$carina=$readCarina->invoke($m);
+egiShareAssert(($carina['verified']??false)===false
+    &&$carina['selectionStatus']==='OTHER_GEOFENCE_TIMESTAMP',
+    'Carina other geofence timestamp two seconds later rejected');
+$GLOBALS['egiz_variables'][39169]['VariableUpdated']=1792700003;
+$carina=$readCarina->invoke($m);
+egiShareAssert(($carina['verified']??false)===true
+    &&$carina['inside']===true
+    &&$carina['sourceKey']==='GEOFENCY:48903:45439:39169:45666',
+    'Carina real same-webhook order accepted with existing fixed IDs');
+unset($GLOBALS['egiz_variables'][39169]['VariableUpdated']);
+egiShareAssert(($readCarina->invoke($m)['verified']??false)===false,
+    'Carina missing metadata cannot forge latest zone event');
+
 egiShareAssert(count($m->registered)===7,
     'no new Symcon variables, events, timers or foreign writes');
-echo "SHADOW EgiGeoZone shared-Timestamp real adapter nine scenarios PASS\n";
+echo "SHADOW EgiGeoZone and Geofency shared-Timestamp adapter 12 scenarios PASS\n";
