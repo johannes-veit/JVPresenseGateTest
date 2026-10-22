@@ -10,7 +10,7 @@ declare(strict_types=1);
  */
 final class JVResidentSourceCommissioning
 {
-    public static function evaluate(array $work,array $operational,array $hook):array
+    public static function evaluate(array $work,array $operational,array $hook,array $delivery=[]):array
     {
         $out=[
             'schema'=>1,'authority'=>'READ_ONLY_SOURCE_DELIVERY_AND_P03_NEXT_ACTION',
@@ -18,6 +18,8 @@ final class JVResidentSourceCommissioning
             'ssidPeople'=>[],
             'sourceValuePatterns'=>[],
             'sharedStaleSourcePattern'=>'NO_CONCLUSION',
+            'ssidSourceUpdateEpoch'=>[],
+            'phonePostAuthenticatedByShadow'=>false,
             'sharedSourceUpdateSecond'=>false,
             'bothPhoneReportsStale'=>false,
             'sourceFreshnessSeconds'=>300,
@@ -105,6 +107,31 @@ final class JVResidentSourceCommissioning
             $out['ssidAction']='BOTH_PERSONAL_SSID_POSTS_CURRENT';
         }
 
+        if(($delivery['schema']??null)===1
+            &&($delivery['authority']??null)
+                ==='TWO_PHONE_SSID_VARIABLE_UPDATE_EPOCH_READ_ONLY'){
+            foreach(['johannes','carina'] as $person){
+                $entry=is_array($delivery['people'][$person]??null)
+                    ?$delivery['people'][$person]:[];
+                $state=$entry['state']??null;
+                $safe=in_array($state,[
+                    'SOURCE_NOT_VERIFIED',
+                    'BASELINE_NO_NEW_UPDATE_PROVEN',
+                    'SOURCE_CHANGED_BASELINE_NO_UPDATE_PROVEN',
+                    'SOURCE_VARIABLE_UPDATED_THIS_EPOCH',
+                    'SOURCE_TIMESTAMP_REGRESSED_NO_EVENT_PROOF',
+                    'SOURCE_VALUE_UNCHANGED_HEARTBEAT_OVERDUE',
+                    'SOURCE_VALUE_UNCHANGED_STILL_RECENT'
+                ],true);
+                $count=$entry['observedUpdatesThisEpoch']??0;
+                $out['ssidSourceUpdateEpoch'][$person]=[
+                    'state'=>$safe?$state:'SOURCE_NOT_VERIFIED',
+                    'observedUpdatesThisEpoch'=>is_int($count)
+                        &&$count>=0&&$count<=1000000?$count:0,
+                    'noAuthenticatedPhonePostCertificate'=>true
+                ];
+            }
+        }
         $p=($operational['authority']??null)==='SOURCE_COMMISSIONING_READ_ONLY'
             &&is_array($operational['p03']??null)
             ?$operational['p03']:[];
