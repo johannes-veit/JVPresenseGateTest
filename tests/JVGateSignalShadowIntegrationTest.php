@@ -22,6 +22,14 @@ class IPSModule {
     public int $instanceStatus=101;
     public array $statusTransitions=[];
     public array $bootstrapDebug=[];
+    public int $nativeTileVisualizationType=0;
+    public array $nativeTileUpdates=[];
+    public function SetVisualizationType(int $type):bool {
+        $this->nativeTileVisualizationType=$type;return true;
+    }
+    public function UpdateVisualizationValue(string $json):void {
+        $this->nativeTileUpdates[]=$json;
+    }
     public bool $failTimerConfiguration=false;
     public bool $failActiveStatus=false;
     public function Create():void {}
@@ -551,6 +559,17 @@ checkGate(str_contains($oneTile,'Bewohnerstatus')
     &&($wlanData['compactResidentTile']['people']['carina']['status']??null)==='Zuhause'
     &&($wlanData['compactResidentTile']['mayArmAlarm']??true)===false,
     'one compact read-only HTMLBox shows two HOME phone indications without raw diagnostics or alarm actions');
+checkGate($wlanMod->nativeTileVisualizationType===1
+    &&count($wlanMod->nativeTileUpdates)>0,
+    'Symcon 9.0 minimized instance uses native HTML-SDK without extra variables');
+$nativeMessage=json_decode((string)end($wlanMod->nativeTileUpdates),true);
+checkGate(($nativeMessage['authority']??null)==='COMPACT_PHONE_TILE_READ_ONLY'
+    &&($nativeMessage['people']['johannes']['status']??null)==='Zuhause'
+    &&($nativeMessage['people']['carina']['status']??null)==='Zuhause'
+    &&str_contains($wlanMod->GetVisualizationTile(),'handleMessage(')
+    &&str_contains($wlanMod->GetVisualizationTile(),'id="jv-johannes-status"')
+    &&str_contains($wlanMod->GetVisualizationTile(),'id="jv-carina-status"'),
+    'native instance tile initially and via message shows two confirmed HOME devices');
 checkGate(($wlanData['residentTileEvidence']['authority']??null)
     ==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE'
     &&($wlanData['residentTileEvidence']['people']['johannes']['status']??null)
