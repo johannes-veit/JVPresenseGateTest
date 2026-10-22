@@ -823,7 +823,7 @@ class JVPresenceIdentityShadow extends IPSModule
      */
     public function InstallKnownRootVisu():void
     {
-        $result=$this->installKnownRootVisuSafely();
+        $result=$this->installKnownRootVisuSafely(true);
         try{
             $this->SendDebug('ResidentRootVisuSetup',$result,0);
             $this->SetValue('Status','VISU: '.$result);
@@ -839,7 +839,7 @@ class JVPresenceIdentityShadow extends IPSModule
         }catch(Throwable $ignored){}
     }
 
-    private function installKnownRootVisuSafely():string
+    private function installKnownRootVisuSafely(bool $manual=false):string
     {
         $root=36895;$owner=32969;$parent=33054;$new=0;
         $changed=[];$old=[];$linkId=0;$created=false;
@@ -876,6 +876,8 @@ class JVPresenceIdentityShadow extends IPSModule
             }
             if(is_array($prior)&&($prior['phase']??'')==='prepared')
                 return 'PRUEFUNG ERFORDERLICH: vorherige Einrichtung nicht abgeschlossen; nichts ueberschrieben.';
+            if(is_array($prior)&&($prior['phase']??'')==='restored'&&!$manual)
+                return 'Vorherige VISU-Anordnung wurde bewusst wiederhergestellt; automatische Neueinrichtung gesperrt.';
             $children=IPS_GetChildrenIDs($root);
             if(!is_array($children)||count($children)>100
                 ||!in_array($parent,$children,true))
@@ -994,7 +996,8 @@ class JVPresenceIdentityShadow extends IPSModule
                 &&(IPS_GetObject($linkId)['ParentID']??null)===36895
                 &&(IPS_GetObject($linkId)['ObjectName']??null)==='Bewohnerstatus')
                 IPS_DeleteLink($linkId);
-            $this->WriteAttributeString('ResidentRootVisuSetup','{}');
+            $this->WriteAttributeString('ResidentRootVisuSetup',
+                '{"phase":"restored","schema":1}');
             return 'Vorherige Objekt-Sichtbarkeit unter Anwesenheitserkennung wiederhergestellt.';
         }catch(Throwable $e){
             return 'Wiederherstellung nicht erfolgreich ('.get_class($e).').';
