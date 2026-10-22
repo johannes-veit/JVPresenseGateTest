@@ -727,6 +727,13 @@ final class JVResidentEveningHandoff
                     ($sourceCommissioning['bothPhoneReportsStale']??false)===true)
                 .' | gleicher Zeitstempel '.self::yes(
                     ($sourceCommissioning['sharedSourceUpdateSecond']??false)===true));
+            $patterns=$sourceCommissioning['sourceValuePatterns']??[];
+            $add('BETRIEB SSID QUELLWERTE: Johannes '
+                .self::code($patterns['johannes']??'UNKNOWN')
+                .' | Carina '.self::code($patterns['carina']??'UNKNOWN')
+                .' | Gleichzeitigkeit '.self::code(
+                    $sourceCommissioning['sharedStaleSourcePattern']??'NO_CONCLUSION')
+                .' (kein POST-Beweis)');
             $add('BETRIEB SSID NAECHSTER SCHRITT: '.self::code(
                 $sourceCommissioning['ssidAction']??'UNKNOWN'));
             $steps=is_array($sourceCommissioning['p03Actions']??null)
