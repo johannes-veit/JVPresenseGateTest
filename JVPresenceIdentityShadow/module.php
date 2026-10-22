@@ -1381,8 +1381,19 @@ class JVPresenceIdentityShadow extends IPSModule
             }catch(Throwable $ignored){return $out;}
             $cache=['checkedAt'=>$now,'people'=>[]];
             foreach(['johannes','carina'] as $person){
-                $cache['people'][$person]=count($possible[$person])===1
-                    ?$possible[$person][0]:null;
+                // An authenticated, dedicated JV phone reporter wins over
+                // an occasional native Geofency WifiSSID value. Without
+                // that priority, installing the optional bridge would make
+                // two otherwise valid candidates appear ambiguous and
+                // silently DISABLE WORK for exactly that phone.
+                // Duplicate sources WITHIN the winning tier still fail
+                // closed; a generic AP/Shelly SSID is never a candidate.
+                $bridges=array_values(array_filter($possible[$person],
+                    static fn(array $row):bool=>($row['parentName']??'')
+                        ===ucfirst($person).' Smartphone SSID Quelle'));
+                $chosen=count($bridges)>0?$bridges:$possible[$person];
+                $cache['people'][$person]=count($chosen)===1
+                    ?$chosen[0]:null;
             }
             $json=json_encode($cache,JSON_UNESCAPED_SLASHES);
             if(is_string($json)&&strlen($json)<2048)
