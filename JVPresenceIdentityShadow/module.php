@@ -32,6 +32,7 @@ require_once dirname(__DIR__).'/libs/JVKnownIpcMetadata.php';
 require_once dirname(__DIR__).'/libs/JVSupplementaryIpcEvidence.php';
 require_once dirname(__DIR__).'/libs/JVP03SourceHealth.php';
 require_once dirname(__DIR__).'/libs/JVPresenceOperationalReadiness.php';
+require_once dirname(__DIR__).'/libs/JVResidentSourceCommissioning.php';
 require_once dirname(__DIR__).'/libs/JVExistingWlanPhoneHints.php';
 require_once dirname(__DIR__).'/libs/JVJohannesEgiGeoZoneHints.php';
 require_once dirname(__DIR__).'/libs/JVCarinaGeofencyHints.php';
@@ -1002,6 +1003,56 @@ class JVPresenceIdentityShadow extends IPSModule
         }catch(Throwable $e){
             return 'Wiederherstellung nicht erfolgreich ('.get_class($e).').';
         }
+    }
+
+    /**
+     * Passive phone WiFi bridge delivery-path check. Reads ONLY the public
+     * mapping metadata of WebHook Control. Never reads personal tokens,
+     * changes any WebHook, invokes a remote endpoint or probes smartphones.
+     */
+    private function readPhoneBridgeHookMetadata():array
+    {
+        $out=['schema'=>1,
+            'authority'=>'LOCAL_WIFI_BRIDGE_HOOK_METADATA_READ_ONLY',
+            'status'=>'HOOK_UNVERIFIABLE','targetScriptID'=>null,
+            'noSecretValuesRead'=>true,'noHookModified'=>true];
+        try{
+            if(!function_exists('IPS_GetInstanceListByModuleID')
+                ||!function_exists('IPS_GetProperty')
+                ||!function_exists('IPS_GetObject'))
+                return $out;
+            $ids=IPS_GetInstanceListByModuleID(
+                '{015A6EB8-D6E5-4B93-B496-0D3F77AE9FE1}'
+            );
+            if(!is_array($ids)||count($ids)!==1)return $out;
+            $hooks=json_decode((string)IPS_GetProperty((int)$ids[0],
+                'Hooks'),true);
+            if(!is_array($hooks)||!array_is_list($hooks)
+                ||count($hooks)>500)return $out;
+            $found=null;$count=0;
+            foreach($hooks as $item){
+                if(!is_array($item)
+                    ||!is_string($item['Hook']??null)
+                    ||!is_int($item['TargetID']??null))return $out;
+                if($item['Hook']!=='/hook/jvphonewifi')continue;
+                $count++;$found=$item['TargetID'];
+            }
+            if($count>1){
+                $out['status']='HOOK_CONFLICT';return $out;
+            }
+            if($count===0){
+                $out['status']='HOOK_NOT_REGISTERED';return $out;
+            }
+            $target=IPS_GetObject((int)$found);
+            if(!is_array($target)
+                ||($target['ObjectType']??null)!==3){
+                $out['status']='HOOK_TARGET_INVALID';return $out;
+            }
+            // Do not publish the webhook's contents, token IDs or body.
+            $out['status']='HOOK_ASSIGNED_VALID_SCRIPT';
+            $out['targetScriptID']=(int)$found;
+            return $out;
+        }catch(Throwable $ignored){return $out;}
     }
 
     /**
@@ -2367,6 +2418,11 @@ class JVPresenceIdentityShadow extends IPSModule
             $tileWork,$temporalCrossCheck,$mastHealth,time(),
             $p03ConnectionDiagnosis
         );
+        // Hook mapping and phone timestamps ONLY. Never request an SSID
+        // refresh from a smartphone, read tokens or modify the WebHook.
+        $sourceCommissioning=JVResidentSourceCommissioning::evaluate(
+            $tileWork,$operationalReadiness,$this->readPhoneBridgeHookMetadata()
+        );
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
             'snapshotAt'=>time(),
@@ -2400,6 +2456,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentJourneyCorrelation'=>$residentJourney,
             'presenceEvidenceReadiness'=>$evidenceReadiness,
             'operationalReadiness'=>$operationalReadiness,
+            'sourceCommissioning'=>$sourceCommissioning,
             'shadowIntegrityAudit'=>$integrityAudit,
             'presenceCommissioningGate'=>$commissioningGate,
             'shadowUpgradePreflight'=>$upgradePreflight,
@@ -2532,7 +2589,8 @@ class JVPresenceIdentityShadow extends IPSModule
             $contactHistory['report'],$residentFusion['report'],
             $routeEpisodes['report'],$residentJourney,
             $evidenceReadiness,$integrityAudit,$commissioningGate,
-            $upgradePreflight,$presenceSafetyCase,$operationalReadiness
+            $upgradePreflight,$presenceSafetyCase,$operationalReadiness,
+            $sourceCommissioning
         ));
         $this->publish($report,$state);
         // A prior unexpected runtime error must not leave the native
