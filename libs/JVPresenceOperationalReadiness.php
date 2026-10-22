@@ -12,7 +12,7 @@ declare(strict_types=1);
  */
 final class JVPresenceOperationalReadiness
 {
-    public static function evaluate(array $ssid, array $p03, array $mast, int $now): array
+    public static function evaluate(array $ssid, array $p03, array $mast, int $now, ?string $p03Diagnostic=null): array
     {
         $out=[
             'schema'=>1,
@@ -71,14 +71,68 @@ final class JVPresenceOperationalReadiness
         if(!$modeFresh)$mode='UNKNOWN_NOT_VERIFIED';
         $bothLive=$mastValid&&($mast['bothMastsLive']??false)===true;
         $blocked=!$mastValid||($mast['mainP03ProofBlocked']??true)===true;
+        // Parse only an exact gate emitted by the verified P03 main module.
+        // Freshness comes from the already checked timestamp + mode line;
+        // unknown/incomplete or tampered diagnostics are not a green light.
+        $gate=[
+            'verifiedFromFreshDiagnostic'=>false,
+            'eligibleForManualProductionEnable'=>false,
+            'auditPassed'=>null,'simulationPassed'=>null,
+            'homeToLagerCount'=>null,'lagerToHomeCount'=>null,
+            'totalVerifiedCount'=>null,'counterSourcesReady'=>null,
+            'socketAndMastSourcesReady'=>null,'missing'=>[]
+        ];
+        if($modeFresh&&is_string($p03Diagnostic)
+            &&strlen($p03Diagnostic)<=65536
+            &&preg_match('/^P03_VORFREIGABE: AUDIT=(JA|NEIN)'
+                .' \\| SIMULATION=(JA|NEIN)'
+                .' \\| OUT=(\\d{1,5}) \\| IN=(\\d{1,5})'
+                .' \\| GESAMT=(\\d{1,5})'
+                .' \\| AUX_ZAEHLER=(JA|NEIN)'
+                .' \\| MASTS=(JA|NEIN)'
+                .' \\| FREIGABE=(JA|NEIN)\\s*$/m',
+                $p03Diagnostic,$g)){
+            $audit=$g[1]==='JA';$simulation=$g[2]==='JA';
+            $outCount=(int)$g[3];$inCount=(int)$g[4];
+            $total=(int)$g[5];$counters=$g[6]==='JA';
+            $masts=$g[7]==='JA';$eligible=$g[8]==='JA';
+            $derived=$audit&&$simulation&&$outCount>=2
+                &&$inCount>=2&&$total>=4&&$counters&&$masts;
+            if($eligible===$derived){
+                $missing=[];
+                if(!$audit)$missing[]='P03_MULTICAMERA_AUDIT';
+                if(!$simulation)$missing[]='P03_SIMULATION';
+                if($outCount<2)$missing[]='HOME_TO_LAGER_2_REQUIRED';
+                if($inCount<2)$missing[]='LAGER_TO_HOME_2_REQUIRED';
+                if($total<4)$missing[]='FOUR_VERIFIED_CROSSINGS_REQUIRED';
+                if(!$counters)$missing[]='BOTH_AUX_COUNTER_SOURCES';
+                if(!$masts)$missing[]='BOTH_MANAGED_MAST_SOCKETS';
+                $gate=[
+                    'verifiedFromFreshDiagnostic'=>true,
+                    'eligibleForManualProductionEnable'=>$eligible,
+                    'auditPassed'=>$audit,'simulationPassed'=>$simulation,
+                    'homeToLagerCount'=>$outCount,'lagerToHomeCount'=>$inCount,
+                    'totalVerifiedCount'=>$total,
+                    'counterSourcesReady'=>$counters,
+                    'socketAndMastSourcesReady'=>$masts,
+                    'missing'=>$missing
+                ];
+            }
+        }
         $ready=$mode==='PRODUCTION_ACTIVE'&&$bothLive&&!$blocked;
         $reason='P03_PRODUCTION_ACTIVE_MONITOR_NEW_PROOFS';
         if($mode==='UNKNOWN_NOT_VERIFIED'){
             $reason='P03_FRESH_MODE_DIAGNOSTIC_MISSING';
             $out['actions'][]='P03:CHECK_MAIN_INSTANCE_FRESH_MODE_READ_ONLY';
         }elseif($mode==='TEST_AND_PRODUCTION_OFF'){
-            $reason='P03_PRODUCTION_OFF_EXPLICIT';
-            $out['actions'][]='P03:CHECK_AUDIT_SIMULATION_TWO_OUT_TWO_IN_BEFORE_ENABLE';
+            $reason=$gate['eligibleForManualProductionEnable']
+                &&$gate['verifiedFromFreshDiagnostic']
+                &&$bothLive&&!$blocked
+                ?'P03_PRODUCTION_OFF_ELIGIBLE_FOR_MANUAL_ENABLE'
+                :'P03_PRODUCTION_OFF_EXPLICIT';
+            $out['actions'][]=$reason==='P03_PRODUCTION_OFF_ELIGIBLE_FOR_MANUAL_ENABLE'
+                ?'P03:MANUAL_APPROVAL_AND_ENABLE_IN_MAIN_INSTANCE_ONLY'
+                :'P03:CHECK_AUDIT_SIMULATION_TWO_OUT_TWO_IN_BEFORE_ENABLE';
         }elseif($mode==='TEST_ACTIVE'){
             $reason='P03_TEST_ACTIVE_NOT_PRODUCTION';
             $out['actions'][]='P03:FINISH_VERIFIED_CALIBRATION_FIRST';
@@ -95,6 +149,7 @@ final class JVPresenceOperationalReadiness
             'newVerifiedDirectionProofsRequired'=>true,
             'productionEnableFunctionHasVerifiedGuards'=>true,
             'requiredPriorFieldCrossings'=>['HOME_TO_LAGER'=>2,'LAGER_TO_HOME'=>2],
+            'productionPreflight'=>$gate,
             'reason'=>$reason,
             'rawStreetIVSIsNotRouteProof'=>true,
             'cameraEventIsNotIdentifiedPerson'=>true
