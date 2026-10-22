@@ -180,6 +180,13 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterVariableString('TestReport',
             'Testergebnis an ChatGPT (Kopieren)','',6);
         $this->RegisterTimer('ReadLocal',0,'JVIDSH_Refresh($_IPS["TARGET"]);');
+        // Symcon 9.0: the minimized instance itself becomes the compact
+        // two-resident tile. The existing HTMLBox and expanded diagnostic
+        // list remain intact. Legacy mocks/SDKs retain the HTMLBox fallback.
+        if(method_exists($this,'SetVisualizationType')) {
+            try{$this->SetVisualizationType(1);}
+            catch(Throwable $ignored){}
+        }
     }
 
     /**
@@ -2635,6 +2642,72 @@ class JVPresenceIdentityShadow extends IPSModule
         }
     }
 
+    /**
+     * Native IP-Symcon HTML-SDK instance tile. The module's usual expanded
+     * list is still available in Symcon 9.0. Only our existing report is
+     * read; no third-party object is accessed during tile rendering.
+     */
+    public function GetVisualizationTile():string
+    {
+        $file=__DIR__.'/module.html';
+        $html=@file_get_contents($file);
+        if(!is_string($html)||$html==='')return
+            '<div>Bewohnerstatus derzeit nicht verfuegbar</div>';
+        $message=$this->nativeResidentTileMessage();
+        return $html.'<script>handleMessage('.json_encode($message,
+            JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT).');</script>';
+    }
+
+    /** Bounded enum-only payload. Stale or corrupt evidence is UNKNOWN. */
+    private function nativeResidentTileMessage():string
+    {
+        $data=json_decode((string)$this->GetValue('EvidenceJSON'),true);
+        $now=time();
+        $fresh=is_array($data)
+            &&($data['authority']??null)==='SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS'
+            &&is_int($data['snapshotAt']??null)
+            &&$data['snapshotAt']<=$now+5
+            &&$data['snapshotAt']>=$now-120
+            &&($data['compactResidentTile']['authority']??null)
+                ==='COMPACT_PHONE_TILE_READ_ONLY';
+        $allowed=['Zuhause'=>'home','In Firma'=>'work',
+            'Abwesend'=>'away','Unklar'=>'unknown'];
+        $out=['authority'=>'COMPACT_PHONE_TILE_READ_ONLY','people'=>[]];
+        foreach(['johannes','carina'] as $person) {
+            $row=$fresh&&is_array(
+                $data['compactResidentTile']['people'][$person]??null)
+                ?$data['compactResidentTile']['people'][$person]:[];
+            $status=$row['status']??null;
+            if(!is_string($status)||!isset($allowed[$status]))
+                $status='Unklar';
+            // Never restore a prior positive from an expired/faulty epoch.
+            $reason=$status==='Unklar'
+                ?'Kein aktueller eindeutiger Nachweis'
+                :($status==='Zuhause'?'Heim-WLAN · Handy bestätigt'
+                    :($status==='In Firma'?'Firmen-WLAN · Handy bestätigt'
+                        :'Vermutet · Handy-Abreisehinweis'));
+            $out['people'][$person]=['status'=>$status,'reason'=>$reason];
+        }
+        return json_encode($out,JSON_UNESCAPED_UNICODE|
+            JSON_UNESCAPED_SLASHES)?:'{}';
+    }
+
+    /**
+     * The native tile only needs updates when an existing SHADOW report
+     * changes. Volatile updates do not allocate objects or flash attributes.
+     * HTML-SDK failures never stop the normal independent SHADOW observer.
+     */
+    private function pushNativeResidentTile():void
+    {
+        if(!method_exists($this,'UpdateVisualizationValue'))return;
+        try{
+            $next=$this->nativeResidentTileMessage();
+            if($this->GetBuffer('NativeResidentTileLast')===$next)return;
+            $this->UpdateVisualizationValue($next);
+            $this->SetBuffer('NativeResidentTileLast',$next);
+        }catch(Throwable $ignored){}
+    }
+
     /** One auto-refreshed copy/paste-only report, never raw secrets or GPS. */
     private function setTestReport(string $text):void
     {
@@ -2671,6 +2744,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $newJson=is_string($json)?$json:'{}';
         if ($this->GetValue('EvidenceJSON')!==$newJson)
             $this->SetValue('EvidenceJSON',$newJson);
+        $this->pushNativeResidentTile();
         if ($this->GetValue('Status')!==$status)
             $this->SetValue('Status',$status);
     }
