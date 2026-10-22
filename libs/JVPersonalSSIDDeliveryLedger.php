@@ -39,10 +39,13 @@ final class JVPersonalSSIDDeliveryLedger
                 ?$work['people'][$person]:[];
             $key=$row['sourceKey']??null;
             $age=$row['ageSeconds']??null;
+            $rawAt=$row['sourceUpdatedAt']??null;
             $sourceOK=($row['sourceVerified']??false)===true
                 &&is_string($key)
                 &&preg_match('/^SSID:[1-9][0-9]{0,9}$/D',$key)===1
                 &&is_int($age)&&$age>=0&&$age<=86400
+                &&is_int($rawAt)&&$rawAt>0&&$rawAt<=$now+5
+                &&abs(max(0,$now-$rawAt)-$age)<=3
                 &&$now>0;
             if(!$sourceOK){
                 $out['people'][$person]=[
@@ -54,7 +57,7 @@ final class JVPersonalSSIDDeliveryLedger
                 $out['next']['people'][$person]=null;
                 continue;
             }
-            $updatedAt=$now-$age;
+            $updatedAt=$rawAt;
             $prev=$priorOK&&is_array($previous['people'][$person]??null)
                 ?$previous['people'][$person]:null;
             $priorSame=is_array($prev)
