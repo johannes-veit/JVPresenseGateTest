@@ -1905,12 +1905,12 @@ class JVPresenceIdentityShadow extends IPSModule
         if(is_string($newState)
             &&$this->readShadowState('P03IncrementalTimeline')!==$newState)
             $this->writeShadowState('P03IncrementalTimeline',$newState);
+        $p03ConnectionDiagnosis=$this->readLocalVariable(
+            $this->ReadPropertyInteger('P03InstanceID'),
+            self::P03_GUID,'P03ConnectionDiagnosis'
+        );
         $temporalCrossCheck=JVTemporalPresenceCrossCheck::evaluate(
-            $p03Raw??'',
-            $this->readLocalVariable(
-                $this->ReadPropertyInteger('P03InstanceID'),
-                self::P03_GUID,'P03ConnectionDiagnosis'
-            ),
+            $p03Raw??'',$p03ConnectionDiagnosis,
             $p03Timeline['report'],$wlan,$activity,$egi,$carinaGeo,
             $tileWork,
             ($p03['street']['directionMappingCertified']??false)===true,
@@ -2046,7 +2046,8 @@ class JVPresenceIdentityShadow extends IPSModule
         $parallelPassage['cameraCountCapabilityPriority']='IPC_WIZMIND_FIRST_WHEN_PEOPLE_COUNTING_VERIFIED';
         $boundary['report']['individualsOrEntireGroupExitedCertified']=false;
         $operationalReadiness=JVPresenceOperationalReadiness::evaluate(
-            $tileWork,$temporalCrossCheck,$mastHealth,time()
+            $tileWork,$temporalCrossCheck,$mastHealth,time(),
+            $p03ConnectionDiagnosis
         );
         $report=[
             'schema'=>1,'authority'=>'SHADOW_DIRECTION_PHONE_AND_LOCAL_HINTS',
