@@ -68,6 +68,8 @@ final class JVShadowReportBudget
             // historical room patterns. Preserve the lines verbatim.
             'BETRIEB SSID Johannes:', 'BETRIEB SSID Carina:',
             'BETRIEB P03:', 'P03 FREIGABE:',
+            'BETRIEB SSID-BRIDGE:', 'BETRIEB SSID NAECHSTER SCHRITT:',
+            'BETRIEB P03 OFFEN ',
             '--- HEUTE ABEND:', 'P03-UEBERGANG/24h:',
             'P03-5MIN-STATUS:', 'P03-5MIN/24h:',
             'HANDY-EVENT/24h:', 'RAUMKONTEXT:',
