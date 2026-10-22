@@ -111,4 +111,23 @@ $op['p03']['productionPreflight']['verifiedFromFreshDiagnostic']=false;
 $r=JVResidentSourceCommissioning::evaluate($work,$op,$hook);
 commissionCheck($r['p03Actions']===['READ_CURRENT_P03_MAIN_PREFLIGHT_DIAGNOSTIC'],
     'stale P03 diagnostic cannot assert audit and counters');
-echo "Phone bridge POST diagnostics and P03 preflight in 13 fail-closed cases PASS\n";
+$delivery=[
+ 'schema'=>1,'authority'=>'TWO_PHONE_SSID_VARIABLE_UPDATE_EPOCH_READ_ONLY',
+ 'people'=>[
+   'johannes'=>['state'=>'SOURCE_VARIABLE_UPDATED_THIS_EPOCH',
+       'observedUpdatesThisEpoch'=>3],
+   'carina'=>['state'=>'BASELINE_NO_NEW_UPDATE_PROVEN',
+       'observedUpdatesThisEpoch'=>0]
+ ]
+];
+$report=JVResidentSourceCommissioning::evaluate($work,$op,$hook,$delivery);
+commissionCheck(($report['ssidSourceUpdateEpoch']['johannes']['observedUpdatesThisEpoch']??null)===3
+    &&($report['ssidSourceUpdateEpoch']['carina']['state']??null)
+       ==='BASELINE_NO_NEW_UPDATE_PROVEN'
+    &&$report['phonePostAuthenticatedByShadow']===false,
+    'epoch observation does not establish genuine authenticated phone POST');
+$delivery['authority']='UNTRUSTED';
+$report=JVResidentSourceCommissioning::evaluate($work,$op,$hook,$delivery);
+commissionCheck($report['ssidSourceUpdateEpoch']===[],
+    'untrusted source epoch cannot contaminate commissioning report');
+echo "Phone bridge POST diagnostics and P03 preflight in 15 fail-closed cases PASS\n";
