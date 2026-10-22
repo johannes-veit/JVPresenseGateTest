@@ -699,6 +699,110 @@ class JVPresenceIdentityShadow extends IPSModule
     }
 
     /**
+     * One explicit commissioning click adds exactly ONE visual link into
+     * the existing ancestor category "Anwesenheitserkennung". The link
+     * targets THIS native HTML-SDK instance, whose tile already displays
+     * Johannes and Carina together. Two separate variable links would
+     * destroy the requested clean two-row tile.
+     *
+     * No category is created, no module or variable is moved, and no
+     * existing object (including any foreign link) is reconfigured.
+     */
+    public function CreateAnwesenheitTileLink(): void
+    {
+        $result=$this->createAnwesenheitTileLinkSafely();
+        try {
+            $this->SendDebug('AnwesenheitVisuLink',$result,0);
+            $status='VISU: '.$result;
+            if($this->GetValue('Status')!==$status)
+                $this->SetValue('Status',$status);
+        }catch(Throwable $ignored){}
+    }
+
+    private function createAnwesenheitTileLinkSafely():string
+    {
+        $newLinkId=0;
+        try {
+            if(!is_int($this->InstanceID)||$this->InstanceID<=0)
+                return 'Instanz-ID ungueltig; kein Link angelegt.';
+            $current=$this->InstanceID;$visited=[];$root=0;
+            // Find only an EXISTING category in this instance's real
+            // ancestor chain. Never guess IDs or search other user folders.
+            for($depth=0;$depth<12;$depth++) {
+                if($current<=0||isset($visited[$current]))break;
+                $visited[$current]=true;
+                $object=IPS_GetObject($current);
+                if(!is_array($object))break;
+                $type=$object['ObjectType']??null;
+                if($depth===0&&$type!==1)
+                    return 'SHADOW-Objekttyp nicht verifiziert.';
+                if($depth>0&&$type===0
+                    &&in_array((string)IPS_GetName($current),
+                        ['Anwesenheitserkennung','Anwesenheit'],true)){
+                    $root=$current;break;
+                }
+                $parent=$object['ParentID']??null;
+                if(!is_int($parent)||$parent<=0)break;
+                $current=$parent;
+            }
+            if($root<=0)
+                return 'Keine uebergeordnete Kategorie Anwesenheitserkennung gefunden; unveraendert.';
+            $children=IPS_GetChildrenIDs($root);
+            if(!is_array($children)||count($children)>2000)
+                return 'Zielkategorie nicht sicher pruefbar; unveraendert.';
+            foreach($children as $id) {
+                if(!is_int($id)||$id<=0)continue;
+                $object=IPS_GetObject($id);
+                if(!is_array($object))return
+                    'Unvollstaendige Zielkategorie; unveraendert.';
+                if(($object['ObjectType']??null)===6) {
+                    $link=IPS_GetLink($id);
+                    if(!is_array($link))return
+                        'Verlinkungen nicht pruefbar; unveraendert.';
+                    if(($link['TargetID']??null)===$this->InstanceID)
+                        return 'Bewohnerstatus unter Anwesenheitserkennung bereits verlinkt (#'.$id.').';
+                }
+                // Do not create a duplicate named object or overwrite any
+                // user-managed link (including to a different target).
+                if((string)IPS_GetName($id)==='Bewohnerstatus')
+                    return 'Objekt Bewohnerstatus existiert bereits mit anderem Ziel; nichts geaendert.';
+            }
+            if(!function_exists('IPS_CreateLink')
+                ||!function_exists('IPS_SetLinkTargetID'))
+                return 'Symcon Link-API nicht verfuegbar; unveraendert.';
+            $newLinkId=IPS_CreateLink();
+            if(!is_int($newLinkId)||$newLinkId<=0)
+                return 'Link konnte nicht angelegt werden.';
+            if(IPS_SetParent($newLinkId,$root)!==true
+                ||IPS_SetLinkTargetID($newLinkId,$this->InstanceID)!==true
+                ||IPS_SetName($newLinkId,'Bewohnerstatus')!==true
+                ||IPS_SetPosition($newLinkId,0)!==true)
+                throw new RuntimeException('LINK_CONFIGURATION_REJECTED');
+            $o=IPS_GetObject($newLinkId);
+            $l=IPS_GetLink($newLinkId);
+            if(!is_array($o)||!is_array($l)
+                ||($o['ParentID']??null)!==$root
+                ||($o['ObjectType']??null)!==6
+                ||($l['TargetID']??null)!==$this->InstanceID)
+                throw new RuntimeException('LINK_VERIFICATION_FAILED');
+            return 'Bewohnerstatus-Link #'.$newLinkId
+                .' direkt unter Anwesenheitserkennung angelegt. '
+                .'WLAN-/SHADOW-Unterordner koennen jetzt in der Visu ausgeblendet werden.';
+        }catch(Throwable $e){
+            // Roll back only a link created by THIS click; never delete
+            // anything that pre-existed and was manually configured.
+            if($newLinkId>0) {
+                try {
+                    if(IPS_LinkExists($newLinkId))
+                        IPS_DeleteLink($newLinkId);
+                }catch(Throwable $ignored){}
+            }
+            return 'Link-Einrichtung fehlgeschlagen ('.get_class($e).'); '
+                .'bestehende Symcon-Struktur unveraendert.';
+        }
+    }
+
+    /**
      * Local, metadata-only candidate scan. Does not read VARIABLE VALUES,
      * switch devices, bind sources, or change the user's P03/LCN/WLAN.
      * Names are NOT verified door/gate inputs, merely suggestions.
