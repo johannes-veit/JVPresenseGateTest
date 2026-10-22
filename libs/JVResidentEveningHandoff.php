@@ -21,7 +21,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[],array $commissioning=[],array $upgrade=[],array $safety=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[],array $commissioning=[],array $upgrade=[],array $safety=[],array $operational=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -55,7 +55,7 @@ final class JVResidentEveningHandoff
             $lines[]=mb_substr(str_replace(["\r","\n"],' ',$value),0,230,'UTF-8');
         };
         $add('=== TESTBERICHT AN CHATGPT – ANWESENHEIT ===');
-        $add('Schema 1 | SHADOW v0.8.111 Build 192 | Symcon #32969');
+        $add('Schema 1 | SHADOW v0.8.113 Build 194 | Symcon #32969');
         $add('Messzeit: '.self::date($now).' (Europe/Berlin)');
         $add('Modul: '.($enabled?'SHADOW AKTIV (nur lesen)':'SHADOW DEAKTIVIERT'));
         $add('Einmaliger IST-Zustand, kein Verlauf mehrerer Statuswechsel.');
@@ -688,6 +688,25 @@ final class JVResidentEveningHandoff
         $needs[]='MENSCHLICHE_ABWESENHEIT_UND_HAUS_LEER_NICHT_ZERTIFIZIERT';
 
         $add('');
+        if(($operational['authority']??null)==='SOURCE_COMMISSIONING_READ_ONLY'){
+            $a=$operational['ssid']??[];
+            foreach(['johannes'=>'Johannes','carina'=>'Carina'] as $person=>$label){
+                $q=$a[$person]??[];
+                $add('BETRIEB SSID '.$label.': '
+                    .self::code($q['reason']??'NOT_CHECKED')
+                    .' | Alter '.self::number($q['lastUpdateAgeSeconds']??null)
+                    .' s | aktuell (max 300s) '
+                    .self::yes(($q['currentWithinFiveMinutes']??false)===true));
+            }
+            $q=$operational['p03']??[];
+            $add('BETRIEB P03: '.self::code($q['reason']??'NOT_CHECKED')
+                .' | Modus '.self::code($q['operatingMode']??'UNKNOWN')
+                .' | beide Observer LIVE '
+                .self::yes(($q['bothExistingAuxObserversLive']??false)===true)
+                .' | neue Route noch NICHT bestaetigt');
+            if(($q['currentRepositoryEnableProductionIsCalibrationStub']??false)===true)
+                $add('P03 FREIGABE: EnableProductionP03 im Repository noch Teststub; SHADOW aktiviert keine Kamera oder P03.');
+        }
         $add('--- HEUTE ABEND: PRUEFERGEBNIS + OFFENE PUNKTE ---');
         $add('Technischer Diagnosebericht aus vorhandenen Daten: '
             .self::yes($validTile&&$validVisu&&$wlanVerified
