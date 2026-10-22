@@ -240,6 +240,107 @@ final class JVResidentTileDashboard
         ];
     }
 
+    /**
+     * Daily-use Symcon HTMLBox: precisely two residents and one concise
+     * state per phone. All complete explanation remains in TestReport and
+     * EvidenceJSON. Does not create IP-Symcon objects.
+     *
+     * Source outage MUST NOT reuse a saved HOME/WORK last-known zone as
+     * confirmed current presence. A phone is never a verified human.
+     */
+    public static function compactState(array $data,int $now):array
+    {
+        $trusted=($data['schema']??null)===1
+            &&($data['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
+        $result=[
+            'schema'=>1,'authority'=>'COMPACT_PHONE_TILE_READ_ONLY',
+            'people'=>[],'currentPhoneMaxAgeSeconds'=>300,
+            'absenceIsHumanCertified'=>false,
+            'houseEmptyCertified'=>false,
+            'mayArmAlarm'=>false,'mayChangeOtherModules'=>false
+        ];
+        foreach(['johannes'=>'Johannes','carina'=>'Carina'] as $person=>$name){
+            $row=$trusted&&is_array($data['people'][$person]??null)
+                ?$data['people'][$person]:[];
+            $decision=(string)($row['decision']??'UNKNOWN');
+            $time=$row['at']??null;
+            $fresh=is_int($time)&&$now>0&&$time>0
+                &&$time<=$now+5&&$time>=$now-300;
+            $status='Unklar';$reason='Kein aktueller eindeutiger Nachweis';
+            $style='unknown';
+            if($fresh&&$decision==='HOME_PHONE_CONFIRMED'){
+                $status='Zuhause';$style='home';
+                $reason='Heim-WLAN · Handy bestätigt';
+            }elseif($fresh&&$decision==='WORK_PHONE_CONFIRMED'){
+                $status='In Firma';$style='work';
+                $reason='Firmen-WLAN · Handy bestätigt';
+            }elseif($decision!=='HOME_PHONE_CONFIRMED'
+                &&$decision!=='WORK_PHONE_CONFIRMED'
+                &&$decision!=='CONFLICT'
+                &&($row['departureAssessment']??null)==='LIKELY_PHONE_DEPARTED'
+                &&($row['status']??null)==='ABWESEND (WAHRSCHEINLICH)'
+                &&is_int($time)&&$time>0&&$time<=$now+5
+                &&$time>=$now-1800){
+                $status='Abwesend';$style='away';
+                $reason='Vermutet · Handy-Abreisehinweis';
+            }elseif($decision==='CONFLICT'){
+                $reason='Widersprüchliche WLAN-Signale';
+            }elseif($decision==='LAST_KNOWN_UNCONFIRMED'){
+                $reason='Letzter Standort veraltet';
+            }
+            $result['people'][$person]=[
+                'name'=>$name,'status'=>$status,'style'=>$style,
+                'reason'=>$reason,
+                'at'=>$fresh||$style==='away'?$time:null,
+                'humanPresenceOrAbsenceCertified'=>false,
+                'safeForAlarmActions'=>false
+            ];
+        }
+        return $result;
+    }
+
+    /**
+     * Replace the earlier expandable engineering dashboard by one compact
+     * native HTMLBox in the regular visualization. The legacy detailed
+     * renderer remains available for regression/debug but is not published.
+     */
+    public static function renderCompact(array $data,int $now):string
+    {
+        $state=self::compactState($data,$now);
+        $esc=static fn(string $s):string=>
+            htmlspecialchars($s,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
+        $palette=[
+            'home'=>['#174e32','#d9f5e4'],
+            'work'=>['#154b76','#dcebfc'],
+            'away'=>['#684216','#fff0d1'],
+            'unknown'=>['#49515b','#ecedf0']
+        ];
+        $parts=[
+            '<section style="box-sizing:border-box;width:100%;font-family:inherit;padding:3px 1px">',
+            '<div style="font-weight:650;font-size:1.04em;margin:1px 0 8px">Bewohnerstatus</div>'
+        ];
+        foreach(['johannes','carina'] as $person){
+            $row=$state['people'][$person];
+            [$ink,$background]=$palette[$row['style']];
+            $parts[]='<div style="display:flex;align-items:center;gap:8px;'
+                .'justify-content:space-between;min-width:0;padding:9px 7px;'
+                .'border-top:1px solid #88888833">'
+                .'<span style="font-weight:600;white-space:nowrap">'
+                .$esc($row['name']).'</span>'
+                .'<span style="min-width:0;text-align:right">'
+                .'<span style="display:inline-block;border-radius:7px;padding:4px 9px;'
+                .'background:'.$background.';color:'.$ink.';font-weight:650">'
+                .$esc($row['status']).'</span>'
+                .'<span style="display:block;font-size:.72em;opacity:.78;'
+                .'margin-top:3px;line-height:1.3">'
+                .$esc($row['reason']).'</span></span></div>';
+        }
+        $parts[]='<div style="font-size:.71em;opacity:.65;'
+            .'margin:7px 4px 0">Handy-Hinweise · keine automatische Alarmfreigabe</div>'
+            .'</section>';
+        return implode('',$parts);
+    }
+
     public static function render(array $data):string
     {
         $esc=static fn(string $t)=>htmlspecialchars($t,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
