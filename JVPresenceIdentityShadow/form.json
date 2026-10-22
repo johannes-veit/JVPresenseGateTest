@@ -2,6 +2,10 @@
   "elements": [
     {
       "type": "Label",
+      "caption": "NEU: Oben soll nur die gemeinsame Bewohnerstatus-Kachel erscheinen. Die bestaetigte Objektstruktur ist Anwesenheitserkennung #36895 / Identity Shadow #33054 / SHADOW #32969. Das Modul richtet dies beim naechsten Update NUR fuer diese nachgewiesene Struktur automatisch ein: Ein nativer Link fuer Johannes + Carina, alle anderen direkten Eintraege unter Anwesenheitserkennung werden fuer ALLE Visualisierungen ausgeblendet (nicht geloescht, nicht deaktiviert). Vorherige Sichtbarkeit wird fuer die Wiederherstellung gesichert. Fuer Kontrolle/Wiederholung: Button 'Bewohneransicht einrichten'; fuer Ruecknahme: Button 'Alte Ansicht wiederherstellen'. Die sonstige Anwesenheitserkennung und P03 werden dabei nicht gesteuert."
+    },
+    {
+      "type": "Label",
       "caption": "EINMALIGE VISU-EINRICHTUNG: Der Button unten erstellt genau EINEN Symcon-Link direkt in der bereits vorhandenen Kategorie Anwesenheitserkennung. Dieser Link zeigt die native Bewohnerstatus-Kachel mit Johannes und Carina gemeinsam. Keine Duplikate, keine neuen Kategorien, keine Verschiebung der SHADOW- oder WLAN-Objekte. Anschließend WLAN- und Identity-Shadow-Unterordner selbst in der Kachelvisualisierung ausblenden; die Originaldaten bleiben weiter aktiv."
     },
     {
@@ -528,8 +532,13 @@
   "actions": [
     {
       "type": "Button",
-      "caption": "Bewohnerstatus direkt unter Anwesenheitserkennung verlinken (1 Klick)",
-      "onClick": "JVIDSH_CreateAnwesenheitTileLink($id);"
+      "caption": "VISU: Bewohneransicht direkt unter Anwesenheitserkennung einrichten (nur diese Kachel)",
+      "onClick": "JVIDSH_InstallKnownRootVisu($id);"
+    },
+    {
+      "type": "Button",
+      "caption": "VISU: Vorherige Anzeige der Unterordner und P03-Kacheln wiederherstellen",
+      "onClick": "JVIDSH_RestoreKnownRootVisu($id);"
     },
     {
       "type": "Button",
