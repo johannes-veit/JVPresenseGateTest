@@ -81,7 +81,10 @@ if (!$isWebhook) {
         echo " WifiSSID-String-ID: " . $row['ssid'] . "\n";
         echo " Token (geheim, NICHT in Chat/Screenshots teilen): " . GetValue($row['secret']) . "\n";
     }
-    echo "\nIm SHADOW #32969: vier Quell-IDs zuordnen, dann EnableWorkWiFiHints einschalten.\n";
+    echo "\nSHADOW #32969 erkennt gueltige personenbezogene WifiSSID-Quellen automatisch (bis 5 Min.).\n";
+    echo "Keine vier Quell-IDs oder zusaetzlichen SHADOW-Schalter erforderlich.\n";
+    echo "Voraussetzung: beide Telefone senden ihre aktuelle SSID regelmaessig per POST.\n";
+    echo "Auch ein erfolgreiches Hook-Setup allein ist KEIN aktueller WORK-Nachweis.\n";
     return;
 }
 
