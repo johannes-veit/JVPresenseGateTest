@@ -21,7 +21,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[],array $commissioning=[],array $upgrade=[],array $safety=[],array $operational=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[],array $commissioning=[],array $upgrade=[],array $safety=[],array $operational=[],array $sourceCommissioning=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -718,6 +718,21 @@ final class JVResidentEveningHandoff
             }
             if(($q['productionEnableFunctionHasVerifiedGuards']??false)===true)
                 $add('P03 FREIGABE: nur nach Audit + Simulation + 2 OUT/2 IN + zwei Maststreams; SHADOW aktiviert P03 nicht.');
+        }
+        if(($sourceCommissioning['authority']??null)
+            ==='READ_ONLY_SOURCE_DELIVERY_AND_P03_NEXT_ACTION'){
+            $add('BETRIEB SSID-BRIDGE: '
+                .self::code($sourceCommissioning['ssidHook']??'UNBEKANNT')
+                .' | BEIDE ALT '.self::yes(
+                    ($sourceCommissioning['bothPhoneReportsStale']??false)===true)
+                .' | gleicher Zeitstempel '.self::yes(
+                    ($sourceCommissioning['sharedSourceUpdateSecond']??false)===true));
+            $add('BETRIEB SSID NAECHSTER SCHRITT: '.self::code(
+                $sourceCommissioning['ssidAction']??'UNKNOWN'));
+            $steps=is_array($sourceCommissioning['p03Actions']??null)
+                ?$sourceCommissioning['p03Actions']:[];
+            foreach(array_slice($steps,0,5) as $i=>$step)
+                $add('BETRIEB P03 OFFEN '.($i+1).': '.self::code($step));
         }
         $add('--- HEUTE ABEND: PRUEFERGEBNIS + OFFENE PUNKTE ---');
         $add('Technischer Diagnosebericht aus vorhandenen Daten: '
