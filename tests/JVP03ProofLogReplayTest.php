@@ -363,7 +363,10 @@ eq($module->timer['ReadLocal'],0,'disabling shadow stops timer');
 eq(count($module->messages),0,'disabled instance releases all GUS subscriptions');
 eq(count($module->values),7,'module registers five historical outputs plus tile and handoff');
 $form=json_decode($module->GetConfigurationForm(),true);
-eq(count($form['actions']),9,'eight existing read-only actions plus one requested copy-paste TestReport refresh');
+eq(count($form['actions']),10,
+    'nine existing actions plus one explicit safe compact VISU link setup');
+eq(($form['actions'][0]['onClick']??null)==='JVIDSH_CreateAnwesenheitTileLink($id);',
+    true,'single-click root link installation is explicit, never automatic');
 // A one-click LCN inventory must work even with Shadow DISABLED and
 // must not activate configured GUS, alter P03, or read camera credentials.
 $GLOBALS['instances'][8001]=['ModuleInfo'=>[
