@@ -22,18 +22,26 @@ if ($scriptID <= 0) {
 // This script deliberately NEVER registers or overwrites another WebHook.
 $parentID = (int) IPS_GetObject($scriptID)['ParentID'];
 $getChild = static function (int $parent, string $ident): int {
-    try {
-        $candidate = IPS_GetObjectIDByIdent($ident, $parent);
-        return is_int($candidate) && $candidate > 0 ? $candidate : 0;
-    } catch (Throwable $ignored) {
-        return 0;
+    // IPS_GetObjectIDByIdent produces E_WARNING for expected first-run
+    // misses, even inside try/catch. Inspect direct children instead.
+    // This works with Symcon 9.0 without @ error suppression.
+    foreach (IPS_GetChildrenIDs($parent) as $candidate) {
+        if (!is_int($candidate) || $candidate <= 0) continue;
+        $meta = IPS_GetObject($candidate);
+        if (($meta['ObjectIdent'] ?? null) === $ident)
+            return $candidate;
     }
+    return 0;
 };
 $rootID = $getChild($parentID, 'JVPhoneWifiBridgeRoot');
 // IP-Symcon: SENDER=WebHook, plus $_SERVER['HOOK'] on real HTTP requests.
 // Only explicitly manual "Execute" calls may initialize the bridge.
 $sender = (string) ($_IPS['SENDER'] ?? '');
 $isWebhook = $sender === 'WebHook';
+// A once-only upgrade of legacy credentials previously printed in setup
+// logs. Only explicit editor Execute may rotate. The marker is stored in
+// each OWN hidden token object's info, not a new Symcon variable.
+$securityMarker = 'JVPHONEWIFI_SECRET_V2_ROTATED_LOCALLY';
 if (!$isWebhook && $sender !== 'Execute') {
     echo "Setup verweigert: nur manuell im Editor ausfuehren.\n";
     return;
@@ -124,6 +132,20 @@ if (!$isWebhook) {
             IPS_SetName($secretID, 'Webhook-Schlüssel (privat)');
             IPS_SetIdent($secretID, 'JVPhoneWifiSharedToken');
             SetValue($secretID, bin2hex(random_bytes(24)));
+            IPS_SetInfo($secretID, $securityMarker);
+        } else {
+            // Older installer printed tokens in plain text, which could be
+            // copied into tickets/chats/logs. Regenerate those once on the
+            // first manual editor invocation after script upgrade. Never
+            // silently repeat rotation on every manual re-run or WebHook.
+            $tokenObject = IPS_GetObject($secretID);
+            if ((int)($tokenObject['ParentID']??0) !== $phoneID
+                || (IPS_GetVariable($secretID)['VariableType']??null) !== 3)
+                throw new RuntimeException('Privater WebHook-Token ist falsch gebunden');
+            if (($tokenObject['ObjectInfo']??null) !== $securityMarker) {
+                SetValue($secretID, bin2hex(random_bytes(24)));
+                IPS_SetInfo($secretID, $securityMarker);
+            }
         }
         IPS_SetHidden($secretID, true);
         $ids[$key] = ['parent' => $phoneID, 'ssid' => $ssidID,
@@ -164,11 +186,12 @@ if (!$isWebhook) {
         echo strtoupper($key) . "\n";
         echo " Eltern-ID: " . $row['parent'] . "\n";
         echo " WifiSSID-String-ID: " . $row['ssid'] . "\n";
-        echo " Token (geheim, NICHT in Chat/Screenshots teilen): " . GetValue($row['secret']) . "\n";
+        echo " Geheimtoken-ID (ausgeblendet): " . $row['secret'] . " | Token im lokalen Objekt ablesen, NIEMALS in Chats posten.\n";
     }
     echo "\nSHADOW #32969 erkennt gueltige personenbezogene WifiSSID-Quellen automatisch (bis 5 Min.).\n";
     echo "Keine vier Quell-IDs oder zusaetzlichen SHADOW-Schalter erforderlich.\n";
     echo "Voraussetzung: beide Telefone senden ihre aktuelle SSID regelmaessig per POST.\n";
+    echo "Bei Update von altem Skript wurden vorhandene Geheimtokens genau einmal neu erzeugt.\n";
     echo "Auch ein erfolgreiches Hook-Setup allein ist KEIN aktueller WORK-Nachweis.\n";
     return;
 }

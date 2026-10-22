@@ -34,8 +34,26 @@ function IPS_ApplyChanges(int $id):void{
     if($id!==55000)throw new RuntimeException('unexpected core instance');
     $hookApplies++;
 }
-function IPS_GetObject(int $id):array {global $objects;return $objects[$id]??throw new RuntimeException('unknown obj '.$id);}
-function IPS_GetObjectIDByIdent(string $ident,int $parent):int {global $objects;foreach($objects as $id=>$o)if($o['ParentID']===$parent&&$o['Ident']===$ident)return $id;throw new RuntimeException('not found');}
+function IPS_GetObject(int $id):array {
+    global $objects;
+    $o=$objects[$id]??throw new RuntimeException('unknown obj '.$id);
+    $o['ObjectIdent']=$o['Ident']??'';
+    $o['ObjectInfo']=$o['Info']??'';
+    return $o;
+}
+function IPS_GetChildrenIDs(int $parent):array {
+    global $objects;
+    return array_values(array_map('intval',array_keys(array_filter($objects,
+        static fn(array $o):bool=>($o['ParentID']??0)===$parent))));
+}
+function IPS_GetObjectIDByIdent(string $ident,int $parent):int {
+    throw new RuntimeException('WARN_ON_FIRST_INSTALL: do not call IPS_GetObjectIDByIdent');
+}
+function IPS_SetInfo(int $id,string $info):void{
+    global $objects;
+    if(!isset($objects[$id]))throw new RuntimeException('missing token for info');
+    $objects[$id]['Info']=$info;
+}
 function IPS_CreateCategory():int {global $nextId,$objects;$id=++$nextId;$objects[$id]=['ParentID'=>0,'Ident'=>'','name'=>'','type'=>'category'];return $id;}
 function IPS_CreateVariable(int $type):int {global $nextId,$objects,$variables;$id=++$nextId;$objects[$id]=['ParentID'=>0,'Ident'=>'','name'=>'','type'=>'variable'];$variables[$id]=['VariableType'=>$type];return $id;}
 function IPS_SetParent(int $id,int $p):void {global $objects;$objects[$id]['ParentID']=$p;}
@@ -48,8 +66,37 @@ function SetValue(int $id,mixed $val):void {global $values;$values[$id]=$val;}
 function GetValue(int $id):mixed {global $values;return $values[$id];}
 ob_start();require dirname(__DIR__).'/docs/phone-wifi-bridge/JVPhoneWiFiWebhook.php';$first=ob_get_clean();
 $count=count($objects);$vals=$values;
+if(str_contains($first,' Token (geheim')
+    || preg_match('/[a-f0-9]{48}/',$first))
+    throw new RuntimeException('printed secret token to setup output');
+if(str_contains($first,'Warning:') || !str_contains($first,'Geheimtoken-ID'))
+    throw new RuntimeException('first-time installer must be quiet and list private token IDs');
 ob_start();require dirname(__DIR__).'/docs/phone-wifi-bridge/JVPhoneWiFiWebhook.php';$second=ob_get_clean();
 if(count($objects)!==$count||$vals!==$values)throw new RuntimeException('installer mutated on rerun');
+$secretIDs=array_keys($hidden);
+if(count($secretIDs)!==2)throw new RuntimeException('two hidden token objects required');
+foreach($secretIDs as $id){
+    if(($objects[$id]['Info']??null)!=='JVPHONEWIFI_SECRET_V2_ROTATED_LOCALLY')
+        throw new RuntimeException('new token missing V2 marker');
+}
+// Simulate the real user's existing deployment: the old installer printed
+// the secrets but did not mark them as rotated. Updating the script must
+// rotate only those two private values once, without creating any objects.
+$legacy=$values;
+foreach($secretIDs as $id)unset($objects[$id]['Info']);
+ob_start();require dirname(__DIR__).'/docs/phone-wifi-bridge/JVPhoneWiFiWebhook.php';$renewOutput=ob_get_clean();
+foreach($secretIDs as $id) {
+    if(($objects[$id]['Info']??null)!=='JVPHONEWIFI_SECRET_V2_ROTATED_LOCALLY'
+        ||$values[$id]===$legacy[$id])
+        throw new RuntimeException('compromised legacy token not rotated');
+}
+$rotated=$values;
+ob_start();require dirname(__DIR__).'/docs/phone-wifi-bridge/JVPhoneWiFiWebhook.php';$repeat=ob_get_clean();
+if($values!==$rotated ||count($objects)!==$count || $hookApplies!==1)
+    throw new RuntimeException('token rotated more than once or modified hooks');
+if(preg_match('/[a-f0-9]{48}/',$renewOutput)
+    ||preg_match('/[a-f0-9]{48}/',$repeat))
+    throw new RuntimeException('leaked fresh token to setup log');
 if(count($variables)!==4||count($hidden)!==2)throw new RuntimeException('not exactly two SSIDs and two hidden secrets');
 foreach($values as $v)if(strlen($v)!==0&&strlen($v)!==48)throw new RuntimeException('invalid token length');
 if(!str_contains($first,'jvphonewifi')||!str_contains($second,'CARINA'))throw new RuntimeException('setup text missing');
