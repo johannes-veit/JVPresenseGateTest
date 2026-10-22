@@ -91,6 +91,8 @@ class JVPresenceIdentityShadow extends IPSModule
     {
         parent::Create();
         $this->RegisterPropertyBoolean('Enabled',false);
+        // Only the verified local SymBox installation (#32969/#36895).
+        $this->RegisterPropertyBoolean('AutoSetupKnownRootVisu',true);
         // Known owner installation ID; verify GUID before EVERY read.
         $this->RegisterPropertyInteger('P03InstanceID',53879);
         // Explicit opt-in only AFTER a separate verified IPC People Counting
@@ -157,6 +159,7 @@ class JVPresenceIdentityShadow extends IPSModule
         $this->RegisterAttributeString('SensorSubscriptions','[]');
         $this->RegisterAttributeString('GateSubscriptions','[]');
         $this->RegisterAttributeString('AutoPhoneSSIDInventory','{}');
+        $this->RegisterAttributeString('ResidentRootVisuSetup','{}');
         // Attributes persist across Symcon / module restarts; buffers DO NOT.
         // Never add hidden Status variables for storage.
         foreach(self::STORED_STATE_NAMES as $name)
@@ -230,6 +233,13 @@ class JVPresenceIdentityShadow extends IPSModule
             // IS_CREATING=101 left by an earlier, incomplete initialization.
             if($this->SetStatus(102)===false)
                 throw new RuntimeException('SYSCON_STATUS_TRANSITION_REJECTED');
+            // Visualization setup is completely separate from the SHADOW
+            // observation bootstrap: it may never make the module RED.
+            if($this->ReadPropertyBoolean('AutoSetupKnownRootVisu')
+                &&isset($this->InstanceID)&&$this->InstanceID===32969){
+                try {$this->installKnownRootVisuSafely();}
+                catch(Throwable $ignored){}
+            }
         } catch(Throwable $e) {
             // A failed bootstrap is a missing observation epoch even if it
             // occurred only seconds after the last successful timer poll.
@@ -799,6 +809,195 @@ class JVPresenceIdentityShadow extends IPSModule
             }
             return 'Link-Einrichtung fehlgeschlagen ('.get_class($e).'); '
                 .'bestehende Symcon-Struktur unveraendert.';
+        }
+    }
+
+    /**
+     * SymBox-only layout correction for the user-confirmed hierarchy:
+     * #36895 Anwesenheitserkennung -> #33054 Identity Shadow -> #32969.
+     * One native instance link stays visible at the root; all other direct
+     * root items are hidden FROM ALL VISUALIZATIONS, not disabled or deleted.
+     * Previous visibility flags persist for exact restoration.
+     *
+     * This is deliberately not a general-purpose tree mover or controller.
+     */
+    public function InstallKnownRootVisu():void
+    {
+        $result=$this->installKnownRootVisuSafely();
+        try{
+            $this->SendDebug('ResidentRootVisuSetup',$result,0);
+            $this->SetValue('Status','VISU: '.$result);
+        }catch(Throwable $ignored){}
+    }
+
+    public function RestoreKnownRootVisu():void
+    {
+        $result=$this->restoreKnownRootVisuSafely();
+        try{
+            $this->SendDebug('ResidentRootVisuRestore',$result,0);
+            $this->SetValue('Status','VISU: '.$result);
+        }catch(Throwable $ignored){}
+    }
+
+    private function installKnownRootVisuSafely():string
+    {
+        $root=36895;$owner=32969;$parent=33054;$new=0;
+        $changed=[];$old=[];$linkId=0;$created=false;
+        try{
+            if(!isset($this->InstanceID)||$this->InstanceID!==$owner)
+                return 'NICHT installiert: SHADOW-Instanz ist nicht #32969.';
+            foreach(['IPS_GetObject','IPS_GetChildrenIDs','IPS_GetLink',
+                'IPS_CreateLink','IPS_SetLinkTargetID','IPS_SetParent',
+                'IPS_SetName','IPS_SetPosition','IPS_SetHidden',
+                'IPS_LinkExists','IPS_DeleteLink'] as $fn)
+                if(!function_exists($fn))
+                    return 'NICHT installiert: Symcon-API '.$fn.' fehlt.';
+            $r=IPS_GetObject($root);
+            $p=IPS_GetObject($parent);
+            $o=IPS_GetObject($owner);
+            if(($r['ObjectType']??null)!==0
+                ||($r['ObjectName']??null)!=='Anwesenheitserkennung'
+                ||($r['ObjectIsHidden']??false)===true
+                ||($p['ObjectType']??null)!==0
+                ||($p['ParentID']??null)!==$root
+                ||($o['ObjectType']??null)!==1
+                ||($o['ParentID']??null)!==$parent)
+                return 'NICHT installiert: die bekannte Kategorie-/Instanzstruktur wurde veraendert.';
+            $prior=json_decode($this->ReadAttributeString('ResidentRootVisuSetup'),true);
+            if(is_array($prior)&&($prior['phase']??'')==='installed'){
+                $oldLink=(int)($prior['linkId']??0);
+                if($oldLink>0&&IPS_LinkExists($oldLink)
+                    &&(IPS_GetLink($oldLink)['TargetID']??null)===$owner
+                    &&(IPS_GetObject($oldLink)['ParentID']??null)===$root
+                    &&(IPS_GetObject($oldLink)['ObjectIsHidden']??true)===false)
+                    return 'BEREITS EINGERICHTET: Bewohnerstatus-Link #'.$oldLink
+                        .' direkt unter Anwesenheitserkennung; alle anderen Kacheln ausgeblendet.';
+                return 'PRUEFUNG ERFORDERLICH: fruehere VISU-Einrichtung veraendert; nicht erneut ueberschreiben.';
+            }
+            if(is_array($prior)&&($prior['phase']??'')==='prepared')
+                return 'PRUEFUNG ERFORDERLICH: vorherige Einrichtung nicht abgeschlossen; nichts ueberschrieben.';
+            $children=IPS_GetChildrenIDs($root);
+            if(!is_array($children)||count($children)>100
+                ||!in_array($parent,$children,true))
+                return 'NICHT installiert: Zielkategorie nicht vollstaendig pruefbar.';
+            foreach($children as $id){
+                if(!is_int($id)||$id<=0)continue;
+                $child=IPS_GetObject($id);
+                if(!is_array($child)||($child['ParentID']??null)!==$root)
+                    return 'NICHT installiert: Kindobjekt-Verifikation fehlgeschlagen.';
+                if(($child['ObjectType']??null)===6){
+                    $link=IPS_GetLink($id);
+                    if(!is_array($link))
+                        return 'NICHT installiert: bestehende Links unlesbar.';
+                    if(($link['TargetID']??null)===$owner){
+                        if($linkId>0)
+                            return 'NICHT installiert: mehrere Bewohnerlinks gefunden; zuerst pruefen.';
+                        $linkId=$id;
+                    }
+                }
+                if(($child['ObjectName']??null)==='Bewohnerstatus'
+                    &&(($child['ObjectType']??null)!==6
+                        ||(IPS_GetLink($id)['TargetID']??null)!==$owner))
+                    return 'NICHT installiert: fremdes Objekt Bewohnerstatus vorhanden.';
+                $old[$id]=($child['ObjectIsHidden']??false)===true;
+            }
+            // Save a persistent BEFORE image prior to modifying other
+            // visible objects. No other source properties are written.
+            $prepared=[
+                'schema'=>1,'phase'=>'prepared','root'=>$root,
+                'owner'=>$owner,'parent'=>$parent,'linkId'=>$linkId,
+                'createdLink'=>false,'visibilityBefore'=>$old
+            ];
+            $this->WriteAttributeString('ResidentRootVisuSetup',
+                json_encode($prepared,JSON_UNESCAPED_SLASHES)?:'{}');
+            if($linkId===0){
+                $new=IPS_CreateLink();
+                if(!is_int($new)||$new<=0)
+                    throw new RuntimeException('LINK_CREATE_FAILED');
+                $created=true;$linkId=$new;
+                if(IPS_SetParent($linkId,$root)!==true
+                    ||IPS_SetLinkTargetID($linkId,$owner)!==true
+                    ||IPS_SetName($linkId,'Bewohnerstatus')!==true
+                    ||IPS_SetPosition($linkId,0)!==true)
+                    throw new RuntimeException('LINK_CONFIG_FAILED');
+            }
+            if((IPS_GetLink($linkId)['TargetID']??null)!==$owner
+                ||(IPS_GetObject($linkId)['ParentID']??null)!==$root)
+                throw new RuntimeException('LINK_VERIFY_FAILED');
+            if((IPS_GetObject($linkId)['ObjectIsHidden']??false)===true){
+                if(IPS_SetHidden($linkId,false)!==true)
+                    throw new RuntimeException('LINK_VISIBILITY_FAILED');
+                $changed[$linkId]=true;
+            }
+            foreach($old as $id=>$wasHidden){
+                if($id===$linkId||$wasHidden)continue;
+                if(IPS_SetHidden((int)$id,true)!==true)
+                    throw new RuntimeException('HIDE_FAILED');
+                $changed[(int)$id]=true;
+            }
+            $prepared['phase']='installed';
+            $prepared['linkId']=$linkId;
+            $prepared['createdLink']=$created;
+            $this->WriteAttributeString('ResidentRootVisuSetup',
+                json_encode($prepared,JSON_UNESCAPED_SLASHES)?:'{}');
+            return 'ERFOLG: Link #'.$linkId.' direkt in #'.$root
+                .'; '.count(array_filter($old,static fn(bool $hidden)=>!$hidden))
+                .' bisher sichtbare Nachbarobjekte ausgeblendet. '
+                .'P03, WLAN und SHADOW arbeiten unveraendert.';
+        }catch(Throwable $e){
+            // Only revert things this call changed. All old visibility
+            // settings are restored, including originally hidden objects.
+            foreach(array_keys($changed) as $id){
+                try {
+                    $original=$old[$id]??true;
+                    IPS_SetHidden((int)$id,$original);
+                }catch(Throwable $ignored){}
+            }
+            if($created&&$new>0){
+                try{if(IPS_LinkExists($new))IPS_DeleteLink($new);}
+                catch(Throwable $ignored){}
+            }
+            try{$this->WriteAttributeString('ResidentRootVisuSetup','{}');}
+            catch(Throwable $ignored){}
+            return 'FEHLER: '.get_class($e).' bei Einrichtung; '
+                .'Aenderungen soweit moeglich zurueckgenommen.';
+        }
+    }
+
+    private function restoreKnownRootVisuSafely():string
+    {
+        try{
+            $v=json_decode($this->ReadAttributeString('ResidentRootVisuSetup'),true);
+            if(!is_array($v)||($v['phase']??'')!=='installed'
+                ||($v['root']??null)!==36895
+                ||($v['owner']??null)!==32969
+                ||!is_array($v['visibilityBefore']??null))
+                return 'Keine gesicherte abgeschlossene Einrichtung vorhanden.';
+            $root=IPS_GetObject(36895);
+            if(($root['ObjectType']??null)!==0)
+                return 'Kategorie fehlt, Wiederherstellung abgebrochen.';
+            $before=$v['visibilityBefore'];
+            foreach($before as $id=>$hidden){
+                $id=(int)$id;
+                if($id<=0||!is_bool($hidden))continue;
+                if((IPS_GetObject($id)['ParentID']??null)!==36895)
+                    return 'Objekt verschoben, Wiederherstellung nicht automatisch moeglich.';
+            }
+            foreach($before as $id=>$hidden){
+                if(IPS_SetHidden((int)$id,$hidden)!==true)
+                    return 'Wiederherstellung unvollstaendig; erneut pruefen.';
+            }
+            $linkId=(int)($v['linkId']??0);
+            if(($v['createdLink']??false)===true&&$linkId>0
+                &&IPS_LinkExists($linkId)
+                &&(IPS_GetLink($linkId)['TargetID']??null)===32969
+                &&(IPS_GetObject($linkId)['ParentID']??null)===36895
+                &&(IPS_GetObject($linkId)['ObjectName']??null)==='Bewohnerstatus')
+                IPS_DeleteLink($linkId);
+            $this->WriteAttributeString('ResidentRootVisuSetup','{}');
+            return 'Vorherige Objekt-Sichtbarkeit unter Anwesenheitserkennung wiederhergestellt.';
+        }catch(Throwable $e){
+            return 'Wiederherstellung nicht erfolgreich ('.get_class($e).').';
         }
     }
 
