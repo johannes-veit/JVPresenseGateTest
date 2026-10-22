@@ -704,6 +704,18 @@ final class JVResidentEveningHandoff
                 .' | beide Observer LIVE '
                 .self::yes(($q['bothExistingAuxObserversLive']??false)===true)
                 .' | neue Route noch NICHT bestaetigt');
+            $g=$q['productionPreflight']??[];
+            if(($g['verifiedFromFreshDiagnostic']??false)===true){
+                $add('BETRIEB P03: Freigabe Audit '
+                    .self::yes(($g['auditPassed']??false)===true)
+                    .' | Simulation '.self::yes(($g['simulationPassed']??false)===true)
+                    .' | OUT '.self::number($g['homeToLagerCount']??null).'/2'
+                    .' | IN '.self::number($g['lagerToHomeCount']??null).'/2'
+                    .' | Mast-Sockets '.self::yes(($g['socketAndMastSourcesReady']??false)===true)
+                    .' | Vorfreigabe '.self::yes(($g['eligibleForManualProductionEnable']??false)===true));
+            }else{
+                $add('BETRIEB P03: Vorfreigabe-Detail noch nicht aus frischer P03-Hauptdiagnose auslesbar; nicht freigeben.');
+            }
             if(($q['productionEnableFunctionHasVerifiedGuards']??false)===true)
                 $add('P03 FREIGABE: nur nach Audit + Simulation + 2 OUT/2 IN + zwei Maststreams; SHADOW aktiviert P03 nicht.');
         }
