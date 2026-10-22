@@ -3,10 +3,11 @@ declare(strict_types=1);
 /**
  * JV Phone Wi-Fi bridge for IP-Symcon 9.x.
  *
- * Run once MANUALLY in script editor to create ONLY a dedicated category,
- * two named smartphone categories, two String variables and two hidden
- * token variables. Assign THIS SAME script as WebHook Control target for
- * /hook/jvphonewifi (manual single hook setup; existing hooks untouched).
+ * Run once MANUALLY in the Symcon script editor. Creates ONLY one
+ * bridge category, two smartphone categories, two String variables and two
+ * hidden independent token variables. Registers /hook/jvphonewifi
+ * automatically in WebHook Control ONLY if available and not owned by
+ * another script; existing hooks are never changed or overwritten.
  *
  * Client POST: {"person":"johannes","ssid":"Intern-Veit","token":"<secret>"}
  * Other valid person: carina. Empty SSID = disconnected; then no location.
