@@ -628,7 +628,9 @@ $GLOBALS['gateDevices'][41869]=[
     'pairedParent'=>50000];
 $GLOBALS['gateDevices'][28055]=[
     'name'=>'Timestamp','parent'=>'Smartphone Johannes',
-    'type'=>1,'value'=>$now-35,'changed'=>$now-35,
+    // A delayed app event has an older event timestamp; both Symcon
+    // VariableUpdated values still belong to ONE received webhook.
+    'type'=>1,'value'=>$now-35,'changed'=>$now-18,
     'pairedParent'=>50000];
 $GLOBALS['gateDevices'][42608]=[
     'name'=>'Latitude','parent'=>'Smartphone Johannes',
