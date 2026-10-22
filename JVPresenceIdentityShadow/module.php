@@ -2028,7 +2028,12 @@ class JVPresenceIdentityShadow extends IPSModule
             $residentFusion['report'],$routeEpisodes['report'],
             $residentJourney
         );
-        $tileHTML=JVResidentTileDashboard::render($tileData);
+        // The existing ~HTMLBox variable now shows only the two compact
+        // read-only resident rows; detailed evidence stays in TestReport.
+        $compactResidentTile=JVResidentTileDashboard::compactState(
+            $tileData,time()
+        );
+        $tileHTML=JVResidentTileDashboard::renderCompact($tileData,time());
         $presenceDetected=JVCombinedPresenceBoolean::evaluate(
             $combined,$houseObservation,$tileWlan,$tileGeoJ,$tileGeoC,
             $p03Timeline['report'],$gateDisplay,$indoorHints,time(),$tileWork
@@ -2073,6 +2078,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentDisplay'=>$residentDisplay,
             'residentVisuState'=>$tileResident['report'],
             'residentTileEvidence'=>$tileData,
+            'compactResidentTile'=>$compactResidentTile,
             'residentDepartureInference'=>$departureHint,
             'residentArrivalInference'=>$arrivalHint,
             'phoneContactContinuity'=>$contactHistory['report'],
