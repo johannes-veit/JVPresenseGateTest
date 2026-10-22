@@ -184,7 +184,7 @@ foreach([
     '$boundary[\'report\'],$gateDisplay,$indoorHints,time(),$egi,$carinaGeo,$tileWork',
     '$wlan,$egi,$carinaGeo,$tileWork',
     '$wlan,$tileWork,$egi,$carinaGeo,',
-    "\'effectiveWorkWiFi\'=>" . '$tileWork'
+    "'effectiveWorkWiFi'=>" . '$tileWork'
 ] as $needed){
     boundPhoneCheck(str_contains($main,$needed),
         'all human and combined source reports share final phone SSID: '.$needed);
