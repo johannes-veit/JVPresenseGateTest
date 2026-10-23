@@ -50,6 +50,7 @@ $hookPath = '/hook/jvphonewifi';
 $hookControlID = 0;
 $hookAlreadyAssigned = false;
 $hookCanInstall = false;
+$orphanRepairIndex = null;
 $hookProblem = '';
 if (!$isWebhook) {
     // Never overwrite an existing foreign hook and never guess the control.
@@ -68,7 +69,7 @@ if (!$isWebhook) {
                 $hookProblem = 'WebHook-Liste unlesbar oder ungueltig';
             } else {
                 $hookCanInstall = true;
-                foreach ($configured as $row) {
+                foreach ($configured as $index => $row) {
                     if (!is_array($row) || !is_string($row['Hook'] ?? null)
                         || !is_int($row['TargetID'] ?? null)) {
                         $hookCanInstall = false;
@@ -77,9 +78,24 @@ if (!$isWebhook) {
                     }
                     if ($row['Hook'] !== $hookPath) continue;
                     if ($row['TargetID'] !== $scriptID) {
-                        throw new RuntimeException(
-                            'WebHook-Konflikt: /hook/jvphonewifi zeigt bereits auf ein anderes Ziel. Unveraendert!'
-                        );
+                        // ONLY the user's known, deleted receiver #21958
+                        // may be adopted, and ONLY from a new script located
+                        // alongside the existing original bridge category.
+                        // Never steal a live or unrelated webhook target.
+                        $targetID = $row['TargetID'];
+                        $isKnownOrphan = $targetID === 21958
+                            && $rootID > 0
+                            && function_exists('IPS_ObjectExists')
+                            && function_exists('IPS_ScriptExists')
+                            && !IPS_ObjectExists($targetID)
+                            && !IPS_ScriptExists($targetID);
+                        if (!$isKnownOrphan || $orphanRepairIndex !== null) {
+                            throw new RuntimeException(
+                                'WebHook-Konflikt: /hook/jvphonewifi zeigt bereits auf ein anderes Ziel. Unveraendert!'
+                            );
+                        }
+                        $orphanRepairIndex = $index;
+                        continue;
                     }
                     $hookAlreadyAssigned = true;
                 }
@@ -158,7 +174,11 @@ if (!$isWebhook) {
         $hookState = 'BEREITS_KORREKT';
     } elseif ($hookCanInstall) {
         $newHooks = $configured;
-        $newHooks[] = ['Hook' => $hookPath, 'TargetID' => $scriptID];
+        if ($orphanRepairIndex !== null) {
+            $newHooks[$orphanRepairIndex]['TargetID'] = $scriptID;
+        } else {
+            $newHooks[] = ['Hook' => $hookPath, 'TargetID' => $scriptID];
+        }
         $json = json_encode($newHooks, JSON_UNESCAPED_SLASHES);
         if (is_string($json)) {
             try {
@@ -170,7 +190,9 @@ if (!$isWebhook) {
                 foreach (is_array($verify) ? $verify : [] as $row) {
                     if (is_array($row) && ($row['Hook'] ?? null) === $hookPath
                         && ($row['TargetID'] ?? null) === $scriptID)
-                        $hookState = 'AUTOMATISCH_EINGERICHTET';
+                        $hookState = $orphanRepairIndex !== null
+                            ? 'VERWAISTES_ZIEL_21958_REPARIERT'
+                            : 'AUTOMATISCH_EINGERICHTET';
                 }
             } catch (Throwable $ignored) {
                 $hookProblem = 'Automatische WebHook-Zuordnung fehlgeschlagen';
@@ -182,6 +204,9 @@ if (!$isWebhook) {
     if ($hookState === 'MANUELL_NOETIG')
         echo "Bitte /hook/jvphonewifi manuell auf Skript #{$scriptID} zuordnen (" . $hookProblem . ").\n";
     echo "Hook-Ziel: /hook/jvphonewifi -> Skript #{$scriptID}\n";
+    if ($orphanRepairIndex !== null && $hookState !== 'VERWAISTES_ZIEL_21958_REPARIERT') {
+        echo "Verwaistes Ziel #21958 konnte nicht automatisch bestaetigt ersetzt werden. Bitte im WebHook Control ausschliesslich /hook/jvphonewifi manuell auf das neue Skript zuordnen.\n";
+    }
     foreach ($ids as $key => $row) {
         echo strtoupper($key) . "\n";
         echo " Eltern-ID: " . $row['parent'] . "\n";
