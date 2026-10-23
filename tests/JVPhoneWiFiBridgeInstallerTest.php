@@ -149,6 +149,21 @@ $reinstalled=ob_get_clean();
 if(!str_contains($reinstalled,'BEREITS_KORREKT')
     ||$hookWrites!==2||$hookApplies!==2)
     throw new RuntimeException('stale target repair not idempotent');
+// Even duplicate entries with exactly the same current receiver must
+// be treated as configuration corruption, not silently accepted.
+$coreHooks[]=['Hook'=>'/hook/jvphonewifi','TargetID'=>24001];
+try {
+    ob_start();
+    require dirname(__DIR__).'/docs/phone-wifi-bridge/JVPhoneWiFiWebhook.php';
+    ob_end_clean();
+    throw new RuntimeException('duplicate same-target phone hooks not rejected');
+} catch(RuntimeException $e) {
+    if(ob_get_level()>0)ob_end_clean();
+    if(!str_contains($e->getMessage(),'WebHook-Konflikt:'))throw $e;
+}
+array_pop($coreHooks);
+if($hookWrites!==2||$hookApplies!==2)
+    throw new RuntimeException('duplicate same-target check wrote unrelated config');
 // If ID #21958 exists as a CATEGORY/VARIABLE, never override it.
 $objects[21958]=['type'=>'category','ParentID'=>0,
     'Ident'=>'','name'=>'Unrelated object'];
