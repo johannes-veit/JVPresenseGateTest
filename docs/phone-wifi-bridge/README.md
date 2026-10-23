@@ -36,13 +36,21 @@ verraet die fehlerhafte Ziel-ID nicht.
    Eintrag `/hook/jvphonewifi` pruefen und, nachdem das
    tatsaechliche Ziel verifiziert ist, auf die **neue PHP-Skript-ID**
    stellen. Bestehende andere Hooks nicht aendern.
-5. Kontrollieren, dass die Einrichtung die bestehenden persönlichen
-   `WifiSSID`-Variablen **#56338** und **#24058** wiederverwendet.
-   Wenn neue SSID-Variablen mit anderen IDs erstellt wurden,
-   wurde das Skript im falschen Ordner abgelegt: weitere Einrichtung
-   stoppen, bevor Duplikate entstehen. Die alten Token-Werte bleiben
-   normalerweise bestehen; die Security-V2-Version rotiert ungepruefte
-   Alttoken beim ersten expliziten Setup einmalig.
+5. Wenn der Installer die frueheren `WifiSSID`-Variablen
+   **#56338** und **#24058** wiederverwendet, ist keine weitere
+   Quellenmigration erforderlich. **Tatsaechlich entstand jedoch beim
+   erfolgreichen Ersatzskript #14652 ein zweites Bridge-Paar: Johannes
+   #21780 unter #40500 und Carina #42876 unter #19570.** Diese
+   neuen Variablen jetzt NICHT loeschen oder verschieben. Ab
+   **SHADOW v0.8.121** waehlt die Read-only-Quellenerkennung die
+   eindeutig zum aktuell registrierten WebHook-Skript gehoerende
+   Bridge ueber den kanonischen Objekt-Ident anstatt nach gleich
+   klingenden Namen zu raten. Aeltere andere Bridge-Werte bleiben
+   unveraendert vorhanden, werden aber nicht fuer die aktuelle
+   personenbezogene SSID herangezogen. Bei fehlender oder mehrdeutiger
+   Hook-Zuordnung bleibt die Quelle unbestaetigt. Der bestehende
+   Security-V2-Schluessel darf ausschliesslich lokal vom jeweils
+   aktuell genutzten Telefonquellen-Ordner abgelesen werden.
 6. Erst jetzt Automate (Johannes) und Kurzbefehle (Carina) auf die bereits
    bestehende sichere `/hook/jvphonewifi`-URL mit dem **jeweiligen
    aktuell aus Symcon lokal abgelesenen Geheimtoken** einstellen.
