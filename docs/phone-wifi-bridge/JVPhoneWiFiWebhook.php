@@ -51,6 +51,7 @@ $hookControlID = 0;
 $hookAlreadyAssigned = false;
 $hookCanInstall = false;
 $orphanRepairIndex = null;
+$phoneHookMatchCount = 0;
 $hookProblem = '';
 if (!$isWebhook) {
     // Never overwrite an existing foreign hook and never guess the control.
@@ -77,6 +78,12 @@ if (!$isWebhook) {
                         break;
                     }
                     if ($row['Hook'] !== $hookPath) continue;
+                    $phoneHookMatchCount++;
+                    if ($phoneHookMatchCount !== 1) {
+                        throw new RuntimeException(
+                            'WebHook-Konflikt: /hook/jvphonewifi mehrfach zugeordnet. Unveraendert!'
+                        );
+                    }
                     if ($row['TargetID'] !== $scriptID) {
                         // ONLY the user's known, deleted receiver #21958
                         // may be adopted, and ONLY from a new script located
