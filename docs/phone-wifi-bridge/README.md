@@ -2,6 +2,57 @@
 
 **Separater, optionaler und einmalig manuell startbarer WebHook-Empfänger mit automatischer konfliktgeschützter Hook-Zuordnung.** Keine Änderung an P03, LCN, UniFi, Firmen-Firewall, EgiGeoZone, Geofency oder bestehenden WLAN-Skripten. SHADOW v0.8.111 wertet persönlich verifizierte SSID-Quellen automatisch und einheitlich aus für `Intern-Veit` und `Privat-Veit`; diese Bridge versorgt die noch fehlenden beiden personalisierten `WifiSSID`-String-Quellen.
 
+## Wiederherstellung nach geloeschtem Empfangsskript #21958 (23.10.2026)
+
+Der SHADOW-Testbericht zeigt `HOOK_TARGET_INVALID`, zwei separate, aber leere
+`WifiSSID`-Quellen (`#56338` Johannes / `#24058` Carina) und keine
+beobachtete neue SSID-Aktualisierung. Der Nutzer bestaetigt, dass das fruehere
+Empfangsskript **#21958 geloescht wurde**. Die vorhandenen Smartphone-
+Variablen und persoenlichen privaten Token sind **nicht zu loeschen**.
+Ob der WebHook wirklich noch #21958 als Ziel enthaelt, ist erst im
+WebHook Control oder durch manuelle Installation verifizierbar; der Report
+verraet die fehlerhafte Ziel-ID nicht.
+
+1. In der **Symcon-Verwaltungskonsole** im Objektbaum die bereits vorhandene
+   Kategorie `JV Phone WiFi Bridge` suchen. Ein **neues PHP-Skript**
+   `JV Smartphone WLAN Webhook` **direkt NEBEN der vorhandenen
+   Bridge-Kategorie** (gleicher uebergeordneter Ordner, nicht darunter)
+   anlegen. Die neue Skript-ID wird automatisch vergeben, nicht #21958
+   erzwingen.
+2. Die aktuelle komplette Datei
+   [JVPhoneWiFiWebhook.php](./JVPhoneWiFiWebhook.php) in dieses neue
+   PHP-Skript kopieren, **speichern, einmal manuell ausfuehren**.
+3. Der Installer erkennt den einzigen alten Eintrag `/hook/jvphonewifi`
+   und darf **nur dann** dessen Ziel-ID durch die neue Skript-ID
+   ersetzen, wenn sie genau **#21958** ist, das Objekt #21958 und
+   das Skript #21958 **nicht mehr existieren**, und die vorhandene
+   alte Bridge-Kategorie im gleichen Ordner gefunden wurde. Erfolg:
+   `WEBHOOK: VERWAISTES_ZIEL_21958_REPARIERT`. Ist schon der
+   neue Empfaenger eingetragen, lautet die Ausgabe
+   `WEBHOOK: BEREITS_KORREKT`. Ein fremder/noch existierender
+   WebHook-Empfaenger wird **niemals** ueberschrieben.
+4. Bei `WebHook-Konflikt` oder `MANUELL_NOETIG`: In
+   **Kern-Instanzen -> WebHook Control** ausschliesslich den
+   Eintrag `/hook/jvphonewifi` pruefen und, nachdem das
+   tatsaechliche Ziel verifiziert ist, auf die **neue PHP-Skript-ID**
+   stellen. Bestehende andere Hooks nicht aendern.
+5. Kontrollieren, dass die Einrichtung die bestehenden persönlichen
+   `WifiSSID`-Variablen **#56338** und **#24058** wiederverwendet.
+   Wenn neue SSID-Variablen mit anderen IDs erstellt wurden,
+   wurde das Skript im falschen Ordner abgelegt: weitere Einrichtung
+   stoppen, bevor Duplikate entstehen. Die alten Token-Werte bleiben
+   normalerweise bestehen; die Security-V2-Version rotiert ungepruefte
+   Alttoken beim ersten expliziten Setup einmalig.
+6. Erst jetzt Automate (Johannes) und Kurzbefehle (Carina) auf die bereits
+   bestehende sichere `/hook/jvphonewifi`-URL mit dem **jeweiligen
+   aktuell aus Symcon lokal abgelesenen Geheimtoken** einstellen.
+   Gueltiger POST liefert `{"ok":true,"result":"ACCEPTED"}`.
+   Eine valide HTTP-Antwort kann nicht allein durch das Modul erzeugt
+   werden; die Smartphones muessen tatsaechlich senden.
+
+Keine Aenderung an der fertigen Bewohner-Kachel, P03, LCN, fremden
+WebHooks, Geofency, EgiGeoZone oder WLAN-Routern.
+
 ## Symcon einmalig
 
 1. Im Objektbaum außerhalb fremder Module ein neues **PHP-Skript** `JV Smartphone WLAN Webhook` anlegen.
