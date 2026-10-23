@@ -1789,6 +1789,41 @@ class JVPresenceIdentityShadow extends IPSModule
     }
 
     /**
+     * Read-only canonical bridge selection based on the ACTUAL
+     * /hook/jvphonewifi script and its sibling JVPhoneWifiBridgeRoot.
+     * A deleted/replaced script and a second same-named bridge must not
+     * make SHADOW trust whichever SSID happens to be most recent.
+     * No token contents, phone values, hooks or other modules are changed.
+     */
+    private function activePhoneWiFiBridgeRootReadOnly():int
+    {
+        $hook=$this->readPhoneBridgeHookMetadata();
+        if(($hook['status']??null)!=='HOOK_ASSIGNED_VALID_SCRIPT')
+            return 0;
+        $script=$hook['targetScriptID']??null;
+        if(!is_int($script)||$script<=0)return 0;
+        try {
+            $object=IPS_GetObject($script);
+            if(($object['ObjectType']??null)!==3)return 0;
+            $parent=$object['ParentID']??null;
+            if(!is_int($parent)||$parent<=0)return 0;
+            $siblings=IPS_GetChildrenIDs($parent);
+            if(!is_array($siblings)||count($siblings)>2000)return 0;
+            $matched=[];
+            foreach($siblings as $id){
+                if(!is_int($id)||$id<=0||$id===$script)continue;
+                $row=IPS_GetObject($id);
+                if(!is_array($row))return 0;
+                if(($row['ObjectType']??null)===0
+                    &&($row['ParentID']??null)===$parent
+                    &&($row['ObjectIdent']??null)==='JVPhoneWifiBridgeRoot')
+                    $matched[]=$id;
+            }
+            return count($matched)===1?$matched[0]:0;
+        }catch(Throwable $ignored){return 0;}
+    }
+
+    /**
      * Discover existing per-person WifiSSID values by object metadata only.
      *
      * This is a READ of existing Symcon values, never a WLAN scan, command,
@@ -1808,7 +1843,10 @@ class JVPresenceIdentityShadow extends IPSModule
         $cache=json_decode($runtime!==''?$runtime:
             $this->ReadAttributeString('AutoPhoneSSIDInventory'),true);
         $now=time();
-        if(!is_array($cache) || !is_int($cache['checkedAt']??null)
+        $activeBridgeRoot=$this->activePhoneWiFiBridgeRootReadOnly();
+        if(!is_array($cache)
+            ||($cache['activeBridgeRoot']??0)!==$activeBridgeRoot
+            || !is_int($cache['checkedAt']??null)
             ||($cache['checkedAt']??0)>$now+5
             ||($cache['checkedAt']??0)<$now-300
             ||!is_array($cache['people']??null)){
@@ -1838,14 +1876,29 @@ class JVPresenceIdentityShadow extends IPSModule
                         $known=$key==='johannes'
                             ?($parent===50000&&$grand===35965)
                             :($parent===45439&&$grand===48903);
-                        if($bridge||$known)
+                        if($bridge||$known){
+                            // The active WebHook receiver's own bridge is
+                            // identified by BOTH canonical object Idents,
+                            // not by a matching human-readable name alone.
+                            $canonical=false;
+                            if($bridge&&$activeBridgeRoot>0
+                                &&$grand===$activeBridgeRoot){
+                                $parentObj=IPS_GetObject($parent);
+                                $sourceObj=IPS_GetObject($id);
+                                $canonical=($parentObj['ObjectIdent']??null)
+                                        ==='JVWifiPhone_'.$personName
+                                    &&($sourceObj['ObjectIdent']??null)
+                                        ==='JVPhoneWifiCurrentSSID';
+                            }
                             $possible[$key][]=['id'=>$id,'parent'=>$parent,
                                 'name'=>$name,'parentName'=>$parentName,
-                                'grand'=>$grand];
+                                'grand'=>$grand,'canonical'=>$canonical];
+                        }
                     }
                 }
             }catch(Throwable $ignored){return $out;}
-            $cache=['checkedAt'=>$now,'people'=>[]];
+            $cache=['checkedAt'=>$now,'activeBridgeRoot'=>$activeBridgeRoot,
+                'people'=>[]];
             foreach(['johannes','carina'] as $person){
                 // An authenticated, dedicated JV phone reporter wins over
                 // an occasional native Geofency WifiSSID value. Without
@@ -1858,6 +1911,20 @@ class JVPresenceIdentityShadow extends IPSModule
                     static fn(array $row):bool=>($row['parentName']??'')
                         ===ucfirst($person).' Smartphone SSID Quelle'));
                 $chosen=count($bridges)>0?$bridges:$possible[$person];
+                if($activeBridgeRoot>0){
+                    $active=array_values(array_filter($bridges,
+                        static fn(array $r):bool=>
+                            ($r['grand']??0)===$activeBridgeRoot
+                            &&($r['canonical']??false)===true));
+                    // Once a verified live receiver with canonical bridge
+                    // exists, NEVER silently fall back to another similarly
+                    // named, possibly stale receiver. Native Geofency/Egi
+                    // source is still acceptable as a separate fallback
+                    // only when NO bridge candidate is present for the
+                    // person at all.
+                    if(count($active)>0)$chosen=$active;
+                    elseif(count($bridges)>0)$chosen=[];
+                }
                 $cache['people'][$person]=count($chosen)===1
                     ?$chosen[0]:null;
             }
@@ -1890,6 +1957,18 @@ class JVPresenceIdentityShadow extends IPSModule
                     ||IPS_GetName($parent)!==($p['parentName']??null)
                     ||(int)(IPS_GetObject($parent)['ParentID']??0)!==($p['grand']??-1))
                     continue;
+                // Re-check the canonical source identity each time it is
+                // used. A changed category/variable Ident invalidates
+                // trust immediately, even inside the five-minute cache.
+                if($activeBridgeRoot>0
+                    &&($p['grand']??0)===$activeBridgeRoot){
+                    if(($p['canonical']??false)!==true
+                        ||(IPS_GetObject($parent)['ObjectIdent']??null)
+                            !=='JVWifiPhone_'.ucfirst($person)
+                        ||(IPS_GetObject($id)['ObjectIdent']??null)
+                            !=='JVPhoneWifiCurrentSSID')
+                        continue;
+                }
                 $meta=IPS_GetVariable($id);
                 $when=$meta['VariableUpdated']??null;
                 if(($meta['VariableType']??null)!==3
