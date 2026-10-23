@@ -34,6 +34,13 @@ function IPS_ApplyChanges(int $id):void{
     if($id!==55000)throw new RuntimeException('unexpected core instance');
     $hookApplies++;
 }
+function IPS_ObjectExists(int $id):bool {
+    global $objects;return isset($objects[$id]);
+}
+function IPS_ScriptExists(int $id):bool {
+    global $objects;
+    return isset($objects[$id])&&($objects[$id]['type']??null)==='script';
+}
 function IPS_GetObject(int $id):array {
     global $objects;
     $o=$objects[$id]??throw new RuntimeException('unknown obj '.$id);
@@ -118,6 +125,48 @@ if(count($objects)!==$count||$hookWrites!==1
     ||!str_contains($other,'Setup verweigert'))
     throw new RuntimeException('unexpected automatic initialization on external event');
 $_IPS['SENDER']='Execute';
+// Real user recovery on 23.10.2026: Old receiver #21958 was deleted,
+// but WebHook Control still points /hook/jvphonewifi at the missing ID.
+// This known dangling mapping may be repaired to our NEW manual script,
+// preserving both existing child SSID sources and the private tokens.
+$sourceCount=count($objects);
+$tokenBefore=$values;
+$coreHooks[3]['TargetID']=21958;
+if(IPS_ObjectExists(21958)||IPS_ScriptExists(21958))
+    throw new RuntimeException('old script fixture unexpectedly exists');
+ob_start();
+require dirname(__DIR__).'/docs/phone-wifi-bridge/JVPhoneWiFiWebhook.php';
+$repaired=ob_get_clean();
+if(!str_contains($repaired,'VERWAISTES_ZIEL_21958_REPARIERT')
+    ||$coreHooks[3]['TargetID']!==24001
+    ||count($coreHooks)!==4
+    ||$hookWrites!==2||$hookApplies!==2
+    ||count($objects)!==$sourceCount||$values!==$tokenBefore)
+    throw new RuntimeException('deleted #21958 hookup not repaired in-place without source changes');
+ob_start();
+require dirname(__DIR__).'/docs/phone-wifi-bridge/JVPhoneWiFiWebhook.php';
+$reinstalled=ob_get_clean();
+if(!str_contains($reinstalled,'BEREITS_KORREKT')
+    ||$hookWrites!==2||$hookApplies!==2)
+    throw new RuntimeException('stale target repair not idempotent');
+// If ID #21958 exists as a CATEGORY/VARIABLE, never override it.
+$objects[21958]=['type'=>'category','ParentID'=>0,
+    'Ident'=>'','name'=>'Unrelated object'];
+$coreHooks[3]['TargetID']=21958;
+try {
+    ob_start();
+    require dirname(__DIR__).'/docs/phone-wifi-bridge/JVPhoneWiFiWebhook.php';
+    ob_end_clean();
+    throw new RuntimeException('live non-script old ID collision not rejected');
+} catch(RuntimeException $e) {
+    if(ob_get_level()>0)ob_end_clean();
+    if(!str_contains($e->getMessage(),'WebHook-Konflikt:'))throw $e;
+}
+if($hookWrites!==2||$hookApplies!==2
+    ||$coreHooks[3]['TargetID']!==21958)
+    throw new RuntimeException('old numeric ID reused by other object was overwritten');
+unset($objects[21958]);
+$coreHooks[3]['TargetID']=24001;
 // Security: an existing hook OWNED BY SOMEONE ELSE must NEVER be stolen.
 $coreHooks[3]['TargetID']=989898;
 try {
@@ -128,7 +177,7 @@ try {
     if(ob_get_level()>0)ob_end_clean();
     if(!str_contains($e->getMessage(),'WebHook-Konflikt:'))throw $e;
 }
-if($hookWrites!==1||$hookApplies!==1||count($objects)!==$count)
+if($hookWrites!==2||$hookApplies!==2||count($objects)!==$count)
     throw new RuntimeException('conflict modified foreign hook or created new objects');
 echo "Standalone Symcon bridge: one-click auto-hook, no foreign hook override, secure rerun PASS\n";
 echo "Standalone Symcon bridge: idempotent installer, 2 SSID + 2 hidden tokens PASS\n";
