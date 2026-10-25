@@ -131,6 +131,19 @@ foreach([
         &&$reject['next']['eligibleSince']===null,
         'hard-block on '.$name);
 }
+$changedSources=$indoor;
+$changedSources['sources']['light_b']=$changedSources['sources']['light_a'];
+unset($changedSources['sources']['light_a']);
+$rebased=$f($phone,$geoJ,$geoC,$house,$changedSources,$prior,$now+600);
+awayCheck(!$rebased['report']['likelyAway']
+    &&$rebased['report']['observedStableSeconds']===0,
+    'replacing monitored light source restarts the uninterrupted hold');
+$changedTimestamp=$indoor;
+$changedTimestamp['sources']['tv_a']['lastValueChangeAt']=$now-1849;
+$rebased=$f($phone,$geoJ,$geoC,$house,$changedTimestamp,$prior,$now+600);
+awayCheck(!$rebased['report']['likelyAway']
+    &&$rebased['report']['observedStableSeconds']===0,
+    'changed TV last-switch metadata restarts hold even if both values are off');
 $restart=$f($phone,$geoJ,$geoC,$house,$indoor,[],$now+600);
 awayCheck(!$restart['report']['likelyAway'],
     'reboot does not inherit old 10 minute quiet hold');
