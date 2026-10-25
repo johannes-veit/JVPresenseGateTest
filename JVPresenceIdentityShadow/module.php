@@ -59,6 +59,7 @@ require_once dirname(__DIR__).'/libs/JVResidentEveningHandoff.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCombinedPresenceBoolean.php';
 require_once dirname(__DIR__).'/libs/JVCompanyWiFiEvidence.php';
+require_once dirname(__DIR__).'/libs/JVCarinaLastWifiEventDisplay.php';
 require_once dirname(__DIR__).'/libs/JVTemporalPresenceCrossCheck.php';
 
 /**
@@ -2587,6 +2588,11 @@ class JVPresenceIdentityShadow extends IPSModule
         $awayNext=json_encode($householdAway['next'],JSON_UNESCAPED_SLASHES);
         if(is_string($awayNext))
             $this->SetBuffer('HouseholdAwayRuntime',$awayNext);
+        // iOS sends ONLY when WLAN changes. This is display-only last
+        // observation; it must never alter fresh phone/house/absence logic.
+        $carinaWifiEvent=JVCarinaLastWifiEventDisplay::evaluate(
+            $tileWork,$tileResident['report'],$tileGeoC,time()
+        );
         $tileData=JVResidentTileDashboard::evaluate(
             $tileResident['report'],$tileWlan,$tileWork,
             $p03Timeline['report'],$houseObservation,time(),$departureHint,$roomPaths,
@@ -2594,6 +2600,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $residentJourney
         );
         $tileData['householdAwayIndicator']=$householdAway['report'];
+        $tileData['carinaLastWifiEvent']=$carinaWifiEvent;
         // The existing ~HTMLBox variable now shows only the two compact
         // read-only resident rows; detailed evidence stays in TestReport.
         $compactResidentTile=JVResidentTileDashboard::compactState(
@@ -2651,6 +2658,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentVisuState'=>$tileResident['report'],
             'residentTileEvidence'=>$tileData,
             'compactResidentTile'=>$compactResidentTile,
+            'carinaLastWifiEvent'=>$carinaWifiEvent,
             'householdAwayIndicator'=>$householdAway['report'],
             'residentDepartureInference'=>$departureHint,
             'residentArrivalInference'=>$arrivalHint,
@@ -2794,7 +2802,11 @@ class JVPresenceIdentityShadow extends IPSModule
                 :$tileResident['report']['people']['johannes']['display'],
             ($householdAway['report']['likelyAway']??false)===true
                 ?'ABWESEND (Indizien, nicht zertifiziert)'
-                :$tileResident['report']['people']['carina']['display']
+                :(($carinaWifiEvent['status']??null)==='LAST_WIFI_EVENT_HOME'
+                    ?'ZUHAUSE (letzte iPhone-SSID, kein Heartbeat)'
+                    :(($carinaWifiEvent['status']??null)==='LAST_WIFI_EVENT_WORK'
+                        ?'FIRMA (letzte iPhone-SSID, kein Heartbeat)'
+                        :$tileResident['report']['people']['carina']['display']))
         );
         $this->setPresenceDetected($presenceDetected['detected']);
         $this->setResidentTile($tileHTML);
