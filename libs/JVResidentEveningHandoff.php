@@ -21,7 +21,7 @@ final class JVResidentEveningHandoff
         array $jGeo,array $cGeo,array $p03,array $timing,
         array $mast,array $house,array $activity,array $local,
         array $boundary,array $gate,array $warnings,
-        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[],array $commissioning=[],array $upgrade=[],array $safety=[],array $operational=[],array $sourceCommissioning=[]
+        int $now,bool $enabled,array $departure=[],array $rooms=[],array $arrival=[],array $contactHistory=[],array $fusion=[],array $routeEpisodes=[],array $journey=[],array $readiness=[],array $integrity=[],array $commissioning=[],array $upgrade=[],array $safety=[],array $operational=[],array $sourceCommissioning=[],array $away=[]
     ):string {
         $validTile=($tile['schema']??null)===1
             &&($tile['authority']??null)==='CURRENT_STATUS_ONLY_SAFE_HTML_TILE';
@@ -751,6 +751,25 @@ final class JVResidentEveningHandoff
                 ?$sourceCommissioning['p03Actions']:[];
             foreach(array_slice($steps,0,5) as $i=>$step)
                 $add('BETRIEB P03 OFFEN '.($i+1).': '.self::code($step));
+        }
+        if(($away['authority']??null)==='HOUSEHOLD_AWAY_VISUAL_HINT_ONLY'){
+            $add('BEWOHNER-ABWESENHEITSINDIZ: '
+                .self::code($away['status']??'UNKNOWN')
+                .' | beide Handy-OUT '
+                .self::yes(
+                    ($away['geofenceOutside']['johannes']??false)===true
+                    &&($away['geofenceOutside']['carina']??false)===true)
+                .' | 15 GUS ruhig + Licht/TV: '
+                .self::yes(($away['eligible']??false)===true)
+                .' | geprüft: Licht '
+                .self::number($away['checkedLights']??0)
+                .', TV '.self::number($away['checkedTVs']??0)
+                .' | keine menschliche Abwesenheitszertifizierung');
+            $reasons=is_array($away['reasons']??null)
+                ?$away['reasons']:[];
+            $add('BEWOHNER-ABWESENHEIT FEHLT: '
+                .($reasons?implode(' | ',array_slice($reasons,0,3))
+                    :'KEIN GRUND VERFUEGBAR'));
         }
         $add('--- HEUTE ABEND: PRUEFERGEBNIS + OFFENE PUNKTE ---');
         $add('Technischer Diagnosebericht aus vorhandenen Daten: '
