@@ -259,6 +259,15 @@ final class JVResidentTileDashboard
             'houseEmptyCertified'=>false,
             'mayArmAlarm'=>false,'mayChangeOtherModules'=>false
         ];
+        $away=$trusted&&is_array($data['householdAwayIndicator']??null)
+            &&($data['householdAwayIndicator']['schema']??null)===1
+            &&($data['householdAwayIndicator']['authority']??null)
+                ==='HOUSEHOLD_AWAY_VISUAL_HINT_ONLY'
+            &&($data['householdAwayIndicator']['status']??null)==='LIKELY_AWAY'
+            &&($data['householdAwayIndicator']['likelyAway']??false)===true
+            &&($data['householdAwayIndicator']['geofenceOutside']['johannes']??false)===true
+            &&($data['householdAwayIndicator']['geofenceOutside']['carina']??false)===true
+            &&($data['householdAwayIndicator']['mayArmAlarm']??true)===false;
         foreach(['johannes'=>'Johannes','carina'=>'Carina'] as $person=>$name){
             $row=$trusted&&is_array($data['people'][$person]??null)
                 ?$data['people'][$person]:[];
@@ -274,6 +283,13 @@ final class JVResidentTileDashboard
             }elseif($fresh&&$decision==='WORK_PHONE_CONFIRMED'){
                 $status='In Firma';$style='work';
                 $reason='Firmen-WLAN · Handy bestätigt';
+            }elseif($away
+                &&in_array($decision,[
+                    'UNKNOWN','LAST_KNOWN_UNCONFIRMED'
+                ],true)
+                &&($row['status']??null)!=='ANWESEND'){
+                $status='Abwesend';$style='away';
+                $reason='Vermutet · beide Handy-OUT, Haus/Licht/TV ruhig';
             }elseif($decision!=='HOME_PHONE_CONFIRMED'
                 &&$decision!=='WORK_PHONE_CONFIRMED'
                 &&$decision!=='CONFLICT'
@@ -291,7 +307,7 @@ final class JVResidentTileDashboard
             $result['people'][$person]=[
                 'name'=>$name,'status'=>$status,'style'=>$style,
                 'reason'=>$reason,
-                'at'=>$fresh||$style==='away'?$time:null,
+                'at'=>$fresh||($style==='away'&&!$away)?$time:null,
                 'humanPresenceOrAbsenceCertified'=>false,
                 'safeForAlarmActions'=>false
             ];
