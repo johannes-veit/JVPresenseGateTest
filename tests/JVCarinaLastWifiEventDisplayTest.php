@@ -3,6 +3,8 @@ declare(strict_types=1);
 require_once dirname(__DIR__).'/libs/JVCompanyWiFiEvidence.php';
 require_once dirname(__DIR__).'/libs/JVCarinaLastWifiEventDisplay.php';
 require_once dirname(__DIR__).'/libs/JVResidentTileDashboard.php';
+require_once dirname(__DIR__).'/libs/JVPresenceOperationalReadiness.php';
+require_once dirname(__DIR__).'/libs/JVResidentSourceCommissioning.php';
 function checkCarina(bool $ok,string $reason):void{
     if(!$ok)throw new RuntimeException('CARINA_EVENT_ONLY '.$reason);
 }
@@ -23,6 +25,21 @@ checkCarina($work['people']['carina']['status']==='STALE_CURRENT_SSID_UNCONFIRME
 checkCarina($work['people']['johannes']['homeSsidRecent']===true
     &&$work['people']['johannes']['lastWifiChangeZone']===null,
     'Johannes retains periodic 4-minute heartbeat and does not use event hold');
+$oper=JVPresenceOperationalReadiness::evaluate($work,[],[],$now);
+checkCarina(($oper['ssid']['carina']['reason']??null)
+    ==='IOS_CHANGE_ONLY_LAST_WIFI_EVENT_NOT_HEARTBEAT'
+    &&($oper['ssid']['carina']['currentWithinFiveMinutes']??true)===false
+    &&!in_array('CARINA:CHECK_PHONE_REPEATED_LIVE_SSID_POST',
+        $oper['actions']??[],true),
+    'iOS change-only WLAN source is not repeatedly marked as missing heartbeat');
+$commission=JVResidentSourceCommissioning::evaluate($work,[],
+    ['authority'=>'LOCAL_WIFI_BRIDGE_HOOK_METADATA_READ_ONLY',
+     'status'=>'HOOK_ASSIGNED_VALID_SCRIPT']);
+checkCarina($commission['ssidAction']
+    ==='CARINA_IOS_WLAN_CHANGE_ONLY_NO_PERIODIC_POST_EXPECTED'
+    &&($commission['ssidPeople']['carina']['iosChangeOnlyLastEvent']??false)===true
+    &&($commission['ssidPeople']['carina']['freshPhoneUpdate']??true)===false,
+    'commissioning knows event-only iPhone has last SSID without current live post');
 $visu=['schema'=>1,'authority'=>'RESIDENT_PHONE_VISU_HINTS_READ_ONLY',
     'people'=>[
         'johannes'=>[
