@@ -42,8 +42,20 @@ final class JVPresenceOperationalReadiness
                     'WORK_OR_PRIVATE_PROPERTY_EXT_UNCERTAIN',
                     'OTHER_OR_UNKNOWN_SSID'
                 ],true);
+            // Carina's iOS Shortcut is event-driven: it deliberately
+            // does NOT send four-minute heartbeats. Keep the distinction
+            // without upgrading old work/home source data to live proof.
+            $carinaEventOnly=$person==='carina'&&$verified
+                &&in_array(($row['lastWifiChangeZone']??null),['HOME','WORK'],true)
+                &&is_int($row['lastWifiChangeAt']??null)
+                &&$row['lastWifiChangeAt']>0
+                &&$row['lastWifiChangeAt']<=$now+5
+                &&($row['lastWifiChangeAt']??null)
+                    ===($row['sourceUpdatedAt']??null);
             $reason='PERSONAL_SSID_CURRENT';
             if(!$verified)$reason='PERSONAL_SSID_SOURCE_UNVERIFIED';
+            elseif($carinaEventOnly&&!$fresh)
+                $reason='IOS_CHANGE_ONLY_LAST_WIFI_EVENT_NOT_HEARTBEAT';
             elseif(!$validAge)$reason='PERSONAL_SSID_TIMESTAMP_INVALID';
             elseif(!$fresh)$reason=$age>300
                 ?'PERSONAL_SSID_HEARTBEAT_TOO_OLD'
@@ -54,9 +66,10 @@ final class JVPresenceOperationalReadiness
                 'currentWithinFiveMinutes'=>$fresh,
                 'reason'=>$reason,
                 'ssidClass'=>$fresh?$state:'UNKNOWN_STALE_OR_UNVERIFIED',
+                'iosChangeOnlyLastEvent'=>$carinaEventOnly,
                 'isHumanLocationProof'=>false
             ];
-            if(!$fresh){
+            if(!$fresh&&!$carinaEventOnly){
                 $out['actions'][]=strtoupper($person)
                     .':CHECK_PHONE_REPEATED_LIVE_SSID_POST';
             }
