@@ -288,7 +288,7 @@ final class JVResidentTileDashboard
             $fresh=is_int($time)&&$now>0&&$time>0
                 &&$time<=$now+5&&$time>=$now-300;
             $status='Unklar';$reason='Kein aktueller eindeutiger Nachweis';
-            $style='unknown';
+            $style='unknown';$eventHeldAt=null;
             if($fresh&&$decision==='HOME_PHONE_CONFIRMED'){
                 $status='Zuhause';$style='home';
                 $reason='Heim-WLAN · Handy bestätigt';
@@ -302,6 +302,26 @@ final class JVResidentTileDashboard
                 &&($row['status']??null)!=='ANWESEND'){
                 $status='Abwesend';$style='away';
                 $reason='Vermutet · beide Handy-OUT, Haus/Licht/TV ruhig';
+            }elseif($person==='carina'
+                &&in_array($decision,['UNKNOWN','LAST_KNOWN_UNCONFIRMED'],true)
+                &&is_array($data['carinaLastWifiEvent']??null)
+                &&($data['carinaLastWifiEvent']['authority']??null)
+                    ==='CARINA_IOS_LAST_WIFI_EVENT_DISPLAY_ONLY'
+                &&($data['carinaLastWifiEvent']['isCurrentDeviceLocationProof']??true)===false
+                &&($data['carinaLastWifiEvent']['mayAuthorizeAbsence']??true)===false
+                &&in_array(($data['carinaLastWifiEvent']['status']??null),[
+                    'LAST_WIFI_EVENT_HOME','LAST_WIFI_EVENT_WORK'
+                ],true)
+                &&is_int($data['carinaLastWifiEvent']['eventAt']??null)
+                &&$data['carinaLastWifiEvent']['eventAt']>0
+                &&$data['carinaLastWifiEvent']['eventAt']<=$now+5){
+                // Display a *retained iOS event*, NEVER re-label the
+                // underlying age-expired source as current evidence.
+                $eventHeldAt=$data['carinaLastWifiEvent']['eventAt'];
+                $isHome=$data['carinaLastWifiEvent']['status']==='LAST_WIFI_EVENT_HOME';
+                $status=$isHome?'Zuhause':'In Firma';
+                $style=$isHome?'home':'work';
+                $reason='Letzte iPhone-WLAN-Meldung · nur bei WLAN-Wechsel';
             }elseif($decision!=='HOME_PHONE_CONFIRMED'
                 &&$decision!=='WORK_PHONE_CONFIRMED'
                 &&$decision!=='CONFLICT'
@@ -319,7 +339,8 @@ final class JVResidentTileDashboard
             $result['people'][$person]=[
                 'name'=>$name,'status'=>$status,'style'=>$style,
                 'reason'=>$reason,
-                'at'=>$fresh||($style==='away'&&!$away)?$time:null,
+                'at'=>$eventHeldAt??($fresh||($style==='away'&&!$away)?$time:null),
+                'eventOnlyLastWifiNotCurrentProof'=>$eventHeldAt!==null,
                 'humanPresenceOrAbsenceCertified'=>false,
                 'safeForAlarmActions'=>false
             ];
