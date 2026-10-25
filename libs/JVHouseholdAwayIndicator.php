@@ -119,7 +119,7 @@ final class JVHouseholdAwayIndicator
                 else{$missingTime=true;continue;}
                 if(($source['on']??null)!==false)$on=true;
                 $last=$source['lastValueChangeAt']??null;
-                if(!is_int($last)||$last<0||$last>$now+5){
+                if(!is_int($last)||$last<=0||$last>$now+5){
                     $missingTime=true;
                 }elseif($last>$now-self::QUIET_SECONDS){
                     // Includes switching OFF: old light state alone is not
