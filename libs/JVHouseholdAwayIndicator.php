@@ -78,6 +78,14 @@ final class JVHouseholdAwayIndicator
             $lastHome=$p['homeMacAt']??null;
             $lastSSID=$p['homeSSIDAt']??null;
             $lastFirm=$p['workSSIDAt']??null;
+            // The phone may have been seen HOME or WORK AFTER the stored
+            // OUT event, even if that WiFi signal later aged out of the
+            // 300s live display. That older OUT must never re-activate AWAY.
+            $lastKnown=$p['lastKnownDeviceAt']??null;
+            if(is_int($lastKnown)&&is_int($at)&&$lastKnown>=$at
+                &&in_array(($p['lastKnownDeviceZone']??null),
+                    ['HOME','WORK'],true))
+                $verified=false;
             foreach([$lastHome,$lastSSID,$lastFirm] as $later){
                 if(is_int($later)&&is_int($at)&&$later>=$at)
                     $verified=false;
