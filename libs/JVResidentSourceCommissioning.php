@@ -57,7 +57,6 @@ final class JVResidentSourceCommissioning
                 &&in_array(($row['lastWifiChangeZone']??null),['HOME','WORK'],true)
                 &&is_int($row['lastWifiChangeAt']??null)
                 &&$row['lastWifiChangeAt']>0
-                &&$row['lastWifiChangeAt']<=time()+5
                 &&($row['lastWifiChangeAt']??null)
                     ===($row['sourceUpdatedAt']??null);
             $code=(!$sourceOk)
@@ -82,7 +81,8 @@ final class JVResidentSourceCommissioning
                 'sourceValuePattern'=>$kind,
                 'isLiveHumanProof'=>false
             ];
-            if($sourceOk&&$ageValid)$validAges[$person]=$age;
+            if($sourceOk&&$ageValid&&!$iosEventOnly)
+                $validAges[$person]=$age;
         }
         $bothStale=count($validAges)===2
             &&$validAges['johannes']>300&&$validAges['carina']>300;
