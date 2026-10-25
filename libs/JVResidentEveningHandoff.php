@@ -78,6 +78,19 @@ final class JVResidentEveningHandoff
                 &&($g['validatedSource']??false)===true;
             $decision=self::code($v['decision']??'UNKNOWN');
             $summary=self::code($t['status']??'NICHT BESTÄTIGT');
+            $iosEvent=$person==='carina'
+                &&is_array($tile['carinaLastWifiEvent']??null)
+                &&($tile['carinaLastWifiEvent']['authority']??null)
+                    ==='CARINA_IOS_LAST_WIFI_EVENT_DISPLAY_ONLY'
+                ?$tile['carinaLastWifiEvent']:[];
+            $iosHold=in_array(($iosEvent['status']??null),[
+                'LAST_WIFI_EVENT_HOME','LAST_WIFI_EVENT_WORK'
+            ],true);
+            if($iosHold){
+                $summary=$iosEvent['status']==='LAST_WIFI_EVENT_HOME'
+                    ?'ZUHAUSE (letzte iPhone-SSID, kein Live-Beweis)'
+                    :'FIRMA (letzte iPhone-SSID, kein Live-Beweis)';
+            }
             $wState=self::code($w['state']??'SOURCE_NOT_VERIFIED');
             $wBool=is_bool($w['wlanBoolean']??null)
                 ?($w['wlanBoolean']?'AN':'AUS'):'NICHT PRUEFBAR';
@@ -186,8 +199,16 @@ final class JVResidentEveningHandoff
                 .' | Alter: '.self::age($lastAge)
                 .' | Kachelfrische-Grenze: 300 s (WLAN-Puffer: 660 s)');
             $add('Persönliche SSID: Quelle '.self::yes($sourceVerified)
-                .' | '.($sourceFresh?'AKTUELL <=300 s':'NICHT AKTUELL')
+                .' | '.($sourceFresh?'AKTUELL <=300 s'
+                    :($iosHold?'LETZTE IOS-WLAN-MELDUNG (nur bei Wechsel)':'NICHT AKTUELL'))
                 .' | Status: '.$ssidState.' | Alter: '.self::age($ssidAge));
+            if($person==='carina'){
+                $add('CARINA IPHONE-SSID: WLAN-Wechsel statt 4-min-Heartbeat'
+                    .' | letzter Event-Stand '.self::code(
+                        $iosEvent['status']??'NICHT_VERIFIZIERT')
+                    .' | Zeitpunkt '.self::date($iosEvent['eventAt']??null)
+                    .' | ALT != LIVE; Geofence/WLAN-Neusignal hat Vorrang');
+            }
             $add('Geofence: Quelle '.self::yes($gValid)
                 .' | '. $geoState
                 .' | letztes Ereignis: '.self::date($g['lastEventAt']??null)
@@ -212,7 +233,8 @@ final class JVResidentEveningHandoff
                 $needs[]=$label.':WLAN_QUELLE_NICHT_VERIFIZIERT';
             if(!$sourceVerified)
                 $needs[]=$label.':AKTUELLE_SSID_MELDUNG_FEHLT';
-            elseif(!$sourceFresh)$needs[]=$label.':SSID_HEARTBEAT_AELTER_300S';
+            elseif(!$sourceFresh&&!$iosHold)
+                $needs[]=$label.':SSID_HEARTBEAT_AELTER_300S';
             if(!$gValid)$needs[]=$label.':GEOFENCE_QUELLE_NICHT_VERIFIZIERT';
             if($decision==='CONFLICT')$needs[]=$label.':WLAN_WIDERSPRUCH';
             $add('');
