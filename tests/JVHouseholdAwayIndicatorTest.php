@@ -121,7 +121,7 @@ foreach([
     'indoor unreadable'=>function(&$p,&$j,&$c,&$h,&$i){$i['readableCount']=1;},
     'indoor unknown changed time'=>function(&$p,&$j,&$c,&$h,&$i){$i['sources']['tv_a']['lastValueChangeAt']=null;},
     'indoor warned'=>function(&$p,&$j,&$c,&$h,&$i){$i['warnings']=['INVALID_VALUE'];},
-    'source clock future'=>function(&$p,&$j,&$c,&$h,&$i)use($now){$c['lastEventAt']=$now+20;},
+    'source clock future'=>function(&$p,&$j,&$c,&$h,&$i)use($now){$c['lastEventAt']=$now+625;},
     'late home contact'=>function(&$p,&$j,&$c,&$h,&$i)use($now){$p['people']['johannes']['homeMacAt']=$now-2;},
 ] as $name=>$mutate){
     $p=$phone;$j=$geoJ;$c=$geoC;$h=$house;$i=$indoor;
