@@ -111,6 +111,7 @@ final class JVHouseholdAwayIndicator
             $reasons[]='INDOOR_LIGHT_TV_COVERAGE_UNVERIFIED';
         }else{
             $changed=false;$on=false;$missingTime=false;
+            $indoorIdentity=[];
             foreach($indoor['sources'] as $id=>$source){
                 if(!is_array($source)){$missingTime=true;continue;}
                 $kind=$source['kind']??null;
@@ -126,7 +127,9 @@ final class JVHouseholdAwayIndicator
                     // proof there has been no light dynamics.
                     $changed=true;
                 }
+                $indoorIdentity[]=(string)$id.':'.(string)$kind.':'.(string)$last;
             }
+            sort($indoorIdentity,SORT_STRING);
             if($out['checkedLights']<1)$reasons[]='INDOOR_LIGHT_SOURCE_REQUIRED';
             if($out['checkedTVs']<1)$reasons[]='INDOOR_TV_SOURCE_REQUIRED';
             if($missingTime)$reasons[]='INDOOR_LAST_CHANGE_TIME_REQUIRED';
@@ -140,7 +143,8 @@ final class JVHouseholdAwayIndicator
         // reassignment, invalid time or failed/interrupted poll.
         $sourceSig=hash('sha256',implode('|',[
             $keys['johannes'],$keys['carina'],
-            (string)$out['checkedLights'],(string)$out['checkedTVs']
+            (string)$out['checkedLights'],(string)$out['checkedTVs'],
+            implode(';',$indoorIdentity)
         ]));
         $since=$now;
         if(($previous['schema']??null)===1
