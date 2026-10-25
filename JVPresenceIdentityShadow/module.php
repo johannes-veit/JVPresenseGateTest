@@ -2771,7 +2771,11 @@ class JVPresenceIdentityShadow extends IPSModule
             .' | Firmen-WLAN Handys: '.$tileWork['workPhoneCount']
             .' | Anwesenheit erkannt: '.($presenceDetected['detected']?'JA':'NEIN')
             .' (NEIN = kein aktueller positiver Nachweis, NICHT leer)'
-            .' | Abwesenheit: NICHT BESTAETIGT'
+            .' | Bewohner-Abwesenheitsindiz: '
+            .(($householdAway['report']['likelyAway']??false)===true
+                ?'JA (VERMUTET; KEINE ALARMFREIGABE)'
+                :'NEIN; QUELLEN/BEWEISE FEHLEN')
+            .' | Abwesenheit: NICHT ZERTIFIZIERT'
             .' | '.$phoneDescription
             .' | Kombiniert: '.$combined['status']
             .' | WLAN-Handys: '.(
@@ -2804,7 +2808,7 @@ class JVPresenceIdentityShadow extends IPSModule
             $routeEpisodes['report'],$residentJourney,
             $evidenceReadiness,$integrityAudit,$commissioningGate,
             $upgradePreflight,$presenceSafetyCase,$operationalReadiness,
-            $sourceCommissioning
+            $sourceCommissioning,$householdAway['report']
         ));
         $this->publish($report,$state);
         // A prior unexpected runtime error must not leave the native
