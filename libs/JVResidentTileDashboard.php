@@ -268,6 +268,18 @@ final class JVResidentTileDashboard
             &&($data['householdAwayIndicator']['geofenceOutside']['johannes']??false)===true
             &&($data['householdAwayIndicator']['geofenceOutside']['carina']??false)===true
             &&($data['householdAwayIndicator']['mayArmAlarm']??true)===false;
+        if($away){
+            foreach(['johannes','carina'] as $person){
+                $p=$data['people'][$person]??[];
+                if(!is_array($p)
+                    ||!in_array(($p['decision']??null),[
+                        'UNKNOWN','LAST_KNOWN_UNCONFIRMED'
+                    ],true)){
+                    $away=false;
+                    break;
+                }
+            }
+        }
         foreach(['johannes'=>'Johannes','carina'=>'Carina'] as $person=>$name){
             $row=$trusted&&is_array($data['people'][$person]??null)
                 ?$data['people'][$person]:[];
