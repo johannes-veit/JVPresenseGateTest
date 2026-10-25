@@ -72,6 +72,8 @@ final class JVShadowReportBudget
             'BETRIEB SSID UPDATE-VERLAUF:',
             'BETRIEB SSID NAECHSTER SCHRITT:',
             'BETRIEB P03 OFFEN ',
+            'BEWOHNER-ABWESENHEITSINDIZ:',
+            'BEWOHNER-ABWESENHEIT FEHLT:',
             '--- HEUTE ABEND:', 'P03-UEBERGANG/24h:',
             'P03-5MIN-STATUS:', 'P03-5MIN/24h:',
             'HANDY-EVENT/24h:', 'RAUMKONTEXT:',
