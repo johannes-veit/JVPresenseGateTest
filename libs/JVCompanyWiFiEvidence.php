@@ -44,7 +44,10 @@ final class JVCompanyWiFiEvidence
                 // Diagnostic only: distinguishes initialized-empty variables
                 // from stale but formerly nonempty personal SSID readings.
                 // Does NOT prove that a phone ever posted to the webhook.
-                'reportedSSIDKind'=>'NOT_READ'
+                'reportedSSIDKind'=>'NOT_READ',
+                'lastWifiChangeZone'=>null,
+                'lastWifiChangeAt'=>null,
+                'lastWifiChangeIsCurrentProof'=>false
             ];
             if(!$enabled){$out['people'][$person]=$entry;continue;}
             if(!is_array($row)
@@ -77,6 +80,18 @@ final class JVCompanyWiFiEvidence
             // edge detection. Reconstructing it as now-age can invent
             // one-second updates when computations cross a clock tick.
             $entry['sourceUpdatedAt']=$at;
+            // Carina's iOS Shortcut posts on a WLAN CHANGE, not every
+            // few minutes. Preserve only a strictly classified event-zone
+            // for a separate display-only last-event view. Never mark
+            // stale values as fresh HOME/WORK evidence in this evaluator.
+            if($person==='carina'
+                &&$entry['reportedSSIDKind']==='NONEMPTY_OBSERVED'){
+                $entry['lastWifiChangeZone']=in_array($rawSSID,
+                    ['Veit-FilzenerWeg','filzenerweg'],true)?'HOME'
+                    :(in_array($rawSSID,['Intern-Veit','Privat-Veit'],true)
+                        ?'WORK':null);
+                $entry['lastWifiChangeAt']=$at;
+            }
             if($age>self::MAX_AGE) {
                 $entry['status']='STALE_CURRENT_SSID_UNCONFIRMED';
                 $out['people'][$person]=$entry;continue;
@@ -131,6 +146,8 @@ final class JVCompanyWiFiEvidence
                 $row['sourceKey']=null;
                 $row['sourceUpdatedAt']=null;
                 $row['reportedSSIDKind']='COLLISION_NOT_USABLE';
+                $row['lastWifiChangeZone']=null;
+                $row['lastWifiChangeAt']=null;
                 unset($row);
             }
             $out['warnings'][]='BOTH_PHONES_SHARE_ONE_SSID_VARIABLE_ID';
