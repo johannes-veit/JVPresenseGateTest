@@ -53,12 +53,20 @@ final class JVResidentSourceCommissioning
                     'WORK_OR_PRIVATE_PROPERTY_EXT_UNCERTAIN',
                     'OTHER_OR_UNKNOWN_SSID'
                 ],true);
+            $iosEventOnly=$person==='carina'&&$sourceOk
+                &&in_array(($row['lastWifiChangeZone']??null),['HOME','WORK'],true)
+                &&is_int($row['lastWifiChangeAt']??null)
+                &&$row['lastWifiChangeAt']>0
+                &&$row['lastWifiChangeAt']<=time()+5
+                &&($row['lastWifiChangeAt']??null)
+                    ===($row['sourceUpdatedAt']??null);
             $code=(!$sourceOk)
                 ?'PERSONAL_SOURCE_MISSING_OR_REJECTED'
                 :(!$ageValid?'PERSONAL_SOURCE_TIMESTAMP_INVALID'
                     :(!$fresh?($age>300?'PHONE_POST_NO_LONGER_FRESH'
                         :'PHONE_SSID_VALUE_NOT_CONFIRMED')
                         :'PHONE_CURRENT_SSID_RECEIVED'));
+            if($iosEventOnly&&!$fresh)$code='IOS_CHANGE_ONLY_LAST_EVENT_NO_HEARTBEAT_EXPECTED';
             $kind=is_string($row['reportedSSIDKind']??null)
                 ?$row['reportedSSIDKind']:'UNKNOWN';
             if(!in_array($kind,['EMPTY_OR_DISCONNECTED',
@@ -69,6 +77,7 @@ final class JVResidentSourceCommissioning
                 'sourceAccepted'=>$sourceOk,
                 'latestUpdateAgeSeconds'=>$ageValid?$age:null,
                 'freshPhoneUpdate'=>$fresh,
+                'iosChangeOnlyLastEvent'=>$iosEventOnly,
                 'code'=>$code,
                 'sourceValuePattern'=>$kind,
                 'isLiveHumanProof'=>false
@@ -101,8 +110,12 @@ final class JVResidentSourceCommissioning
                 ?'CHECK_INITIAL_PHONE_POSTS_POSSIBLE_EMPTY_BOOTSTRAP'
                 :'CHECK_BOTH_PHONE_AUTOMATIONS_AND_ACCEPTED_POST_RESPONSE';
         }elseif(!$out['ssidPeople']['johannes']['freshPhoneUpdate']
-            ||!$out['ssidPeople']['carina']['freshPhoneUpdate']){
+            ||(!$out['ssidPeople']['carina']['freshPhoneUpdate']
+                &&!$out['ssidPeople']['carina']['iosChangeOnlyLastEvent'])){
             $out['ssidAction']='CHECK_INDIVIDUAL_PHONE_POST_AND_FRESH_SSID';
+        }elseif(($out['ssidPeople']['carina']['iosChangeOnlyLastEvent']??false)
+            &&!$out['ssidPeople']['carina']['freshPhoneUpdate']){
+            $out['ssidAction']='CARINA_IOS_WLAN_CHANGE_ONLY_NO_PERIODIC_POST_EXPECTED';
         }else{
             $out['ssidAction']='BOTH_PERSONAL_SSID_POSTS_CURRENT';
         }
