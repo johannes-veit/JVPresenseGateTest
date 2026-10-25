@@ -123,6 +123,10 @@ foreach([
     'indoor warned'=>function(&$p,&$j,&$c,&$h,&$i){$i['warnings']=['INVALID_VALUE'];},
     'source clock future'=>function(&$p,&$j,&$c,&$h,&$i)use($now){$c['lastEventAt']=$now+625;},
     'late home contact'=>function(&$p,&$j,&$c,&$h,&$i)use($now){$p['people']['johannes']['homeMacAt']=$now-2;},
+    'old OUT superseded by newer stored home contact'=>function(&$p,&$j,&$c,&$h,&$i)use($now){
+        $p['people']['johannes']['lastKnownDeviceAt']=$now-2500;
+        $p['people']['johannes']['lastKnownDeviceZone']='HOME';
+    },
 ] as $name=>$mutate){
     $p=$phone;$j=$geoJ;$c=$geoC;$h=$house;$i=$indoor;
     $mutate($p,$j,$c,$h,$i);
