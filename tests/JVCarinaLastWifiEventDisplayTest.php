@@ -138,6 +138,12 @@ $tile['people']['carina']['decision']='CONFLICT';
 checkCarina(JVResidentTileDashboard::compactState($tile,$now)['people']['carina']['status']
     ==='Unklar','tile independently blocks held event on conflict');
 $tile['people']['carina']['decision']='LAST_KNOWN_UNCONFIRMED';
+// In this scenario neither resident has a current HOME/WORK proof;
+// if Johannes were still HOME, the existing independent group-away guard
+// correctly forbids painting either resident as collectively away.
+$tile['people']['johannes']['decision']='UNKNOWN';
+$tile['people']['johannes']['at']=null;
+$tile['people']['johannes']['status']='NICHT BESTÄTIGT';
 $tile['householdAwayIndicator']=[
     'schema'=>1,'authority'=>'HOUSEHOLD_AWAY_VISUAL_HINT_ONLY',
     'status'=>'LIKELY_AWAY','likelyAway'=>true,
