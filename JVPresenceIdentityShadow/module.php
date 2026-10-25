@@ -17,6 +17,7 @@ require_once dirname(__DIR__).'/libs/JVRoomDayDigest.php';
 require_once dirname(__DIR__).'/libs/JVHousePowerContext.php';
 require_once dirname(__DIR__).'/libs/JVP03IncrementalTimeline.php';
 require_once dirname(__DIR__).'/libs/JVHomeOccupancyEvidence.php';
+require_once dirname(__DIR__).'/libs/JVHouseholdAwayIndicator.php';
 require_once dirname(__DIR__).'/libs/JVBoundaryEvidence.php';
 require_once dirname(__DIR__).'/libs/JVExitCandidateInventory.php';
 require_once dirname(__DIR__).'/libs/JVGateSignalAudit.php';
@@ -227,6 +228,7 @@ class JVPresenceIdentityShadow extends IPSModule
             // RAM-only event continuity always starts a new observer epoch
             // after restart/reconfiguration; never extrapolate past reads.
             $this->SetBuffer('PersonalSSIDDeliveryLedger','');
+            $this->SetBuffer('HouseholdAwayRuntime','');
             if(!$this->ReadPropertyBoolean('Enabled'))
                 $this->syncPersonalSSIDSubscriptions([]);
             $this->Refresh();
@@ -2573,12 +2575,25 @@ class JVPresenceIdentityShadow extends IPSModule
             $tileWlan,$tileGeoJ,$tileGeoC,$p03Timeline['report'],time(),
             $residentFusion['report']
         );
+        // Deliberately display-only. Positive independent geofence OUT
+        // for BOTH handsets plus continuously quiet validated house sources.
+        // A dark, sleeping house and silent phones alone NEVER qualify.
+        $awayPrevious=json_decode($this->GetBuffer('HouseholdAwayRuntime'),true);
+        $householdAway=JVHouseholdAwayIndicator::evaluate(
+            $tileResident['report'],$tileGeoJ,$tileGeoC,
+            $houseObservation,$indoorHints,
+            is_array($awayPrevious)?$awayPrevious:[],time()
+        );
+        $awayNext=json_encode($householdAway['next'],JSON_UNESCAPED_SLASHES);
+        if(is_string($awayNext))
+            $this->SetBuffer('HouseholdAwayRuntime',$awayNext);
         $tileData=JVResidentTileDashboard::evaluate(
             $tileResident['report'],$tileWlan,$tileWork,
             $p03Timeline['report'],$houseObservation,time(),$departureHint,$roomPaths,
             $residentFusion['report'],$routeEpisodes['report'],
             $residentJourney
         );
+        $tileData['householdAwayIndicator']=$householdAway['report'];
         // The existing ~HTMLBox variable now shows only the two compact
         // read-only resident rows; detailed evidence stays in TestReport.
         $compactResidentTile=JVResidentTileDashboard::compactState(
@@ -2636,6 +2651,7 @@ class JVPresenceIdentityShadow extends IPSModule
             'residentVisuState'=>$tileResident['report'],
             'residentTileEvidence'=>$tileData,
             'compactResidentTile'=>$compactResidentTile,
+            'householdAwayIndicator'=>$householdAway['report'],
             'residentDepartureInference'=>$departureHint,
             'residentArrivalInference'=>$arrivalHint,
             'phoneContactContinuity'=>$contactHistory['report'],
@@ -2769,8 +2785,12 @@ class JVPresenceIdentityShadow extends IPSModule
         // Explicit-only legacy diagnostics must not disagree visually with
         // the final auto+manual qualified resident phone source.
         $this->setResidentDisplayValues(
-            $tileResident['report']['people']['johannes']['display'],
-            $tileResident['report']['people']['carina']['display']
+            ($householdAway['report']['likelyAway']??false)===true
+                ?'ABWESEND (Indizien, nicht zertifiziert)'
+                :$tileResident['report']['people']['johannes']['display'],
+            ($householdAway['report']['likelyAway']??false)===true
+                ?'ABWESEND (Indizien, nicht zertifiziert)'
+                :$tileResident['report']['people']['carina']['display']
         );
         $this->setPresenceDetected($presenceDetected['detected']);
         $this->setResidentTile($tileHTML);
