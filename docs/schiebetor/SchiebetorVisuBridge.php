@@ -25,6 +25,22 @@ function jvgbRead(string $name, int $limit): ?array {
     $data = json_decode($raw, true);
     return is_array($data) ? $data : null;
 }
+/**
+ * Bereits im urspruenglichen, lokal betriebenen GPS-Empfaenger konfigurierter
+ * Schluessel. Wird NICHT in GitHub oder neuen Symcon-Einstellungen gespeichert.
+ * Nur autorisiert, die Tor-Bedienseite anzuzeigen; nie einen Torbefehl.
+ */
+function jvgbExistingGpsToken(): string {
+    if (!IPS_ObjectExists(25009)
+        || (int)(IPS_GetObject(25009)['ObjectType'] ?? -1)!==3)
+        return '';
+    $php=IPS_GetScriptContent(25009);
+    if (!is_string($php) || strlen($php)>100000)
+        return '';
+    if (!preg_match("/\\bconst\\s+SGT_TOKEN\\s*=\\s*'([a-fA-F0-9]{40,128})'\\s*;/", $php, $match))
+        return '';
+    return (string)$match[1];
+}
 function jvgbReply(int $code, string $value): void {
     http_response_code($code);
     header('Content-Type: text/plain; charset=utf-8');
@@ -85,24 +101,31 @@ function jvgbMain(): void {
         return;
     }
     if ($sender !== 'WebHook') return;
-    $expected = jvgbToken();
+    $private = jvgbToken();
+    $legacy = jvgbExistingGpsToken();
     $given = (string)($_SERVER['HTTP_X_SCHIEBETOR_KEY'] ?? '');
-    if (strlen($expected)<40 || strlen($given)!==strlen($expected)
-        || !hash_equals($expected,$given)) { jvgbReply(403,'DENIED');return; }
+    $verified = (strlen($private)>=40 && strlen($given)===strlen($private)
+        && hash_equals($private,$given));
+    if (!$verified && strlen($legacy)>=40 && strlen($given)===strlen($legacy))
+        $verified=hash_equals($legacy,$given);
+    // Leerkoerper bei ALLEM ausser OPEN: Automate-Boolean prueft nur
+    // einen positiven OPEN-Text; Fehlermeldungen duerfen nie App-Start
+    // ausloesen.
+    if (!$verified) { jvgbReply(403,'');return; }
     $action=(string)($_GET['action'] ?? 'poll');
     $method=(string)($_SERVER['REQUEST_METHOD'] ?? 'GET');
     if (!(($action==='poll' && $method==='GET')
         || ($action==='show' && $method==='POST'))) {
-        jvgbReply(405,'INVALID_METHOD'); return;
+        jvgbReply(405,''); return;
     }
     $fresh=jvgbReady(time(),$action==='poll'?18:30);
-    if (!$fresh['ready']) {jvgbReply(200,'WAIT');return;}
+    if (!$fresh['ready']) {jvgbReply(204,'');return;}
     if (!IPS_SemaphoreEnter('JVSchiebetorBridge_v18',1000)) {
-        jvgbReply(503,'BUSY');return;
+        jvgbReply(503,'');return;
     }
     try {
         $ack=jvgbRead(JVGB_ACK,512);
-        if (($ack['id'] ?? '') === $fresh['id']) {jvgbReply(200,'WAIT');return;}
+        if (($ack['id'] ?? '') === $fresh['id']) {jvgbReply(204,'');return;}
         if ($action==='poll') {jvgbReply(200,'OPEN');return;}
         $again=jvgbReady(time(),30);
         if (!$again['ready'] || $again['id']!==$fresh['id']) {
@@ -111,12 +134,12 @@ function jvgbMain(): void {
         // Oeffnet ausschliesslich die vorhandene Tor-Kategorie in der
         // bestehenden Visualisierung; keine Toraktion oder Motoransteuerung.
         if (VISU_OpenObject(JVGB_VISU,JVGB_GATE,'')!==true) {
-            jvgbReply(503,'VISU_ERROR');return;
+            jvgbReply(503,'');return;
         }
-        if (!jvgbAck($fresh['id'],time())) {jvgbReply(503,'ACK_ERROR');return;}
+        if (!jvgbAck($fresh['id'],time())) {jvgbReply(503,'');return;}
         jvgbReply(200,'SHOWN');
     } catch (Throwable $ignored) {
-        jvgbReply(503,'ERROR');
+        jvgbReply(503,'');
     } finally {
         IPS_SemaphoreLeave('JVSchiebetorBridge_v18');
     }

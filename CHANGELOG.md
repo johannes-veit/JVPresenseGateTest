@@ -1,3 +1,9 @@
+# v0.8.125 (Build 206) – Importierbarer Hilux-Flow ohne Token-Abtippen, 30.10.2026
+
+- Schiebetor-Visu-Bridge erlaubt zusaetzlich den bereits lokal in GPS-Empfaenger #25009 vorhandenen GPS-Schluessel (streng gegen vorhandenen SGT_TOKEN verglichen); kein manuelles Verteilen des neu erzeugten VISU-Tokens an Automate mehr erforderlich.
+- Alle Poll-Fehler und WAIT antworten mit leerem Body (bei Warten HTTP 204), um in Automate niemals irrtuemlich einen App-Start auszuloesen.
+- Kein Motorbefehl, keine Aenderung an der GPS-Eingangsverarbeitung und den Tor-Aktionsskripten.
+
 # v0.8.124 (Build 205) – Schiebetor-Visualisierung, 30.10.2026
 
 - Bestehender SHADOW #32969 richtet eine separate Schiebetor-VISU-Bruecke und den Webhook beim ApplyChanges automatisch und konfliktgeschuetzt ein (nur #43393, nicht Toraktorik oder GPS-Hook).

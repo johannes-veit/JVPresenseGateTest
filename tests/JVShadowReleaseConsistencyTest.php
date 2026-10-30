@@ -6,21 +6,21 @@ declare(strict_types=1);
  */
 $root=dirname(__DIR__);
 $meta=json_decode((string)file_get_contents($root.'/library.json'),true);
-if(!is_array($meta)||($meta['version']??null)!=='0.8.124'
-    ||($meta['build']??null)!==205)
+if(!is_array($meta)||($meta['version']??null)!=='0.8.125'
+    ||($meta['build']??null)!==206)
     throw new RuntimeException('WRONG_RELEASE_META');
 $handoff=(string)file_get_contents($root.'/libs/JVResidentEveningHandoff.php');
 $form=json_decode((string)file_get_contents(
     $root.'/JVPresenceIdentityShadow/form.json'),true);
 $changelog=(string)file_get_contents($root.'/CHANGELOG.md');
 $main=(string)file_get_contents($root.'/JVPresenceIdentityShadow/module.php');
-if(!str_contains($handoff,"SHADOW v0.8.124 Build 205")
-    ||!str_starts_with($changelog,"# v0.8.124 (Build 205)"))
+if(!str_contains($handoff,"SHADOW v0.8.125 Build 206")
+    ||!str_starts_with($changelog,"# v0.8.125 (Build 206)"))
     throw new RuntimeException('MISMATCHED_REPORT_OR_CHANGELOG_VERSION');
 $found=false;
 foreach(($form['elements']??[]) as $item)
     if(($item['type']??null)==='Label'
-        &&str_starts_with($item['caption']??'','SHADOW v0.8.124:'))$found=true;
+        &&str_starts_with($item['caption']??'','SHADOW v0.8.125:'))$found=true;
 if(!$found)throw new RuntimeException('STALE_USER_VISIBLE_HELP');
 foreach([
     'JVShadowStateCheckpoint',
