@@ -22,6 +22,8 @@ jobs:
           done < <(find . -type f -name '*.php' -print0)
       - name: Schiebetor Visualisierung Auto-Installer Regression
         run: php tests/JVSchiebetorAutoInstallerTest.php
+      - name: Schiebetor Bridge token and replay regression
+        run: php tests/JVSchiebetorVisuBridgeTest.php
       - name: Legacy direction/config logic
         run: php -d auto_prepend_file=tests/MockSymconSemaphore.php tests/test_logic.php
       - name: Module loader contracts
