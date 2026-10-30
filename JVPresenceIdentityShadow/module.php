@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once dirname(__DIR__).'/libs/JVSchiebetorAutoInstaller.php';
 require_once dirname(__DIR__).'/libs/JVP03ProofLogReplay.php';
 require_once dirname(__DIR__).'/libs/JVLocalSensorEvidence.php';
 require_once dirname(__DIR__).'/libs/JVLCNGUSInventory.php';
@@ -254,6 +255,14 @@ class JVPresenceIdentityShadow extends IPSModule
                 try {$this->installKnownRootVisuSafely();}
                 catch(Throwable $ignored){}
             }
+            // Unabhaengiger Installer: darf SHADOW nie blockieren oder
+            // Anwesenheitsstatus/GPS/Tor-Aktionsskripte veraendern.
+            if (isset($this->InstanceID) && $this->InstanceID===32969) {
+                try { $this->InstallSchiebetorVisu(); }
+                catch(Throwable $ignored) {
+                    $this->SetBuffer('SchiebetorVisuInstall','INSTALLATION_GESTOPPT');
+                }
+            }
         } catch(Throwable $e) {
             // A failed bootstrap is a missing observation epoch even if it
             // occurred only seconds after the last successful timer poll.
@@ -371,9 +380,49 @@ class JVPresenceIdentityShadow extends IPSModule
         }
     }
 
+    /**
+     * Manueller Wiederholungsaufruf nach einem Update; keine Toraktion.
+     * Dieselbe Routine laeuft nach ApplyChanges auf der bekannten Instanz.
+     */
+    public function InstallSchiebetorVisu(): string
+    {
+        if (!isset($this->InstanceID) || $this->InstanceID!==32969)
+            return 'NICHT_ZUSTAENDIG: Nur SHADOW #32969';
+        $result=JVSchiebetorAutoInstaller::install(
+            dirname(__DIR__).'/docs/schiebetor/SchiebetorVisuBridge.php'
+        );
+        $this->SetBuffer('SchiebetorVisuInstall',$result);
+        $this->SendDebug('SchiebetorVisuInstaller',$result,0);
+        return $result;
+    }
+
     public function GetConfigurationForm(): string
     {
-        return (string)file_get_contents(__DIR__.'/form.json');
+        $raw=(string)file_get_contents(__DIR__.'/form.json');
+        if (!isset($this->InstanceID) || $this->InstanceID!==32969) return $raw;
+        $form=json_decode($raw,true);
+        if (!is_array($form) || !is_array($form['elements']??null)) return $raw;
+        $status=trim($this->GetBuffer('SchiebetorVisuInstall'));
+        if ($status==='') $status='Noch nicht automatisch geprueft.';
+        $form['elements'][]=[
+            'type'=>'ExpansionPanel',
+            'caption'=>'Schiebetor GPS – automatische Visualisierung',
+            'expanded'=>false,
+            'items'=>[
+                ['type'=>'Label','caption'=>$status],
+                ['type'=>'Label','caption'=>
+                    'Nur die vorhandene Bedienseite wird angezeigt. '.
+                    'Niemals AUF/STOP/ZU ausloesen. Der Schluessel wird '.
+                    'privat unter Schiebetor GPS Naeherung gespeichert. '.
+                    'Der Automate-Flow auf dem Xiaomi muss einmal ergaenzt werden.']
+            ]
+        ];
+        $form['actions'][]=[
+            'type'=>'Button',
+            'caption'=>'Schiebetor-Installation erneut pruefen',
+            'onClick'=>'JVIDSH_InstallSchiebetorVisu($id);'
+        ];
+        return json_encode($form,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES)?:$raw;
     }
 
     /**
