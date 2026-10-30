@@ -76,6 +76,7 @@ function jvgbAck(string $id, int $now): bool {
     return true;
 }
 function jvgbMain(): void {
+    global $_IPS;
     $sender = (string)($_IPS['SENDER'] ?? '');
     if ($sender === 'Execute') {
         echo "Schiebetor-Visu-Bruecke ".JVGB_VERSION." | kein Torbefehl\n";
