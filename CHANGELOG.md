@@ -1,3 +1,10 @@
+# v0.8.124 (Build 205) – Schiebetor-Visualisierung, 30.10.2026
+
+- Bestehender SHADOW #32969 richtet eine separate Schiebetor-VISU-Bruecke und den Webhook beim ApplyChanges automatisch und konfliktgeschuetzt ein (nur #43393, nicht Toraktorik oder GPS-Hook).
+- Ein privater, lokaler Automate-Header-Schluessel wird genau einmal angelegt; automatische erneute Ausfuehrung aendert das Token nicht.
+- Nur bei bereits installiertem Entscheider #30894 v1.6.2; sonst sichtbare Fehlermeldung ohne Eingriff.
+- Keine automatische Torbetätigung. Android-Automate wird einmalig manuell um Poll/App-Start/Show ergaenzt.
+
 # v0.8.123 (Build 204) – Carina meldet WLAN nur beim Wechsel: letzte gültige SSID erhalten
 
 - **Unterschiedliche Melderhythmen statt falscher 5-Minuten-Fehler:** Johannes' Xiaomi sendet mit Automate alle 4 min, seine SSID bleibt ausnahmslos nur bei frischem Update HOME/WORK. Carinas iPhone sendet dagegen über Kurzbefehle nur beim WLAN-Verbindungswechsel. Ihre letzte gültige persönliche SSID `Veit-FilzenerWeg`/`filzenerweg` bzw. `Intern-Veit`/`Privat-Veit` darf deshalb auch nach 5 min in der BEWOHNERKACHEL als `Zuhause`/`In Firma` verbleiben, ausdrücklich markiert mit `Letzte iPhone-WLAN-Meldung · nur bei WLAN-Wechsel`. Unbekannte, leere und `Privat-Veit-EXT` SSIDs bleiben unklar.
