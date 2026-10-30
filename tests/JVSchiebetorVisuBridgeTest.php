@@ -11,8 +11,8 @@ function IPS_GetObject(int $id): array {return $GLOBALS['g']['objects'][$id];}
 function IPS_GetChildrenIDs(int $id): array {return array_keys(array_filter($GLOBALS['g']['objects'],static fn($v)=>($v['ParentID']??null)===$id));}
 function IPS_GetVariable(int $id): array {return ['VariableType'=>3];}
 function GetValue(int $id): string {return $GLOBALS['g']['key'];}
-function IPS_SemaphoreEnter(string $name,int $timeout): bool {return true;}
-function IPS_SemaphoreLeave(string $name): void {}
+if (!function_exists('IPS_SemaphoreEnter')) { function IPS_SemaphoreEnter(string $name,int $timeout): bool {return true;} }
+if (!function_exists('IPS_SemaphoreLeave')) { function IPS_SemaphoreLeave(string $name): void {} }
 function VISU_OpenObject(int $visu,int $category,string $tokens): bool {
  $GLOBALS['g']['calls'][]=[$visu,$category,$tokens];return true;
 }
