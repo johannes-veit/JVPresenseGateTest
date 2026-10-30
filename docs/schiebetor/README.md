@@ -1,4 +1,4 @@
-# Schiebetor GPS – selbstinstallierende VISU-Bruecke v1.8 (SHADOW-Modul 0.8.124)
+# Schiebetor GPS – selbstinstallierende VISU-Bruecke v1.9 (SHADOW-Modul 0.8.125)
 
 **Ziel:** das bestehende Xiaomi/Automate-GPS-Projekt fuer die Tor-Bedienseite fertig anbinden, ohne GPS-Empfangs- oder Tor-Aktionsskripte zu veraendern. **Tor wird niemals automatisch geschaltet.**
 
@@ -20,11 +20,11 @@ Nach Erfolg:
 
 Bei unerkannter Bearbeitung von #43393 meldet das Modul `KONFLIKT` statt zu ueberschreiben. Das alte Bridge-Skript wird vor Ersatz lokal unter `user/schiebetor/bridge_backup_...` gesichert.
 
-## Einmalig auf dem Xiaomi 13T: vorhandenen Automate-Flow ergaenzen
+## Einmalig auf dem Xiaomi 13T: importierbaren Komplett-Flow starten
 
-Hilux-Bluetooth-Gatekeeper, funktionierenden GPS-POST und 5-s-Loop **nicht aendern**. Den Schluessel aus der *ausgeblendeten lokalen* Variable unter #29252 ablesen. **Den Schluessel nicht in Chat, Screenshots oder GitHub kopieren.**
+Hilux-Bluetooth-Gatekeeper, funktionierenden GPS-POST und 5-s-Loop **nicht aendern**. Seit 0.8.125 kann der vorhandene GPS-Schluessel des Original-Automate-Flows direkt fuer den VISU-Handshake genutzt werden. **Kein Schluessel-Abtippen. Nicht in Chat, Screenshots oder GitHub kopieren.**
 
-Nach erfolgreichem GPS-POST in Automate:
+Bei einer importierten Komplett-FLOW-Datei sind diese Schritte bereits konfiguriert. Zur technischen Nachvollziehbarkeit: Nach erfolgreichem GPS-POST in Automate:
 
 1. **HTTP request** GET, URL `https://<BISHERIGE_CONNECT_ADRESSE>/hook/schiebetor-kachel?action=poll`, Header `X-Schiebetor-Key: <lokaler Schluessel>`, Status in `torStatus`, Antworttext in `torAntwort`, Timeout 5 s.
 2. **Expression true:** `torStatus = 200 && torAntwort = "OPEN"`. Bei NO zur bestehenden GPS-Pause zurueck.
